@@ -658,7 +658,7 @@
     return dt.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
   }
 
-  var state = { machines: [], operators: [], people: [], products: [], productRates: {}, shifts: [], diagnoses: {}, settings: { shiftsPerDay: 2 } };
+  var state = { machines: [], operators: [], people: [], products: [], productRates: {}, shifts: [], diagnoses: {}, settings: { shiftsPerDay: 2, shiftLengthMin: 480, breakMin: 0, ineffectiveMin: 0 } };
 
   /* =====================================================================
      WCZYTYWANIE DANYCH FIRMY Z SUPABASE
@@ -708,16 +708,30 @@
       bannerMsg = "";
     }
 
-    state.machines = (results[0].data || []).map(function (m) { return { id: m.id, name: m.name }; });
+    state.machines = (results[0].data || []).map(function (m) { return { id: m.id, name: m.name, tpzMin: Number(m.tpz_min || 0) }; });
     state.products = (results[1].data || []).map(function (p) { return { id: p.id, name: p.name, code: p.code || "" }; });
     state.productRates = rowsToProductRates(results[2].data || []);
     state.shifts = (results[3].data || []).map(shiftFromRow);
     state.diagnoses = rowsToDiagnoses(results[4].data || []);
-    state.settings = { shiftsPerDay: session.company.shiftsPerDay || 2 };
+    state.settings = {
+      shiftsPerDay: session.company.shiftsPerDay || 2,
+      shiftLengthMin: session.company.shiftLengthMin != null ? session.company.shiftLengthMin : 480,
+      breakMin: session.company.breakMin || 0,
+      ineffectiveMin: session.company.ineffectiveMin || 0
+    };
 
     // operatorzy — proste rekordy imię + PIN, nie konta logowania (patrz renderOperator)
     state.operators = (results[5].data || []).map(function (o) { return { id: o.id, name: o.name, pin: o.pin }; });
     state.people = state.operators; // do wyświetlania imion przy zmianach (leaderboard, dziennik)
+  }
+
+  // efektywny, sugerowany "czas planowany" (min) dla danej maszyny: długość zmiany
+  // minus przerwa, czas nieefektywny (ustawienia firmy) i TPZ tej konkretnej maszyny
+  function effectiveShiftMinutes(machineId) {
+    var m = state.machines.filter(function (x) { return x.id === machineId; })[0];
+    var tpz = m ? (m.tpzMin || 0) : 0;
+    var mins = (state.settings.shiftLengthMin || 0) - (state.settings.breakMin || 0) - (state.settings.ineffectiveMin || 0) - tpz;
+    return Math.max(0, mins);
   }
 
   /* ---------- obliczenia OEE (bez zmian w metodzie) ---------- */
@@ -1070,16 +1084,17 @@
   function machinesAdminHtml() {
     var rows = state.machines.map(function (m) {
       return '<tr><td><input type="text" data-machine-name="' + m.id + '" value="' + escAttr(m.name) + '"></td>' +
+        '<td><input type="number" min="0" step="1" data-machine-tpz="' + m.id + '" value="' + (m.tpzMin || 0) + '" style="max-width:90px;"></td>' +
         '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-machine="' + m.id + '">usuń</button></td></tr>';
     }).join("");
     var table = state.machines.length
-      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-        '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveMachinesBtn">Zapisz zmiany nazw</button><span class="form-msg" id="machinesMsg">Zapisano.</span></div>'
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th>TPZ (min)</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveMachinesBtn">Zapisz zmiany</button><span class="form-msg" id="machinesMsg">Zapisano.</span></div>'
       : '<div class="empty-hint">Brak maszyn — dodaj pierwszą poniżej.</div>';
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Park maszynowy</div><h2 class="section-title small">Maszyny</h2>' +
-      '<div class="section-sub">Lista maszyn w warsztacie — widoczna do wyboru przy wpisie zmiany. Nazwę możesz poprawić bezpośrednio w tabeli. Usunięcie maszyny kasuje też jej historię zmian.</div></div>' +
+      '<div class="section-sub">Lista maszyn w warsztacie — widoczna do wyboru przy wpisie zmiany. TPZ to czas przygotowawczo-zakończeniowy (przezbrojenie, rozruch) tej maszyny — odejmujemy go od czasu zmiany, podpowiadając operatorowi gotowy „czas planowany". Nazwę i TPZ możesz poprawić bezpośrednio w tabeli. Usunięcie maszyny kasuje też jej historię zmian.</div></div>' +
       table +
-      '<form class="inline-add" id="addMachineForm"><input type="text" id="newMachineName" placeholder="Nazwa maszyny"><button type="submit" class="primary">Dodaj</button></form></div>';
+      '<form class="inline-add" id="addMachineForm"><input type="text" id="newMachineName" placeholder="Nazwa maszyny"><input type="number" id="newMachineTpz" min="0" step="1" placeholder="TPZ (min)" style="max-width:110px;"><button type="submit" class="primary">Dodaj</button></form></div>';
   }
 
   function rosterHtml() {
@@ -1189,9 +1204,19 @@
   function settingsHtml() {
     var n = state.settings.shiftsPerDay;
     function seg(v, label) { return '<button type="button" class="' + (n === v ? "active" : "") + '" data-shifts="' + v + '">' + label + '</button>'; }
+    var suggestedNote = "Przykład: " + state.settings.shiftLengthMin + " − " + state.settings.breakMin + " (przerwa) − " + state.settings.ineffectiveMin + " (nieefektywny) − TPZ maszyny = czas planowany, który podpowiemy operatorowi (zawsze może go poprawić).";
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Konfiguracja</div><h2 class="section-title small">Ustawienia</h2></div>' +
       '<div class="settings-row"><div><div class="label">Liczba zmian dziennie</div><div class="sub">Dostosuj do organizacji pracy w zakładzie</div></div>' +
       '<div class="segmented">' + seg(1, "1") + seg(2, "2") + seg(3, "3") + '</div></div>' +
+      '<div class="settings-row" style="flex-direction:column;align-items:stretch;gap:12px;">' +
+      '<div><div class="label">Czas zmiany</div><div class="sub">Odejmujemy przerwę i czas nieefektywny (WC, raportowanie itp.) od długości zmiany, a przy wpisie zmiany dodatkowo TPZ wybranej maszyny (ustawiasz go w zakładce Maszyny) — tak liczymy podpowiedź „czasu planowanego".</div></div>' +
+      '<div class="form-grid" style="grid-template-columns:repeat(3,1fr);margin-top:0;">' +
+      '<div class="field"><label for="setShiftLength">Długość zmiany (min)</label><input id="setShiftLength" type="number" min="0" step="5" value="' + state.settings.shiftLengthMin + '"></div>' +
+      '<div class="field"><label for="setBreak">Przerwa (min)</label><input id="setBreak" type="number" min="0" step="5" value="' + state.settings.breakMin + '"></div>' +
+      '<div class="field"><label for="setIneffective">Czas nieefektywny (min)</label><input id="setIneffective" type="number" min="0" step="5" value="' + state.settings.ineffectiveMin + '"></div>' +
+      '</div><div class="hint">' + suggestedNote + '</div>' +
+      '<div class="form-actions" style="margin-top:0;"><button type="button" class="ghost" id="saveShiftTimeBtn">Zapisz</button><span class="form-msg" id="shiftTimeMsg">Zapisano.</span></div>' +
+      '</div>' +
       '<div class="settings-row"><div><div class="label">Firma</div><div class="sub">' + session.company.name + '</div></div></div>' +
       '<div class="settings-row"><div><div class="label">Twoje konto</div><div class="sub">' + session.user.email + ' · rola: administrator</div></div>' +
       '<button type="button" class="ghost small" id="signOutBtn2">Wyloguj</button></div></div>';
@@ -1268,7 +1293,7 @@
   var IMPORT_LABELS = {
     machines: { hint: 'Jedna maszyna w linii. Plik .txt/.csv: sama nazwa w każdej linii. Plik Excel (.xlsx): jedna kolumna z nazwami.' },
     operators: { hint: 'Jedna osoba w linii, w formacie: Imię i nazwisko;PIN (działa też przecinek albo tabulator). Plik Excel (.xlsx): pierwsza kolumna imię, druga PIN.' },
-    products: { hint: 'Jeden produkt w linii: Produkt;Maszyna;Ilość maksymalna dzienna (np. Wspornik A;Tokarka 1;850) — albo z kodem na początku: Kod;Produkt;Maszyna;Ilość maksymalna dzienna. Maszyna musi już istnieć na liście Maszyny — z ilości dziennej przeliczymy orientacyjny czas cyklu (przy założeniu 8h na zmianę), który zawsze możesz poprawić ręcznie w tabeli obok. Jeśli produkt z takim kodem/nazwą już istnieje, dopiszemy tylko brakującą wydajność (i uzupełnimy kod, jeśli go jeszcze nie było).' }
+    products: { hint: 'Jeden produkt w linii: Produkt;Maszyna;Ilość maksymalna dzienna (np. Wspornik A;Tokarka 1;850) — albo z kodem na początku: Kod;Produkt;Maszyna;Ilość maksymalna dzienna. Maszyna musi już istnieć na liście Maszyny — z ilości dziennej przeliczymy orientacyjny czas cyklu na podstawie ustawień czasu zmiany (zakładka Ustawienia) i TPZ tej maszyny, co zawsze możesz poprawić ręcznie w tabeli obok. Jeśli produkt z takim kodem/nazwą już istnieje, dopiszemy tylko brakującą wydajność (i uzupełnimy kod, jeśli go jeszcze nie było).' }
   };
 
   function importBlockHtml(kind) {
@@ -1492,10 +1517,11 @@
           if (cRes.error) codeErrorCount++;
         }
 
-        // 3) dopasuj maszyny po nazwie i przelicz orientacyjny czas cyklu z ilości dziennej
+        // 3) dopasuj maszyny po nazwie i przelicz orientacyjny czas cyklu z ilości dziennej —
+        // korzystając z Twoich realnych ustawień czasu zmiany (Ustawienia) i TPZ konkretnej maszyny (Maszyny),
+        // a nie ze sztywnego założenia 8h
         var machinesByLower = {};
         state.machines.forEach(function (m) { machinesByLower[m.name.trim().toLowerCase()] = m.id; });
-        var dailyMinutes = (state.settings.shiftsPerDay || 2) * 480; // założenie: 8h na zmianę, do poprawienia ręcznie w tabeli
 
         var upserts = [], skippedMachine = 0, skippedQty = 0;
         parsed.forEach(function (row) {
@@ -1503,6 +1529,8 @@
           var mid = machinesByLower[row.machineName.toLowerCase()];
           if (!mid) { skippedMachine++; return; }
           if (!row.qty || row.qty <= 0) { skippedQty++; return; }
+          var dailyMinutes = effectiveShiftMinutes(mid) * (state.settings.shiftsPerDay || 1);
+          if (dailyMinutes <= 0) { skippedQty++; return; }
           upserts.push({ product_id: pid, machine_id: mid, ideal_cycle_sec: (dailyMinutes * 60) / row.qty });
         });
 
@@ -1562,9 +1590,11 @@
     if (addMachineForm) addMachineForm.addEventListener("submit", async function (evt) {
       evt.preventDefault();
       var input = document.getElementById("newMachineName");
+      var tpzInput = document.getElementById("newMachineTpz");
       var name = input.value.trim();
+      var tpz = parseInt(tpzInput ? tpzInput.value : "", 10);
       if (!name) return;
-      var res = await sb.from("machines").insert({ company_id: session.company.id, name: name });
+      var res = await sb.from("machines").insert({ company_id: session.company.id, name: name, tpz_min: isNaN(tpz) ? 0 : tpz });
       if (res.error) { bannerMsg = "Nie udało się dodać maszyny: " + res.error.message; }
       await loadCompanyData();
       renderApp();
@@ -1585,8 +1615,14 @@
       root.querySelectorAll("[data-machine-name]").forEach(function (inp) {
         var id = inp.getAttribute("data-machine-name");
         var newName = inp.value.trim();
+        var tpzInp = root.querySelector('[data-machine-tpz="' + id + '"]');
+        var newTpz = tpzInp ? (parseInt(tpzInp.value, 10) || 0) : 0;
         var current = state.machines.filter(function (m) { return m.id === id; })[0];
-        if (current && newName && newName !== current.name) updates.push({ id: id, name: newName });
+        if (!current) return;
+        var patch = {};
+        if (newName && newName !== current.name) patch.name = newName;
+        if (newTpz !== (current.tpzMin || 0)) patch.tpz_min = newTpz;
+        if (Object.keys(patch).length) updates.push({ id: id, patch: patch });
       });
       var msgEl = document.getElementById("machinesMsg");
       if (!updates.length) {
@@ -1595,7 +1631,7 @@
       }
       var hadError = false;
       for (var i = 0; i < updates.length; i++) {
-        var res = await sb.from("machines").update({ name: updates[i].name }).eq("id", updates[i].id);
+        var res = await sb.from("machines").update(updates[i].patch).eq("id", updates[i].id);
         if (res.error) hadError = true;
       }
       bannerMsg = hadError ? "Część nazw maszyn nie zapisała się poprawnie. Spróbuj ponownie." : "";
@@ -1751,6 +1787,29 @@
       });
     });
 
+    var saveShiftTimeBtn = document.getElementById("saveShiftTimeBtn");
+    if (saveShiftTimeBtn) saveShiftTimeBtn.addEventListener("click", async function () {
+      var shiftLength = parseInt(document.getElementById("setShiftLength").value, 10);
+      var breakMin = parseInt(document.getElementById("setBreak").value, 10);
+      var ineffective = parseInt(document.getElementById("setIneffective").value, 10);
+      if (isNaN(shiftLength)) shiftLength = 0;
+      if (isNaN(breakMin)) breakMin = 0;
+      if (isNaN(ineffective)) ineffective = 0;
+      var res = await sb.from("companies").update({ shift_length_min: shiftLength, break_min: breakMin, ineffective_min: ineffective }).eq("id", session.company.id);
+      if (res.error) {
+        bannerMsg = "Nie udało się zapisać czasu zmiany: " + res.error.message;
+      } else {
+        bannerMsg = "";
+        session.company.shiftLengthMin = shiftLength;
+        session.company.breakMin = breakMin;
+        session.company.ineffectiveMin = ineffective;
+      }
+      await loadCompanyData();
+      renderAdmin(root);
+      var freshMsg = document.getElementById("shiftTimeMsg");
+      if (freshMsg && !res.error) { freshMsg.textContent = "Zapisano."; freshMsg.classList.add("show"); setTimeout(function () { freshMsg.classList.remove("show"); }, 2000); }
+    });
+
     var signOutBtn2 = document.getElementById("signOutBtn2");
     if (signOutBtn2) signOutBtn2.addEventListener("click", function () { sb.auth.signOut(); });
 
@@ -1801,7 +1860,7 @@
       '<div class="field span-3"><label for="fProduct">Produkt</label><select id="fProduct"></select></div>' +
       '<div class="field span-3" id="cycleField"><label>Norma (s/szt.)</label><input id="fCycleAuto" type="text" disabled></div>' +
       '<div id="rateHintSlot"></div>' +
-      '<div class="field"><label for="fPlanned">Czas planowany (min)</label><input id="fPlanned" type="number" min="1" step="1" placeholder="480"></div>' +
+      '<div class="field"><label for="fPlanned">Czas planowany (min)</label><input id="fPlanned" type="number" min="1" step="1" placeholder="480"><span class="hint" id="plannedHint"></span></div>' +
       '<div class="field"><label for="fDowntime">Przestoje (min)</label><input id="fDowntime" type="number" min="0" step="1" placeholder="45"></div>' +
       '<div class="field"><label for="fGood">Sztuki dobre</label><input id="fGood" type="number" min="0" step="1" placeholder="720"></div>' +
       '<div class="field"><label for="fBad">Sztuki wadliwe</label><input id="fBad" type="number" min="0" step="1" placeholder="18"></div>' +
@@ -1834,9 +1893,20 @@
       var rate = state.productRates[productId] ? state.productRates[productId][machineId] : null;
       cycleAuto.value = rate ? (rate + " s/szt.") : "";
     }
+    function suggestPlanned() {
+      var machineId = machSel.value;
+      var m = state.machines.filter(function (x) { return x.id === machineId; })[0];
+      var suggested = effectiveShiftMinutes(machineId);
+      var plannedInput = document.getElementById("fPlanned");
+      var hintEl = document.getElementById("plannedHint");
+      if (plannedInput) plannedInput.value = suggested;
+      if (hintEl) hintEl.textContent = "Wyliczone: " + state.settings.shiftLengthMin + " − przerwa " + state.settings.breakMin + " − nieefektywny " + state.settings.ineffectiveMin + " − TPZ " + (m ? (m.tpzMin || 0) : 0) + " = " + suggested + " min. Popraw ręcznie, jeśli dziś było inaczej.";
+    }
     machSel.addEventListener("change", refreshProducts);
+    machSel.addEventListener("change", suggestPlanned);
     prodSel.addEventListener("change", updateCycle);
     refreshProducts();
+    suggestPlanned();
 
     document.getElementById("opForm").addEventListener("submit", async function (evt) {
       evt.preventDefault();
@@ -2024,7 +2094,12 @@
     session = {
       user: authSession.user,
       profile: { id: profR.data.id, role: profR.data.role, displayName: profR.data.display_name },
-      company: { id: profR.data.companies.id, name: profR.data.companies.name, shiftsPerDay: profR.data.companies.shifts_per_day }
+      company: {
+        id: profR.data.companies.id, name: profR.data.companies.name, shiftsPerDay: profR.data.companies.shifts_per_day,
+        shiftLengthMin: profR.data.companies.shift_length_min != null ? profR.data.companies.shift_length_min : 480,
+        breakMin: profR.data.companies.break_min || 0,
+        ineffectiveMin: profR.data.companies.ineffective_min || 0
+      }
     };
     view = session.profile.role === "admin" ? "admin" : "operator";
     await loadCompanyData();
