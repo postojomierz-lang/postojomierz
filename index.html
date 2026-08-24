@@ -559,6 +559,20 @@
   .chip .pending-tag { color: var(--status-warn); font-size: 11px; font-weight: 600; }
   .inline-add { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
   .inline-add input { flex: 1; min-width: 130px; }
+  .downtime-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .downtime-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .downtime-row select { flex: 1.4; min-width: 160px; }
+  .downtime-row input[type="number"] { flex: none; width: 90px; }
+  .downtime-row input[type="text"] { flex: 1; min-width: 140px; }
+  .downtime-row button { flex: none; }
+  .review-item { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; flex-wrap: wrap; }
+  .review-item .meta { font-size: 12.5px; color: var(--ink-2); }
+  .review-item .meta b { color: var(--ink); }
+  .review-actions { display: flex; gap: 8px; flex: none; }
+  .status-tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; padding: 3px 8px; border-radius: 100px; }
+  .status-tag.pending { color: var(--status-warn); background: var(--status-warn-wash); }
+  .status-tag.approved { color: var(--status-good); background: var(--status-good-wash); }
+  .status-tag.rejected { color: var(--status-crit); background: var(--status-crit-wash); }
   .rate-cell input { text-align: right; padding: 6px 8px; font-size: 12.5px; }
   .empty-hint { font-size: 12.5px; color: var(--ink-muted); background: var(--surface-2); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
   .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid var(--border-soft); }
@@ -661,7 +675,11 @@
     return dt.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
   }
 
-  var state = { machines: [], operators: [], people: [], products: [], productRates: {}, shifts: [], diagnoses: {}, settings: { shiftsPerDay: 2, shiftLengthMin: 480, breakMin: 0, ineffectiveMin: 0 } };
+  var state = {
+    machines: [], operators: [], people: [], products: [], productRates: {}, shifts: [], diagnoses: {},
+    settings: { shiftsPerDay: 2, shiftLengthMin: 480, breakMin: 0, ineffectiveMin: 0 },
+    downtimeReasons: [], shiftDowntimes: [], downtimesByShift: {}
+  };
 
   /* =====================================================================
      WCZYTYWANIE DANYCH FIRMY Z SUPABASE
@@ -702,7 +720,9 @@
       sb.from("product_rates").select("*"),
       sb.from("shifts").select("*").order("shift_date", { ascending: false }).limit(500),
       sb.from("diagnoses").select("*"),
-      sb.from("operators").select("*").order("created_at")
+      sb.from("operators").select("*").order("created_at"),
+      sb.from("downtime_reasons").select("*").order("created_at"),
+      sb.from("shift_downtimes").select("*").order("created_at", { ascending: false }).limit(2000)
     ]);
     var errs = results.map(function (r) { return r.error; }).filter(Boolean);
     if (errs.length) {
@@ -726,7 +746,28 @@
     // operatorzy — proste rekordy imię + PIN, nie konta logowania (patrz renderOperator)
     state.operators = (results[5].data || []).map(function (o) { return { id: o.id, name: o.name, pin: o.pin }; });
     state.people = state.operators; // do wyświetlania imion przy zmianach (leaderboard, dziennik)
+
+    state.downtimeReasons = (results[6].data || []).map(function (r) { return { id: r.id, name: r.name }; });
+    state.shiftDowntimes = (results[7].data || []).map(function (d) {
+      return { id: d.id, shiftId: d.shift_id, reasonId: d.reason_id, minutes: Number(d.minutes), note: d.note || "", status: d.status, createdAt: d.created_at };
+    });
+    state.downtimesByShift = {};
+    state.shiftDowntimes.forEach(function (d) {
+      if (!state.downtimesByShift[d.shiftId]) state.downtimesByShift[d.shiftId] = [];
+      state.downtimesByShift[d.shiftId].push(d);
+    });
   }
+
+  // minuty przestoju faktycznie liczone do OEE dla tej zmiany: tylko ZATWIERDZONE
+  // wpisy przestoju się liczą. Zmiany sprzed tej funkcji (albo bez żadnych wpisów
+  // przestoju) nie mają nic w downtimesByShift — wtedy ufamy staremu, ręcznie
+  // wpisanemu polu downtimeMin, żeby nic wstecz nie przestało się zgadzać.
+  function effectiveDowntimeMin(shift) {
+    var items = state.downtimesByShift[shift.id];
+    if (!items || !items.length) return shift.downtimeMin;
+    return items.filter(function (d) { return d.status === "approved"; }).reduce(function (sum, d) { return sum + d.minutes; }, 0);
+  }
+  function reasonName(id) { var r = state.downtimeReasons.filter(function (x) { return x.id === id; })[0]; return r ? r.name : "—"; }
 
   // efektywny, sugerowany "czas planowany" (min) dla danej maszyny: długość zmiany
   // minus przerwa, czas nieefektywny (ustawienia firmy) i TPZ tej konkretnej maszyny
@@ -740,14 +781,15 @@
   /* ---------- obliczenia OEE (bez zmian w metodzie) ---------- */
 
   function calc(shift) {
-    var operatingMin = Math.max(0, shift.plannedMin - shift.downtimeMin);
+    var downtimeMin = effectiveDowntimeMin(shift);
+    var operatingMin = Math.max(0, shift.plannedMin - downtimeMin);
     var operatingSec = operatingMin * 60;
     var produced = shift.good + shift.bad;
     var availability = shift.plannedMin > 0 ? clamp01(operatingMin / shift.plannedMin) : 0;
     var performance = operatingSec > 0 ? clamp01((shift.idealCycleSec * produced) / operatingSec) : 0;
     var quality = produced > 0 ? clamp01(shift.good / produced) : 0;
     var oee = availability * performance * quality;
-    return { availability: availability, performance: performance, quality: quality, oee: oee, produced: produced };
+    return { availability: availability, performance: performance, quality: quality, oee: oee, produced: produced, downtimeMin: downtimeMin };
   }
 
   function tier(oee) {
@@ -1225,6 +1267,12 @@
       '<button type="button" class="ghost small" id="signOutBtn2">Wyloguj</button></div></div>';
   }
 
+  function downtimeCellHtml(s, m) {
+    var claimed = s.downtimeMin, effective = m.downtimeMin;
+    if (Math.abs(claimed - effective) < 0.001) return String(effective);
+    return effective + ' <span title="Zgłoszono ' + claimed + ' min łącznie — część czeka na zatwierdzenie albo została odrzucona, więc na razie nie liczy się do wyniku" style="color:var(--status-warn);cursor:help;">⏳</span>';
+  }
+
   function tableHtml() {
     var rows = state.shifts.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
     var body = rows.map(function (s) {
@@ -1232,7 +1280,7 @@
       return '<tr><td class="num tabular">' + fmtDate(s.date) + '</td><td>' + machineName(s.machineId) + '</td>' +
         '<td>' + operatorName(s.operatorId) + '</td><td class="num tabular">' + (s.shiftNumber || "—") + '</td>' +
         '<td>' + productName(s.productId) + '</td>' +
-        '<td class="num tabular">' + s.plannedMin + '</td><td class="num tabular">' + s.downtimeMin + '</td>' +
+        '<td class="num tabular">' + s.plannedMin + '</td><td class="num tabular">' + downtimeCellHtml(s, m) + '</td>' +
         '<td class="num tabular">' + s.good + '</td><td class="num tabular">' + s.bad + '</td>' +
         '<td class="num tabular">' + fmtPct(m.availability) + '</td><td class="num tabular">' + fmtPct(m.performance) + '</td><td class="num tabular">' + fmtPct(m.quality) + '</td>' +
         '<td class="num tabular" style="font-weight:600;">' + fmtPct(m.oee) + '</td>' +
@@ -1260,13 +1308,16 @@
     { key: "machines", label: "Maszyny" },
     { key: "operators", label: "Operatorzy" },
     { key: "products", label: "Produkty" },
+    { key: "downtimes", label: "Przestoje" },
     { key: "history", label: "Historia" },
     { key: "settings", label: "Ustawienia" }
   ];
 
   function adminTabsHtml() {
+    var pendingCount = state.shiftDowntimes.filter(function (d) { return d.status === "pending"; }).length;
     var tabs = ADMIN_TABS.map(function (t) {
-      return '<button type="button" class="admin-tab' + (adminTab === t.key ? " active" : "") + '" data-admin-tab="' + t.key + '">' + t.label + '</button>';
+      var label = t.label + (t.key === "downtimes" && pendingCount ? " (" + pendingCount + ")" : "");
+      return '<button type="button" class="admin-tab' + (adminTab === t.key ? " active" : "") + '" data-admin-tab="' + t.key + '">' + label + '</button>';
     }).join("");
     return '<div class="admin-tabs">' + tabs + '</div>';
   }
@@ -1276,11 +1327,67 @@
       case "machines": return machinesAdminHtml() + importBlockHtml("machines");
       case "operators": return rosterHtml() + importBlockHtml("operators");
       case "products": return productsHtml() + importBlockHtml("products");
+      case "downtimes": return downtimesAdminHtml();
       case "history": return tableHtml();
       case "settings": return settingsHtml();
       case "overview":
       default: return heroHtml() + machineGridHtml() + leaderboardHtml();
     }
+  }
+
+  function shiftById(id) { return state.shifts.filter(function (s) { return s.id === id; })[0]; }
+
+  function downtimeReviewItemHtml(d) {
+    var shift = shiftById(d.shiftId);
+    var meta = shift ? fmtDate(shift.date) + " · " + machineName(shift.machineId) + " · " + operatorName(shift.operatorId) : "zmiana niedostępna";
+    return '<div class="review-item" data-downtime-id="' + d.id + '">' +
+      '<div><div class="meta"><b>' + escAttr(reasonName(d.reasonId)) + '</b> — ' + d.minutes + ' min · ' + meta + '</div>' +
+      (d.note ? '<div class="meta" style="margin-top:4px;">„' + escAttr(d.note) + '"</div>' : '') + '</div>' +
+      '<div class="review-actions">' +
+      '<button type="button" class="small" data-approve-downtime="' + d.id + '">Zatwierdź</button>' +
+      '<button type="button" class="small" data-reject-downtime="' + d.id + '">Odrzuć</button>' +
+      '</div></div>';
+  }
+
+  function downtimeHistoryItemHtml(d) {
+    var shift = shiftById(d.shiftId);
+    var meta = shift ? fmtDate(shift.date) + " · " + machineName(shift.machineId) + " · " + operatorName(shift.operatorId) : "zmiana niedostępna";
+    return '<div class="review-item"><div><div class="meta"><b>' + escAttr(reasonName(d.reasonId)) + '</b> — ' + d.minutes + ' min · ' + meta + '</div></div>' +
+      '<span class="status-tag ' + d.status + '">' + (d.status === "approved" ? "zatwierdzony" : "odrzucony") + '</span></div>';
+  }
+
+  function downtimesAdminHtml() {
+    var pending = state.shiftDowntimes.filter(function (d) { return d.status === "pending"; })
+      .sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
+    var reviewed = state.shiftDowntimes.filter(function (d) { return d.status !== "pending"; })
+      .sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; }).slice(0, 25);
+
+    var pendingHtml = pending.length
+      ? '<div style="display:flex;flex-direction:column;gap:10px;">' + pending.map(downtimeReviewItemHtml).join("") + '</div>'
+      : '<div class="empty-hint">Brak przestojów czekających na zatwierdzenie.</div>';
+
+    var reasonRows = state.downtimeReasons.map(function (r) {
+      return '<tr><td><input type="text" data-reason-name="' + r.id + '" value="' + escAttr(r.name) + '" maxlength="120"></td>' +
+        '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-reason="' + r.id + '">usuń</button></td></tr>';
+    }).join("");
+    var reasonsTable = state.downtimeReasons.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Powód</th><th></th></tr></thead><tbody>' + reasonRows + '</tbody></table></div>' +
+        '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveReasonsBtn">Zapisz zmiany</button><span class="form-msg" id="reasonsMsg">Zapisano.</span></div>'
+      : '<div class="empty-hint">Brak zdefiniowanych powodów — dodaj pierwszy poniżej.</div>';
+
+    var reviewedHtml = reviewed.length
+      ? '<div style="display:flex;flex-direction:column;gap:8px;">' + reviewed.map(downtimeHistoryItemHtml).join("") + '</div>'
+      : '<div class="empty-hint">Brak jeszcze rozpatrzonych przestojów.</div>';
+
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Do zatwierdzenia</div><h2 class="section-title small">Przestoje czekające na decyzję</h2>' +
+      '<div class="section-sub">Dopóki przestój nie zostanie zatwierdzony, jego minuty nie obniżają strat dostępności w wyliczeniu OEE — traktujemy je jako czas, w którym maszyna teoretycznie powinna była pracować.</div></div>' +
+      pendingHtml + '</div>' +
+      '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Powody przestojów</h2>' +
+      '<div class="section-sub">Lista do wyboru przy wpisie zmiany. Nazwę możesz poprawić bezpośrednio w tabeli.</div></div>' +
+      reasonsTable +
+      '<form class="inline-add" id="addReasonForm"><input type="text" id="newReasonName" placeholder="Nazwa powodu" maxlength="120"><button type="submit" class="primary">Dodaj</button></form></div>' +
+      '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Ostatnio rozpatrzone</div><h2 class="section-title small">Historia decyzji</h2></div>' +
+      reviewedHtml + '</div>';
   }
 
   /* =====================================================================
@@ -1489,7 +1596,7 @@
         var insertedCount = 0;
         var justInsertedIds = {};
         if (newRows.length) {
-          var insRes = await sb.from("products").insert(newRows.map(function (row) { return { company_id: session.company.id, name: row.name, code: row.code || null }; }));
+          var insRes = await sb.from("products").insert(newRows.map(function (row) { return { company_id: session.company.id, name: row.name, code: row.code || null }; })).select();
           if (insRes.error) {
             btn.disabled = false;
             msgEl.textContent = "Nie udało się dodać nowych produktów: " + insRes.error.message;
@@ -1823,6 +1930,72 @@
       return rowsToNewOperators(rows, state.operators).map(function (o) { return { company_id: session.company.id, name: o.name, pin: o.pin }; });
     });
     wireProductsImportHandler();
+
+    root.querySelectorAll("[data-approve-downtime]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var id = btn.getAttribute("data-approve-downtime");
+        var res = await sb.from("shift_downtimes").update({ status: "approved", reviewed_at: new Date().toISOString() }).eq("id", id);
+        if (res.error) { bannerMsg = "Nie udało się zatwierdzić: " + res.error.message; }
+        await loadCompanyData();
+        renderAdmin(root);
+      });
+    });
+    root.querySelectorAll("[data-reject-downtime]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var id = btn.getAttribute("data-reject-downtime");
+        var res = await sb.from("shift_downtimes").update({ status: "rejected", reviewed_at: new Date().toISOString() }).eq("id", id);
+        if (res.error) { bannerMsg = "Nie udało się odrzucić: " + res.error.message; }
+        await loadCompanyData();
+        renderAdmin(root);
+      });
+    });
+
+    var addReasonForm = document.getElementById("addReasonForm");
+    if (addReasonForm) addReasonForm.addEventListener("submit", async function (evt) {
+      evt.preventDefault();
+      var input = document.getElementById("newReasonName");
+      var name = input.value.trim().slice(0, 120);
+      if (!name) return;
+      var res = await sb.from("downtime_reasons").insert({ company_id: session.company.id, name: name });
+      if (res.error) { bannerMsg = "Nie udało się dodać powodu: " + res.error.message; }
+      await loadCompanyData();
+      renderApp();
+    });
+    root.querySelectorAll("[data-remove-reason]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        if (!confirm("Usunąć ten powód przestoju? Wcześniej zapisane przestoje z tym powodem zostaną, tylko bez przypisanej nazwy.")) return;
+        var id = btn.getAttribute("data-remove-reason");
+        var res = await sb.from("downtime_reasons").delete().eq("id", id);
+        if (res.error) { bannerMsg = "Nie udało się usunąć: " + res.error.message; }
+        await loadCompanyData();
+        renderApp();
+      });
+    });
+    var saveReasonsBtn = document.getElementById("saveReasonsBtn");
+    if (saveReasonsBtn) saveReasonsBtn.addEventListener("click", async function () {
+      var updates = [];
+      root.querySelectorAll("[data-reason-name]").forEach(function (inp) {
+        var id = inp.getAttribute("data-reason-name");
+        var newName = inp.value.trim().slice(0, 120);
+        var current = state.downtimeReasons.filter(function (r) { return r.id === id; })[0];
+        if (current && newName && newName !== current.name) updates.push({ id: id, name: newName });
+      });
+      var msgEl = document.getElementById("reasonsMsg");
+      if (!updates.length) {
+        if (msgEl) { msgEl.textContent = "Brak zmian do zapisania."; msgEl.classList.remove("error"); msgEl.classList.add("show"); setTimeout(function () { msgEl.classList.remove("show"); }, 2000); }
+        return;
+      }
+      var hadError = false;
+      for (var i = 0; i < updates.length; i++) {
+        var res = await sb.from("downtime_reasons").update({ name: updates[i].name }).eq("id", updates[i].id);
+        if (res.error) hadError = true;
+      }
+      bannerMsg = hadError ? "Część powodów nie zapisała się poprawnie." : "";
+      await loadCompanyData();
+      renderAdmin(root);
+      var freshMsg = document.getElementById("reasonsMsg");
+      if (freshMsg && !hadError) { freshMsg.textContent = "Zapisano."; freshMsg.classList.add("show"); setTimeout(function () { freshMsg.classList.remove("show"); }, 2000); }
+    });
   }
 
   /* =====================================================================
@@ -1863,10 +2036,16 @@
       '<div class="field span-3"><label for="fProduct">Produkt</label><select id="fProduct"></select></div>' +
       '<div class="field span-3" id="cycleField"><label>Norma (s/szt.)</label><input id="fCycleAuto" type="text" disabled></div>' +
       '<div id="rateHintSlot"></div>' +
-      '<div class="field"><label for="fPlanned">Czas planowany (min)</label><input id="fPlanned" type="number" min="1" step="1" placeholder="480"><span class="hint" id="plannedHint"></span></div>' +
-      '<div class="field"><label for="fDowntime">Przestoje (min)</label><input id="fDowntime" type="number" min="0" step="1" placeholder="45"></div>' +
+      '<div class="field"><label for="fPlanned">Czas planowany (min)</label>' +
+      '<div style="display:flex;gap:8px;align-items:center;"><input id="fPlanned" type="number" min="1" step="1" placeholder="480" disabled style="flex:1;">' +
+      '<button type="button" class="ghost small" id="unlockPlannedBtn" style="flex:none;">Odblokuj</button></div>' +
+      '<span class="hint" id="plannedHint"></span></div>' +
       '<div class="field"><label for="fGood">Sztuki dobre</label><input id="fGood" type="number" min="0" step="1" placeholder="720"></div>' +
       '<div class="field"><label for="fBad">Sztuki wadliwe</label><input id="fBad" type="number" min="0" step="1" placeholder="18"></div>' +
+      '<div class="field" style="grid-column:1/-1;"><label>Przestoje w tej zmianie</label>' +
+      '<div class="downtime-rows" id="downtimeRows"></div>' +
+      '<button type="button" class="ghost small" id="addDowntimeRowBtn" style="margin-top:2px;align-self:flex-start;">+ Dodaj przestój</button>' +
+      '<span class="hint">Wybierz powód i minuty dla każdego przestoju. Dopóki administrator go nie zatwierdzi, nie liczy się jeszcze oficjalnie do wyniku OEE.</span></div>' +
       '<div class="form-actions"><button type="submit" class="primary" id="opSubmitBtn">Zapisz zmianę</button><span class="form-msg" id="opFormMsg">Zapisano.</span></div>' +
       '</form></div></div>';
 
@@ -1902,14 +2081,45 @@
       var suggested = effectiveShiftMinutes(machineId);
       var plannedInput = document.getElementById("fPlanned");
       var hintEl = document.getElementById("plannedHint");
-      if (plannedInput) plannedInput.value = suggested;
-      if (hintEl) hintEl.textContent = "Wyliczone: " + state.settings.shiftLengthMin + " − przerwa " + state.settings.breakMin + " − nieefektywny " + state.settings.ineffectiveMin + " − TPZ " + (m ? (m.tpzMin || 0) : 0) + " = " + suggested + " min. Popraw ręcznie, jeśli dziś było inaczej.";
+      var unlockBtn = document.getElementById("unlockPlannedBtn");
+      if (plannedInput) { plannedInput.value = suggested; plannedInput.disabled = true; }
+      if (unlockBtn) { unlockBtn.disabled = false; unlockBtn.textContent = "Odblokuj"; }
+      if (hintEl) hintEl.textContent = "Wyliczone: " + state.settings.shiftLengthMin + " − przerwa " + state.settings.breakMin + " − nieefektywny " + state.settings.ineffectiveMin + " − TPZ " + (m ? (m.tpzMin || 0) : 0) + " = " + suggested + " min. Zwykły wpis go nie zmienia — poprawić ręcznie może administrator przyciskiem obok.";
     }
     machSel.addEventListener("change", refreshProducts);
     machSel.addEventListener("change", suggestPlanned);
     prodSel.addEventListener("change", updateCycle);
     refreshProducts();
     suggestPlanned();
+
+    var unlockPlannedBtn = document.getElementById("unlockPlannedBtn");
+    if (unlockPlannedBtn) unlockPlannedBtn.addEventListener("click", function () {
+      var plannedInput = document.getElementById("fPlanned");
+      plannedInput.disabled = false;
+      plannedInput.focus();
+      unlockPlannedBtn.disabled = true;
+      unlockPlannedBtn.textContent = "Odblokowane";
+    });
+
+    function downtimeReasonOptionsHtml() {
+      if (!state.downtimeReasons.length) return '<option value="">— brak powodów, dodaj je w Panelu administratora → Przestoje —</option>';
+      return state.downtimeReasons.map(function (r) { return '<option value="' + r.id + '">' + escAttr(r.name) + '</option>'; }).join("");
+    }
+    function addDowntimeRow() {
+      var container = document.getElementById("downtimeRows");
+      if (!container) return;
+      var rowEl = document.createElement("div");
+      rowEl.className = "downtime-row";
+      rowEl.innerHTML =
+        '<select data-dt-reason>' + downtimeReasonOptionsHtml() + '</select>' +
+        '<input type="number" min="0" step="1" placeholder="minuty" data-dt-minutes>' +
+        '<input type="text" placeholder="notatka (opcjonalnie)" data-dt-note maxlength="250">' +
+        '<button type="button" class="small" data-dt-remove aria-label="Usuń">✕</button>';
+      container.appendChild(rowEl);
+      rowEl.querySelector("[data-dt-remove]").addEventListener("click", function () { rowEl.remove(); });
+    }
+    var addDowntimeRowBtn = document.getElementById("addDowntimeRowBtn");
+    if (addDowntimeRowBtn) addDowntimeRowBtn.addEventListener("click", addDowntimeRow);
 
     document.getElementById("opForm").addEventListener("submit", async function (evt) {
       evt.preventDefault();
@@ -1931,6 +2141,17 @@
       var idealCycleSec = productId ? (state.productRates[productId] ? state.productRates[productId][machineId] : null) : (manualCycle ? parseFloat(manualCycle.value) : null);
       if (!idealCycleSec) { (manualCycle || cycleAuto).focus(); return; }
 
+      var downtimeItems = [], totalDowntimeMin = 0;
+      document.querySelectorAll(".downtime-row").forEach(function (rowEl) {
+        var minInp = rowEl.querySelector("[data-dt-minutes]");
+        var mins = parseFloat(minInp ? minInp.value : "");
+        if (!mins || mins <= 0) return;
+        var reasonSel = rowEl.querySelector("[data-dt-reason]");
+        var noteInp = rowEl.querySelector("[data-dt-note]");
+        downtimeItems.push({ reason_id: (reasonSel && reasonSel.value) || null, minutes: mins, note: noteInp ? (noteInp.value.trim().slice(0, 250) || null) : null });
+        totalDowntimeMin += mins;
+      });
+
       var row = {
         company_id: session.company.id,
         machine_id: machineId,
@@ -1939,29 +2160,40 @@
         product_id: productId,
         shift_date: document.getElementById("fDate").value || new Date().toISOString().slice(0, 10),
         planned_min: parseFloat(document.getElementById("fPlanned").value) || 0,
-        downtime_min: parseFloat(document.getElementById("fDowntime").value) || 0,
+        downtime_min: totalDowntimeMin,
         ideal_cycle_sec: idealCycleSec,
         good_count: parseFloat(document.getElementById("fGood").value) || 0,
         bad_count: parseFloat(document.getElementById("fBad").value) || 0
       };
       var submitBtn = document.getElementById("opSubmitBtn");
       submitBtn.disabled = true;
-      var res = await sb.from("shifts").insert(row);
-      submitBtn.disabled = false;
+      var res = await sb.from("shifts").insert(row).select().single();
 
-      if (res.error) {
+      if (res.error || !res.data) {
+        submitBtn.disabled = false;
         var msg = document.getElementById("opFormMsg");
-        if (msg) { msg.textContent = "Nie udało się zapisać: " + res.error.message; msg.classList.add("show", "error"); }
+        if (msg) { msg.textContent = "Nie udało się zapisać: " + (res.error ? res.error.message : "nieznany błąd"); msg.classList.add("show", "error"); }
         return;
       }
 
+      var newShiftId = res.data.id;
+      if (downtimeItems.length) {
+        var dtRes = await sb.from("shift_downtimes").insert(downtimeItems.map(function (it) {
+          return { shift_id: newShiftId, company_id: session.company.id, reason_id: it.reason_id, minutes: it.minutes, note: it.note, status: "pending" };
+        }));
+        if (dtRes.error) { bannerMsg = "Zmiana zapisana, ale nie udało się zapisać szczegółów przestoju: " + dtRes.error.message; }
+      }
+      submitBtn.disabled = false;
+
       await loadCompanyData();
-      var shiftForCalc = { plannedMin: row.planned_min, downtimeMin: row.downtime_min, idealCycleSec: row.ideal_cycle_sec, good: row.good_count, bad: row.bad_count };
+      var shiftForCalc = { id: newShiftId, plannedMin: row.planned_min, downtimeMin: row.downtime_min, idealCycleSec: row.ideal_cycle_sec, good: row.good_count, bad: row.bad_count };
       var m = calc(shiftForCalc); var t = tier(m.oee);
       renderOperator(root); // odśwież formularz (pusty, gotowy na kolejny wpis) PRZED wypełnieniem podsumowania
       document.getElementById("opFeedbackOee").textContent = fmtPct(m.oee) + " OEE";
       document.getElementById("opFeedbackOee").style.color = "var(--status-" + t.key + ")";
-      document.getElementById("opFeedbackNote").textContent = "— " + t.label + ", zapisano dla " + machineName(machineId);
+      var noteText = "— " + t.label + ", zapisano dla " + machineName(machineId);
+      if (totalDowntimeMin > 0) noteText += ". Zgłoszony przestój (" + totalDowntimeMin + " min) czeka na zatwierdzenie administratora — do tego czasu nie obniża wyniku OEE.";
+      document.getElementById("opFeedbackNote").textContent = noteText;
       document.getElementById("opFeedback").classList.add("show");
     });
   }
