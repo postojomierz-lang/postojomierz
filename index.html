@@ -1,6 +1,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <title>Postojomierz</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   /* ===== Design tokens ===== */
   :root {
@@ -525,6 +526,23 @@
   td.rank-1 .num { color: var(--status-good); font-weight: 700; }
 
   /* ===== Admin utility panels ===== */
+  .admin-tabs { display: flex; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 10px; border: 1px solid var(--border); flex-wrap: wrap; }
+  .admin-tab {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 12.5px;
+    padding: 8px 14px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .admin-tab.active { background: var(--surface); color: var(--brand); box-shadow: var(--shadow); }
+  .import-box { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .import-head { display: flex; flex-direction: column; gap: 3px; }
+  .import-head .hint { font-size: 11.5px; color: var(--ink-muted); max-width: 60ch; }
+  .import-box input[type="file"] { font-family: "IBM Plex Sans", sans-serif; font-size: 12px; padding: 6px; width: auto; flex: 1; min-width: 180px; }
   .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
   @media (max-width: 860px) { .admin-grid { grid-template-columns: 1fr; } }
   .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -622,6 +640,7 @@
   } catch (e) { sb = null; }
 
   var view = "operator";      // "operator" | "admin"
+  var adminTab = "overview";  // "overview" | "machines" | "operators" | "products" | "history" | "settings"
   var booting = true;
   var session = null;         // { user, profile:{id,role,displayName}, company:{id,name,shiftsPerDay} }
   var authScreen = "login";   // "login" | "signup" | "check-email"
@@ -1154,17 +1173,184 @@
     return '<div class="readonly-banner"><b>Uwaga.</b> ' + bannerMsg + '</div>';
   }
 
+  /* =====================================================================
+     ZAKŁADKI PANELU ADMINA
+     ===================================================================== */
+
+  var ADMIN_TABS = [
+    { key: "overview", label: "Przegląd" },
+    { key: "machines", label: "Maszyny" },
+    { key: "operators", label: "Operatorzy" },
+    { key: "products", label: "Produkty" },
+    { key: "history", label: "Historia" },
+    { key: "settings", label: "Ustawienia" }
+  ];
+
+  function adminTabsHtml() {
+    var tabs = ADMIN_TABS.map(function (t) {
+      return '<button type="button" class="admin-tab' + (adminTab === t.key ? " active" : "") + '" data-admin-tab="' + t.key + '">' + t.label + '</button>';
+    }).join("");
+    return '<div class="admin-tabs">' + tabs + '</div>';
+  }
+
+  function adminTabContentHtml() {
+    switch (adminTab) {
+      case "machines": return machinesAdminHtml() + importBlockHtml("machines");
+      case "operators": return rosterHtml() + importBlockHtml("operators");
+      case "products": return productsHtml() + importBlockHtml("products");
+      case "history": return tableHtml();
+      case "settings": return settingsHtml();
+      case "overview":
+      default: return heroHtml() + machineGridHtml() + leaderboardHtml();
+    }
+  }
+
+  /* =====================================================================
+     IMPORT Z PLIKU (Excel .xlsx/.xls albo tekst .csv/.txt) — dla maszyn,
+     operatorów i produktów. Format tekstowy: jedna pozycja w linii,
+     opcjonalnie z drugą kolumną oddzieloną przecinkiem/średnikiem/tabem
+     (używane tylko dla operatorów, jako Imię;PIN). Plik Excel: pierwszy
+     arkusz, pierwsza kolumna to nazwa, druga (dla operatorów) to PIN.
+     ===================================================================== */
+
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  var IMPORT_LABELS = {
+    machines: { hint: 'Jedna maszyna w linii. Plik .txt/.csv: sama nazwa w każdej linii. Plik Excel (.xlsx): jedna kolumna z nazwami.' },
+    operators: { hint: 'Jedna osoba w linii, w formacie: Imię i nazwisko;PIN (działa też przecinek albo tabulator). Plik Excel (.xlsx): pierwsza kolumna imię, druga PIN.' },
+    products: { hint: 'Jeden produkt w linii — sama nazwa. Plik Excel (.xlsx): jedna kolumna z nazwami. Wydajności na maszynach ustawisz ręcznie w tabeli obok.' }
+  };
+
+  function importBlockHtml(kind) {
+    var meta = IMPORT_LABELS[kind];
+    var k = cap(kind);
+    return '<div class="import-box"><div class="import-head"><span class="eyebrow">Import z pliku</span><span class="hint">' + meta.hint + '</span></div>' +
+      '<div class="inline-add">' +
+      '<input type="file" id="import' + k + 'File" accept=".csv,.txt,.xlsx,.xls">' +
+      '<button type="button" class="ghost small" id="import' + k + 'Btn">Importuj</button>' +
+      '</div><span class="form-msg" id="import' + k + 'Msg"></span></div>';
+  }
+
+  function parseImportFile(file, cb) {
+    var lower = file.name.toLowerCase();
+    if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+      if (!window.XLSX) { cb(null, new Error("Biblioteka do czytania plików Excel się nie wczytała. Odśwież stronę albo użyj pliku .csv/.txt.")); return; }
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        try {
+          var data = new Uint8Array(e.target.result);
+          var wb = XLSX.read(data, { type: "array" });
+          var sheet = wb.Sheets[wb.SheetNames[0]];
+          var rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+          cb(rows, null);
+        } catch (err) { cb(null, err); }
+      };
+      reader.onerror = function () { cb(null, new Error("Nie udało się odczytać pliku.")); };
+      reader.readAsArrayBuffer(file);
+    } else {
+      var reader2 = new FileReader();
+      reader2.onload = function (e) {
+        var text = (e.target.result || "").toString();
+        var lines = text.split(/\r\n|\r|\n/).filter(function (l) { return l.trim() !== ""; });
+        var rows = lines.map(function (l) {
+          var delim = l.indexOf(";") !== -1 ? ";" : (l.indexOf(",") !== -1 ? "," : (l.indexOf("\t") !== -1 ? "\t" : null));
+          return delim ? l.split(delim).map(function (x) { return x.trim(); }) : [l.trim()];
+        });
+        cb(rows, null);
+      };
+      reader2.onerror = function () { cb(null, new Error("Nie udało się odczytać pliku.")); };
+      reader2.readAsText(file, "UTF-8");
+    }
+  }
+
+  var IMPORT_HEADER_WORDS = ["nazwa", "name", "maszyna", "machine", "produkt", "product", "imię", "imie", "operator", "imię i nazwisko"];
+
+  function rowsToNewNames(rows, existing) {
+    var existingLower = existing.map(function (x) { return x.name.trim().toLowerCase(); });
+    var seen = {}, out = [];
+    rows.forEach(function (r) {
+      var v = (Array.isArray(r) ? r[0] : r);
+      v = (v == null ? "" : v).toString().trim();
+      if (!v) return;
+      var low = v.toLowerCase();
+      if (IMPORT_HEADER_WORDS.indexOf(low) !== -1) return;
+      if (existingLower.indexOf(low) !== -1) return;
+      if (seen[low]) return;
+      seen[low] = true;
+      out.push(v);
+    });
+    return out;
+  }
+
+  function rowsToNewOperators(rows, existing) {
+    var existingLower = existing.map(function (x) { return x.name.trim().toLowerCase(); });
+    var seen = {}, out = [];
+    rows.forEach(function (r) {
+      var name = (Array.isArray(r) ? r[0] : "");
+      var pin = (Array.isArray(r) ? r[1] : "");
+      name = (name == null ? "" : name).toString().trim();
+      pin = (pin == null ? "" : pin).toString().trim();
+      if (!name) return;
+      var low = name.toLowerCase();
+      if (IMPORT_HEADER_WORDS.indexOf(low) !== -1) return;
+      if (!pin) return;
+      if (existingLower.indexOf(low) !== -1) return;
+      if (seen[low]) return;
+      seen[low] = true;
+      out.push({ name: name, pin: pin });
+    });
+    return out;
+  }
+
+  function wireImportHandler(kind, table, mapRowsToRecords) {
+    var btn = document.getElementById("import" + cap(kind) + "Btn");
+    var fileInput = document.getElementById("import" + cap(kind) + "File");
+    var msgEl = document.getElementById("import" + cap(kind) + "Msg");
+    if (!btn || !fileInput) return;
+    btn.addEventListener("click", function () {
+      msgEl.classList.remove("show", "error");
+      var file = fileInput.files[0];
+      if (!file) { msgEl.textContent = "Najpierw wybierz plik."; msgEl.classList.add("show", "error"); return; }
+      btn.disabled = true;
+      parseImportFile(file, async function (rows, err) {
+        if (err) { btn.disabled = false; msgEl.textContent = "Błąd odczytu pliku: " + err.message; msgEl.classList.add("show", "error"); return; }
+        var records = mapRowsToRecords(rows);
+        if (!records.length) {
+          btn.disabled = false;
+          msgEl.textContent = "Nie znaleziono żadnych nowych, poprawnych wierszy do zaimportowania (puste, bez PIN-u albo już na liście).";
+          msgEl.classList.add("show", "error");
+          return;
+        }
+        var res = await sb.from(table).insert(records);
+        btn.disabled = false;
+        if (res.error) { msgEl.textContent = "Nie udało się zaimportować: " + res.error.message; msgEl.classList.add("show", "error"); return; }
+        var importedCount = records.length;
+        await loadCompanyData();
+        renderAdmin(document.getElementById("adminRoot"));
+        var freshMsg = document.getElementById("import" + cap(kind) + "Msg");
+        if (freshMsg) {
+          freshMsg.textContent = "Zaimportowano: " + importedCount + ".";
+          freshMsg.classList.add("show");
+          setTimeout(function () { freshMsg.classList.remove("show"); }, 3000);
+        }
+      });
+    });
+  }
+
   function renderAdmin(root) {
-    root.innerHTML =
-      bannerHtml() + heroHtml() + machineGridHtml() +
-      '<div class="admin-grid">' + machinesAdminHtml() + rosterHtml() + '</div>' +
-      productsHtml() +
-      leaderboardHtml() + settingsHtml() + tableHtml();
-    mountSparklines();
+    root.innerHTML = bannerHtml() + adminTabsHtml() + '<div id="adminTabContent">' + adminTabContentHtml() + '</div>';
+    if (adminTab === "overview") mountSparklines();
     wireAdminEvents(root);
   }
 
   function wireAdminEvents(root) {
+    root.querySelectorAll("[data-admin-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        adminTab = btn.getAttribute("data-admin-tab");
+        renderAdmin(root);
+      });
+    });
+
     var grid = document.getElementById("machineGrid");
     if (grid) grid.addEventListener("click", function (evt) {
       var openBtn = evt.target.closest("[data-open-diag]");
@@ -1275,6 +1461,16 @@
 
     var signOutBtn2 = document.getElementById("signOutBtn2");
     if (signOutBtn2) signOutBtn2.addEventListener("click", function () { sb.auth.signOut(); });
+
+    wireImportHandler("machines", "machines", function (rows) {
+      return rowsToNewNames(rows, state.machines).map(function (n) { return { company_id: session.company.id, name: n }; });
+    });
+    wireImportHandler("operators", "operators", function (rows) {
+      return rowsToNewOperators(rows, state.operators).map(function (o) { return { company_id: session.company.id, name: o.name, pin: o.pin }; });
+    });
+    wireImportHandler("products", "products", function (rows) {
+      return rowsToNewNames(rows, state.products).map(function (n) { return { company_id: session.company.id, name: n }; });
+    });
   }
 
   /* =====================================================================
