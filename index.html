@@ -648,6 +648,7 @@
   var bannerMsg = "";
 
   function uid() { return Math.random().toString(36).slice(2, 10); }
+  function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
   function fmtPct(x) { return (x * 100).toFixed(1).replace(".", ",") + "%"; }
   function clamp01(x) { return Math.max(0, Math.min(1, x)); }
   function fmtDate(d) {
@@ -1065,23 +1066,33 @@
   }
 
   function machinesAdminHtml() {
-    var chips = state.machines.map(function (m) {
-      return '<span class="chip">' + m.name + '<button type="button" data-remove-machine="' + m.id + '" aria-label="Usuń">✕</button></span>';
+    var rows = state.machines.map(function (m) {
+      return '<tr><td><input type="text" data-machine-name="' + m.id + '" value="' + escAttr(m.name) + '"></td>' +
+        '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-machine="' + m.id + '">usuń</button></td></tr>';
     }).join("");
+    var table = state.machines.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveMachinesBtn">Zapisz zmiany nazw</button><span class="form-msg" id="machinesMsg">Zapisano.</span></div>'
+      : '<div class="empty-hint">Brak maszyn — dodaj pierwszą poniżej.</div>';
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Park maszynowy</div><h2 class="section-title small">Maszyny</h2>' +
-      '<div class="section-sub">Lista maszyn w warsztacie — widoczna do wyboru przy wpisie zmiany. Usunięcie maszyny kasuje też jej historię zmian.</div></div>' +
-      (chips ? '<div class="chip-row">' + chips + '</div>' : '<div class="empty-hint">Brak maszyn — dodaj pierwszą poniżej.</div>') +
+      '<div class="section-sub">Lista maszyn w warsztacie — widoczna do wyboru przy wpisie zmiany. Nazwę możesz poprawić bezpośrednio w tabeli. Usunięcie maszyny kasuje też jej historię zmian.</div></div>' +
+      table +
       '<form class="inline-add" id="addMachineForm"><input type="text" id="newMachineName" placeholder="Nazwa maszyny"><button type="submit" class="primary">Dodaj</button></form></div>';
   }
 
   function rosterHtml() {
-    var chips = state.operators.map(function (o) {
-      return '<span class="chip">' + o.name +
-        '<button type="button" data-remove-op="' + o.id + '" aria-label="Usuń">✕</button></span>';
+    var rows = state.operators.map(function (o) {
+      return '<tr><td><input type="text" data-op-name="' + o.id + '" value="' + escAttr(o.name) + '"></td>' +
+        '<td><input type="text" data-op-pin="' + o.id + '" inputmode="numeric" maxlength="6" value="' + escAttr(o.pin) + '" style="max-width:110px;"></td>' +
+        '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-op="' + o.id + '">usuń</button></td></tr>';
     }).join("");
+    var table = state.operators.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Imię i nazwisko</th><th>PIN</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveOperatorsBtn">Zapisz zmiany</button><span class="form-msg" id="operatorsMsg">Zapisano.</span></div>'
+      : '<div class="empty-hint">Brak operatorów — dodaj pierwszego poniżej.</div>';
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Zespół</div><h2 class="section-title small">Operatorzy</h2>' +
-      '<div class="section-sub">Bez e-maila i logowania — operator wybiera swoje imię na ekranie wpisu zmiany i potwierdza PIN-em. Jeśli sam też wpisujesz zmiany, dodaj tu też siebie.</div></div>' +
-      (chips ? '<div class="chip-row">' + chips + '</div>' : '<div class="empty-hint">Brak operatorów — dodaj pierwszego poniżej.</div>') +
+      '<div class="section-sub">Bez e-maila i logowania — operator wybiera swoje imię na ekranie wpisu zmiany i potwierdza PIN-em. Imię i PIN możesz poprawić bezpośrednio w tabeli. Jeśli sam też wpisujesz zmiany, dodaj tu też siebie.</div></div>' +
+      table +
       '<form class="inline-add" id="addOpForm"><input type="text" id="newOpName" placeholder="Imię i nazwisko"><input type="text" id="newOpPin" inputmode="numeric" maxlength="6" placeholder="PIN (np. 1234)" style="max-width:140px;"><button type="submit" class="primary">Dodaj</button></form></div>';
   }
 
@@ -1091,17 +1102,18 @@
         var v = (state.productRates[p.id] && state.productRates[p.id][m.id] != null) ? state.productRates[p.id][m.id] : "";
         return '<td class="num rate-cell"><input type="number" min="0" step="0.1" data-rate-product="' + p.id + '" data-rate-machine="' + m.id + '" value="' + v + '" placeholder="—"></td>';
       }).join("");
-      return '<tr><td>' + p.name + ' <button type="button" class="small" data-remove-product="' + p.id + '" style="margin-left:6px;">usuń</button></td>' + cells + '</tr>';
+      return '<tr><td><input type="text" data-product-name="' + p.id + '" value="' + escAttr(p.name) + '" style="min-width:160px;"> <button type="button" class="small" data-remove-product="' + p.id + '" style="margin-left:6px;">usuń</button></td>' + cells + '</tr>';
     }).join("");
     var head = state.machines.map(function (m) { return '<th class="num">' + m.name + '</th>'; }).join("");
-    var table = (state.products.length && state.machines.length)
+    var table = state.products.length
       ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Produkt</th>' + head + '</tr></thead><tbody>' + rateRows + '</tbody></table></div>'
-      : '<div class="empty-hint">' + (state.machines.length ? "Brak produktów — dodaj pierwszy poniżej." : "Dodaj najpierw przynajmniej jedną maszynę.") + '</div>';
+      : '<div class="empty-hint">Brak produktów — dodaj pierwszy poniżej.</div>';
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Produkty i wydajność na maszynach</h2>' +
-      '<div class="section-sub">Czas cyklu idealnego (s/szt.) dla każdej pary produkt–maszyna. Puste pole = produkt nie jest robiony na tej maszynie.</div></div>' +
+      '<div class="section-sub">Nazwę produktu edytujesz w pierwszej kolumnie. Czas cyklu idealnego (s/szt.) dla każdej pary produkt–maszyna — puste pole = produkt nie jest robiony na tej maszynie.' +
+      (state.machines.length ? '' : ' Dodaj najpierw przynajmniej jedną maszynę, żeby ustawiać wydajności.') + '</div></div>' +
       table +
       '<form class="inline-add" id="addProductForm"><input type="text" id="newProductName" placeholder="Nazwa produktu"><button type="submit" class="primary">Dodaj</button></form>' +
-      (state.products.length && state.machines.length ? '<div class="form-actions" style="margin-top:14px;"><button type="button" class="ghost" id="saveRatesBtn">Zapisz wydajności</button><span class="form-msg" id="rateMsg">Zapisano.</span></div>' : '') +
+      (state.products.length ? '<div class="form-actions" style="margin-top:14px;"><button type="button" class="ghost" id="saveRatesBtn">Zapisz zmiany</button><span class="form-msg" id="rateMsg">Zapisano.</span></div>' : '') +
       '</div>';
   }
 
@@ -1218,7 +1230,7 @@
   var IMPORT_LABELS = {
     machines: { hint: 'Jedna maszyna w linii. Plik .txt/.csv: sama nazwa w każdej linii. Plik Excel (.xlsx): jedna kolumna z nazwami.' },
     operators: { hint: 'Jedna osoba w linii, w formacie: Imię i nazwisko;PIN (działa też przecinek albo tabulator). Plik Excel (.xlsx): pierwsza kolumna imię, druga PIN.' },
-    products: { hint: 'Jeden produkt w linii — sama nazwa. Plik Excel (.xlsx): jedna kolumna z nazwami. Wydajności na maszynach ustawisz ręcznie w tabeli obok.' }
+    products: { hint: 'Jeden produkt w linii, w formacie: Produkt;Maszyna;Ilość maksymalna dzienna (np. Wspornik A;Tokarka 1;850). Maszyna musi już istnieć na liście Maszyny — z ilości dziennej przeliczymy orientacyjny czas cyklu (przy założeniu 8h na zmianę), który zawsze możesz poprawić ręcznie w tabeli obok. Plik Excel (.xlsx): trzy kolumny w tej kolejności.' }
   };
 
   function importBlockHtml(kind) {
@@ -1337,6 +1349,105 @@
     });
   }
 
+  var IMPORT_HEADER_WORDS_PRODUCTS = ["produkt", "product", "nazwa", "maszyna", "machine", "ilość", "ilosc", "ilość maksymalna dzienna", "ilosc maksymalna dzienna", "qty", "max"];
+
+  function wireProductsImportHandler() {
+    var btn = document.getElementById("importProductsBtn");
+    var fileInput = document.getElementById("importProductsFile");
+    var msgEl = document.getElementById("importProductsMsg");
+    if (!btn || !fileInput) return;
+    btn.addEventListener("click", function () {
+      msgEl.classList.remove("show", "error");
+      var file = fileInput.files[0];
+      if (!file) { msgEl.textContent = "Najpierw wybierz plik."; msgEl.classList.add("show", "error"); return; }
+      btn.disabled = true;
+      parseImportFile(file, async function (rows, err) {
+        if (err) { btn.disabled = false; msgEl.textContent = "Błąd odczytu pliku: " + err.message; msgEl.classList.add("show", "error"); return; }
+
+        var parsed = [];
+        rows.forEach(function (r) {
+          var name = (Array.isArray(r) ? r[0] : "");
+          var machineName = (Array.isArray(r) ? r[1] : "");
+          var qtyRaw = (Array.isArray(r) ? r[2] : "");
+          name = (name == null ? "" : name).toString().trim();
+          machineName = (machineName == null ? "" : machineName).toString().trim();
+          qtyRaw = (qtyRaw == null ? "" : qtyRaw).toString().trim();
+          if (!name) return;
+          if (IMPORT_HEADER_WORDS_PRODUCTS.indexOf(name.toLowerCase()) !== -1) return;
+          parsed.push({ name: name, machineName: machineName, qty: parseFloat(qtyRaw.replace(",", ".")) });
+        });
+
+        if (!parsed.length) {
+          btn.disabled = false;
+          msgEl.textContent = "Nie znaleziono żadnych poprawnych wierszy (oczekiwany format: Produkt;Maszyna;Ilość maksymalna dzienna).";
+          msgEl.classList.add("show", "error");
+          return;
+        }
+
+        // 1) dopisz brakujące produkty
+        var existingProductsLower = {};
+        state.products.forEach(function (p) { existingProductsLower[p.name.trim().toLowerCase()] = p.id; });
+        var newProductNames = [], seenNew = {};
+        parsed.forEach(function (row) {
+          var low = row.name.toLowerCase();
+          if (!existingProductsLower[low] && !seenNew[low]) { seenNew[low] = true; newProductNames.push(row.name); }
+        });
+        var insertedCount = 0;
+        if (newProductNames.length) {
+          var insRes = await sb.from("products").insert(newProductNames.map(function (n) { return { company_id: session.company.id, name: n }; }));
+          if (insRes.error) {
+            btn.disabled = false;
+            msgEl.textContent = "Nie udało się dodać nowych produktów: " + insRes.error.message;
+            msgEl.classList.add("show", "error");
+            return;
+          }
+          insertedCount = newProductNames.length;
+          (insRes.data || []).forEach(function (p) { existingProductsLower[p.name.trim().toLowerCase()] = p.id; });
+        }
+
+        // 2) dopasuj maszyny po nazwie i przelicz orientacyjny czas cyklu z ilości dziennej
+        var machinesByLower = {};
+        state.machines.forEach(function (m) { machinesByLower[m.name.trim().toLowerCase()] = m.id; });
+        var dailyMinutes = (state.settings.shiftsPerDay || 2) * 480; // założenie: 8h na zmianę, do poprawienia ręcznie w tabeli
+
+        var upserts = [], skippedMachine = 0, skippedQty = 0;
+        parsed.forEach(function (row) {
+          var pid = existingProductsLower[row.name.toLowerCase()];
+          var mid = machinesByLower[row.machineName.toLowerCase()];
+          if (!mid) { skippedMachine++; return; }
+          if (!row.qty || row.qty <= 0) { skippedQty++; return; }
+          upserts.push({ product_id: pid, machine_id: mid, ideal_cycle_sec: (dailyMinutes * 60) / row.qty });
+        });
+
+        var rateError = null;
+        if (upserts.length) {
+          var upRes = await sb.from("product_rates").upsert(upserts, { onConflict: "product_id,machine_id" });
+          if (upRes.error) rateError = upRes.error;
+        }
+
+        btn.disabled = false;
+        await loadCompanyData();
+        renderAdmin(document.getElementById("adminRoot"));
+        var freshMsg = document.getElementById("importProductsMsg");
+        if (freshMsg) {
+          if (rateError) {
+            freshMsg.textContent = "Produkty dodane, ale zapisanie wydajności nie powiodło się: " + rateError.message;
+            freshMsg.classList.add("show", "error");
+          } else {
+            var parts = [];
+            if (insertedCount) parts.push("nowych produktów: " + insertedCount);
+            parts.push("zapisanych wydajności: " + upserts.length);
+            if (skippedMachine) parts.push("pominięto, nieznana maszyna: " + skippedMachine);
+            if (skippedQty) parts.push("pominięto, brak ilości: " + skippedQty);
+            freshMsg.textContent = "Zaimportowano — " + parts.join(", ") + ".";
+            freshMsg.classList.add("show");
+            setTimeout(function () { freshMsg.classList.remove("show"); }, 6000);
+          }
+        }
+      });
+    });
+  }
+
   function renderAdmin(root) {
     root.innerHTML = bannerHtml() + adminTabsHtml() + '<div id="adminTabContent">' + adminTabContentHtml() + '</div>';
     if (adminTab === "overview") mountSparklines();
@@ -1380,6 +1491,31 @@
         renderApp();
       });
     });
+    var saveMachinesBtn = document.getElementById("saveMachinesBtn");
+    if (saveMachinesBtn) saveMachinesBtn.addEventListener("click", async function () {
+      var updates = [];
+      root.querySelectorAll("[data-machine-name]").forEach(function (inp) {
+        var id = inp.getAttribute("data-machine-name");
+        var newName = inp.value.trim();
+        var current = state.machines.filter(function (m) { return m.id === id; })[0];
+        if (current && newName && newName !== current.name) updates.push({ id: id, name: newName });
+      });
+      var msgEl = document.getElementById("machinesMsg");
+      if (!updates.length) {
+        if (msgEl) { msgEl.textContent = "Brak zmian do zapisania."; msgEl.classList.remove("error"); msgEl.classList.add("show"); setTimeout(function () { msgEl.classList.remove("show"); }, 2000); }
+        return;
+      }
+      var hadError = false;
+      for (var i = 0; i < updates.length; i++) {
+        var res = await sb.from("machines").update({ name: updates[i].name }).eq("id", updates[i].id);
+        if (res.error) hadError = true;
+      }
+      bannerMsg = hadError ? "Część nazw maszyn nie zapisała się poprawnie. Spróbuj ponownie." : "";
+      await loadCompanyData();
+      renderAdmin(root);
+      var freshMsg = document.getElementById("machinesMsg");
+      if (freshMsg && !hadError) { freshMsg.textContent = "Zapisano."; freshMsg.classList.add("show"); setTimeout(function () { freshMsg.classList.remove("show"); }, 2000); }
+    });
 
     var addOpForm = document.getElementById("addOpForm");
     if (addOpForm) addOpForm.addEventListener("submit", async function (evt) {
@@ -1401,6 +1537,37 @@
         await loadCompanyData();
         renderApp();
       });
+    });
+    var saveOperatorsBtn = document.getElementById("saveOperatorsBtn");
+    if (saveOperatorsBtn) saveOperatorsBtn.addEventListener("click", async function () {
+      var updates = [];
+      root.querySelectorAll("[data-op-name]").forEach(function (inp) {
+        var id = inp.getAttribute("data-op-name");
+        var newName = inp.value.trim();
+        var pinInp = root.querySelector('[data-op-pin="' + id + '"]');
+        var newPin = pinInp ? pinInp.value.trim() : "";
+        var current = state.operators.filter(function (o) { return o.id === id; })[0];
+        if (!current) return;
+        var patch = {};
+        if (newName && newName !== current.name) patch.name = newName;
+        if (newPin && newPin !== current.pin) patch.pin = newPin;
+        if (Object.keys(patch).length) updates.push({ id: id, patch: patch });
+      });
+      var msgEl = document.getElementById("operatorsMsg");
+      if (!updates.length) {
+        if (msgEl) { msgEl.textContent = "Brak zmian do zapisania."; msgEl.classList.remove("error"); msgEl.classList.add("show"); setTimeout(function () { msgEl.classList.remove("show"); }, 2000); }
+        return;
+      }
+      var hadError = false;
+      for (var i = 0; i < updates.length; i++) {
+        var res = await sb.from("operators").update(updates[i].patch).eq("id", updates[i].id);
+        if (res.error) hadError = true;
+      }
+      bannerMsg = hadError ? "Część danych operatorów nie zapisała się poprawnie. Spróbuj ponownie." : "";
+      await loadCompanyData();
+      renderAdmin(root);
+      var freshMsg = document.getElementById("operatorsMsg");
+      if (freshMsg && !hadError) { freshMsg.textContent = "Zapisano."; freshMsg.classList.add("show"); setTimeout(function () { freshMsg.classList.remove("show"); }, 2000); }
     });
 
     var addProductForm = document.getElementById("addProductForm");
@@ -1425,6 +1592,21 @@
     });
     var saveRatesBtn = document.getElementById("saveRatesBtn");
     if (saveRatesBtn) saveRatesBtn.addEventListener("click", async function () {
+      var hadError = false;
+
+      // nazwy produktów — zapisz tylko te faktycznie zmienione
+      var nameUpdates = [];
+      root.querySelectorAll("[data-product-name]").forEach(function (inp) {
+        var id = inp.getAttribute("data-product-name");
+        var newName = inp.value.trim();
+        var current = state.products.filter(function (p) { return p.id === id; })[0];
+        if (current && newName && newName !== current.name) nameUpdates.push({ id: id, name: newName });
+      });
+      for (var n = 0; n < nameUpdates.length; n++) {
+        var nRes = await sb.from("products").update({ name: nameUpdates[n].name }).eq("id", nameUpdates[n].id);
+        if (nRes.error) hadError = true;
+      }
+
       var upserts = [], deletes = [];
       root.querySelectorAll("[data-rate-product]").forEach(function (inp) {
         var pid = inp.getAttribute("data-rate-product"), mid = inp.getAttribute("data-rate-machine");
@@ -1432,7 +1614,6 @@
         if (!isNaN(val) && val > 0) upserts.push({ product_id: pid, machine_id: mid, ideal_cycle_sec: val });
         else deletes.push({ pid: pid, mid: mid });
       });
-      var hadError = false;
       if (upserts.length) {
         var upRes = await sb.from("product_rates").upsert(upserts, { onConflict: "product_id,machine_id" });
         if (upRes.error) hadError = true;
@@ -1441,11 +1622,11 @@
         var delRes = await sb.from("product_rates").delete().eq("product_id", deletes[i].pid).eq("machine_id", deletes[i].mid);
         if (delRes.error) hadError = true;
       }
-      bannerMsg = hadError ? "Część wydajności nie zapisała się poprawnie. Spróbuj ponownie." : "";
+      bannerMsg = hadError ? "Część zmian nie zapisała się poprawnie. Spróbuj ponownie." : "";
       await loadCompanyData();
-      renderApp();
+      renderAdmin(root);
       var msg = document.getElementById("rateMsg");
-      if (msg && !hadError) { msg.classList.add("show"); setTimeout(function () { msg.classList.remove("show"); }, 2000); }
+      if (msg && !hadError) { msg.textContent = "Zapisano."; msg.classList.add("show"); setTimeout(function () { msg.classList.remove("show"); }, 2000); }
     });
 
     root.querySelectorAll("[data-shifts]").forEach(function (btn) {
@@ -1468,9 +1649,7 @@
     wireImportHandler("operators", "operators", function (rows) {
       return rowsToNewOperators(rows, state.operators).map(function (o) { return { company_id: session.company.id, name: o.name, pin: o.pin }; });
     });
-    wireImportHandler("products", "products", function (rows) {
-      return rowsToNewNames(rows, state.products).map(function (n) { return { company_id: session.company.id, name: n }; });
-    });
+    wireProductsImportHandler();
   }
 
   /* =====================================================================
