@@ -789,7 +789,13 @@
     var performance = operatingSec > 0 ? clamp01((shift.idealCycleSec * produced) / operatingSec) : 0;
     var quality = produced > 0 ? clamp01(shift.good / produced) : 0;
     var oee = availability * performance * quality;
-    return { availability: availability, performance: performance, quality: quality, oee: oee, produced: produced, downtimeMin: downtimeMin };
+    // ile sztuk POWINNO powstać w faktycznie dostępnym czasie (plan minus zatwierdzony
+    // przestój) przy normie (idealCycleSec) — to jest punkt odniesienia "norma wykonana czy nie".
+    // Liczone na nowo za każdym razem z aktualnego stanu zatwierdzeń, więc zatwierdzenie albo
+    // odrzucenie przestoju przez admina/kierownika od razu przelicza wynik i ocenę normy.
+    var expectedQty = shift.idealCycleSec > 0 ? Math.floor(operatingSec / shift.idealCycleSec) : 0;
+    var normMet = expectedQty > 0 ? produced >= expectedQty : null;
+    return { availability: availability, performance: performance, quality: quality, oee: oee, produced: produced, downtimeMin: downtimeMin, expectedQty: expectedQty, normMet: normMet };
   }
 
   function tier(oee) {
@@ -1273,6 +1279,17 @@
     return effective + ' <span title="Zgłoszono ' + claimed + ' min łącznie — część czeka na zatwierdzenie albo została odrzucona, więc na razie nie liczy się do wyniku" style="color:var(--status-warn);cursor:help;">⏳</span>';
   }
 
+  // "Norma wykonana?" — porównanie sztuk zrobionych do sztuk, które powinny powstać
+  // w czasie plan minus zatwierdzony przestój. Przelicza się na nowo przy każdym
+  // renderze, więc zatwierdzenie/odrzucenie przestoju od razu zmienia tę ocenę.
+  function normCellHtml(m) {
+    if (m.expectedQty <= 0) return '<span class="status-tag" style="color:var(--ink-muted);background:transparent;">—</span>';
+    var pct = Math.round((m.produced / m.expectedQty) * 100);
+    var cls = m.normMet ? "approved" : "rejected";
+    var label = m.normMet ? "wykonana" : "niewykonana";
+    return '<span class="status-tag ' + cls + '" title="' + m.produced + ' z ' + m.expectedQty + ' szt. (' + pct + '%), licząc od czasu planowanego pomniejszonego o zatwierdzony przestój">' + label + ' · ' + pct + '%</span>';
+  }
+
   function tableHtml() {
     var rows = state.shifts.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
     var body = rows.map(function (s) {
@@ -1284,13 +1301,14 @@
         '<td class="num tabular">' + s.good + '</td><td class="num tabular">' + s.bad + '</td>' +
         '<td class="num tabular">' + fmtPct(m.availability) + '</td><td class="num tabular">' + fmtPct(m.performance) + '</td><td class="num tabular">' + fmtPct(m.quality) + '</td>' +
         '<td class="num tabular" style="font-weight:600;">' + fmtPct(m.oee) + '</td>' +
+        '<td>' + normCellHtml(m) + '</td>' +
         '<td><span class="status-pill ' + t.key + '"><span class="dot"></span>' + t.label + '</span></td></tr>';
     }).join("");
     return '<section aria-labelledby="logTitle"><div class="section-head"><div class="eyebrow">Pełne dane</div><h2 id="logTitle" class="section-title small">Dziennik zmian</h2>' +
-      '<div class="section-sub">Wszystkie wpisy, od najnowszego.</div></div>' +
+      '<div class="section-sub">Wszystkie wpisy, od najnowszego. Kolumna „Norma" pokazuje, czy w czasie planowanym (po odjęciu zatwierdzonego przestoju) zrobiono tyle sztuk, ile powinno — po zatwierdzeniu albo odrzuceniu przestoju w zakładce Przestoje ta ocena od razu się przelicza.</div></div>' +
       '<div class="table-scroll"><table><thead><tr><th>Data</th><th>Maszyna</th><th>Operator</th><th class="num">Zmiana</th><th>Produkt</th>' +
       '<th class="num">Plan (min)</th><th class="num">Przestój (min)</th><th class="num">Dobre</th><th class="num">Wadliwe</th>' +
-      '<th class="num">Dostępność</th><th class="num">Wydajność</th><th class="num">Jakość</th><th class="num">OEE</th><th>Status</th></tr></thead>' +
+      '<th class="num">Dostępność</th><th class="num">Wydajność</th><th class="num">Jakość</th><th class="num">OEE</th><th>Norma</th><th>Status</th></tr></thead>' +
       '<tbody>' + body + '</tbody></table></div></section>';
   }
 
@@ -1340,9 +1358,14 @@
   function downtimeReviewItemHtml(d) {
     var shift = shiftById(d.shiftId);
     var meta = shift ? fmtDate(shift.date) + " · " + machineName(shift.machineId) + " · " + operatorName(shift.operatorId) : "zmiana niedostępna";
+    var normNote = "";
+    if (shift) {
+      var m = calc(shift);
+      if (m.expectedQty > 0) normNote = '<div class="meta" style="margin-top:4px;">Aktualnie (przed tą decyzją): ' + m.produced + ' z ' + m.expectedQty + ' szt. — norma ' + (m.normMet ? "wykonana" : "niewykonana") + '. Zatwierdzenie odejmie ten czas od czasu planowanego i przeliczy tę ocenę (zwykle ją złagodzi) — odrzucenie nic tu nie zmieni.</div>';
+    }
     return '<div class="review-item" data-downtime-id="' + d.id + '">' +
       '<div><div class="meta"><b>' + escAttr(reasonName(d.reasonId)) + '</b> — ' + d.minutes + ' min · ' + meta + '</div>' +
-      (d.note ? '<div class="meta" style="margin-top:4px;">„' + escAttr(d.note) + '"</div>' : '') + '</div>' +
+      (d.note ? '<div class="meta" style="margin-top:4px;">„' + escAttr(d.note) + '"</div>' : '') + normNote + '</div>' +
       '<div class="review-actions">' +
       '<button type="button" class="small" data-approve-downtime="' + d.id + '">Zatwierdź</button>' +
       '<button type="button" class="small" data-reject-downtime="' + d.id + '">Odrzuć</button>' +
@@ -2034,14 +2057,15 @@
       '<div class="field span-3"><label for="fMachine">Maszyna</label><select id="fMachine">' + machOpts + '</select></div>' +
       '<div class="field span-3"><label for="fDate">Data</label><input id="fDate" type="date"></div>' +
       '<div class="field span-3"><label for="fProduct">Produkt</label><select id="fProduct"></select></div>' +
-      '<div class="field span-3" id="cycleField"><label>Norma (s/szt.)</label><input id="fCycleAuto" type="text" disabled></div>' +
-      '<div id="rateHintSlot"></div>' +
-      '<div class="field"><label for="fPlanned">Czas planowany (min)</label>' +
-      '<div style="display:flex;gap:8px;align-items:center;"><input id="fPlanned" type="number" min="1" step="1" placeholder="480" disabled style="flex:1;">' +
+      '<div class="field span-3" id="cycleField"><label>Norma (s/szt.)</label><input id="fCycleAuto" type="text" disabled>' +
+      '<span class="hint">Ustawiana automatycznie po wyborze produktu i maszyny — nie da się jej tu poprawić ręcznie.</span></div>' +
+      '<div class="field span-3"><label for="fPlanned">Czas planowany (min)</label>' +
+      '<div style="display:flex;gap:8px;align-items:center;"><input id="fPlanned" type="number" min="1" step="1" disabled style="flex:1;">' +
       '<button type="button" class="ghost small" id="unlockPlannedBtn" style="flex:none;">Odblokuj</button></div>' +
       '<span class="hint" id="plannedHint"></span></div>' +
-      '<div class="field"><label for="fGood">Sztuki dobre</label><input id="fGood" type="number" min="0" step="1" placeholder="720"></div>' +
-      '<div class="field"><label for="fBad">Sztuki wadliwe</label><input id="fBad" type="number" min="0" step="1" placeholder="18"></div>' +
+      '<div id="rateHintSlot" style="grid-column:1/-1;"></div>' +
+      '<div class="field span-3"><label for="fGood">Sztuki dobre</label><input id="fGood" type="number" min="0" step="1"></div>' +
+      '<div class="field span-3"><label for="fBad">Sztuki wadliwe</label><input id="fBad" type="number" min="0" step="1"></div>' +
       '<div class="field" style="grid-column:1/-1;"><label>Przestoje w tej zmianie</label>' +
       '<div class="downtime-rows" id="downtimeRows"></div>' +
       '<button type="button" class="ghost small" id="addDowntimeRowBtn" style="margin-top:2px;align-self:flex-start;">+ Dodaj przestój</button>' +
@@ -2067,7 +2091,7 @@
       } else {
         prodSel.innerHTML = '<option value="">— brak zdefiniowanych produktów —</option>';
         cycleAuto.value = "";
-        hintSlot.innerHTML = '<div class="field span-3"><label for="fCycleManual">Czas cyklu ręcznie (s/szt.)</label><input id="fCycleManual" type="number" min="0.1" step="0.1" placeholder="30"><span class="hint warn">Administrator nie ustawił jeszcze wydajności produktów dla tej maszyny.</span></div>';
+        hintSlot.innerHTML = '<div class="field" style="max-width:280px;"><label for="fCycleManual">Czas cyklu ręcznie (s/szt.)</label><input id="fCycleManual" type="number" min="0.1" step="0.1"><span class="hint warn">Administrator nie ustawił jeszcze wydajności produktów dla tej maszyny.</span></div>';
       }
     }
     function updateCycle() {
@@ -2192,7 +2216,8 @@
       document.getElementById("opFeedbackOee").textContent = fmtPct(m.oee) + " OEE";
       document.getElementById("opFeedbackOee").style.color = "var(--status-" + t.key + ")";
       var noteText = "— " + t.label + ", zapisano dla " + machineName(machineId);
-      if (totalDowntimeMin > 0) noteText += ". Zgłoszony przestój (" + totalDowntimeMin + " min) czeka na zatwierdzenie administratora — do tego czasu nie obniża wyniku OEE.";
+      if (m.expectedQty > 0) noteText += ". Norma: " + m.produced + " z " + m.expectedQty + " szt. — " + (m.normMet ? "wykonana" : "niewykonana") + ".";
+      if (totalDowntimeMin > 0) noteText += " Zgłoszony przestój (" + totalDowntimeMin + " min) czeka na zatwierdzenie administratora — do tego czasu nie obniża wyniku OEE, a ocena normy przeliczy się ponownie po decyzji.";
       document.getElementById("opFeedbackNote").textContent = noteText;
       document.getElementById("opFeedback").classList.add("show");
     });
