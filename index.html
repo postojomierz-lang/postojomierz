@@ -641,6 +641,8 @@
 
   var view = "operator";      // "operator" | "admin"
   var adminTab = "overview";  // "overview" | "machines" | "operators" | "products" | "history" | "settings"
+  var productsSearch = "";        // filtr tekstowy w tabeli produktów (nazwa lub kod)
+  var productsMachineFilter = ""; // "" = auto, "__all__" = wszystkie kolumny, albo id konkretnej maszyny
   var booting = true;
   var session = null;         // { user, profile:{id,role,displayName}, company:{id,name,shiftsPerDay} }
   var authScreen = "login";   // "login" | "signup" | "check-email"
@@ -707,7 +709,7 @@
     }
 
     state.machines = (results[0].data || []).map(function (m) { return { id: m.id, name: m.name }; });
-    state.products = (results[1].data || []).map(function (p) { return { id: p.id, name: p.name }; });
+    state.products = (results[1].data || []).map(function (p) { return { id: p.id, name: p.name, code: p.code || "" }; });
     state.productRates = rowsToProductRates(results[2].data || []);
     state.shifts = (results[3].data || []).map(shiftFromRow);
     state.diagnoses = rowsToDiagnoses(results[4].data || []);
@@ -755,7 +757,7 @@
 
   function machineName(id) { var m = state.machines.filter(function (x) { return x.id === id; })[0]; return m ? m.name : "—"; }
   function operatorName(id) { var o = state.people.filter(function (x) { return x.id === id; })[0]; return o ? o.name : "—"; }
-  function productName(id) { var p = state.products.filter(function (x) { return x.id === id; })[0]; return p ? p.name : "—"; }
+  function productName(id) { var p = state.products.filter(function (x) { return x.id === id; })[0]; return p ? (p.code ? p.code + " — " + p.name : p.name) : "—"; }
 
   /* =====================================================================
      KWESTIONARIUSZ I REKOMENDACJE (bez zmian w metodzie)
@@ -1097,22 +1099,58 @@
   }
 
   function productsHtml() {
-    var rateRows = state.products.map(function (p) {
-      var cells = state.machines.map(function (m) {
+    var machineCount = state.machines.length;
+    // przy niewielu maszynach domyślnie pokaż wszystkie kolumny wydajności; przy wielu — dopiero po wyborze,
+    // żeby tabela ze setkami produktów nie robiła się nieczytelną, szeroką siatką
+    var effectiveFilter = productsMachineFilter;
+    if (effectiveFilter === "" && machineCount > 0 && machineCount <= 6) effectiveFilter = "__all__";
+    var visibleMachines = effectiveFilter === "__all__" ? state.machines
+      : (effectiveFilter ? state.machines.filter(function (m) { return m.id === effectiveFilter; }) : []);
+
+    var q = productsSearch.trim().toLowerCase();
+    var visibleProducts = !q ? state.products : state.products.filter(function (p) {
+      return (p.name + " " + (p.code || "")).toLowerCase().indexOf(q) !== -1;
+    });
+
+    var rateHead = visibleMachines.map(function (m) { return '<th class="num">' + m.name + '</th>'; }).join("");
+    var rows = visibleProducts.map(function (p) {
+      var search = (p.name + " " + (p.code || "")).toLowerCase();
+      var cells = visibleMachines.map(function (m) {
         var v = (state.productRates[p.id] && state.productRates[p.id][m.id] != null) ? state.productRates[p.id][m.id] : "";
         return '<td class="num rate-cell"><input type="number" min="0" step="0.1" data-rate-product="' + p.id + '" data-rate-machine="' + m.id + '" value="' + v + '" placeholder="—"></td>';
       }).join("");
-      return '<tr><td><input type="text" data-product-name="' + p.id + '" value="' + escAttr(p.name) + '" style="min-width:160px;"> <button type="button" class="small" data-remove-product="' + p.id + '" style="margin-left:6px;">usuń</button></td>' + cells + '</tr>';
+      return '<tr data-search="' + escAttr(search) + '">' +
+        '<td><input type="text" data-product-code="' + p.id + '" value="' + escAttr(p.code || "") + '" placeholder="—" style="max-width:110px;"></td>' +
+        '<td><input type="text" data-product-name="' + p.id + '" value="' + escAttr(p.name) + '" style="min-width:160px;"></td>' +
+        cells +
+        '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-product="' + p.id + '">usuń</button></td></tr>';
     }).join("");
-    var head = state.machines.map(function (m) { return '<th class="num">' + m.name + '</th>'; }).join("");
-    var table = state.products.length
-      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Produkt</th>' + head + '</tr></thead><tbody>' + rateRows + '</tbody></table></div>'
-      : '<div class="empty-hint">Brak produktów — dodaj pierwszy poniżej.</div>';
+
+    var machineOptions = '<option value="__all__">Wszystkie maszyny</option>' +
+      state.machines.map(function (m) { return '<option value="' + m.id + '"' + (effectiveFilter === m.id ? " selected" : "") + '>' + m.name + '</option>'; }).join("");
+
+    var controls = state.products.length
+      ? '<div class="inline-add" style="margin-top:6px;">' +
+        '<input type="text" id="productsSearchInput" placeholder="Szukaj po nazwie lub kodzie…" value="' + escAttr(productsSearch) + '">' +
+        (machineCount ? '<select id="productsMachineFilter">' + machineOptions + '</select>' : '') +
+        '</div>'
+      : '';
+
+    var hintMsg = (!visibleMachines.length && machineCount > 6)
+      ? '<div class="empty-hint">Masz ' + machineCount + ' maszyn — wybierz jedną z listy wyżej, żeby zobaczyć i ustawić jej wydajności. Bez wyboru tabela pokazuje tylko kod i nazwę produktu.</div>'
+      : '';
+
+    var table = '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Kod</th><th>Produkt</th>' + rateHead + '<th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    var tableOrHint = state.products.length ? (hintMsg + table) : '<div class="empty-hint">Brak produktów — dodaj pierwszy poniżej.</div>';
+
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Produkty i wydajność na maszynach</h2>' +
-      '<div class="section-sub">Nazwę produktu edytujesz w pierwszej kolumnie. Czas cyklu idealnego (s/szt.) dla każdej pary produkt–maszyna — puste pole = produkt nie jest robiony na tej maszynie.' +
+      '<div class="section-sub">Kod i nazwę produktu edytujesz wprost w tabeli. Czas cyklu idealnego (s/szt.) dla każdej pary produkt–maszyna — puste pole = produkt nie jest robiony na tej maszynie.' +
       (state.machines.length ? '' : ' Dodaj najpierw przynajmniej jedną maszynę, żeby ustawiać wydajności.') + '</div></div>' +
-      table +
-      '<form class="inline-add" id="addProductForm"><input type="text" id="newProductName" placeholder="Nazwa produktu"><button type="submit" class="primary">Dodaj</button></form>' +
+      controls + tableOrHint +
+      '<form class="inline-add" id="addProductForm">' +
+      '<input type="text" id="newProductCode" placeholder="Kod (opcjonalnie)" style="max-width:140px;">' +
+      '<input type="text" id="newProductName" placeholder="Nazwa produktu">' +
+      '<button type="submit" class="primary">Dodaj</button></form>' +
       (state.products.length ? '<div class="form-actions" style="margin-top:14px;"><button type="button" class="ghost" id="saveRatesBtn">Zapisz zmiany</button><span class="form-msg" id="rateMsg">Zapisano.</span></div>' : '') +
       '</div>';
   }
@@ -1230,7 +1268,7 @@
   var IMPORT_LABELS = {
     machines: { hint: 'Jedna maszyna w linii. Plik .txt/.csv: sama nazwa w każdej linii. Plik Excel (.xlsx): jedna kolumna z nazwami.' },
     operators: { hint: 'Jedna osoba w linii, w formacie: Imię i nazwisko;PIN (działa też przecinek albo tabulator). Plik Excel (.xlsx): pierwsza kolumna imię, druga PIN.' },
-    products: { hint: 'Jeden produkt w linii, w formacie: Produkt;Maszyna;Ilość maksymalna dzienna (np. Wspornik A;Tokarka 1;850). Maszyna musi już istnieć na liście Maszyny — z ilości dziennej przeliczymy orientacyjny czas cyklu (przy założeniu 8h na zmianę), który zawsze możesz poprawić ręcznie w tabeli obok. Plik Excel (.xlsx): trzy kolumny w tej kolejności.' }
+    products: { hint: 'Jeden produkt w linii: Produkt;Maszyna;Ilość maksymalna dzienna (np. Wspornik A;Tokarka 1;850) — albo z kodem na początku: Kod;Produkt;Maszyna;Ilość maksymalna dzienna. Maszyna musi już istnieć na liście Maszyny — z ilości dziennej przeliczymy orientacyjny czas cyklu (przy założeniu 8h na zmianę), który zawsze możesz poprawić ręcznie w tabeli obok. Jeśli produkt z takim kodem/nazwą już istnieje, dopiszemy tylko brakującą wydajność (i uzupełnimy kod, jeśli go jeszcze nie było).' }
   };
 
   function importBlockHtml(kind) {
@@ -1349,7 +1387,7 @@
     });
   }
 
-  var IMPORT_HEADER_WORDS_PRODUCTS = ["produkt", "product", "nazwa", "maszyna", "machine", "ilość", "ilosc", "ilość maksymalna dzienna", "ilosc maksymalna dzienna", "qty", "max"];
+  var IMPORT_HEADER_WORDS_PRODUCTS = ["produkt", "product", "nazwa", "maszyna", "machine", "ilość", "ilosc", "ilość maksymalna dzienna", "ilosc maksymalna dzienna", "qty", "max", "kod", "code"];
 
   function wireProductsImportHandler() {
     var btn = document.getElementById("importProductsBtn");
@@ -1364,55 +1402,104 @@
       parseImportFile(file, async function (rows, err) {
         if (err) { btn.disabled = false; msgEl.textContent = "Błąd odczytu pliku: " + err.message; msgEl.classList.add("show", "error"); return; }
 
+        // wykryj czy plik ma kolumnę Kod na początku — patrzymy na wiersz nagłówkowy
+        // (nazwa "kod"/"code" w pierwszej kolumnie, albo po prostu 4+ kolumny w nagłówku)
+        var header0 = rows[0] || [];
+        var header0Cols = Array.isArray(header0) ? header0 : [header0];
+        var header0First = (header0Cols[0] == null ? "" : header0Cols[0]).toString().trim().toLowerCase();
+        var hasCodeCol = (header0First === "kod" || header0First === "code" || header0Cols.length >= 4);
+
         var parsed = [];
         rows.forEach(function (r) {
-          var name = (Array.isArray(r) ? r[0] : "");
-          var machineName = (Array.isArray(r) ? r[1] : "");
-          var qtyRaw = (Array.isArray(r) ? r[2] : "");
+          var cols = Array.isArray(r) ? r : [r];
+          var code, name, machineName, qtyRaw;
+          if (hasCodeCol) {
+            code = cols[0]; name = cols[1]; machineName = cols[2]; qtyRaw = cols[3];
+          } else {
+            code = ""; name = cols[0]; machineName = cols[1]; qtyRaw = cols[2];
+          }
+          code = (code == null ? "" : code).toString().trim();
           name = (name == null ? "" : name).toString().trim();
           machineName = (machineName == null ? "" : machineName).toString().trim();
           qtyRaw = (qtyRaw == null ? "" : qtyRaw).toString().trim();
           if (!name) return;
           if (IMPORT_HEADER_WORDS_PRODUCTS.indexOf(name.toLowerCase()) !== -1) return;
-          parsed.push({ name: name, machineName: machineName, qty: parseFloat(qtyRaw.replace(",", ".")) });
+          if (code && IMPORT_HEADER_WORDS_PRODUCTS.indexOf(code.toLowerCase()) !== -1 && IMPORT_HEADER_WORDS_PRODUCTS.indexOf(name.toLowerCase()) !== -1) return;
+          parsed.push({ name: name, code: code, machineName: machineName, qty: parseFloat(qtyRaw.replace(",", ".")) });
         });
 
         if (!parsed.length) {
           btn.disabled = false;
-          msgEl.textContent = "Nie znaleziono żadnych poprawnych wierszy (oczekiwany format: Produkt;Maszyna;Ilość maksymalna dzienna).";
+          msgEl.textContent = "Nie znaleziono żadnych poprawnych wierszy (oczekiwany format: Produkt;Maszyna;Ilość maksymalna dzienna, opcjonalnie z kodem na początku).";
           msgEl.classList.add("show", "error");
           return;
         }
 
+        // indeks istniejących produktów — po kodzie (jeśli jest) i po nazwie, oba wskazują to samo id
+        var existingIndex = {};
+        state.products.forEach(function (p) {
+          if (p.code) existingIndex["code:" + p.code.trim().toLowerCase()] = p.id;
+          existingIndex["name:" + p.name.trim().toLowerCase()] = p.id;
+        });
+        function keyFor(row) { return row.code ? "code:" + row.code.toLowerCase() : "name:" + row.name.toLowerCase(); }
+        // dopasuj po kodzie ALBO po nazwie (kod może być podany dopiero teraz dla już istniejącego produktu)
+        function findExistingId(row) {
+          if (row.code && existingIndex["code:" + row.code.toLowerCase()]) return existingIndex["code:" + row.code.toLowerCase()];
+          if (existingIndex["name:" + row.name.toLowerCase()]) return existingIndex["name:" + row.name.toLowerCase()];
+          return null;
+        }
+
         // 1) dopisz brakujące produkty
-        var existingProductsLower = {};
-        state.products.forEach(function (p) { existingProductsLower[p.name.trim().toLowerCase()] = p.id; });
-        var newProductNames = [], seenNew = {};
+        var newRows = [], seenNewKeys = {};
         parsed.forEach(function (row) {
-          var low = row.name.toLowerCase();
-          if (!existingProductsLower[low] && !seenNew[low]) { seenNew[low] = true; newProductNames.push(row.name); }
+          if (findExistingId(row)) return;
+          var k = keyFor(row);
+          if (seenNewKeys[k]) return;
+          seenNewKeys[k] = true;
+          newRows.push(row);
         });
         var insertedCount = 0;
-        if (newProductNames.length) {
-          var insRes = await sb.from("products").insert(newProductNames.map(function (n) { return { company_id: session.company.id, name: n }; }));
+        var justInsertedIds = {};
+        if (newRows.length) {
+          var insRes = await sb.from("products").insert(newRows.map(function (row) { return { company_id: session.company.id, name: row.name, code: row.code || null }; }));
           if (insRes.error) {
             btn.disabled = false;
             msgEl.textContent = "Nie udało się dodać nowych produktów: " + insRes.error.message;
             msgEl.classList.add("show", "error");
             return;
           }
-          insertedCount = newProductNames.length;
-          (insRes.data || []).forEach(function (p) { existingProductsLower[p.name.trim().toLowerCase()] = p.id; });
+          insertedCount = newRows.length;
+          (insRes.data || []).forEach(function (p) {
+            justInsertedIds[p.id] = true;
+            if (p.code) existingIndex["code:" + p.code.trim().toLowerCase()] = p.id;
+            existingIndex["name:" + p.name.trim().toLowerCase()] = p.id;
+          });
         }
 
-        // 2) dopasuj maszyny po nazwie i przelicz orientacyjny czas cyklu z ilości dziennej
+        // 2) uzupełnij kod istniejącym (nie dopiero co dodanym) produktom, które dotąd go nie miały
+        var codeById = {};
+        state.products.forEach(function (p) { codeById[p.id] = p.code || ""; });
+        var codeUpdates = [];
+        parsed.forEach(function (row) {
+          if (!row.code) return;
+          var pid = findExistingId(row);
+          if (!pid || justInsertedIds[pid]) return;
+          if ((codeById[pid] || "") === "") { codeById[pid] = row.code; codeUpdates.push({ id: pid, code: row.code }); }
+        });
+        var codeErrorCount = 0;
+        for (var c = 0; c < codeUpdates.length; c++) {
+          var cRes = await sb.from("products").update({ code: codeUpdates[c].code }).eq("id", codeUpdates[c].id);
+          if (cRes.error) codeErrorCount++;
+        }
+
+        // 3) dopasuj maszyny po nazwie i przelicz orientacyjny czas cyklu z ilości dziennej
         var machinesByLower = {};
         state.machines.forEach(function (m) { machinesByLower[m.name.trim().toLowerCase()] = m.id; });
         var dailyMinutes = (state.settings.shiftsPerDay || 2) * 480; // założenie: 8h na zmianę, do poprawienia ręcznie w tabeli
 
         var upserts = [], skippedMachine = 0, skippedQty = 0;
         parsed.forEach(function (row) {
-          var pid = existingProductsLower[row.name.toLowerCase()];
+          var pid = findExistingId(row);
           var mid = machinesByLower[row.machineName.toLowerCase()];
           if (!mid) { skippedMachine++; return; }
           if (!row.qty || row.qty <= 0) { skippedQty++; return; }
@@ -1436,6 +1523,7 @@
           } else {
             var parts = [];
             if (insertedCount) parts.push("nowych produktów: " + insertedCount);
+            if (codeUpdates.length) parts.push("uzupełnionych kodów: " + (codeUpdates.length - codeErrorCount));
             parts.push("zapisanych wydajności: " + upserts.length);
             if (skippedMachine) parts.push("pominięto, nieznana maszyna: " + skippedMachine);
             if (skippedQty) parts.push("pominięto, brak ilości: " + skippedQty);
@@ -1573,13 +1661,30 @@
     var addProductForm = document.getElementById("addProductForm");
     if (addProductForm) addProductForm.addEventListener("submit", async function (evt) {
       evt.preventDefault();
-      var input = document.getElementById("newProductName");
-      var name = input.value.trim();
+      var nameInput = document.getElementById("newProductName");
+      var codeInput = document.getElementById("newProductCode");
+      var name = nameInput.value.trim();
+      var code = codeInput ? codeInput.value.trim() : "";
       if (!name) return;
-      var res = await sb.from("products").insert({ company_id: session.company.id, name: name });
+      var res = await sb.from("products").insert({ company_id: session.company.id, name: name, code: code || null });
       if (res.error) { bannerMsg = "Nie udało się dodać produktu: " + res.error.message; }
       await loadCompanyData();
       renderApp();
+    });
+
+    var productsSearchInput = document.getElementById("productsSearchInput");
+    if (productsSearchInput) productsSearchInput.addEventListener("input", function () {
+      productsSearch = productsSearchInput.value;
+      var qq = productsSearch.trim().toLowerCase();
+      root.querySelectorAll("table.compact tbody tr[data-search]").forEach(function (tr) {
+        var hay = tr.getAttribute("data-search") || "";
+        tr.style.display = (!qq || hay.indexOf(qq) !== -1) ? "" : "none";
+      });
+    });
+    var productsMachineFilterSel = document.getElementById("productsMachineFilter");
+    if (productsMachineFilterSel) productsMachineFilterSel.addEventListener("change", function () {
+      productsMachineFilter = productsMachineFilterSel.value;
+      renderAdmin(root);
     });
     root.querySelectorAll("[data-remove-product]").forEach(function (btn) {
       btn.addEventListener("click", async function () {
@@ -1594,16 +1699,22 @@
     if (saveRatesBtn) saveRatesBtn.addEventListener("click", async function () {
       var hadError = false;
 
-      // nazwy produktów — zapisz tylko te faktycznie zmienione
+      // nazwy i kody produktów — zapisz tylko te faktycznie zmienione
       var nameUpdates = [];
       root.querySelectorAll("[data-product-name]").forEach(function (inp) {
         var id = inp.getAttribute("data-product-name");
         var newName = inp.value.trim();
+        var codeInp = root.querySelector('[data-product-code="' + id + '"]');
+        var newCode = codeInp ? codeInp.value.trim() : "";
         var current = state.products.filter(function (p) { return p.id === id; })[0];
-        if (current && newName && newName !== current.name) nameUpdates.push({ id: id, name: newName });
+        if (!current) return;
+        var patch = {};
+        if (newName && newName !== current.name) patch.name = newName;
+        if (newCode !== (current.code || "")) patch.code = newCode || null;
+        if (Object.keys(patch).length) nameUpdates.push({ id: id, patch: patch });
       });
       for (var n = 0; n < nameUpdates.length; n++) {
-        var nRes = await sb.from("products").update({ name: nameUpdates[n].name }).eq("id", nameUpdates[n].id);
+        var nRes = await sb.from("products").update(nameUpdates[n].patch).eq("id", nameUpdates[n].id);
         if (nRes.error) hadError = true;
       }
 
@@ -1709,7 +1820,7 @@
       var matching = state.products.filter(function (p) { return state.productRates[p.id] && state.productRates[p.id][machineId] != null; });
       if (matching.length) {
         prodSel.disabled = false;
-        prodSel.innerHTML = matching.map(function (p) { return '<option value="' + p.id + '">' + p.name + '</option>'; }).join("");
+        prodSel.innerHTML = matching.map(function (p) { return '<option value="' + p.id + '">' + (p.code ? p.code + " — " + p.name : p.name) + '</option>'; }).join("");
         hintSlot.innerHTML = "";
         updateCycle();
       } else {
