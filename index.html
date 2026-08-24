@@ -651,6 +651,9 @@
 
   function uid() { return Math.random().toString(36).slice(2, 10); }
   function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  var PRODUCT_CODE_MAXLEN = 30, PRODUCT_NAME_MAXLEN = 250;
+  function clampCode(s) { return String(s == null ? "" : s).trim().slice(0, PRODUCT_CODE_MAXLEN); }
+  function clampName(s) { return String(s == null ? "" : s).trim().slice(0, PRODUCT_NAME_MAXLEN); }
   function fmtPct(x) { return (x * 100).toFixed(1).replace(".", ",") + "%"; }
   function clamp01(x) { return Math.max(0, Math.min(1, x)); }
   function fmtDate(d) {
@@ -1135,8 +1138,8 @@
         return '<td class="num rate-cell"><input type="number" min="0" step="0.1" data-rate-product="' + p.id + '" data-rate-machine="' + m.id + '" value="' + v + '" placeholder="—"></td>';
       }).join("");
       return '<tr data-search="' + escAttr(search) + '">' +
-        '<td><input type="text" data-product-code="' + p.id + '" value="' + escAttr(p.code || "") + '" placeholder="—" style="max-width:110px;"></td>' +
-        '<td><input type="text" data-product-name="' + p.id + '" value="' + escAttr(p.name) + '" style="min-width:160px;"></td>' +
+        '<td><input type="text" data-product-code="' + p.id + '" value="' + escAttr(p.code || "") + '" placeholder="—" maxlength="30" style="width:120px;"></td>' +
+        '<td><input type="text" data-product-name="' + p.id + '" value="' + escAttr(p.name) + '" maxlength="250" style="min-width:220px;"></td>' +
         cells +
         '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-product="' + p.id + '">usuń</button></td></tr>';
     }).join("");
@@ -1155,7 +1158,7 @@
       ? '<div class="empty-hint">Masz ' + machineCount + ' maszyn — wybierz jedną z listy wyżej, żeby zobaczyć i ustawić jej wydajności. Bez wyboru tabela pokazuje tylko kod i nazwę produktu.</div>'
       : '';
 
-    var table = '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Kod</th><th>Produkt</th>' + rateHead + '<th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    var table = '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th style="min-width:120px;">Kod produktu</th><th style="min-width:220px;">Nazwa produktu</th>' + rateHead + '<th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     var tableOrHint = state.products.length ? (hintMsg + table) : '<div class="empty-hint">Brak produktów — dodaj pierwszy poniżej.</div>';
 
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Produkty i wydajność na maszynach</h2>' +
@@ -1163,8 +1166,8 @@
       (state.machines.length ? '' : ' Dodaj najpierw przynajmniej jedną maszynę, żeby ustawiać wydajności.') + '</div></div>' +
       controls + tableOrHint +
       '<form class="inline-add" id="addProductForm">' +
-      '<input type="text" id="newProductCode" placeholder="Kod (opcjonalnie)" style="max-width:140px;">' +
-      '<input type="text" id="newProductName" placeholder="Nazwa produktu">' +
+      '<input type="text" id="newProductCode" placeholder="Kod produktu (opcjonalnie)" maxlength="30" style="max-width:180px;">' +
+      '<input type="text" id="newProductName" placeholder="Nazwa produktu" maxlength="250">' +
       '<button type="submit" class="primary">Dodaj</button></form>' +
       (state.products.length ? '<div class="form-actions" style="margin-top:14px;"><button type="button" class="ghost" id="saveRatesBtn">Zapisz zmiany</button><span class="form-msg" id="rateMsg">Zapisano.</span></div>' : '') +
       '</div>';
@@ -1443,8 +1446,8 @@
           } else {
             code = ""; name = cols[0]; machineName = cols[1]; qtyRaw = cols[2];
           }
-          code = (code == null ? "" : code).toString().trim();
-          name = (name == null ? "" : name).toString().trim();
+          code = clampCode(code);
+          name = clampName(name);
           machineName = (machineName == null ? "" : machineName).toString().trim();
           qtyRaw = (qtyRaw == null ? "" : qtyRaw).toString().trim();
           if (!name) return;
@@ -1699,8 +1702,8 @@
       evt.preventDefault();
       var nameInput = document.getElementById("newProductName");
       var codeInput = document.getElementById("newProductCode");
-      var name = nameInput.value.trim();
-      var code = codeInput ? codeInput.value.trim() : "";
+      var name = clampName(nameInput.value);
+      var code = codeInput ? clampCode(codeInput.value) : "";
       if (!name) return;
       var res = await sb.from("products").insert({ company_id: session.company.id, name: name, code: code || null });
       if (res.error) { bannerMsg = "Nie udało się dodać produktu: " + res.error.message; }
@@ -1739,9 +1742,9 @@
       var nameUpdates = [];
       root.querySelectorAll("[data-product-name]").forEach(function (inp) {
         var id = inp.getAttribute("data-product-name");
-        var newName = inp.value.trim();
+        var newName = clampName(inp.value);
         var codeInp = root.querySelector('[data-product-code="' + id + '"]');
-        var newCode = codeInp ? codeInp.value.trim() : "";
+        var newCode = codeInp ? clampCode(codeInp.value) : "";
         var current = state.products.filter(function (p) { return p.id === id; })[0];
         if (!current) return;
         var patch = {};
