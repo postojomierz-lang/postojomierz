@@ -2262,10 +2262,12 @@
       '</div>' +
       '<div class="detail-kv">' +
       '<div><span class="k">Zmiana</span><span class="v">' + (s.shiftNumber || "—") + '</span></div>' +
-      '<div><span class="k">Plan (min)</span><span class="v">' + s.plannedMin + '</span></div>' +
+      '<div><span class="k">Czas planowany</span><span class="v">' + s.plannedMin + ' min</span></div>' +
       '<div><span class="k">Przestój — zatwierdzony</span><span class="v">' + downtimeCellHtml(s, m) + ' min</span></div>' +
-      '<div><span class="k">Dobre / wadliwe</span><span class="v">' + s.good + ' / ' + s.bad + '</span></div>' +
-      '<div><span class="k">Norma</span><span class="v">' + (m.expectedQty > 0 ? (m.produced + ' z ' + m.expectedQty + ' szt.') : '—') + '</span></div>' +
+      '<div><span class="k">Dobre / wadliwe</span><span class="v">' + s.good + ' / ' + s.bad + ' szt.</span></div>' +
+      '<div><span class="k">Norma — ile powinno powstać</span><span class="v">' + (m.expectedQty > 0 ? (m.produced + ' z ' + m.expectedQty + ' szt.') : '—') + '</span>' +
+      (m.expectedQty > 0 ? '<span class="hint" style="display:block;margin-top:3px;">to nie to samo co „czas planowany" (' + s.plannedMin + ' min) — norma liczona jest w sztukach: ' + s.idealCycleSec + ' s/szt. w dostępnym czasie ' + Math.max(0, s.plannedMin - m.downtimeMin) + ' min</span>' : '') +
+      '</div>' +
       '<div><span class="k">OEE</span><span class="v">' + fmtPct(m.oee) + '</span></div>' +
       '</div>' +
       '<div class="detail-dt-title">Przestoje w tej zmianie</div>' + dtHtml +
