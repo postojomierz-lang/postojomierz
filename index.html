@@ -653,10 +653,12 @@
     }
   } catch (e) { sb = null; }
 
-  var view = "operator";      // "operator" | "admin"
+  var view = "operator";      // "operator" | "admin" | "results"
   var adminTab = "overview";  // "overview" | "machines" | "operators" | "products" | "history" | "settings"
   var productsSearch = "";        // filtr tekstowy w tabeli produktów (nazwa lub kod)
   var productsMachineFilter = ""; // "" = auto, "__all__" = wszystkie kolumny, albo id konkretnej maszyny
+  var resultsOperatorId = null;   // kto jest właśnie "zalogowany" na ekranie Moje wyniki (tylko lokalny stan UI)
+  var resultsVerified = false;    // czy PIN dla resultsOperatorId został potwierdzony w tej sesji ekranu
   var booting = true;
   var session = null;         // { user, profile:{id,role,displayName}, company:{id,name,shiftsPerDay} }
   var authScreen = "login";   // "login" | "signup" | "check-email"
@@ -2224,6 +2226,82 @@
   }
 
   /* =====================================================================
+     WIDOK "MOJE WYNIKI" — operator sam sprawdza swoją historię i OEE,
+     bez wchodzenia do panelu administratora. Jak przy wpisie zmiany,
+     wybiera siebie z listy i potwierdza PIN-em (to nie jest prawdziwe
+     logowanie — chroni tylko przed przypadkowym podejrzeniem cudzych
+     wyników na współdzielonym urządzeniu). PIN trzeba wpisać ponownie
+     za każdym wejściem na ten ekran.
+     ===================================================================== */
+
+  function renderOperatorResults(root) {
+    if (!state.operators.length) {
+      root.innerHTML = bannerHtml() + '<div class="op-hero"><div class="op-card"><div class="op-title">Jeszcze nie ma żadnego operatora</div>' +
+        '<div class="op-sub">Administrator musi najpierw dodać operatora w panelu administratora.</div></div></div>';
+      return;
+    }
+
+    if (!resultsVerified || !resultsOperatorId) {
+      var opOpts = state.operators.map(function (o) { return '<option value="' + o.id + '">' + o.name + '</option>'; }).join("");
+      root.innerHTML = bannerHtml() + '<div class="op-hero"><div class="op-card">' +
+        '<div class="op-title">Moje wyniki</div><div class="op-sub">Wybierz siebie z listy i podaj swój PIN, żeby zobaczyć ostatnie zmiany i wynik.</div>' +
+        '<form class="form-grid" id="resultsGateForm" style="margin-top:20px;">' +
+        '<div class="field span-3"><label for="rOperator">Kto sprawdza wyniki?</label><select id="rOperator">' + opOpts + '</select></div>' +
+        '<div class="field span-3"><label for="rPin">Twój PIN</label><input id="rPin" type="text" inputmode="numeric" maxlength="6"></div>' +
+        '<div class="form-actions"><button type="submit" class="primary">Pokaż moje wyniki</button><span class="form-msg" id="resultsGateMsg">Błędny PIN dla wybranej osoby.</span></div>' +
+        '</form></div></div>';
+      document.getElementById("resultsGateForm").addEventListener("submit", function (evt) {
+        evt.preventDefault();
+        var id = document.getElementById("rOperator").value;
+        var pin = document.getElementById("rPin").value.trim();
+        var op = state.operators.filter(function (o) { return o.id === id; })[0];
+        var msg = document.getElementById("resultsGateMsg");
+        if (!op || pin !== op.pin) { msg.classList.add("show", "error"); document.getElementById("rPin").focus(); return; }
+        resultsOperatorId = id;
+        resultsVerified = true;
+        renderOperatorResults(root);
+      });
+      return;
+    }
+
+    var op = state.operators.filter(function (o) { return o.id === resultsOperatorId; })[0];
+    if (!op) { resultsVerified = false; resultsOperatorId = null; renderOperatorResults(root); return; }
+
+    var mine = state.shifts.filter(function (s) { return s.operatorId === resultsOperatorId; })
+      .sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    var recent = mine.slice(0, 20);
+    var withM = recent.map(function (s) { return calc(s); });
+    var avgOee = withM.length ? withM.reduce(function (sum, m) { return sum + m.oee; }, 0) / withM.length : 0;
+    var withNormBasis = withM.filter(function (m) { return m.expectedQty > 0; });
+    var normRate = withNormBasis.length ? withNormBasis.filter(function (m) { return m.normMet; }).length / withNormBasis.length : null;
+
+    var rows = recent.map(function (s) {
+      var m = calc(s); var t = tier(m.oee);
+      return '<tr><td class="num tabular">' + fmtDate(s.date) + '</td><td>' + machineName(s.machineId) + '</td><td>' + productName(s.productId) + '</td>' +
+        '<td class="num tabular" style="font-weight:600;">' + fmtPct(m.oee) + '</td>' +
+        '<td>' + normCellHtml(m) + '</td>' +
+        '<td><span class="status-pill ' + t.key + '"><span class="dot"></span>' + t.label + '</span></td></tr>';
+    }).join("");
+
+    root.innerHTML = bannerHtml() + '<div class="op-hero"><div class="op-card">' +
+      '<div class="card-top" style="align-items:flex-start;"><div><div class="op-title">Moje wyniki — ' + escAttr(op.name) + '</div>' +
+      '<div class="op-sub">Ostatnie ' + recent.length + (recent.length === 1 ? ' zmiana' : ' zmian') + '.</div></div>' +
+      '<button type="button" class="ghost small" id="resultsSwitchBtn">Zmień osobę</button></div>' +
+      '<div class="apq-rows" style="margin-top:16px;max-width:360px;">' +
+      apqRow("Śr. OEE", avgOee, "var(--chart-avail)") +
+      (normRate != null ? apqRow("Norma", normRate, "var(--chart-perf)") : '') +
+      '</div>' +
+      (recent.length
+        ? '<div class="table-scroll" style="margin-top:16px;"><table class="compact"><thead><tr><th>Data</th><th>Maszyna</th><th>Produkt</th><th class="num">OEE</th><th>Norma</th><th>Ocena</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+        : '<div class="empty-hint" style="margin-top:16px;">Nie masz jeszcze żadnych zapisanych zmian.</div>') +
+      '</div></div>';
+
+    document.getElementById("resultsSwitchBtn").addEventListener("click", function () {
+      resultsVerified = false; resultsOperatorId = null; renderOperatorResults(root);
+    });
+  }
+
+  /* =====================================================================
      LOGOWANIE (magic link, bez haseł)
      ===================================================================== */
 
@@ -2293,6 +2371,7 @@
       '<div class="tagline">Widzisz w minutę, gdzie warsztat traci produkcję.</div></div>' +
       '<div class="topbar-right"><div class="role-tabs">' +
       '<button type="button" class="role-tab ' + (view === "operator" ? "active" : "") + '" data-role="operator">Wpis operatora</button>' +
+      '<button type="button" class="role-tab ' + (view === "results" ? "active" : "") + '" data-role="results">Moje wyniki</button>' +
       (isAdmin ? '<button type="button" class="role-tab ' + (view === "admin" ? "active" : "") + '" data-role="admin">Panel administratora</button>' : '') +
       '</div><div class="topbar-meta"><span class="num tabular" id="todayLabel"></span>' +
       '<button type="button" class="ghost small" id="signOutBtn">Wyloguj (' + session.user.email + ')</button></div></div></header>';
@@ -2315,17 +2394,25 @@
 
     if (view === "admin" && session.profile.role !== "admin") view = "operator";
 
-    var viewportHtml = view === "admin" ? '<div id="adminRoot"></div>' : '<div id="operatorRoot"></div>';
+    var viewportHtml = view === "admin" ? '<div id="adminRoot"></div>' : (view === "results" ? '<div id="resultsRoot"></div>' : '<div id="operatorRoot"></div>');
     app.innerHTML = headerHtml() + '<div id="viewport">' + viewportHtml + '</div>' + footerHtml();
     document.getElementById("todayLabel").textContent = new Date().toLocaleDateString("pl-PL", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
     app.querySelectorAll("[data-role]").forEach(function (btn) {
-      btn.addEventListener("click", function () { view = btn.getAttribute("data-role"); renderApp(); });
+      btn.addEventListener("click", function () {
+        var nextView = btn.getAttribute("data-role");
+        // za każdym wejściem na "Moje wyniki" trzeba potwierdzić PIN na nowo —
+        // to współdzielone urządzenie, więc nie zostawiamy cudzych wyników odsłoniętych
+        if (nextView !== view) { resultsVerified = false; resultsOperatorId = null; }
+        view = nextView;
+        renderApp();
+      });
     });
     var signOutBtn = document.getElementById("signOutBtn");
     if (signOutBtn) signOutBtn.addEventListener("click", function () { sb.auth.signOut(); });
 
     if (view === "admin") renderAdmin(document.getElementById("adminRoot"));
+    else if (view === "results") renderOperatorResults(document.getElementById("resultsRoot"));
     else renderOperator(document.getElementById("operatorRoot"));
   }
 
