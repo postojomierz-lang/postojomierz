@@ -593,6 +593,10 @@
   /* ===== Operator view ===== */
   .op-hero { max-width: 640px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 18px; }
   .op-hero.wide { max-width: 980px; }
+  .target-banner { background: var(--status-good-wash); border: 1px solid var(--status-good); border-radius: 10px; padding: 12px 14px; font-size: 13.5px; }
+  .target-banner b { font-family: "IBM Plex Mono", monospace; font-size: 16px; }
+  .target-banner .hint { display: block; margin-top: 3px; }
+  .target-banner.empty { background: var(--surface-2); border-color: var(--border); color: var(--ink-muted); }
   .op-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; box-shadow: var(--shadow); }
   tr.result-row { cursor: pointer; }
   tr.result-row:hover td { background: var(--surface-2); }
@@ -664,8 +668,8 @@
     }
   } catch (e) { sb = null; }
 
-  var view = "operator";      // "operator" | "admin" | "results"
-  var adminTab = "overview";  // "overview" | "machines" | "operators" | "products" | "history" | "settings"
+  var view = "operator";      // "operator" | "results" | "manager" | "admin"
+  var adminTab = "machines";  // aktywna zakładka w panelu administratora LUB panelu kierownika (patrz CONFIG_TABS/MANAGER_TABS)
   var productsSearch = "";        // filtr tekstowy w tabeli produktów (nazwa lub kod)
   var productsMachineFilter = ""; // "" = auto, "__all__" = wszystkie kolumny, albo id konkretnej maszyny
   var resultsOperatorId = null;   // kto jest właśnie "zalogowany" na ekranie Moje wyniki (tylko lokalny stan UI)
@@ -745,8 +749,11 @@
       bannerMsg = "";
     }
 
-    state.machines = (results[0].data || []).map(function (m) { return { id: m.id, name: m.name, tpzMin: Number(m.tpz_min || 0) }; });
-    state.products = (results[1].data || []).map(function (p) { return { id: p.id, name: p.name, code: p.code || "" }; });
+    // alfabetycznie po nazwie (lokalizacja "pl", bez rozróżniania wielkości liter) — łatwiej
+    // znaleźć maszynę/produkt na oko, gdy jest ich dużo, niż po kolejności dodania
+    function byName(a, b) { return a.name.localeCompare(b.name, "pl", { sensitivity: "base" }); }
+    state.machines = (results[0].data || []).map(function (m) { return { id: m.id, name: m.name, tpzMin: Number(m.tpz_min || 0) }; }).sort(byName);
+    state.products = (results[1].data || []).map(function (p) { return { id: p.id, name: p.name, code: p.code || "" }; }).sort(byName);
     state.productRates = rowsToProductRates(results[2].data || []);
     state.shifts = (results[3].data || []).map(shiftFromRow);
     state.diagnoses = rowsToDiagnoses(results[4].data || []);
@@ -1335,19 +1342,27 @@
      ZAKŁADKI PANELU ADMINA
      ===================================================================== */
 
-  var ADMIN_TABS = [
-    { key: "overview", label: "Przegląd" },
+  // Panel administratora = konfiguracja warsztatu (rzadkie zmiany: co mamy, kto pracuje, jak liczymy).
+  // Panel kierownika = codzienna praca nad wynikiem (przegląd, zatwierdzanie przestojów, historia).
+  // Oba na razie dostępne tylko dla roli 'admin' (patrz komentarz przy renderApp) — to rozdzielenie
+  // ekranów przygotowuje grunt pod prawdziwą, osobną rolę "kierownik", o którą prosiłeś wcześniej.
+  var CONFIG_TABS = [
     { key: "machines", label: "Maszyny" },
     { key: "operators", label: "Operatorzy" },
     { key: "products", label: "Produkty" },
-    { key: "downtimes", label: "Przestoje" },
-    { key: "history", label: "Historia" },
     { key: "settings", label: "Ustawienia" }
   ];
+  var MANAGER_TABS = [
+    { key: "overview", label: "Przegląd" },
+    { key: "downtimes", label: "Przestoje" },
+    { key: "history", label: "Historia" }
+  ];
+
+  function currentTabSet() { return view === "manager" ? MANAGER_TABS : CONFIG_TABS; }
 
   function adminTabsHtml() {
     var pendingCount = state.shiftDowntimes.filter(function (d) { return d.status === "pending"; }).length;
-    var tabs = ADMIN_TABS.map(function (t) {
+    var tabs = currentTabSet().map(function (t) {
       var label = t.label + (t.key === "downtimes" && pendingCount ? " (" + pendingCount + ")" : "");
       return '<button type="button" class="admin-tab' + (adminTab === t.key ? " active" : "") + '" data-admin-tab="' + t.key + '">' + label + '</button>';
     }).join("");
@@ -2078,6 +2093,7 @@
       '<button type="button" class="ghost small" id="unlockPlannedBtn" style="flex:none;">Odblokuj</button></div>' +
       '<span class="hint" id="plannedHint"></span></div>' +
       '<div id="rateHintSlot" style="grid-column:1/-1;"></div>' +
+      '<div id="targetBox" class="target-banner empty" style="grid-column:1/-1;">Cel pojawi się po wybraniu maszyny i produktu.</div>' +
       '<div class="field span-3"><label for="fGood">Sztuki dobre</label><input id="fGood" type="number" min="0" step="1"></div>' +
       '<div class="field span-3"><label for="fBad">Sztuki wadliwe</label><input id="fBad" type="number" min="0" step="1"></div>' +
       '<div class="field" style="grid-column:1/-1;"><label>Przestoje w tej zmianie</label>' +
@@ -2106,12 +2122,16 @@
         prodSel.innerHTML = '<option value="">— brak zdefiniowanych produktów —</option>';
         cycleAuto.value = "";
         hintSlot.innerHTML = '<div class="field" style="max-width:280px;"><label for="fCycleManual">Czas cyklu ręcznie (s/szt.)</label><input id="fCycleManual" type="number" min="0.1" step="0.1"><span class="hint warn">Administrator nie ustawił jeszcze wydajności produktów dla tej maszyny.</span></div>';
+        var manualInp = document.getElementById("fCycleManual");
+        if (manualInp) manualInp.addEventListener("input", updateTarget);
       }
+      updateTarget();
     }
     function updateCycle() {
       var machineId = machSel.value, productId = prodSel.value;
       var rate = state.productRates[productId] ? state.productRates[productId][machineId] : null;
       cycleAuto.value = rate ? (rate + " s/szt.") : "";
+      updateTarget();
     }
     function suggestPlanned() {
       var machineId = machSel.value;
@@ -2123,9 +2143,32 @@
       if (plannedInput) { plannedInput.value = suggested; plannedInput.disabled = true; }
       if (unlockBtn) { unlockBtn.disabled = false; unlockBtn.textContent = "Odblokuj"; }
       if (hintEl) hintEl.textContent = "Wyliczone: " + state.settings.shiftLengthMin + " − przerwa " + state.settings.breakMin + " − nieefektywny " + state.settings.ineffectiveMin + " − TPZ " + (m ? (m.tpzMin || 0) : 0) + " = " + suggested + " min. Zwykły wpis go nie zmienia — poprawić ręcznie może administrator przyciskiem obok.";
+      updateTarget();
+    }
+    // pokazuje operatorowi, ile sztuk POWINIEN zrobić w tej zmianie — żeby wiedział to
+    // od razu, a nie dopiero po zapisaniu. Orientacyjnie: norma × czas planowany, jeszcze
+    // bez odjęcia przestoju (bo ten dopiero się zdarzy) — ostateczna ocena normy przeliczy
+    // się po zapisaniu zmiany, z uwzględnieniem zatwierdzonego przestoju.
+    function updateTarget() {
+      var box = document.getElementById("targetBox");
+      if (!box) return;
+      var machineId = machSel.value, productId = prodSel.value;
+      var manualCycle = document.getElementById("fCycleManual");
+      var idealCycleSec = productId ? (state.productRates[productId] ? state.productRates[productId][machineId] : null) : (manualCycle ? parseFloat(manualCycle.value) : null);
+      var plannedMin = parseFloat((document.getElementById("fPlanned") || {}).value) || 0;
+      if (idealCycleSec && plannedMin > 0) {
+        var qty = Math.floor((plannedMin * 60) / idealCycleSec);
+        box.className = "target-banner";
+        box.innerHTML = "Cel na tę zmianę: <b>" + qty + " szt.</b> <span class=\"hint\">(norma " + idealCycleSec + " s/szt. przy " + plannedMin + " min czasu planowanego — orientacyjnie, bo ostateczna ocena uwzględni jeszcze zatwierdzony przestój)</span>";
+      } else {
+        box.className = "target-banner empty";
+        box.textContent = "Cel pojawi się po wybraniu maszyny i produktu.";
+      }
     }
     machSel.addEventListener("change", refreshProducts);
     machSel.addEventListener("change", suggestPlanned);
+    var fPlannedInput = document.getElementById("fPlanned");
+    if (fPlannedInput) fPlannedInput.addEventListener("input", updateTarget);
     prodSel.addEventListener("change", updateCycle);
     refreshProducts();
     suggestPlanned();
@@ -2140,7 +2183,7 @@
     });
 
     function downtimeReasonOptionsHtml() {
-      if (!state.downtimeReasons.length) return '<option value="">— brak powodów, dodaj je w Panelu administratora → Przestoje —</option>';
+      if (!state.downtimeReasons.length) return '<option value="">— brak powodów, dodaj je w Panelu kierownika → Przestoje —</option>';
       return state.downtimeReasons.map(function (r) { return '<option value="' + r.id + '">' + escAttr(r.name) + '</option>'; }).join("");
     }
     function addDowntimeRow() {
@@ -2422,6 +2465,7 @@
       '<div class="topbar-right"><div class="role-tabs">' +
       '<button type="button" class="role-tab ' + (view === "operator" ? "active" : "") + '" data-role="operator">Wpis operatora</button>' +
       '<button type="button" class="role-tab ' + (view === "results" ? "active" : "") + '" data-role="results">Moje wyniki</button>' +
+      (isAdmin ? '<button type="button" class="role-tab ' + (view === "manager" ? "active" : "") + '" data-role="manager">Panel kierownika</button>' : '') +
       (isAdmin ? '<button type="button" class="role-tab ' + (view === "admin" ? "active" : "") + '" data-role="admin">Panel administratora</button>' : '') +
       '</div><div class="topbar-meta"><span class="num tabular" id="todayLabel"></span>' +
       '<button type="button" class="ghost small" id="signOutBtn">Wyloguj (' + session.user.email + ')</button></div></div></header>';
@@ -2442,18 +2486,32 @@
       return;
     }
 
-    if (view === "admin" && session.profile.role !== "admin") view = "operator";
+    // Panel administratora i Panel kierownika są na razie oba dostępne tylko roli 'admin' —
+    // prawdziwej, osobnej roli "kierownik" (z własnym logowaniem) jeszcze nie ma w bazie,
+    // ale ekrany są już rozdzielone, więc podłączenie tej roli później to tylko zmiana
+    // tego warunku, bez przebudowy interfejsu.
+    if ((view === "admin" || view === "manager") && session.profile.role !== "admin") view = "operator";
 
-    var viewportHtml = view === "admin" ? '<div id="adminRoot"></div>' : (view === "results" ? '<div id="resultsRoot"></div>' : '<div id="operatorRoot"></div>');
+    var viewportHtml = view === "admin" ? '<div id="adminRoot"></div>'
+      : view === "manager" ? '<div id="managerRoot"></div>'
+      : view === "results" ? '<div id="resultsRoot"></div>'
+      : '<div id="operatorRoot"></div>';
     app.innerHTML = headerHtml() + '<div id="viewport">' + viewportHtml + '</div>' + footerHtml();
     document.getElementById("todayLabel").textContent = new Date().toLocaleDateString("pl-PL", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
     app.querySelectorAll("[data-role]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var nextView = btn.getAttribute("data-role");
-        // za każdym wejściem na "Moje wyniki" trzeba potwierdzić PIN na nowo —
-        // to współdzielone urządzenie, więc nie zostawiamy cudzych wyników odsłoniętych
-        if (nextView !== view) { resultsVerified = false; resultsOperatorId = null; }
+        if (nextView !== view) {
+          // za każdym wejściem na "Moje wyniki" trzeba potwierdzić PIN na nowo —
+          // to współdzielone urządzenie, więc nie zostawiamy cudzych wyników odsłoniętych
+          resultsVerified = false; resultsOperatorId = null;
+          // panel administratora i panel kierownika mają teraz osobne zestawy zakładek —
+          // przy przejściu między nimi wróć na domyślną zakładkę tego panelu, żeby nie
+          // pokazać treści zakładki, której przycisku w ogóle tam nie ma
+          if (nextView === "manager" && !MANAGER_TABS.some(function (t) { return t.key === adminTab; })) adminTab = "overview";
+          if (nextView === "admin" && !CONFIG_TABS.some(function (t) { return t.key === adminTab; })) adminTab = "machines";
+        }
         view = nextView;
         renderApp();
       });
@@ -2462,6 +2520,7 @@
     if (signOutBtn) signOutBtn.addEventListener("click", function () { sb.auth.signOut(); });
 
     if (view === "admin") renderAdmin(document.getElementById("adminRoot"));
+    else if (view === "manager") renderAdmin(document.getElementById("managerRoot")); // ta sama logika renderowania zakładek, inny zestaw zakładek (patrz currentTabSet)
     else if (view === "results") renderOperatorResults(document.getElementById("resultsRoot"));
     else renderOperator(document.getElementById("operatorRoot"));
   }
@@ -2498,7 +2557,11 @@
         ineffectiveMin: profR.data.companies.ineffective_min || 0
       }
     };
-    view = session.profile.role === "admin" ? "admin" : "operator";
+    // po zalogowaniu admin trafia od razu na Panel kierownika (przegląd wyników) — to jest
+    // ekran, który dawniej był domyślną zakładką jednego wspólnego panelu administratora;
+    // po rozdzieleniu na Panel kierownika / Panel administratora to on został "pierwszym ekranem",
+    // a konfiguracja (Maszyny/Operatorzy/Produkty/Ustawienia) jest jedno kliknięcie dalej
+    view = session.profile.role === "admin" ? "manager" : "operator";
     await loadCompanyData();
     booting = false;
     renderApp();
