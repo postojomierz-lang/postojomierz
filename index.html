@@ -1,3 +1,5 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <title>Postojomierz</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -590,7 +592,16 @@
 
   /* ===== Operator view ===== */
   .op-hero { max-width: 640px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 18px; }
+  .op-hero.wide { max-width: 980px; }
   .op-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; box-shadow: var(--shadow); }
+  tr.result-row { cursor: pointer; }
+  tr.result-row:hover td { background: var(--surface-2); }
+  tr.result-row.open td { background: var(--surface-2); }
+  tr.detail-row td { background: var(--surface-2); padding: 18px; }
+  .detail-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 22px; margin-top: 16px; }
+  .detail-kv .k { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); }
+  .detail-kv .v { display: block; font-size: 14.5px; font-weight: 600; margin-top: 3px; }
+  .detail-dt-title { font-size: 12px; font-weight: 600; color: var(--ink-2); margin: 16px 0 8px; }
   .op-title { font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 28px; }
   .op-sub { color: var(--ink-2); font-size: 14px; margin-top: 6px; }
   .rate-hint { grid-column: 1 / -1; font-size: 12.5px; color: var(--ink-2); background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
@@ -659,6 +670,7 @@
   var productsMachineFilter = ""; // "" = auto, "__all__" = wszystkie kolumny, albo id konkretnej maszyny
   var resultsOperatorId = null;   // kto jest właśnie "zalogowany" na ekranie Moje wyniki (tylko lokalny stan UI)
   var resultsVerified = false;    // czy PIN dla resultsOperatorId został potwierdzony w tej sesji ekranu
+  var resultsExpandedId = null;   // id zmiany rozwiniętej w szczegóły na ekranie Moje wyniki
   var booting = true;
   var session = null;         // { user, profile:{id,role,displayName}, company:{id,name,shiftsPerDay} }
   var authScreen = "login";   // "login" | "signup" | "check-email"
@@ -2234,6 +2246,32 @@
      za każdym wejściem na ten ekran.
      ===================================================================== */
 
+  function resultDetailRowHtml(s, m) {
+    var items = state.downtimesByShift[s.id] || [];
+    var dtHtml = items.length
+      ? items.map(function (d) {
+          var st = d.status === "pending" ? "oczekuje" : (d.status === "approved" ? "zatwierdzony" : "odrzucony");
+          return '<div class="review-item"><div class="meta"><b>' + escAttr(reasonName(d.reasonId)) + '</b> — ' + d.minutes + ' min' +
+            (d.note ? ' · „' + escAttr(d.note) + '"' : '') + '</div><span class="status-tag ' + d.status + '">' + st + '</span></div>';
+        }).join("")
+      : '<div class="empty-hint">Brak zgłoszonych przestojów w tej zmianie.</div>';
+
+    return '<tr class="detail-row" data-detail-for="' + s.id + '"><td colspan="6"><div class="detail-panel">' +
+      '<div class="apq-rows" style="max-width:420px;">' +
+      apqRow("Dostępność", m.availability, "var(--chart-avail)") + apqRow("Wydajność", m.performance, "var(--chart-perf)") + apqRow("Jakość", m.quality, "var(--chart-qual)") +
+      '</div>' +
+      '<div class="detail-kv">' +
+      '<div><span class="k">Zmiana</span><span class="v">' + (s.shiftNumber || "—") + '</span></div>' +
+      '<div><span class="k">Plan (min)</span><span class="v">' + s.plannedMin + '</span></div>' +
+      '<div><span class="k">Przestój — zatwierdzony</span><span class="v">' + downtimeCellHtml(s, m) + ' min</span></div>' +
+      '<div><span class="k">Dobre / wadliwe</span><span class="v">' + s.good + ' / ' + s.bad + '</span></div>' +
+      '<div><span class="k">Norma</span><span class="v">' + (m.expectedQty > 0 ? (m.produced + ' z ' + m.expectedQty + ' szt.') : '—') + '</span></div>' +
+      '<div><span class="k">OEE</span><span class="v">' + fmtPct(m.oee) + '</span></div>' +
+      '</div>' +
+      '<div class="detail-dt-title">Przestoje w tej zmianie</div>' + dtHtml +
+      '</div></td></tr>';
+  }
+
   function renderOperatorResults(root) {
     if (!state.operators.length) {
       root.innerHTML = bannerHtml() + '<div class="op-hero"><div class="op-card"><div class="op-title">Jeszcze nie ma żadnego operatora</div>' +
@@ -2259,6 +2297,7 @@
         if (!op || pin !== op.pin) { msg.classList.add("show", "error"); document.getElementById("rPin").focus(); return; }
         resultsOperatorId = id;
         resultsVerified = true;
+        resultsExpandedId = null;
         renderOperatorResults(root);
       });
       return;
@@ -2277,15 +2316,17 @@
 
     var rows = recent.map(function (s) {
       var m = calc(s); var t = tier(m.oee);
-      return '<tr><td class="num tabular">' + fmtDate(s.date) + '</td><td>' + machineName(s.machineId) + '</td><td>' + productName(s.productId) + '</td>' +
+      var open = resultsExpandedId === s.id;
+      var row = '<tr class="result-row' + (open ? " open" : "") + '" data-shift-id="' + s.id + '"><td class="num tabular">' + fmtDate(s.date) + '</td><td>' + machineName(s.machineId) + '</td><td>' + productName(s.productId) + '</td>' +
         '<td class="num tabular" style="font-weight:600;">' + fmtPct(m.oee) + '</td>' +
         '<td>' + normCellHtml(m) + '</td>' +
         '<td><span class="status-pill ' + t.key + '"><span class="dot"></span>' + t.label + '</span></td></tr>';
+      return row + (open ? resultDetailRowHtml(s, m) : "");
     }).join("");
 
-    root.innerHTML = bannerHtml() + '<div class="op-hero"><div class="op-card">' +
+    root.innerHTML = bannerHtml() + '<div class="op-hero wide"><div class="op-card">' +
       '<div class="card-top" style="align-items:flex-start;"><div><div class="op-title">Moje wyniki — ' + escAttr(op.name) + '</div>' +
-      '<div class="op-sub">Ostatnie ' + recent.length + (recent.length === 1 ? ' zmiana' : ' zmian') + '.</div></div>' +
+      '<div class="op-sub">Ostatnie ' + recent.length + (recent.length === 1 ? ' zmiana' : ' zmian') + '.' + (recent.length ? ' Kliknij wiersz, żeby zobaczyć szczegóły.' : '') + '</div></div>' +
       '<button type="button" class="ghost small" id="resultsSwitchBtn">Zmień osobę</button></div>' +
       '<div class="apq-rows" style="margin-top:16px;max-width:360px;">' +
       apqRow("Śr. OEE", avgOee, "var(--chart-avail)") +
@@ -2297,7 +2338,14 @@
       '</div></div>';
 
     document.getElementById("resultsSwitchBtn").addEventListener("click", function () {
-      resultsVerified = false; resultsOperatorId = null; renderOperatorResults(root);
+      resultsVerified = false; resultsOperatorId = null; resultsExpandedId = null; renderOperatorResults(root);
+    });
+    root.querySelectorAll("tr.result-row").forEach(function (tr) {
+      tr.addEventListener("click", function () {
+        var id = tr.getAttribute("data-shift-id");
+        resultsExpandedId = resultsExpandedId === id ? null : id;
+        renderOperatorResults(root);
+      });
     });
   }
 
