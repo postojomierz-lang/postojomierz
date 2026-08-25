@@ -369,6 +369,7 @@
   .form-msg { font-size: 12.5px; color: var(--status-good); opacity: 0; transition: opacity 0.2s ease; }
   .form-msg.show { opacity: 1; }
   .form-msg.error { color: var(--status-crit); }
+  .form-msg.warn { color: var(--status-warn); }
 
   /* ===== Card actions / diagnosis ===== */
   .card-actions { display: flex; flex-direction: column; gap: 6px; }
@@ -505,6 +506,8 @@
   .table-scroll { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
   table { width: 100%; border-collapse: collapse; min-width: 860px; background: var(--surface); }
   table.compact { min-width: 560px; }
+  table.fixed-layout { table-layout: fixed; }
+  table.fixed-layout td { overflow-wrap: break-word; }
   thead th {
     text-align: left;
     font-size: 11px;
@@ -601,10 +604,12 @@
   tr.result-row { cursor: pointer; }
   tr.result-row:hover td { background: var(--surface-2); }
   tr.result-row.open td { background: var(--surface-2); }
-  tr.detail-row td { background: var(--surface-2); padding: 18px; }
+  tr.detail-row td { background: var(--surface-2); padding: 18px; white-space: normal; }
   .detail-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 22px; margin-top: 16px; }
+  .detail-kv > div { min-width: 0; }
   .detail-kv .k { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); }
-  .detail-kv .v { display: block; font-size: 14.5px; font-weight: 600; margin-top: 3px; }
+  .detail-kv .v { display: block; font-size: 14.5px; font-weight: 600; margin-top: 3px; overflow-wrap: break-word; }
+  .detail-kv .hint { display: block; margin-top: 4px; font-size: 11.5px; color: var(--ink-muted); overflow-wrap: break-word; }
   .detail-dt-title { font-size: 12px; font-weight: 600; color: var(--ink-2); margin: 16px 0 8px; }
   .op-title { font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 28px; }
   .op-sub { color: var(--ink-2); font-size: 14px; margin-top: 6px; }
@@ -2202,10 +2207,29 @@
     var addDowntimeRowBtn = document.getElementById("addDowntimeRowBtn");
     if (addDowntimeRowBtn) addDowntimeRowBtn.addEventListener("click", addDowntimeRow);
 
+    // zabezpieczenie przed podwójnym wpisem: jeśli ten sam operator już ma zapisaną zmianę
+    // dla tej samej maszyny, produktu, daty i numeru zmiany, ostrzegamy zamiast od razu
+    // zapisywać — pierwsze kliknięcie "Zapisz zmianę" pokazuje ostrzeżenie i zamienia
+    // przycisk na "Zapisz mimo to", dopiero drugie kliknięcie faktycznie zapisuje. Zmiana
+    // któregokolwiek z pól, które współtworzą to rozpoznanie, kasuje potwierdzenie —
+    // żeby nie "przykleiło się" przypadkiem do innej kombinacji.
+    var duplicateConfirmed = false;
+    function resetDuplicateGuard() {
+      duplicateConfirmed = false;
+      var btn = document.getElementById("opSubmitBtn");
+      if (btn) btn.textContent = "Zapisz zmianę";
+      var opMsg = document.getElementById("opFormMsg");
+      if (opMsg) opMsg.classList.remove("show", "warn");
+    }
+    ["fMachine", "fProduct", "fDate", "fShiftNum", "fOperator"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener("change", resetDuplicateGuard);
+    });
+
     document.getElementById("opForm").addEventListener("submit", async function (evt) {
       evt.preventDefault();
       var opMsg = document.getElementById("opFormMsg");
-      opMsg.classList.remove("show", "error");
+      opMsg.classList.remove("show", "error", "warn");
 
       var operatorId = document.getElementById("fOperator").value;
       var enteredPin = document.getElementById("fPin").value.trim();
@@ -2222,6 +2246,21 @@
       var idealCycleSec = productId ? (state.productRates[productId] ? state.productRates[productId][machineId] : null) : (manualCycle ? parseFloat(manualCycle.value) : null);
       if (!idealCycleSec) { (manualCycle || cycleAuto).focus(); return; }
 
+      var shiftDateVal = document.getElementById("fDate").value || new Date().toISOString().slice(0, 10);
+      var shiftNumVal = parseInt(document.getElementById("fShiftNum").value, 10);
+      var isDuplicate = state.shifts.some(function (s) {
+        return s.machineId === machineId && s.operatorId === operatorId && s.productId === productId &&
+          s.date === shiftDateVal && s.shiftNumber === shiftNumVal;
+      });
+      if (isDuplicate && !duplicateConfirmed) {
+        duplicateConfirmed = true;
+        opMsg.textContent = "Masz już zapisany wpis dla tej maszyny, produktu, daty i numeru zmiany — jeśli to nie pomyłka, kliknij jeszcze raz „Zapisz mimo to”.";
+        opMsg.classList.add("show", "warn");
+        var submitBtnWarn = document.getElementById("opSubmitBtn");
+        if (submitBtnWarn) submitBtnWarn.textContent = "Zapisz mimo to";
+        return;
+      }
+
       var downtimeItems = [], totalDowntimeMin = 0;
       document.querySelectorAll(".downtime-row").forEach(function (rowEl) {
         var minInp = rowEl.querySelector("[data-dt-minutes]");
@@ -2237,9 +2276,9 @@
         company_id: session.company.id,
         machine_id: machineId,
         operator_id: operatorId,
-        shift_number: parseInt(document.getElementById("fShiftNum").value, 10),
+        shift_number: shiftNumVal,
         product_id: productId,
-        shift_date: document.getElementById("fDate").value || new Date().toISOString().slice(0, 10),
+        shift_date: shiftDateVal,
         planned_min: parseFloat(document.getElementById("fPlanned").value) || 0,
         downtime_min: totalDowntimeMin,
         ideal_cycle_sec: idealCycleSec,
@@ -2299,7 +2338,7 @@
         }).join("")
       : '<div class="empty-hint">Brak zgłoszonych przestojów w tej zmianie.</div>';
 
-    return '<tr class="detail-row" data-detail-for="' + s.id + '"><td colspan="6"><div class="detail-panel">' +
+    return '<tr class="detail-row" data-detail-for="' + s.id + '"><td colspan="7"><div class="detail-panel">' +
       '<div class="apq-rows" style="max-width:420px;">' +
       apqRow("Dostępność", m.availability, "var(--chart-avail)") + apqRow("Wydajność", m.performance, "var(--chart-perf)") + apqRow("Jakość", m.quality, "var(--chart-qual)") +
       '</div>' +
@@ -2309,7 +2348,7 @@
       '<div><span class="k">Przestój — zatwierdzony</span><span class="v">' + downtimeCellHtml(s, m) + ' min</span></div>' +
       '<div><span class="k">Dobre / wadliwe</span><span class="v">' + s.good + ' / ' + s.bad + ' szt.</span></div>' +
       '<div><span class="k">Norma — ile powinno powstać</span><span class="v">' + (m.expectedQty > 0 ? (m.produced + ' z ' + m.expectedQty + ' szt.') : '—') + '</span>' +
-      (m.expectedQty > 0 ? '<span class="hint" style="display:block;margin-top:3px;">to nie to samo co „czas planowany" (' + s.plannedMin + ' min) — norma liczona jest w sztukach: ' + s.idealCycleSec + ' s/szt. w dostępnym czasie ' + Math.max(0, s.plannedMin - m.downtimeMin) + ' min</span>' : '') +
+      (m.expectedQty > 0 ? '<span class="hint">to nie to samo co „czas planowany" (' + s.plannedMin + ' min) — norma liczona jest w sztukach: ' + s.idealCycleSec + ' s/szt. w dostępnym czasie ' + Math.max(0, s.plannedMin - m.downtimeMin) + ' min</span>' : '') +
       '</div>' +
       '<div><span class="k">OEE</span><span class="v">' + fmtPct(m.oee) + '</span></div>' +
       '</div>' +
@@ -2362,12 +2401,18 @@
     var rows = recent.map(function (s) {
       var m = calc(s); var t = tier(m.oee);
       var open = resultsExpandedId === s.id;
-      var row = '<tr class="result-row' + (open ? " open" : "") + '" data-shift-id="' + s.id + '"><td class="num tabular">' + fmtDate(s.date) + '</td><td>' + machineName(s.machineId) + '</td><td>' + productName(s.productId) + '</td>' +
+      var row = '<tr class="result-row' + (open ? " open" : "") + '" data-shift-id="' + s.id + '"><td class="num tabular">' + fmtDate(s.date) + '</td>' +
+        '<td class="num tabular">' + (s.shiftNumber || "—") + '</td><td>' + machineName(s.machineId) + '</td><td>' + productName(s.productId) + '</td>' +
         '<td class="num tabular" style="font-weight:600;">' + fmtPct(m.oee) + '</td>' +
         '<td>' + normCellHtml(m) + '</td>' +
         '<td><span class="status-pill ' + t.key + '"><span class="dot"></span>' + t.label + '</span></td></tr>';
       return row + (open ? resultDetailRowHtml(s, m) : "");
     }).join("");
+
+    // table-layout:fixed + kolgrupa — bez tego siatka ze szczegółami zmiany (detail-kv) w
+    // rozwiniętym wierszu nie ma jasno określonej szerokości do policzenia i potrafi się
+    // rozjechać w bok (kolumna "Norma" z długim komentarzem uciekała poza kartę)
+    var colgroupHtml = '<colgroup><col style="width:12%"><col style="width:8%"><col style="width:16%"><col style="width:22%"><col style="width:9%"><col style="width:18%"><col style="width:15%"></colgroup>';
 
     root.innerHTML = bannerHtml() + '<div class="op-hero wide"><div class="op-card">' +
       '<div class="card-top" style="align-items:flex-start;"><div><div class="op-title">Moje wyniki — ' + escAttr(op.name) + '</div>' +
@@ -2378,7 +2423,7 @@
       (normRate != null ? apqRow("Norma", normRate, "var(--chart-perf)") : '') +
       '</div>' +
       (recent.length
-        ? '<div class="table-scroll" style="margin-top:16px;"><table class="compact"><thead><tr><th>Data</th><th>Maszyna</th><th>Produkt</th><th class="num">OEE</th><th>Norma</th><th>Ocena</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+        ? '<div class="table-scroll" style="margin-top:16px;"><table class="compact fixed-layout">' + colgroupHtml + '<thead><tr><th>Data</th><th class="num">Zmiana</th><th>Maszyna</th><th>Produkt</th><th class="num">OEE</th><th>Norma</th><th>Ocena</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
         : '<div class="empty-hint" style="margin-top:16px;">Nie masz jeszcze żadnych zapisanych zmian.</div>') +
       '</div></div>';
 
