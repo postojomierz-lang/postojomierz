@@ -544,6 +544,22 @@
     cursor: pointer;
   }
   .admin-tab.active { background: var(--surface); color: var(--brand); box-shadow: var(--shadow); }
+  .period-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 14px; }
+  .period-tab {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 7px 12px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .period-tab.active { background: var(--surface); color: var(--brand); box-shadow: var(--shadow); }
+  .period-extra { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); padding: 0 6px; }
+  .period-extra input[type="number"] { width: 64px; }
+  .period-extra input { font-family: "IBM Plex Sans", sans-serif; font-size: 12.5px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
   .import-box { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 8px; }
   .import-head { display: flex; flex-direction: column; gap: 3px; }
   .import-head .hint { font-size: 11.5px; color: var(--ink-muted); max-width: 60ch; }
@@ -680,6 +696,8 @@
   var resultsOperatorId = null;   // kto jest właśnie "zalogowany" na ekranie Moje wyniki (tylko lokalny stan UI)
   var resultsVerified = false;    // czy PIN dla resultsOperatorId został potwierdzony w tej sesji ekranu
   var resultsExpandedId = null;   // id zmiany rozwiniętej w szczegóły na ekranie Moje wyniki
+  var resultsPeriod = { mode: "count", count: 10, from: null, to: null };  // okres podsumowania na ekranie Moje wyniki
+  var managerPeriod = { mode: "week", count: 20, from: null, to: null };  // okres podsumowania w Panelu kierownika → Przegląd
   var booting = true;
   var session = null;         // { user, profile:{id,role,displayName}, company:{id,name,shiftsPerDay} }
   var authScreen = "login";   // "login" | "signup" | "check-email"
@@ -696,6 +714,90 @@
   function fmtDate(d) {
     var dt = new Date(d + "T00:00:00");
     return dt.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+
+  /* =====================================================================
+     PODSUMOWANIE ZA OKRES — wspólny mechanizm dla "Moje wyniki" (operator)
+     i "Przegląd" w Panelu kierownika: albo ostatnie N zmian, albo ostatni
+     tydzień/miesiąc (licząc wstecz od dziś), albo własny zakres dat.
+     ===================================================================== */
+
+  function todayStr() { return new Date().toISOString().slice(0, 10); }
+  function daysAgoStr(n) {
+    var d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // period = { mode: "count"|"week"|"month"|"range", count, from, to }
+  // shiftsList musi już być posortowana malejąco po dacie (najnowsze pierwsze) — tak jak
+  // trzyma je state.shifts. Zwraca podzbiór dopasowany do wybranego okresu, też malejąco.
+  function filterByPeriod(shiftsList, period) {
+    if (period.mode === "count") {
+      var n = period.count > 0 ? period.count : 10;
+      return shiftsList.slice(0, n);
+    }
+    var from, to;
+    if (period.mode === "week") { from = daysAgoStr(6); to = todayStr(); }
+    else if (period.mode === "month") { from = daysAgoStr(29); to = todayStr(); }
+    else if (period.mode === "range") { from = period.from || "0000-01-01"; to = period.to || "9999-12-31"; }
+    else { from = "0000-01-01"; to = "9999-12-31"; }
+    return shiftsList.filter(function (s) { return s.date >= from && s.date <= to; });
+  }
+
+  // jak filterByPeriod, ale najpierw sortuje malejąco po dacie — do użycia gdy lista
+  // zmian nie jest jeszcze posortowana (np. surowa historia maszyny/operatora)
+  function periodShiftsFor(shiftsList, period) {
+    var sorted = shiftsList.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    return filterByPeriod(sorted, period);
+  }
+
+  var PERIOD_MODES = [
+    { key: "count", label: "Ostatnie zmiany" },
+    { key: "week", label: "Ostatni tydzień" },
+    { key: "month", label: "Ostatni miesiąc" },
+    { key: "range", label: "Zakres dat" }
+  ];
+
+  function periodPickerHtml(period, prefix) {
+    var btns = PERIOD_MODES.map(function (m) {
+      return '<button type="button" class="period-tab' + (period.mode === m.key ? " active" : "") + '" data-period-mode="' + m.key + '" data-period-prefix="' + prefix + '">' + m.label + '</button>';
+    }).join("");
+    var extra = "";
+    if (period.mode === "count") {
+      extra = '<span class="period-extra"><input type="number" min="1" max="1000" step="1" id="' + prefix + 'PeriodCount" value="' + (period.count || 10) + '">zmian</span>';
+    } else if (period.mode === "range") {
+      extra = '<span class="period-extra"><input type="date" id="' + prefix + 'PeriodFrom" value="' + (period.from || "") + '"> — <input type="date" id="' + prefix + 'PeriodTo" value="' + (period.to || "") + '"></span>';
+    }
+    return '<div class="period-picker">' + btns + extra + '</div>';
+  }
+
+  function wirePeriodPicker(prefix, period, onChange) {
+    document.querySelectorAll('[data-period-mode][data-period-prefix="' + prefix + '"]').forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        period.mode = btn.getAttribute("data-period-mode");
+        onChange();
+      });
+    });
+    var countInp = document.getElementById(prefix + "PeriodCount");
+    if (countInp) countInp.addEventListener("change", function () { period.count = parseInt(countInp.value, 10) || 10; onChange(); });
+    var fromInp = document.getElementById(prefix + "PeriodFrom");
+    var toInp = document.getElementById(prefix + "PeriodTo");
+    if (fromInp) fromInp.addEventListener("change", function () { period.from = fromInp.value; onChange(); });
+    if (toInp) toInp.addEventListener("change", function () { period.to = toInp.value; onChange(); });
+  }
+
+  // opisowy tekst pod nagłówkiem, np. "Ostatnie 10 zmian" / "Ostatni tydzień (4 zmiany)" / "12.08.2026 – 25.08.2026 (7 zmian)"
+  function periodSummaryLabel(period, matchedCount) {
+    var n = matchedCount + (matchedCount === 1 ? " zmiana" : (matchedCount >= 2 && matchedCount <= 4 ? " zmiany" : " zmian"));
+    if (period.mode === "count") return "Ostatnie " + (period.count || 10) + " zmian — znaleziono " + n + ".";
+    if (period.mode === "week") return "Ostatni tydzień (" + fmtDate(daysAgoStr(6)) + " – " + fmtDate(todayStr()) + ") — " + n + ".";
+    if (period.mode === "month") return "Ostatni miesiąc (" + fmtDate(daysAgoStr(29)) + " – " + fmtDate(todayStr()) + ") — " + n + ".";
+    if (period.mode === "range") {
+      if (!period.from || !period.to) return "Wybierz obie daty („od" + (period.from ? "” — masz, brakuje „do”" : "” i „do”") + ").";
+      return fmtDate(period.from) + " – " + fmtDate(period.to) + " — " + n + ".";
+    }
+    return n + ".";
   }
 
   var state = {
@@ -1092,10 +1194,13 @@
     svg.addEventListener("mouseleave", function () { tooltip.classList.remove("show"); });
   }
 
-  function heroHtml() {
+  function heroHtml(period) {
     var latestByMachine = state.machines.map(function (m) {
-      var hist = machineShifts(m.id); var last = hist[hist.length - 1];
-      return last ? calc(last) : null;
+      var hist = periodShiftsFor(machineShifts(m.id), period);
+      if (!hist.length) return null;
+      var ms = hist.map(calc);
+      function avgM(key) { return ms.reduce(function (sum, x) { return sum + x[key]; }, 0) / ms.length; }
+      return { availability: avgM("availability"), performance: avgM("performance"), quality: avgM("quality") };
     }).filter(Boolean);
     if (!latestByMachine.length) return "";
     function avg(key) { return latestByMachine.reduce(function (sum, x) { return sum + x[key]; }, 0) / latestByMachine.length; }
@@ -1107,7 +1212,7 @@
     var strokeVar = "var(--status-" + t.key + ")";
     return '<section aria-labelledby="heroTitle"><div class="section-head"><div class="eyebrow">Stan na dziś</div>' +
       '<h1 id="heroTitle" class="section-title">OEE całego warsztatu</h1>' +
-      '<div class="section-sub">Średnia z ostatnich zmian każdej maszyny. Dostępność × Wydajność × Jakość = OEE.</div></div>' +
+      '<div class="section-sub">Średnia ze zmian każdej maszyny w wybranym okresie. Dostępność × Wydajność × Jakość = OEE.</div></div>' +
       '<div class="hero"><div class="gauge-col"><div class="gauge-figure"><svg viewBox="0 0 200 200">' +
       '<circle class="gauge-track" cx="100" cy="100" r="82"></circle>' +
       '<circle class="gauge-fill" cx="100" cy="100" r="82" style="stroke-dasharray:' + dash + ';stroke:' + strokeVar + '"></circle></svg>' +
@@ -1120,11 +1225,14 @@
       '</div><div class="hero-foot">Benchmark: ≥ 85% to wynik światowej klasy, 60–84% to typowy warsztat bez optymalizacji, poniżej 60% zwykle oznacza łatwe do znalezienia straty.</div></div></section>';
   }
 
-  function machineGridHtml() {
+  function machineGridHtml(period) {
     var cards = state.machines.map(function (m) {
-      var hist = machineShifts(m.id);
+      var hist = periodShiftsFor(machineShifts(m.id), period);
       if (!hist.length) return "";
-      var last = calc(hist[hist.length - 1]);
+      var ms = hist.map(calc);
+      function avgM(key) { return ms.reduce(function (sum, x) { return sum + x[key]; }, 0) / ms.length; }
+      var last = { availability: avgM("availability"), performance: avgM("performance"), quality: avgM("quality") };
+      last.oee = last.availability * last.performance * last.quality;
       var t = tier(last.oee);
       var bn = bottleneckLabel(last);
       var diagNote = state.diagnoses[m.id]
@@ -1136,12 +1244,13 @@
         '<span class="status-pill ' + t.key + '"><span class="dot"></span>' + t.label + '</span></div>' +
         '<div class="apq-rows">' + apqRow("Dostępność", last.availability, "var(--chart-avail)") + apqRow("Wydajność", last.performance, "var(--chart-perf)") + apqRow("Jakość", last.quality, "var(--chart-qual)") + '</div>' +
         '<div class="bottleneck">Wąskie gardło: <b>' + bn.label + '</b> (' + Math.round(bn.v * 100) + '%) — od tego warto zacząć.</div>' +
+        '<div class="hint" style="margin-top:2px;">' + hist.length + (hist.length === 1 ? ' zmiana' : (hist.length >= 2 && hist.length <= 4 ? ' zmiany' : ' zmian')) + ' w wybranym okresie.</div>' +
         '<div class="spark-wrap" data-spark="' + m.id + '"></div>' +
         '<div class="card-actions"><button type="button" class="btn-suggest" data-open-diag="' + m.id + '">Zaproponuj poprawę →</button>' + diagNote + '</div></div>';
     }).join("");
     return '<section aria-labelledby="machinesTitle"><div class="section-head"><div class="eyebrow">Maszyna po maszynie</div>' +
       '<h2 id="machinesTitle" class="section-title">Gdzie dokładnie tracisz produkcję</h2>' +
-      '<div class="section-sub">Każda karta pokazuje, który z trzech czynników najbardziej ciągnie wynik w dół. Karta pojawia się, gdy maszyna ma już choć jeden zapisany wpis zmiany.</div></div>' +
+      '<div class="section-sub">Każda karta pokazuje, który z trzech czynników najbardziej ciągnie wynik w dół, uśredniony ze zmian w wybranym okresie. Karta pojawia się, gdy maszyna ma choć jeden wpis zmiany w tym okresie.</div></div>' +
       '<div class="legend-row"><span class="legend-item"><span class="legend-swatch" style="background:var(--chart-avail)"></span>Dostępność</span>' +
       '<span class="legend-item"><span class="legend-swatch" style="background:var(--chart-perf)"></span>Wydajność</span>' +
       '<span class="legend-item"><span class="legend-swatch" style="background:var(--chart-qual)"></span>Jakość</span></div>' +
@@ -1247,19 +1356,22 @@
       '</div>';
   }
 
-  function leaderboardHtml() {
+  function leaderboardHtml(period) {
     var byOp = {};
     state.shifts.forEach(function (s) {
       if (!s.operatorId) return;
-      var m = calc(s);
-      if (!byOp[s.operatorId]) byOp[s.operatorId] = { count: 0, oeeSum: 0, perfSum: 0, last: s.date };
-      byOp[s.operatorId].count++; byOp[s.operatorId].oeeSum += m.oee; byOp[s.operatorId].perfSum += m.performance;
-      if (s.date > byOp[s.operatorId].last) byOp[s.operatorId].last = s.date;
+      if (!byOp[s.operatorId]) byOp[s.operatorId] = [];
+      byOp[s.operatorId].push(s);
     });
     var rows = Object.keys(byOp).map(function (opId) {
-      var x = byOp[opId];
-      return { name: operatorName(opId), count: x.count, avgOee: x.oeeSum / x.count, avgPerf: x.perfSum / x.count, last: x.last };
-    }).sort(function (a, b) { return b.avgOee - a.avgOee; });
+      var periodShifts = periodShiftsFor(byOp[opId], period);
+      if (!periodShifts.length) return null;
+      var ms = periodShifts.map(calc);
+      var oeeSum = ms.reduce(function (sum, m) { return sum + m.oee; }, 0);
+      var perfSum = ms.reduce(function (sum, m) { return sum + m.performance; }, 0);
+      var last = periodShifts.reduce(function (mx, s) { return s.date > mx ? s.date : mx; }, periodShifts[0].date);
+      return { name: operatorName(opId), count: periodShifts.length, avgOee: oeeSum / periodShifts.length, avgPerf: perfSum / periodShifts.length, last: last };
+    }).filter(Boolean).sort(function (a, b) { return b.avgOee - a.avgOee; });
 
     var body = rows.map(function (r, i) {
       return '<tr class="' + (i === 0 ? "rank-1" : "") + '"><td>' + (i + 1) + '. ' + r.name + '</td>' +
@@ -1275,7 +1387,7 @@
 
     return '<section aria-labelledby="lbTitle"><div class="section-head"><div class="eyebrow">Do porównania i premii</div>' +
       '<h2 id="lbTitle" class="section-title small">Wyniki operatorów</h2>' +
-      '<div class="section-sub">Średnia liczona ze wszystkich zapisanych zmian danej osoby, niezależnie od maszyny.</div></div>' + table + '</section>';
+      '<div class="section-sub">Średnia liczona ze zmian danej osoby w wybranym okresie, niezależnie od maszyny.</div></div>' + table + '</section>';
   }
 
   function settingsHtml() {
@@ -1383,7 +1495,7 @@
       case "history": return tableHtml();
       case "settings": return settingsHtml();
       case "overview":
-      default: return heroHtml() + machineGridHtml() + leaderboardHtml();
+      default: return periodPickerHtml(managerPeriod, "manager") + heroHtml(managerPeriod) + machineGridHtml(managerPeriod) + leaderboardHtml(managerPeriod);
     }
   }
 
@@ -1744,6 +1856,10 @@
         renderAdmin(root);
       });
     });
+
+    if (adminTab === "overview") {
+      wirePeriodPicker("manager", managerPeriod, function () { renderAdmin(root); });
+    }
 
     var grid = document.getElementById("machineGrid");
     if (grid) grid.addEventListener("click", function (evt) {
@@ -2392,11 +2508,14 @@
 
     var mine = state.shifts.filter(function (s) { return s.operatorId === resultsOperatorId; })
       .sort(function (a, b) { return a.date < b.date ? 1 : -1; });
-    var recent = mine.slice(0, 20);
+    var recent = filterByPeriod(mine, resultsPeriod);
     var withM = recent.map(function (s) { return calc(s); });
     var avgOee = withM.length ? withM.reduce(function (sum, m) { return sum + m.oee; }, 0) / withM.length : 0;
     var withNormBasis = withM.filter(function (m) { return m.expectedQty > 0; });
     var normRate = withNormBasis.length ? withNormBasis.filter(function (m) { return m.normMet; }).length / withNormBasis.length : null;
+    var totalGood = recent.reduce(function (sum, s) { return sum + s.good; }, 0);
+    var totalBad = recent.reduce(function (sum, s) { return sum + s.bad; }, 0);
+    var totalDowntimeMin = withM.reduce(function (sum, m) { return sum + m.downtimeMin; }, 0);
 
     var rows = recent.map(function (s) {
       var m = calc(s); var t = tier(m.oee);
@@ -2416,20 +2535,25 @@
 
     root.innerHTML = bannerHtml() + '<div class="op-hero wide"><div class="op-card">' +
       '<div class="card-top" style="align-items:flex-start;"><div><div class="op-title">Moje wyniki — ' + escAttr(op.name) + '</div>' +
-      '<div class="op-sub">Ostatnie ' + recent.length + (recent.length === 1 ? ' zmiana' : ' zmian') + '.' + (recent.length ? ' Kliknij wiersz, żeby zobaczyć szczegóły.' : '') + '</div></div>' +
+      '<div class="op-sub">' + periodSummaryLabel(resultsPeriod, recent.length) + (recent.length ? ' Kliknij wiersz, żeby zobaczyć szczegóły.' : '') + '</div></div>' +
       '<button type="button" class="ghost small" id="resultsSwitchBtn">Zmień osobę</button></div>' +
-      '<div class="apq-rows" style="margin-top:16px;max-width:360px;">' +
+      periodPickerHtml(resultsPeriod, "results") +
+      '<div class="apq-rows" style="margin-top:4px;max-width:360px;">' +
       apqRow("Śr. OEE", avgOee, "var(--chart-avail)") +
       (normRate != null ? apqRow("Norma", normRate, "var(--chart-perf)") : '') +
       '</div>' +
       (recent.length
+        ? '<div class="hint" style="margin-top:10px;">Łącznie w tym okresie: <b>' + (totalGood + totalBad) + ' szt.</b> (w tym ' + totalBad + ' wadliwych), zatwierdzony przestój <b>' + totalDowntimeMin + ' min</b>.</div>'
+        : '') +
+      (recent.length
         ? '<div class="table-scroll" style="margin-top:16px;"><table class="compact fixed-layout">' + colgroupHtml + '<thead><tr><th>Data</th><th class="num">Zmiana</th><th>Maszyna</th><th>Produkt</th><th class="num">OEE</th><th>Norma</th><th>Ocena</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
-        : '<div class="empty-hint" style="margin-top:16px;">Nie masz jeszcze żadnych zapisanych zmian.</div>') +
+        : '<div class="empty-hint" style="margin-top:16px;">Brak zapisanych zmian w wybranym okresie.</div>') +
       '</div></div>';
 
     document.getElementById("resultsSwitchBtn").addEventListener("click", function () {
       resultsVerified = false; resultsOperatorId = null; resultsExpandedId = null; renderOperatorResults(root);
     });
+    wirePeriodPicker("results", resultsPeriod, function () { resultsExpandedId = null; renderOperatorResults(root); });
     root.querySelectorAll("tr.result-row").forEach(function (tr) {
       tr.addEventListener("click", function () {
         var id = tr.getAttribute("data-shift-id");
@@ -2607,6 +2731,11 @@
     // po rozdzieleniu na Panel kierownika / Panel administratora to on został "pierwszym ekranem",
     // a konfiguracja (Maszyny/Operatorzy/Produkty/Ustawienia) jest jedno kliknięcie dalej
     view = session.profile.role === "admin" ? "manager" : "operator";
+    // adminTab domyślnie startuje na "machines" (zakładka Panelu administratora) — przy
+    // pierwszym wejściu prosto na Panel kierownika trzeba go ustawić na jego własną,
+    // domyślną zakładkę, inaczej adminTabContentHtml() pokaże zawartość zakładki, której
+    // w Panelu kierownika w ogóle nie ma (patrz analogiczny reset przy klikaniu w role-tabs).
+    if (view === "manager") adminTab = "overview";
     await loadCompanyData();
     booting = false;
     renderApp();
