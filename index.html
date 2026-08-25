@@ -594,6 +594,9 @@
   .status-tag.pending { color: var(--status-warn); background: var(--status-warn-wash); }
   .status-tag.approved { color: var(--status-good); background: var(--status-good-wash); }
   .status-tag.rejected { color: var(--status-crit); background: var(--status-crit-wash); }
+  .status-tag.cancelled { color: var(--ink-muted); background: var(--surface-2); }
+  tr.cancelled-row { color: var(--ink-muted); text-decoration: line-through; text-decoration-color: var(--border); }
+  tr.cancelled-row td { opacity: 0.7; }
   .rate-cell input { text-align: right; padding: 6px 8px; font-size: 12.5px; }
   .empty-hint { font-size: 12.5px; color: var(--ink-muted); background: var(--surface-2); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
   .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid var(--border-soft); }
@@ -698,6 +701,8 @@
   var resultsExpandedId = null;   // id zmiany rozwiniętej w szczegóły na ekranie Moje wyniki
   var resultsPeriod = { mode: "count", count: 10, from: null, to: null };  // okres podsumowania na ekranie Moje wyniki
   var managerPeriod = { mode: "week", count: 20, from: null, to: null };  // okres podsumowania w Panelu kierownika → Przegląd
+  var resultsEditingId = null;    // id zmiany, którą operator właśnie sam poprawia na ekranie Moje wyniki
+  var historyEditingId = null;    // id zmiany, którą kierownik właśnie poprawia w zakładce Historia
   var booting = true;
   var session = null;         // { user, profile:{id,role,displayName}, company:{id,name,shiftsPerDay} }
   var authScreen = "login";   // "login" | "signup" | "check-email"
@@ -834,7 +839,8 @@
       id: r.id, machineId: r.machine_id, operatorId: r.operator_id,
       shiftNumber: r.shift_number, productId: r.product_id, date: r.shift_date,
       plannedMin: Number(r.planned_min), downtimeMin: Number(r.downtime_min),
-      idealCycleSec: Number(r.ideal_cycle_sec), good: Number(r.good_count), bad: Number(r.bad_count)
+      idealCycleSec: Number(r.ideal_cycle_sec), good: Number(r.good_count), bad: Number(r.bad_count),
+      status: r.status || "active", createdAt: r.created_at || null
     };
   }
 
@@ -897,6 +903,32 @@
   }
   function reasonName(id) { var r = state.downtimeReasons.filter(function (x) { return x.id === id; })[0]; return r ? r.name : "—"; }
 
+  /* ---------- cofanie błędów operatorów: poprawki i anulowanie zmian ----------
+     Anulowana zmiana (status "cancelled") zostaje widoczna (przekreślona) w
+     Historii i na ekranie operatora — dla śladu — ale wypada ze WSZYSTKICH
+     wyliczeń OEE/normy/podsumowań (hero, karty maszyn, ranking, Moje wyniki).
+     Operator może sam poprawić/anulować WŁASNY wpis tylko tego samego dnia,
+     w którym go zapisał (patrz selfEditWindowOpen) — potem tylko kierownik,
+     bez ograniczenia czasowego, w Historii. */
+  function isActiveShift(s) { return s.status !== "cancelled"; }
+  function selfEditWindowOpen(s) { return isActiveShift(s) && (s.createdAt || "").slice(0, 10) === todayStr(); }
+
+  // migawka pól zmiany do zapisania w shift_edits (old_values/new_values) — bez pól
+  // czysto technicznych (id/createdAt), żeby log był czytelny przy porównaniu
+  function shiftSnapshot(s) {
+    return {
+      machineId: s.machineId, operatorId: s.operatorId, shiftNumber: s.shiftNumber, productId: s.productId,
+      date: s.date, plannedMin: s.plannedMin, good: s.good, bad: s.bad, status: s.status, idealCycleSec: s.idealCycleSec
+    };
+  }
+
+  async function insertShiftEdit(shiftId, action, editedAs, reason, oldSnap, newSnap) {
+    return sb.from("shift_edits").insert({
+      shift_id: shiftId, company_id: session.company.id, action: action, edited_as: editedAs,
+      reason: reason || null, old_values: oldSnap, new_values: newSnap
+    });
+  }
+
   // efektywny, sugerowany "czas planowany" (min) dla danej maszyny: długość zmiany
   // minus przerwa, czas nieefektywny (ustawienia firmy) i TPZ tej konkretnej maszyny
   function effectiveShiftMinutes(machineId) {
@@ -934,7 +966,7 @@
 
   function machineShifts(machineId) {
     return state.shifts
-      .filter(function (s) { return s.machineId === machineId; })
+      .filter(function (s) { return s.machineId === machineId && isActiveShift(s); })
       .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
   }
 
@@ -1359,7 +1391,7 @@
   function leaderboardHtml(period) {
     var byOp = {};
     state.shifts.forEach(function (s) {
-      if (!s.operatorId) return;
+      if (!s.operatorId || !isActiveShift(s)) return;
       if (!byOp[s.operatorId]) byOp[s.operatorId] = [];
       byOp[s.operatorId].push(s);
     });
@@ -1428,25 +1460,46 @@
     return '<span class="status-tag ' + cls + '" title="' + m.produced + ' z ' + m.expectedQty + ' szt. (' + pct + '%), licząc od czasu planowanego pomniejszonego o zatwierdzony przestój">' + label + ' · ' + pct + '%</span>';
   }
 
+  // wiersz edycji zmiany w Historii — pełna szerokość tabeli (colspan), z formularzem
+  // poprawki (włącznie z wyborem operatora — tylko kierownik może to zmienić) i wymaganym
+  // powodem. white-space:normal na td jest tu celowe: globalna reguła "tbody td {
+  // white-space: nowrap}" inaczej "wciąga się" w tekst podpowiedzi i go przecina.
+  function historyEditRowHtml(s) {
+    return '<tr class="detail-row" data-hist-edit-for="' + s.id + '"><td colspan="16" style="white-space:normal;"><div class="detail-panel">' +
+      shiftEditFieldsHtml(s, "histEdit", true) +
+      '<div class="form-actions" style="margin-top:10px;">' +
+      '<button type="button" class="primary small" data-hist-edit-save="' + s.id + '">Zapisz poprawkę</button>' +
+      '<button type="button" class="ghost small" data-hist-edit-discard="' + s.id + '">Anuluj poprawianie</button>' +
+      '<span class="form-msg" id="histEditMsg">Podaj powód poprawki.</span>' +
+      '</div></div></td></tr>';
+  }
+
   function tableHtml() {
     var rows = state.shifts.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
     var body = rows.map(function (s) {
       var m = calc(s); var t = tier(m.oee);
-      return '<tr><td class="num tabular">' + fmtDate(s.date) + '</td><td>' + machineName(s.machineId) + '</td>' +
+      var active = isActiveShift(s);
+      var editingHere = historyEditingId === s.id;
+      var actionsHtml = active
+        ? (editingHere ? '<span class="hint">edycja niżej ↓</span>' : '<button type="button" class="small" data-hist-edit="' + s.id + '">Popraw</button> <button type="button" class="small" data-hist-cancel="' + s.id + '">Anuluj</button>')
+        : '<button type="button" class="small" data-hist-restore="' + s.id + '">Przywróć</button>';
+      var row = '<tr' + (active ? "" : ' class="cancelled-row"') + '><td class="num tabular">' + fmtDate(s.date) + '</td><td>' + machineName(s.machineId) + '</td>' +
         '<td>' + operatorName(s.operatorId) + '</td><td class="num tabular">' + (s.shiftNumber || "—") + '</td>' +
         '<td>' + productName(s.productId) + '</td>' +
         '<td class="num tabular">' + s.plannedMin + '</td><td class="num tabular">' + downtimeCellHtml(s, m) + '</td>' +
         '<td class="num tabular">' + s.good + '</td><td class="num tabular">' + s.bad + '</td>' +
         '<td class="num tabular">' + fmtPct(m.availability) + '</td><td class="num tabular">' + fmtPct(m.performance) + '</td><td class="num tabular">' + fmtPct(m.quality) + '</td>' +
         '<td class="num tabular" style="font-weight:600;">' + fmtPct(m.oee) + '</td>' +
-        '<td>' + normCellHtml(m) + '</td>' +
-        '<td><span class="status-pill ' + t.key + '"><span class="dot"></span>' + t.label + '</span></td></tr>';
+        '<td>' + (active ? normCellHtml(m) : "—") + '</td>' +
+        '<td>' + (active ? '<span class="status-pill ' + t.key + '"><span class="dot"></span>' + t.label + '</span>' : '<span class="status-tag cancelled">Anulowana</span>') + '</td>' +
+        '<td style="white-space:nowrap;">' + actionsHtml + '</td></tr>';
+      return row + (editingHere ? historyEditRowHtml(s) : "");
     }).join("");
     return '<section aria-labelledby="logTitle"><div class="section-head"><div class="eyebrow">Pełne dane</div><h2 id="logTitle" class="section-title small">Dziennik zmian</h2>' +
-      '<div class="section-sub">Wszystkie wpisy, od najnowszego. Kolumna „Norma" pokazuje, czy w czasie planowanym (po odjęciu zatwierdzonego przestoju) zrobiono tyle sztuk, ile powinno — po zatwierdzeniu albo odrzuceniu przestoju w zakładce Przestoje ta ocena od razu się przelicza.</div></div>' +
+      '<div class="section-sub">Wszystkie wpisy, od najnowszego. Kolumna „Norma" pokazuje, czy w czasie planowanym (po odjęciu zatwierdzonego przestoju) zrobiono tyle sztuk, ile powinno — po zatwierdzeniu albo odrzuceniu przestoju w zakładce Przestoje ta ocena od razu się przelicza. Anulowane zmiany zostają widoczne (przekreślone) dla śladu, ale nigdzie się nie liczą.</div></div>' +
       '<div class="table-scroll"><table><thead><tr><th>Data</th><th>Maszyna</th><th>Operator</th><th class="num">Zmiana</th><th>Produkt</th>' +
       '<th class="num">Plan (min)</th><th class="num">Przestój (min)</th><th class="num">Dobre</th><th class="num">Wadliwe</th>' +
-      '<th class="num">Dostępność</th><th class="num">Wydajność</th><th class="num">Jakość</th><th class="num">OEE</th><th>Norma</th><th>Status</th></tr></thead>' +
+      '<th class="num">Dostępność</th><th class="num">Wydajność</th><th class="num">Jakość</th><th class="num">OEE</th><th>Norma</th><th>Status</th><th>Akcje</th></tr></thead>' +
       '<tbody>' + body + '</tbody></table></div></section>';
   }
 
@@ -1853,12 +1906,69 @@
     root.querySelectorAll("[data-admin-tab]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         adminTab = btn.getAttribute("data-admin-tab");
+        historyEditingId = null;
         renderAdmin(root);
       });
     });
 
     if (adminTab === "overview") {
       wirePeriodPicker("manager", managerPeriod, function () { renderAdmin(root); });
+    }
+
+    if (adminTab === "history") {
+      if (historyEditingId) wireShiftEditMachineProductSync("histEdit");
+      root.querySelectorAll("[data-hist-edit]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          historyEditingId = btn.getAttribute("data-hist-edit");
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-hist-edit-discard]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          historyEditingId = null;
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-hist-edit-save]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          var id = btn.getAttribute("data-hist-edit-save");
+          var s = shiftById(id);
+          if (!s) return;
+          btn.disabled = true;
+          var res = await submitShiftEdit(s, "histEdit", "kierownik", true);
+          if (res.reasonMissing) {
+            var msgEl = document.getElementById("histEditMsg");
+            if (msgEl) { msgEl.classList.add("show", "error"); }
+            btn.disabled = false;
+            return;
+          }
+          if (res.ok) historyEditingId = null;
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-hist-cancel]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          var id = btn.getAttribute("data-hist-cancel");
+          var s = shiftById(id);
+          if (!s) return;
+          var reason = prompt("Podaj powód anulowania tej zmiany:");
+          if (reason === null) return; // Anuluj w oknie systemowym — nie anulujemy zmiany
+          if (!reason.trim()) { alert("Powód jest wymagany, żeby anulować zmianę."); return; }
+          btn.disabled = true;
+          await submitShiftCancel(s, "kierownik", reason.trim());
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-hist-restore]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          var id = btn.getAttribute("data-hist-restore");
+          var s = shiftById(id);
+          if (!s || !confirm("Przywrócić tę zmianę? Znowu zacznie się liczyć do OEE, normy i podsumowań.")) return;
+          btn.disabled = true;
+          await submitShiftRestore(s);
+          renderAdmin(root);
+        });
+      });
     }
 
     var grid = document.getElementById("machineGrid");
@@ -2175,10 +2285,10 @@
      WIDOK OPERATORA
      ===================================================================== */
 
-  function shiftOptionsHtml(n) {
+  function shiftOptionsHtml(n, selected) {
     var labels = ["I", "II", "III"];
     var html = "";
-    for (var i = 1; i <= n; i++) html += '<option value="' + i + '">Zmiana ' + labels[i - 1] + '</option>';
+    for (var i = 1; i <= n; i++) html += '<option value="' + i + '"' + (selected === i ? " selected" : "") + '>Zmiana ' + labels[i - 1] + '</option>';
     return html;
   }
 
@@ -2436,6 +2546,117 @@
   }
 
   /* =====================================================================
+     POPRAWIANIE I ANULOWANIE ZMIAN — współdzielone między samodzielną
+     poprawką operatora (Moje wyniki, w oknie tego samego dnia) a poprawką
+     kierownika (Historia, bez ograniczenia czasowego). Patrz też
+     isActiveShift/selfEditWindowOpen/shiftSnapshot/insertShiftEdit wyżej.
+     ===================================================================== */
+
+  // po zmianie maszyny w formularzu poprawki odśwież listę produktów do tych, które mają
+  // ustawioną wydajność na NOWO wybranej maszynie — inaczej dałoby się zapisać nieistniejącą
+  // w słowniku parę maszyna+produkt (tak samo jak refreshProducts() przy wpisie zmiany)
+  function wireShiftEditMachineProductSync(prefix) {
+    var machSel = document.getElementById(prefix + "Machine");
+    var prodSel = document.getElementById(prefix + "Product");
+    if (!machSel || !prodSel) return;
+    machSel.addEventListener("change", function () {
+      var machineId = machSel.value;
+      var matching = state.products.filter(function (p) { return state.productRates[p.id] && state.productRates[p.id][machineId] != null; });
+      prodSel.innerHTML = '<option value="">— brak —</option>' + matching.map(function (p) {
+        return '<option value="' + p.id + '">' + escAttr(p.code ? p.code + " — " + p.name : p.name) + '</option>';
+      }).join("");
+    });
+  }
+
+  // pola formularza poprawki — te same co przy wpisie zmiany, ale bez blokad/podpowiedzi
+  // (to świadoma poprawka, nie pierwszy wpis). includeOperator: tylko kierownik może
+  // przepisać zmianę na innego operatora — sam operator poprawia wyłącznie swój wpis.
+  function shiftEditFieldsHtml(s, prefix, includeOperator) {
+    var machOpts = state.machines.map(function (m) { return '<option value="' + m.id + '"' + (m.id === s.machineId ? " selected" : "") + '>' + escAttr(m.name) + '</option>'; }).join("");
+    var matching = state.products.filter(function (p) { return state.productRates[p.id] && state.productRates[p.id][s.machineId] != null; });
+    var prodList = matching.slice();
+    if (s.productId && !prodList.some(function (p) { return p.id === s.productId; })) {
+      var cur = state.products.filter(function (p) { return p.id === s.productId; })[0];
+      if (cur) prodList.unshift(cur);
+    }
+    var prodOpts = '<option value="">— brak —</option>' + prodList.map(function (p) {
+      return '<option value="' + p.id + '"' + (p.id === s.productId ? " selected" : "") + '>' + escAttr(p.code ? p.code + " — " + p.name : p.name) + '</option>';
+    }).join("");
+    var opOpts = includeOperator ? state.operators.map(function (o) {
+      return '<option value="' + o.id + '"' + (o.id === s.operatorId ? " selected" : "") + '>' + escAttr(o.name) + '</option>';
+    }).join("") : "";
+    return '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">' +
+      (includeOperator ? '<div class="field" style="width:170px;"><label for="' + prefix + 'Operator">Operator</label><select id="' + prefix + 'Operator">' + opOpts + '</select></div>' : '') +
+      '<div class="field" style="width:120px;"><label for="' + prefix + 'ShiftNum">Zmiana</label><select id="' + prefix + 'ShiftNum">' + shiftOptionsHtml(state.settings.shiftsPerDay, s.shiftNumber) + '</select></div>' +
+      '<div class="field" style="width:170px;"><label for="' + prefix + 'Machine">Maszyna</label><select id="' + prefix + 'Machine">' + machOpts + '</select></div>' +
+      '<div class="field" style="width:150px;"><label for="' + prefix + 'Date">Data</label><input id="' + prefix + 'Date" type="date" value="' + s.date + '"></div>' +
+      '<div class="field" style="width:200px;"><label for="' + prefix + 'Product">Produkt</label><select id="' + prefix + 'Product">' + prodOpts + '</select></div>' +
+      '<div class="field" style="width:150px;"><label for="' + prefix + 'Planned">Czas planowany (min)</label><input id="' + prefix + 'Planned" type="number" min="1" step="1" value="' + s.plannedMin + '"></div>' +
+      '<div class="field" style="width:120px;"><label for="' + prefix + 'Good">Sztuki dobre</label><input id="' + prefix + 'Good" type="number" min="0" step="1" value="' + s.good + '"></div>' +
+      '<div class="field" style="width:120px;"><label for="' + prefix + 'Bad">Sztuki wadliwe</label><input id="' + prefix + 'Bad" type="number" min="0" step="1" value="' + s.bad + '"></div>' +
+      '<div class="field" style="width:100%;"><label for="' + prefix + 'Reason">Powód poprawki' + (includeOperator ? '' : ' (opcjonalnie)') + '</label><input id="' + prefix + 'Reason" type="text" maxlength="200" placeholder="np. pomyłka przy wpisywaniu ilości"></div>' +
+      '</div>';
+  }
+
+  // czyta wartości z formularza poprawki (wypełnionego przez shiftEditFieldsHtml), zapisuje
+  // zmianę + wpis w shift_edits, i zwraca {ok, reasonMissing} — UI decyduje, co dalej.
+  async function submitShiftEdit(s, prefix, editedAs, includeOperator) {
+    var machineId = document.getElementById(prefix + "Machine").value;
+    var productId = document.getElementById(prefix + "Product").value || null;
+    // norma (s/szt.) zależy od pary maszyna+produkt — jeśli poprawka zmienia maszynę albo
+    // produkt, trzeba ją przeliczyć tak samo jak przy pierwszym wpisie, inaczej OEE/norma
+    // liczyłyby się dalej starą, już nieaktualną wartością. Gdy dla nowej pary nie ma
+    // ustawionej wydajności w słowniku, zostaw poprzednią wartość (lepsze niż wyzerowanie).
+    var rate = productId && state.productRates[productId] ? state.productRates[productId][machineId] : null;
+    var idealCycleSec = rate != null ? rate : s.idealCycleSec;
+
+    var patch = {
+      machine_id: machineId,
+      shift_number: parseInt(document.getElementById(prefix + "ShiftNum").value, 10) || 1,
+      product_id: productId,
+      shift_date: document.getElementById(prefix + "Date").value || s.date,
+      planned_min: parseFloat(document.getElementById(prefix + "Planned").value) || s.plannedMin,
+      ideal_cycle_sec: idealCycleSec,
+      good_count: parseFloat(document.getElementById(prefix + "Good").value) || 0,
+      bad_count: parseFloat(document.getElementById(prefix + "Bad").value) || 0
+    };
+    if (includeOperator) patch.operator_id = document.getElementById(prefix + "Operator").value;
+    var reasonInp = document.getElementById(prefix + "Reason");
+    var reason = reasonInp ? reasonInp.value.trim() : "";
+    if (editedAs === "kierownik" && !reason) return { ok: false, reasonMissing: true };
+
+    var newSnap = {
+      machineId: patch.machine_id, operatorId: includeOperator ? patch.operator_id : s.operatorId,
+      shiftNumber: patch.shift_number, productId: patch.product_id, date: patch.shift_date,
+      plannedMin: patch.planned_min, good: patch.good_count, bad: patch.bad_count, status: s.status,
+      idealCycleSec: patch.ideal_cycle_sec
+    };
+    var res = await sb.from("shifts").update(patch).eq("id", s.id);
+    if (res.error) { bannerMsg = "Nie udało się zapisać poprawki: " + res.error.message; return { ok: false }; }
+    await insertShiftEdit(s.id, "edit", editedAs, reason, shiftSnapshot(s), newSnap);
+    await loadCompanyData();
+    return { ok: true };
+  }
+
+  async function submitShiftCancel(s, editedAs, reason) {
+    var newSnap = Object.assign({}, shiftSnapshot(s), { status: "cancelled" });
+    var res = await sb.from("shifts").update({ status: "cancelled" }).eq("id", s.id);
+    if (res.error) { bannerMsg = "Nie udało się anulować zmiany: " + res.error.message; return false; }
+    await insertShiftEdit(s.id, "cancel", editedAs, reason, shiftSnapshot(s), newSnap);
+    await loadCompanyData();
+    return true;
+  }
+
+  async function submitShiftRestore(s) {
+    var newSnap = Object.assign({}, shiftSnapshot(s), { status: "active" });
+    var res = await sb.from("shifts").update({ status: "active" }).eq("id", s.id);
+    if (res.error) { bannerMsg = "Nie udało się przywrócić zmiany: " + res.error.message; return false; }
+    await insertShiftEdit(s.id, "restore", "kierownik", null, shiftSnapshot(s), newSnap);
+    await loadCompanyData();
+    return true;
+  }
+
+  /* =====================================================================
      WIDOK "MOJE WYNIKI" — operator sam sprawdza swoją historię i OEE,
      bez wchodzenia do panelu administratora. Jak przy wpisie zmiany,
      wybiera siebie z listy i potwierdza PIN-em (to nie jest prawdziwe
@@ -2454,22 +2675,48 @@
         }).join("")
       : '<div class="empty-hint">Brak zgłoszonych przestojów w tej zmianie.</div>';
 
-    return '<tr class="detail-row" data-detail-for="' + s.id + '"><td colspan="7"><div class="detail-panel">' +
-      '<div class="apq-rows" style="max-width:420px;">' +
-      apqRow("Dostępność", m.availability, "var(--chart-avail)") + apqRow("Wydajność", m.performance, "var(--chart-perf)") + apqRow("Jakość", m.quality, "var(--chart-qual)") +
-      '</div>' +
-      '<div class="detail-kv">' +
-      '<div><span class="k">Zmiana</span><span class="v">' + (s.shiftNumber || "—") + '</span></div>' +
-      '<div><span class="k">Czas planowany</span><span class="v">' + s.plannedMin + ' min</span></div>' +
-      '<div><span class="k">Przestój — zatwierdzony</span><span class="v">' + downtimeCellHtml(s, m) + ' min</span></div>' +
-      '<div><span class="k">Dobre / wadliwe</span><span class="v">' + s.good + ' / ' + s.bad + ' szt.</span></div>' +
-      '<div><span class="k">Norma — ile powinno powstać</span><span class="v">' + (m.expectedQty > 0 ? (m.produced + ' z ' + m.expectedQty + ' szt.') : '—') + '</span>' +
-      (m.expectedQty > 0 ? '<span class="hint">to nie to samo co „czas planowany" (' + s.plannedMin + ' min) — norma liczona jest w sztukach: ' + s.idealCycleSec + ' s/szt. w dostępnym czasie ' + Math.max(0, s.plannedMin - m.downtimeMin) + ' min</span>' : '') +
-      '</div>' +
-      '<div><span class="k">OEE</span><span class="v">' + fmtPct(m.oee) + '</span></div>' +
-      '</div>' +
-      '<div class="detail-dt-title">Przestoje w tej zmianie</div>' + dtHtml +
-      '</div></td></tr>';
+    var cancelledNote = !isActiveShift(s)
+      ? '<div class="readonly-banner" style="margin-bottom:10px;"><b>Anulowana.</b> Ta zmiana nie liczy się do OEE, normy ani podsumowań.</div>'
+      : '';
+
+    var editingHere = resultsEditingId === s.id;
+    var actionsHtml = "";
+    if (isActiveShift(s) && !editingHere) {
+      if (selfEditWindowOpen(s)) {
+        actionsHtml = '<div class="form-actions" style="margin-top:12px;">' +
+          '<button type="button" class="ghost small" data-self-edit="' + s.id + '">Popraw</button>' +
+          '<button type="button" class="ghost small" data-self-cancel="' + s.id + '">Anuluj zmianę</button>' +
+          '<span class="hint">Możesz poprawić albo anulować własny wpis tylko dziś — potem tylko kierownik, w Historii.</span>' +
+          '</div>';
+      } else {
+        actionsHtml = '<div class="hint" style="margin-top:12px;">Okno samodzielnej poprawki (tylko dzień wpisu) już minęło — o zmianę poproś kierownika w Historii.</div>';
+      }
+    }
+
+    var bodyHtml = editingHere
+      ? shiftEditFieldsHtml(s, "selfEdit", false) +
+        '<div class="form-actions" style="margin-top:10px;">' +
+        '<button type="button" class="primary small" data-self-edit-save="' + s.id + '">Zapisz poprawkę</button>' +
+        '<button type="button" class="ghost small" data-self-edit-discard="' + s.id + '">Anuluj poprawianie</button>' +
+        '<span class="form-msg" id="selfEditMsg">Podaj powód poprawki.</span>' +
+        '</div>'
+      : '<div class="apq-rows" style="max-width:420px;">' +
+        apqRow("Dostępność", m.availability, "var(--chart-avail)") + apqRow("Wydajność", m.performance, "var(--chart-perf)") + apqRow("Jakość", m.quality, "var(--chart-qual)") +
+        '</div>' +
+        '<div class="detail-kv">' +
+        '<div><span class="k">Zmiana</span><span class="v">' + (s.shiftNumber || "—") + '</span></div>' +
+        '<div><span class="k">Czas planowany</span><span class="v">' + s.plannedMin + ' min</span></div>' +
+        '<div><span class="k">Przestój — zatwierdzony</span><span class="v">' + downtimeCellHtml(s, m) + ' min</span></div>' +
+        '<div><span class="k">Dobre / wadliwe</span><span class="v">' + s.good + ' / ' + s.bad + ' szt.</span></div>' +
+        '<div><span class="k">Norma — ile powinno powstać</span><span class="v">' + (m.expectedQty > 0 ? (m.produced + ' z ' + m.expectedQty + ' szt.') : '—') + '</span>' +
+        (m.expectedQty > 0 ? '<span class="hint">to nie to samo co „czas planowany" (' + s.plannedMin + ' min) — norma liczona jest w sztukach: ' + s.idealCycleSec + ' s/szt. w dostępnym czasie ' + Math.max(0, s.plannedMin - m.downtimeMin) + ' min</span>' : '') +
+        '</div>' +
+        '<div><span class="k">OEE</span><span class="v">' + fmtPct(m.oee) + '</span></div>' +
+        '</div>' +
+        '<div class="detail-dt-title">Przestoje w tej zmianie</div>' + dtHtml +
+        actionsHtml;
+
+    return '<tr class="detail-row" data-detail-for="' + s.id + '"><td colspan="7"><div class="detail-panel">' + cancelledNote + bodyHtml + '</div></td></tr>';
   }
 
   function renderOperatorResults(root) {
@@ -2508,8 +2755,11 @@
 
     var mine = state.shifts.filter(function (s) { return s.operatorId === resultsOperatorId; })
       .sort(function (a, b) { return a.date < b.date ? 1 : -1; });
-    var recent = filterByPeriod(mine, resultsPeriod);
-    var withM = recent.map(function (s) { return calc(s); });
+    // "recentAll" (z anulowanymi) do wyświetlenia w tabeli — operator ma widzieć, że jego
+    // korekta/anulowanie zadziałały; "recentActive" (bez anulowanych) do wszystkich wyliczeń.
+    var recentAll = filterByPeriod(mine, resultsPeriod);
+    var recentActive = recentAll.filter(isActiveShift);
+    var withM = recentActive.map(function (s) { return calc(s); });
     var avgOee = withM.length ? withM.reduce(function (sum, m) { return sum + m.oee; }, 0) / withM.length : 0;
     // "Norma" w podsumowaniu okresu = łączna liczba zrobionych sztuk podzielona przez łączną
     // liczbę sztuk, które powinny powstać (suma expectedQty) — czyli dokładnie to, co pokazuje
@@ -2522,21 +2772,26 @@
     // potrafi pokazać np. "402%"), apqRow() i tak przytnie tylko wypełnienie paska do 100%,
     // ale liczba obok ma pokazywać prawdziwy wynik, a nie sztucznie ograniczony do 100%
     var normRate = totalExpectedQty > 0 ? (totalProducedForNorm / totalExpectedQty) : null;
-    var totalGood = recent.reduce(function (sum, s) { return sum + s.good; }, 0);
-    var totalBad = recent.reduce(function (sum, s) { return sum + s.bad; }, 0);
+    var totalGood = recentActive.reduce(function (sum, s) { return sum + s.good; }, 0);
+    var totalBad = recentActive.reduce(function (sum, s) { return sum + s.bad; }, 0);
     var totalDowntimeMin = withM.reduce(function (sum, m) { return sum + m.downtimeMin; }, 0);
     // czy WSZYSTKIE zmiany z okresu mają ustaloną normę (czas cyklu) — jeśli tak, nie trzeba
     // osobno pokazywać "z tego X szt.", bo to ta sama liczba co suma sztuk wyżej
     var allInNormBasis = normRate != null && totalProducedForNorm === (totalGood + totalBad);
+    var cancelledCount = recentAll.length - recentActive.length;
 
-    var rows = recent.map(function (s) {
-      var m = calc(s); var t = tier(m.oee);
+    var rows = recentAll.map(function (s) {
+      var m = calc(s);
       var open = resultsExpandedId === s.id;
-      var row = '<tr class="result-row' + (open ? " open" : "") + '" data-shift-id="' + s.id + '"><td class="num tabular">' + fmtDate(s.date) + '</td>' +
+      var active = isActiveShift(s);
+      var badgeHtml = active
+        ? '<span class="status-pill ' + tier(m.oee).key + '"><span class="dot"></span>' + tier(m.oee).label + '</span>'
+        : '<span class="status-tag cancelled">Anulowana</span>';
+      var row = '<tr class="result-row' + (open ? " open" : "") + (active ? "" : " cancelled-row") + '" data-shift-id="' + s.id + '"><td class="num tabular">' + fmtDate(s.date) + '</td>' +
         '<td class="num tabular">' + (s.shiftNumber || "—") + '</td><td>' + machineName(s.machineId) + '</td><td>' + productName(s.productId) + '</td>' +
-        '<td class="num tabular" style="font-weight:600;">' + fmtPct(m.oee) + '</td>' +
-        '<td>' + normCellHtml(m) + '</td>' +
-        '<td><span class="status-pill ' + t.key + '"><span class="dot"></span>' + t.label + '</span></td></tr>';
+        '<td class="num tabular" style="font-weight:600;">' + (active ? fmtPct(m.oee) : "—") + '</td>' +
+        '<td>' + (active ? normCellHtml(m) : "—") + '</td>' +
+        '<td>' + badgeHtml + '</td></tr>';
       return row + (open ? resultDetailRowHtml(s, m) : "");
     }).join("");
 
@@ -2547,33 +2802,73 @@
 
     root.innerHTML = bannerHtml() + '<div class="op-hero wide"><div class="op-card">' +
       '<div class="card-top" style="align-items:flex-start;"><div><div class="op-title">Moje wyniki — ' + escAttr(op.name) + '</div>' +
-      '<div class="op-sub">' + periodSummaryLabel(resultsPeriod, recent.length) + (recent.length ? ' Kliknij wiersz, żeby zobaczyć szczegóły.' : '') + '</div></div>' +
+      '<div class="op-sub">' + periodSummaryLabel(resultsPeriod, recentActive.length) + (recentAll.length ? ' Kliknij wiersz, żeby zobaczyć szczegóły.' : '') + '</div></div>' +
       '<button type="button" class="ghost small" id="resultsSwitchBtn">Zmień osobę</button></div>' +
       periodPickerHtml(resultsPeriod, "results") +
       '<div class="apq-rows" style="margin-top:4px;max-width:360px;">' +
       apqRow("Śr. OEE", avgOee, "var(--chart-avail)") +
       (normRate != null ? apqRow("Norma (łącznie)", normRate, "var(--chart-perf)") : '') +
       '</div>' +
-      (recent.length
+      (recentActive.length
         ? '<div class="hint" style="margin-top:10px;">Łącznie w tym okresie: <b>' + (totalGood + totalBad) + ' szt.</b>' +
           (normRate == null ? '' : allInNormBasis
             ? ' wobec normy <b>' + totalExpectedQty + ' szt.</b> (' + Math.round(normRate * 100) + '%)'
             : ' — z tego <b>' + totalProducedForNorm + ' szt.</b> wobec normy <b>' + totalExpectedQty + ' szt.</b> (' + Math.round(normRate * 100) + '%)') +
-          ' (w tym ' + totalBad + ' wadliwych), zatwierdzony przestój <b>' + totalDowntimeMin + ' min</b>.</div>'
+          ' (w tym ' + totalBad + ' wadliwych), zatwierdzony przestój <b>' + totalDowntimeMin + ' min</b>' +
+          (cancelledCount ? ' · ' + cancelledCount + (cancelledCount === 1 ? ' anulowana zmiana pominięta' : ' anulowane zmiany pominięte') : '') + '.</div>'
         : '') +
-      (recent.length
+      (recentAll.length
         ? '<div class="table-scroll" style="margin-top:16px;"><table class="compact fixed-layout">' + colgroupHtml + '<thead><tr><th>Data</th><th class="num">Zmiana</th><th>Maszyna</th><th>Produkt</th><th class="num">OEE</th><th>Norma</th><th>Ocena</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
         : '<div class="empty-hint" style="margin-top:16px;">Brak zapisanych zmian w wybranym okresie.</div>') +
       '</div></div>';
 
     document.getElementById("resultsSwitchBtn").addEventListener("click", function () {
-      resultsVerified = false; resultsOperatorId = null; resultsExpandedId = null; renderOperatorResults(root);
+      resultsVerified = false; resultsOperatorId = null; resultsExpandedId = null; resultsEditingId = null; renderOperatorResults(root);
     });
-    wirePeriodPicker("results", resultsPeriod, function () { resultsExpandedId = null; renderOperatorResults(root); });
+    wirePeriodPicker("results", resultsPeriod, function () { resultsExpandedId = null; resultsEditingId = null; renderOperatorResults(root); });
+    if (resultsEditingId) wireShiftEditMachineProductSync("selfEdit");
     root.querySelectorAll("tr.result-row").forEach(function (tr) {
       tr.addEventListener("click", function () {
         var id = tr.getAttribute("data-shift-id");
         resultsExpandedId = resultsExpandedId === id ? null : id;
+        resultsEditingId = null;
+        renderOperatorResults(root);
+      });
+    });
+    root.querySelectorAll("[data-self-edit]").forEach(function (btn) {
+      btn.addEventListener("click", function (evt) {
+        evt.stopPropagation();
+        resultsEditingId = btn.getAttribute("data-self-edit");
+        renderOperatorResults(root);
+      });
+    });
+    root.querySelectorAll("[data-self-cancel]").forEach(function (btn) {
+      btn.addEventListener("click", async function (evt) {
+        evt.stopPropagation();
+        var id = btn.getAttribute("data-self-cancel");
+        var s = shiftById(id);
+        if (!s || !confirm("Na pewno anulować tę zmianę? Zniknie z wyliczeń OEE i normy, ale zostanie widoczna (przekreślona) w historii.")) return;
+        btn.disabled = true;
+        await submitShiftCancel(s, "operator", null);
+        renderOperatorResults(root);
+      });
+    });
+    root.querySelectorAll("[data-self-edit-discard]").forEach(function (btn) {
+      btn.addEventListener("click", function (evt) {
+        evt.stopPropagation();
+        resultsEditingId = null;
+        renderOperatorResults(root);
+      });
+    });
+    root.querySelectorAll("[data-self-edit-save]").forEach(function (btn) {
+      btn.addEventListener("click", async function (evt) {
+        evt.stopPropagation();
+        var id = btn.getAttribute("data-self-edit-save");
+        var s = shiftById(id);
+        if (!s) return;
+        btn.disabled = true;
+        var res = await submitShiftEdit(s, "selfEdit", "operator", false);
+        if (res.ok) resultsEditingId = null;
         renderOperatorResults(root);
       });
     });
