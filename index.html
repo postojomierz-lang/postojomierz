@@ -2518,7 +2518,10 @@
     var withNormBasis = withM.filter(function (m) { return m.expectedQty > 0; });
     var totalExpectedQty = withNormBasis.reduce(function (sum, m) { return sum + m.expectedQty; }, 0);
     var totalProducedForNorm = withNormBasis.reduce(function (sum, m) { return sum + m.produced; }, 0);
-    var normRate = totalExpectedQty > 0 ? clamp01(totalProducedForNorm / totalExpectedQty) : null;
+    // celowo BEZ clamp01 — norma może być przekroczona (tak jak pojedynczy wiersz w tabeli
+    // potrafi pokazać np. "402%"), apqRow() i tak przytnie tylko wypełnienie paska do 100%,
+    // ale liczba obok ma pokazywać prawdziwy wynik, a nie sztucznie ograniczony do 100%
+    var normRate = totalExpectedQty > 0 ? (totalProducedForNorm / totalExpectedQty) : null;
     var totalGood = recent.reduce(function (sum, s) { return sum + s.good; }, 0);
     var totalBad = recent.reduce(function (sum, s) { return sum + s.bad; }, 0);
     var totalDowntimeMin = withM.reduce(function (sum, m) { return sum + m.downtimeMin; }, 0);
