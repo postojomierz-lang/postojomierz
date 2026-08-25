@@ -2511,11 +2511,20 @@
     var recent = filterByPeriod(mine, resultsPeriod);
     var withM = recent.map(function (s) { return calc(s); });
     var avgOee = withM.length ? withM.reduce(function (sum, m) { return sum + m.oee; }, 0) / withM.length : 0;
+    // "Norma" w podsumowaniu okresu = łączna liczba zrobionych sztuk podzielona przez łączną
+    // liczbę sztuk, które powinny powstać (suma expectedQty) — czyli dokładnie to, co pokazuje
+    // linijka "Łącznie w tym okresie" niżej, żeby ten procent zawsze miał jasny punkt odniesienia.
+    // Liczy się tylko ze zmian, dla których w ogóle da się wyliczyć normę (ustawiony czas cyklu).
     var withNormBasis = withM.filter(function (m) { return m.expectedQty > 0; });
-    var normRate = withNormBasis.length ? withNormBasis.filter(function (m) { return m.normMet; }).length / withNormBasis.length : null;
+    var totalExpectedQty = withNormBasis.reduce(function (sum, m) { return sum + m.expectedQty; }, 0);
+    var totalProducedForNorm = withNormBasis.reduce(function (sum, m) { return sum + m.produced; }, 0);
+    var normRate = totalExpectedQty > 0 ? clamp01(totalProducedForNorm / totalExpectedQty) : null;
     var totalGood = recent.reduce(function (sum, s) { return sum + s.good; }, 0);
     var totalBad = recent.reduce(function (sum, s) { return sum + s.bad; }, 0);
     var totalDowntimeMin = withM.reduce(function (sum, m) { return sum + m.downtimeMin; }, 0);
+    // czy WSZYSTKIE zmiany z okresu mają ustaloną normę (czas cyklu) — jeśli tak, nie trzeba
+    // osobno pokazywać "z tego X szt.", bo to ta sama liczba co suma sztuk wyżej
+    var allInNormBasis = normRate != null && totalProducedForNorm === (totalGood + totalBad);
 
     var rows = recent.map(function (s) {
       var m = calc(s); var t = tier(m.oee);
@@ -2540,10 +2549,14 @@
       periodPickerHtml(resultsPeriod, "results") +
       '<div class="apq-rows" style="margin-top:4px;max-width:360px;">' +
       apqRow("Śr. OEE", avgOee, "var(--chart-avail)") +
-      (normRate != null ? apqRow("Norma", normRate, "var(--chart-perf)") : '') +
+      (normRate != null ? apqRow("Norma (łącznie)", normRate, "var(--chart-perf)") : '') +
       '</div>' +
       (recent.length
-        ? '<div class="hint" style="margin-top:10px;">Łącznie w tym okresie: <b>' + (totalGood + totalBad) + ' szt.</b> (w tym ' + totalBad + ' wadliwych), zatwierdzony przestój <b>' + totalDowntimeMin + ' min</b>.</div>'
+        ? '<div class="hint" style="margin-top:10px;">Łącznie w tym okresie: <b>' + (totalGood + totalBad) + ' szt.</b>' +
+          (normRate == null ? '' : allInNormBasis
+            ? ' wobec normy <b>' + totalExpectedQty + ' szt.</b> (' + Math.round(normRate * 100) + '%)'
+            : ' — z tego <b>' + totalProducedForNorm + ' szt.</b> wobec normy <b>' + totalExpectedQty + ' szt.</b> (' + Math.round(normRate * 100) + '%)') +
+          ' (w tym ' + totalBad + ' wadliwych), zatwierdzony przestój <b>' + totalDowntimeMin + ' min</b>.</div>'
         : '') +
       (recent.length
         ? '<div class="table-scroll" style="margin-top:16px;"><table class="compact fixed-layout">' + colgroupHtml + '<thead><tr><th>Data</th><th class="num">Zmiana</th><th>Maszyna</th><th>Produkt</th><th class="num">OEE</th><th>Norma</th><th>Ocena</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
