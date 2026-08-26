@@ -715,6 +715,10 @@
   function clampCode(s) { return String(s == null ? "" : s).trim().slice(0, PRODUCT_CODE_MAXLEN); }
   function clampName(s) { return String(s == null ? "" : s).trim().slice(0, PRODUCT_NAME_MAXLEN); }
   function fmtPct(x) { return (x * 100).toFixed(1).replace(".", ",") + "%"; }
+  function fmtQty(x) {
+    if (x == null || isNaN(x)) return "—";
+    return (Math.round(x * 100) / 100).toLocaleString("pl", { maximumFractionDigits: 2 });
+  }
   function clamp01(x) { return Math.max(0, Math.min(1, x)); }
   function fmtDate(d) {
     var dt = new Date(d + "T00:00:00");
@@ -731,6 +735,11 @@
   function daysAgoStr(n) {
     var d = new Date();
     d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  }
+  function daysFromNowStr(n) {
+    var d = new Date();
+    d.setDate(d.getDate() + n);
     return d.toISOString().slice(0, 10);
   }
 
@@ -921,7 +930,17 @@
 
     state.orders = (results[8].data || []).map(orderFromRow);
 
-    state.materials = (results[9].data || []).map(function (m) { return { id: m.id, name: m.name, unit: m.unit, code: m.code || "" }; })
+    state.materials = (results[9].data || []).map(function (m) {
+      return {
+        id: m.id, name: m.name, unit: m.unit, code: m.code || "",
+        // stan magazynowy: migawka z ostatniego importu (patrz Zapotrzebowanie), NIE licznik
+        // wyliczany na bieżąco — to jedyna wartość w tym module, którą świadomie TRZYMAMY,
+        // bo pochodzi z zewnątrz (MRP zakładu), nie da się jej policzyć z niczego w aplikacji.
+        // null = nigdy nie zaimportowano (pokazujemy "—", nie 0 — inaczej fałszywy alarm "brak")
+        stockQty: m.stock_qty != null ? Number(m.stock_qty) : null,
+        stockUpdatedAt: m.stock_updated_at || null
+      };
+    })
       .sort(function (a, b) { return a.name.localeCompare(b.name, "pl", { sensitivity: "base" }); });
     state.recipeMaterials = (results[10].data || []).map(function (r) { return { productId: r.product_id, materialId: r.material_id, qtyPerUnit: Number(r.qty_per_unit) }; });
     state.recipeMaterialsByProduct = {};
@@ -988,6 +1007,56 @@
   function prevChainOrder(o) {
     if (!o.chainId || !o.chainSeq || o.chainSeq <= 1) return null;
     return state.orders.filter(function (x) { return x.chainId === o.chainId && x.chainSeq === o.chainSeq - 1; })[0] || null;
+  }
+
+  /* ---------- planowanie surowców: zapotrzebowanie z aktywnych zleceń × receptura ----------
+     "compute, don't store", tak jak reszta planowania: zapotrzebowanie liczy się za każdym
+     razem na nowo z AKTYWNYCH, NIEZREALIZOWANYCH zleceń i receptur (BOM), nigdy z osobnego
+     zapisanego licznika — więc automatycznie reaguje na każdą zmianę zlecenia/receptury/
+     wykonania, bez żadnego kodu synchronizującego. */
+  function orderRemainingQty(o) { return Math.max(0, o.targetQty - producedForOrder(o.id)); }
+
+  // zlecenia rozpisane automatycznie z JEDNEJ receptury na kilka maszyn (patrz chainId) to
+  // te same fizyczne sztuki przechodzące przez kolejne etapy — surowiec się na nie zużywa
+  // RAZ, przy starcie (pierwszy etap łańcucha), więc do zapotrzebowania liczymy tylko etap
+  // o najniższym chainSeq w danym łańcuchu; dalsze etapy pomijamy, żeby nie liczyć surowca
+  // po raz drugi/trzeci za te same sztuki
+  function materialDemandOrders() {
+    var byChain = {}, solo = [];
+    state.orders.filter(isActiveOrder).forEach(function (o) {
+      if (!o.chainId) { solo.push(o); return; }
+      if (!byChain[o.chainId] || o.chainSeq < byChain[o.chainId].chainSeq) byChain[o.chainId] = o;
+    });
+    return solo.concat(Object.keys(byChain).map(function (k) { return byChain[k]; }));
+  }
+
+  // "pilność" zlecenia po terminie — tylko do pogrupowania zapotrzebowania w widoku, nie
+  // wpływa na nic innego
+  function dueBucket(dueDate) {
+    if (!dueDate) return "none";
+    if (dueDate < todayStr()) return "overdue";
+    if (dueDate <= daysFromNowStr(7)) return "soon";
+    if (dueDate <= daysFromNowStr(30)) return "month";
+    return "later";
+  }
+
+  // {materialId: {total, overdue, soon, month, later, none}} — ile którego surowca trzeba
+  // ŁĄCZNIE (total) i w rozbiciu na pilność terminu zleceń, z których to zapotrzebowanie
+  // pochodzi
+  function materialRequirements() {
+    var out = {};
+    materialDemandOrders().forEach(function (o) {
+      var remaining = orderRemainingQty(o);
+      if (remaining <= 0) return;
+      var bucket = dueBucket(o.dueDate);
+      (state.recipeMaterialsByProduct[o.productId] || []).forEach(function (line) {
+        var need = line.qtyPerUnit * remaining;
+        if (!out[line.materialId]) out[line.materialId] = { total: 0, overdue: 0, soon: 0, month: 0, later: 0, none: 0 };
+        out[line.materialId].total += need;
+        out[line.materialId][bucket] += need;
+      });
+    });
+    return out;
   }
   // produkty, dla których administrator ustawił wydajność na danej maszynie — używane i przy
   // wpisie zmiany (wybór produktu), i przy dodawaniu zlecenia (żeby nie dało się zaplanować
@@ -1774,6 +1843,7 @@
   var MANAGER_TABS = [
     { key: "overview", label: "Przegląd" },
     { key: "orders", label: "Planowanie" },
+    { key: "materialplan", label: "Zapotrzebowanie" },
     { key: "downtimes", label: "Przestoje" },
     { key: "history", label: "Historia" }
   ];
@@ -1798,6 +1868,7 @@
       case "recipes": return recipesAdminHtml();
       case "downtimes": return downtimesAdminHtml();
       case "orders": return ordersAdminHtml();
+      case "materialplan": return materialPlanHtml();
       case "history": return tableHtml();
       case "settings": return settingsHtml();
       case "overview":
@@ -1984,6 +2055,42 @@
     ]);
     await loadCompanyData();
     renderAdmin(root);
+  }
+
+  function materialPlanHtml() {
+    var req = materialRequirements();
+    var relevant = state.materials.filter(function (m) { return (req[m.id] && req[m.id].total > 0) || m.stockQty != null; });
+    relevant.sort(function (a, b) {
+      var ra = req[a.id] ? req[a.id].total : 0, rb = req[b.id] ? req[b.id].total : 0;
+      return rb - ra; // największe zapotrzebowanie na górze
+    });
+    var rows = relevant.map(function (m) {
+      var r = req[m.id] || { total: 0, overdue: 0, soon: 0, month: 0, later: 0, none: 0 };
+      var diff = m.stockQty != null ? (m.stockQty - r.total) : null;
+      var diffTxt = diff == null ? "—" : (diff < 0 ? '<span class="status-tag rejected">brakuje ' + fmtQty(-diff) + '</span>' : fmtQty(diff));
+      var stockTxt = m.stockQty != null ? fmtQty(m.stockQty) : "—";
+      var updTxt = m.stockUpdatedAt ? fmtDate(m.stockUpdatedAt.slice(0, 10)) : "";
+      return '<tr><td>' + escAttr(m.code ? m.code + " — " + m.name : m.name) + '</td>' +
+        '<td>' + unitLabel(m.unit) + '</td>' +
+        '<td class="num tabular">' + (r.overdue > 0 ? fmtQty(r.overdue) : "—") + '</td>' +
+        '<td class="num tabular">' + (r.soon > 0 ? fmtQty(r.soon) : "—") + '</td>' +
+        '<td class="num tabular">' + (r.month > 0 ? fmtQty(r.month) : "—") + '</td>' +
+        '<td class="num tabular">' + ((r.later + r.none) > 0 ? fmtQty(r.later + r.none) : "—") + '</td>' +
+        '<td class="num tabular"><b>' + (r.total > 0 ? fmtQty(r.total) : "—") + '</b></td>' +
+        '<td class="num tabular">' + stockTxt + (updTxt ? '<div class="hint">stan z ' + updTxt + '</div>' : '') + '</td>' +
+        '<td class="num tabular">' + diffTxt + '</td></tr>';
+    }).join("");
+
+    var table = rows
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Surowiec</th><th>Jedn.</th><th class="num">Zaległe</th><th class="num">≤7 dni</th><th class="num">≤30 dni</th><th class="num">Później</th><th class="num">Razem potrzeba</th><th class="num">Stan</th><th class="num">Różnica</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="empty-hint">Brak zapotrzebowania — żadne aktywne zlecenie nie ma jeszcze receptury z surowcami (albo wszystkie zlecenia są zrealizowane), i żaden surowiec nie ma jeszcze wczytanego stanu.</div>';
+
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Planowanie surowców</div><h2 class="section-title small">Zapotrzebowanie na surowce</h2>' +
+      '<div class="section-sub">Ile którego surowca potrzeba na to, co ZOSTAŁO do zrobienia z aktywnych zleceń (nie na całe zlecenie — to, co już zrobione, ma surowiec już zużyty), według receptur produktów. Kolumny „Zaległe" / „≤7 dni" / „≤30 dni" / „Później" to ten sam surowiec rozbity wg terminu zlecenia, do którego jest potrzebny — dla orientacji, co jest pilne (suma tych czterech = „Razem potrzeba"). Zlecenia rozpisane automatycznie z jednej receptury na kilka maszyn liczą się raz — surowiec zużywa się przy starcie, nie na każdym etapie z osobna.</div></div>' +
+      table +
+      '<div class="import-box" style="margin-top:14px;"><div class="import-head"><span class="eyebrow">Wczytaj stany magazynowe</span><span class="hint">Jeden surowiec w linii: Kod albo Nazwa;Ilość na stanie (np. SUR-001;120 albo Blacha 2mm;120 — działa też przecinek albo tabulator). Dopasowujemy po kodzie, a jeśli go nie ma — po nazwie; surowiec musi już być na liście Surowce. Nadpisuje stan tylko surowcom z pliku — reszta zostaje bez zmian. Plik Excel (.xlsx): pierwsza kolumna kod/nazwa, druga ilość.</span></div>' +
+      '<div class="inline-add"><input type="file" id="importStockFile" accept=".csv,.txt,.xlsx,.xls"><button type="button" class="ghost small" id="importStockBtn">Wczytaj</button></div>' +
+      '<span class="form-msg" id="importStockMsg"></span></div></div>';
   }
 
   /* =====================================================================
@@ -2712,6 +2819,73 @@
         renderAdmin(root);
         var freshRecipeMsg = document.getElementById("recipeMsg");
         if (freshRecipeMsg && !errors.length) { freshRecipeMsg.textContent = "Zapisano."; freshRecipeMsg.classList.add("show"); setTimeout(function () { freshRecipeMsg.classList.remove("show"); }, 2500); }
+      });
+    }
+
+    if (adminTab === "materialplan") {
+      var importStockBtn = document.getElementById("importStockBtn");
+      var importStockFile = document.getElementById("importStockFile");
+      var importStockMsg = document.getElementById("importStockMsg");
+      if (importStockBtn && importStockFile) importStockBtn.addEventListener("click", function () {
+        importStockMsg.classList.remove("show", "error");
+        var file = importStockFile.files[0];
+        if (!file) { importStockMsg.textContent = "Najpierw wybierz plik."; importStockMsg.classList.add("show", "error"); return; }
+        importStockBtn.disabled = true;
+        parseImportFile(file, async function (rows, err) {
+          if (err) { importStockBtn.disabled = false; importStockMsg.textContent = "Błąd odczytu pliku: " + err.message; importStockMsg.classList.add("show", "error"); return; }
+
+          // dopasuj po kodzie ALBO po nazwie (bez rozróżniania wielkości liter) — surowiec
+          // musi już istnieć na liście Surowce, tu tylko nadpisujemy jego stan
+          var byCode = {}, byName = {};
+          state.materials.forEach(function (m) {
+            if (m.code) byCode[m.code.trim().toLowerCase()] = m;
+            byName[m.name.trim().toLowerCase()] = m;
+          });
+          var STOCK_HEADER_WORDS = ["kod", "code", "nazwa", "name", "surowiec", "ilość", "ilosc", "stan", "qty"];
+          var updates = [], seen = {}, unmatched = 0, badQty = 0;
+          rows.forEach(function (r) {
+            var cols = Array.isArray(r) ? r : [r];
+            var key = (cols[0] == null ? "" : cols[0]).toString().trim();
+            var qtyRaw = (cols[1] == null ? "" : cols[1]).toString().trim();
+            if (!key) return;
+            var low = key.toLowerCase();
+            if (STOCK_HEADER_WORDS.indexOf(low) !== -1) return;
+            var m = byCode[low] || byName[low];
+            if (!m) { unmatched++; return; }
+            var qty = parseFloat(qtyRaw.replace(",", "."));
+            if (isNaN(qty) || qty < 0) { badQty++; return; }
+            if (seen[m.id]) return;
+            seen[m.id] = true;
+            updates.push({ id: m.id, qty: qty });
+          });
+
+          if (!updates.length) {
+            importStockBtn.disabled = false;
+            importStockMsg.textContent = "Nie znaleziono żadnych rozpoznanych surowców w pliku" + (unmatched ? " (nierozpoznanych: " + unmatched + " — dodaj je najpierw w zakładce Surowce)" : "") + ".";
+            importStockMsg.classList.add("show", "error");
+            return;
+          }
+
+          var nowIso = new Date().toISOString();
+          var errCount = 0;
+          for (var si = 0; si < updates.length; si++) {
+            var sres = await sb.from("materials").update({ stock_qty: updates[si].qty, stock_updated_at: nowIso }).eq("id", updates[si].id);
+            if (sres.error) errCount++;
+          }
+          importStockBtn.disabled = false;
+          await loadCompanyData();
+          renderAdmin(root);
+          var freshStockMsg = document.getElementById("importStockMsg");
+          if (freshStockMsg) {
+            var stockParts = ["zaktualizowano: " + (updates.length - errCount)];
+            if (unmatched) stockParts.push("nierozpoznanych: " + unmatched);
+            if (badQty) stockParts.push("bez poprawnej ilości: " + badQty);
+            if (errCount) stockParts.push("błędów zapisu: " + errCount);
+            freshStockMsg.textContent = "Wczytano — " + stockParts.join(", ") + ".";
+            freshStockMsg.classList.add("show");
+            if (errCount) freshStockMsg.classList.add("error");
+          }
+        });
       });
     }
 
