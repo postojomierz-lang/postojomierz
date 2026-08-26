@@ -2757,6 +2757,17 @@
       // przestawiono, a listenery czyszczące selectedOrderId (patrz wyżej) czegoś nie złapały
       var linkedOrder = selectedOrderId ? orderById(selectedOrderId) : null;
       if (linkedOrder && (linkedOrder.machineId !== machineId || linkedOrder.productId !== productId)) linkedOrder = null;
+      // ZABEZPIECZENIE: jeśli operator nie kliknął "Rozpocznij" (albo w ogóle nie zobaczył
+      // kolejki, bo np. wszedł od razu z klawiatury), ale to, co i tak wpisał, pasuje maszyną
+      // i produktem do zlecenia czekającego w tej kolejce — dolicz automatycznie. Inaczej
+      // produkcja "znika" z planowania tylko dlatego, że ktoś zapomniał kliknąć przycisk, mimo
+      // że realnie robił dokładnie to zlecenie. Przy kilku pasujących zleceniach na raz liczy
+      // się to najwcześniejsze w kolejce (ordersForMachine sortuje po position) — to samo,
+      // które i tak pokazałoby się na górze listy z przyciskiem "Rozpocznij".
+      if (!linkedOrder) {
+        var autoMatches = ordersForMachine(machineId).filter(function (o) { return o.productId === productId && !orderDone(o); });
+        if (autoMatches.length) linkedOrder = autoMatches[0];
+      }
 
       var row = {
         company_id: session.company.id,
