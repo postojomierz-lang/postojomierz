@@ -659,6 +659,24 @@
     gap: 12px;
     flex-wrap: wrap;
   }
+
+  /* ---------- Raport: drukuj/zapisz jako PDF wyłącznie treść raportu, nic
+     dookoła (topbar, zakładki, przyciski) — standardowa sztuczka "ukryj
+     wszystko poza jednym elementem" zamiast oznaczania każdego innego
+     elementu z osobna klasą .no-print ---------- */
+  @media print {
+    body * { visibility: hidden; }
+    #reportPrintArea, #reportPrintArea * { visibility: visible; }
+    #reportPrintArea { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+    #reportPrintArea .report-actions { display: none; }
+  }
+  .report-doc { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; }
+  .report-doc h1 { font-size: 20px; margin: 0 0 4px; }
+  .report-doc .report-meta { color: var(--ink-muted); font-size: 13px; margin-bottom: 18px; }
+  .report-doc h2 { font-size: 14px; margin: 22px 0 8px; }
+  .report-kpis { display: flex; gap: 22px; flex-wrap: wrap; margin: 10px 0 20px; }
+  .report-kpi .num { font-family: "IBM Plex Mono", monospace; font-size: 22px; font-weight: 600; }
+  .report-kpi .label { font-size: 11.5px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 </style>
 
 <div class="wrap" id="app"></div>
@@ -700,7 +718,9 @@
   var resultsVerified = false;    // czy PIN dla resultsOperatorId został potwierdzony w tej sesji ekranu
   var resultsExpandedId = null;   // id zmiany rozwiniętej w szczegóły na ekranie Moje wyniki
   var resultsPeriod = { mode: "count", count: 10, from: null, to: null };  // okres podsumowania na ekranie Moje wyniki
-  var managerPeriod = { mode: "week", count: 20, from: null, to: null };  // okres podsumowania w Panelu kierownika → Przegląd
+  var managerPeriod = { mode: "week", count: 20, from: null, to: null };  // okres podsumowania w Panelu kierownika → Przegląd (dzielony z zakładką Analityka)
+  var analyticsMachineFilter = ""; // "" = wszystkie maszyny razem, albo id konkretnej — filtr w zakładce Analityka
+  var reportPeriod = { mode: "month", count: 20, from: null, to: null }; // okres raportu — osobny od managerPeriod (raport to zwykle "ostatni miesiąc", nie to, co akurat przeglądasz)
   var resultsEditingId = null;    // id zmiany, którą operator właśnie sam poprawia na ekranie Moje wyniki
   var historyEditingId = null;    // id zmiany, którą kierownik właśnie poprawia w zakładce Historia
   var booting = true;
@@ -890,7 +910,8 @@
       sb.from("production_orders").select("*").order("position"),
       sb.from("materials").select("*").order("name"),
       sb.from("recipe_materials").select("*"),
-      sb.from("recipe_steps").select("*").order("seq_no")
+      sb.from("recipe_steps").select("*").order("seq_no"),
+      sb.from("maintenance_logs").select("*").order("log_date", { ascending: false }).limit(1000)
     ]);
     var errs = results.map(function (r) { return r.error; }).filter(Boolean);
     if (errs.length) {
@@ -911,7 +932,10 @@
       shiftsPerDay: session.company.shiftsPerDay || 2,
       shiftLengthMin: session.company.shiftLengthMin != null ? session.company.shiftLengthMin : 480,
       breakMin: session.company.breakMin || 0,
-      ineffectiveMin: session.company.ineffectiveMin || 0
+      ineffectiveMin: session.company.ineffectiveMin || 0,
+      alertOeeThreshold: session.company.alertOeeThreshold != null ? session.company.alertOeeThreshold : 0.6,
+      alertDowntimePendingHours: session.company.alertDowntimePendingHours != null ? session.company.alertDowntimePendingHours : 24,
+      alertNormMissStreak: session.company.alertNormMissStreak != null ? session.company.alertNormMissStreak : 3
     };
 
     // operatorzy — proste rekordy imię + PIN, nie konta logowania (patrz renderOperator)
@@ -956,6 +980,15 @@
     });
     Object.keys(state.recipeStepsByProduct).forEach(function (pid) {
       state.recipeStepsByProduct[pid].sort(function (a, b) { return a.seqNo - b.seqNo; });
+    });
+
+    state.maintenanceLogs = (results[12].data || []).map(function (m) {
+      return {
+        id: m.id, machineId: m.machine_id, date: m.log_date, kind: m.kind,
+        description: m.description || "",
+        downtimeMin: m.downtime_min != null ? Number(m.downtime_min) : null,
+        cost: m.cost != null ? Number(m.cost) : null
+      };
     });
   }
 
@@ -1387,6 +1420,423 @@
     svg.addEventListener("mouseleave", function () { tooltip.classList.remove("show"); });
   }
 
+  /* =====================================================================
+     ANALITYKA — trend OEE w czasie (agregacja dzienna) i Pareto przyczyn
+     przestojów, na tych samych zmianach z wybranego okresu (i opcjonalnie
+     jednej maszyny) co reszta Panelu kierownika — żadnej nowej tabeli w
+     bazie, to wszystko dane, które już zbieramy (shifts, shift_downtimes).
+     ===================================================================== */
+
+  // dzienne średnie A/P/Q/OEE ze zmian w okresie (i opcjonalnie jednej maszyny),
+  // posortowane rosnąco po dacie — do wykresu trendu
+  function analyticsTrendData(period, machineId) {
+    var pool = machineId ? machineShifts(machineId) : state.shifts.filter(isActiveShift);
+    var inPeriod = periodShiftsFor(pool, period);
+    var byDate = {};
+    inPeriod.forEach(function (s) {
+      if (!byDate[s.date]) byDate[s.date] = [];
+      byDate[s.date].push(calc(s));
+    });
+    return Object.keys(byDate).sort().map(function (date) {
+      var ms = byDate[date];
+      function avg(key) { return ms.reduce(function (sum, m) { return sum + m[key]; }, 0) / ms.length; }
+      var a = avg("availability"), p = avg("performance"), q = avg("quality");
+      return { date: date, availability: a, performance: p, quality: q, oee: a * p * q, count: ms.length };
+    });
+  }
+
+  // Pareto: minuty ZATWIERDZONEGO przestoju na powód, z tych samych zmian co trend
+  // (te same zasady co effectiveDowntimeMin — tylko approved się liczy), posortowane
+  // malejąco, z udziałem % i sumą narastająco
+  function downtimeParetoData(period, machineId) {
+    var pool = machineId ? machineShifts(machineId) : state.shifts.filter(isActiveShift);
+    var inPeriod = periodShiftsFor(pool, period);
+    var byReason = {};
+    inPeriod.forEach(function (s) {
+      (state.downtimesByShift[s.id] || []).forEach(function (d) {
+        if (d.status !== "approved") return;
+        byReason[d.reasonId] = (byReason[d.reasonId] || 0) + d.minutes;
+      });
+    });
+    var total = Object.keys(byReason).reduce(function (sum, k) { return sum + byReason[k]; }, 0);
+    var rows = Object.keys(byReason).map(function (id) { return { reasonId: id, minutes: byReason[id] }; })
+      .sort(function (a, b) { return b.minutes - a.minutes; });
+    var cum = 0;
+    rows.forEach(function (r) {
+      r.pct = total > 0 ? (r.minutes / total) : 0;
+      cum += r.pct;
+      r.cumPct = cum;
+    });
+    return { rows: rows, total: total };
+  }
+
+  // wykres liniowy OEE + A/P/Q, jedna wspólna oś 0–100% (nigdy dwie osie na jednym
+  // wykresie) — te same kolory co reszta aplikacji (hero, karty maszyn)
+  function buildTrendChart(data) {
+    var w = 720, h = 220, padL = 34, padR = 10, padT = 10, padB = 22;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    if (data.length < 2) return { svg: '<svg viewBox="0 0 ' + w + ' ' + h + '"></svg>', points: [], w: w };
+    function xFor(i) { return padL + (i / (data.length - 1)) * innerW; }
+    function yFor(v) { return padT + innerH - clamp01(v) * innerH; }
+    var seriesDefs = [
+      { key: "availability", color: "var(--chart-avail)", width: 1.6 },
+      { key: "performance", color: "var(--chart-perf)", width: 1.6 },
+      { key: "quality", color: "var(--chart-qual)", width: 1.6 },
+      { key: "oee", color: "var(--brand)", width: 2.6 }
+    ];
+    var gridLines = [0, 0.25, 0.5, 0.75, 1].map(function (g) {
+      var y = yFor(g);
+      return '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (padL + innerW) + '" y2="' + y.toFixed(1) + '" stroke="var(--border-soft)" stroke-width="1"></line>' +
+        '<text x="' + (padL - 6) + '" y="' + (y + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="var(--ink-muted)">' + Math.round(g * 100) + '%</text>';
+    }).join("");
+    var labelEvery = Math.max(1, Math.ceil(data.length / 6));
+    var xLabels = data.map(function (d, i) {
+      if (i % labelEvery !== 0 && i !== data.length - 1) return "";
+      return '<text x="' + xFor(i).toFixed(1) + '" y="' + (h - 6) + '" text-anchor="middle" font-size="9" fill="var(--ink-muted)">' + fmtDate(d.date).slice(0, 5) + '</text>';
+    }).join("");
+    var lines = seriesDefs.map(function (sd) {
+      var path = data.map(function (d, i) { return (i === 0 ? "M" : "L") + xFor(i).toFixed(1) + "," + yFor(d[sd.key]).toFixed(1); }).join(" ");
+      return '<path d="' + path + '" fill="none" stroke="' + sd.color + '" stroke-width="' + sd.width + '" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>';
+    }).join("");
+    var points = data.map(function (d, i) { return { x: xFor(i), date: d.date, oee: d.oee, availability: d.availability, performance: d.performance, quality: d.quality, count: d.count }; });
+    var svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' + gridLines + lines + xLabels + '</svg>';
+    return { svg: svg, points: points, w: w };
+  }
+
+  function attachTrendHover(wrapEl, points, w) {
+    if (!points.length) return;
+    var svg = wrapEl.querySelector("svg");
+    var tooltip = document.getElementById("tooltip");
+    svg.addEventListener("mousemove", function (evt) {
+      var rect = svg.getBoundingClientRect();
+      var relX = ((evt.clientX - rect.left) / rect.width) * w;
+      var nearest = points[0], best = Infinity;
+      points.forEach(function (p) { var dd = Math.abs(p.x - relX); if (dd < best) { best = dd; nearest = p; } });
+      tooltip.textContent = fmtDate(nearest.date) + " · OEE " + fmtPct(nearest.oee) + " · Dost. " + fmtPct(nearest.availability) + " · Wyd. " + fmtPct(nearest.performance) + " · Jak. " + fmtPct(nearest.quality);
+      tooltip.style.left = evt.clientX + "px"; tooltip.style.top = evt.clientY + "px";
+      tooltip.classList.add("show");
+    });
+    svg.addEventListener("mouseleave", function () { tooltip.classList.remove("show"); });
+  }
+
+  // Pareto: słupki = udział % danego powodu w sumie przestoju (jedna wspólna oś
+  // 0–100% z linią narastająco — nigdy surowe minuty na drugiej osi), z linią
+  // odniesienia na 80% (klasyczna zasada Pareto: 2–3 powody zwykle ją przekraczają)
+  function buildParetoChart(rows) {
+    var w = 720, h = 240, padL = 34, padR = 10, padT = 14, padB = 46;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    if (!rows.length) return '<svg viewBox="0 0 ' + w + ' ' + h + '"></svg>';
+    var n = rows.length;
+    var slot = innerW / n;
+    var barW = Math.min(slot * 0.6, 46);
+    function xCenter(i) { return padL + slot * i + slot / 2; }
+    function yFor(v) { return padT + innerH - clamp01(v) * innerH; }
+    var gridLines = [0, 0.25, 0.5, 0.75, 1].map(function (g) {
+      var y = yFor(g);
+      return '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (padL + innerW) + '" y2="' + y.toFixed(1) + '" stroke="var(--border-soft)" stroke-width="1"></line>' +
+        '<text x="' + (padL - 6) + '" y="' + (y + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="var(--ink-muted)">' + Math.round(g * 100) + '%</text>';
+    }).join("");
+    var refLine = '<line x1="' + padL + '" y1="' + yFor(0.8).toFixed(1) + '" x2="' + (padL + innerW) + '" y2="' + yFor(0.8).toFixed(1) + '" stroke="var(--status-warn)" stroke-width="1" stroke-dasharray="4 3"></line>';
+    var bars = rows.map(function (r, i) {
+      var x = xCenter(i) - barW / 2;
+      var y = yFor(r.pct);
+      var barH = (padT + innerH) - y;
+      var name = escAttr(reasonName(r.reasonId));
+      return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + Math.max(0, barH).toFixed(1) + '" rx="3" fill="var(--brand)"><title>' +
+        name + ': ' + Math.round(r.minutes) + ' min (' + Math.round(r.pct * 100) + '%), narastająco ' + Math.round(r.cumPct * 100) + '%</title></rect>';
+    }).join("");
+    var cumPoints = rows.map(function (r, i) { return { x: xCenter(i), y: yFor(r.cumPct) }; });
+    var cumPath = cumPoints.map(function (p, i) { return (i === 0 ? "M" : "L") + p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" ");
+    var cumLine = '<path d="' + cumPath + '" fill="none" stroke="var(--status-warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>' +
+      cumPoints.map(function (p) { return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.6" fill="var(--status-warn)"></circle>'; }).join("");
+    var labels = rows.map(function (r, i) {
+      var full = reasonName(r.reasonId);
+      var short = full.length > 14 ? full.slice(0, 13) + "…" : full;
+      var x = xCenter(i), y1 = h - padB + 12, y2 = h - padB + 24;
+      // dwie linijki, żeby dłuższe nazwy powodów zmieściły się bez nachodzenia na sąsiednie słupki
+      var mid = Math.ceil(short.length / 2);
+      var line1 = short.length > 8 ? short.slice(0, mid) : short;
+      var line2 = short.length > 8 ? short.slice(mid) : "";
+      return '<text x="' + x.toFixed(1) + '" y="' + y1 + '" text-anchor="middle" font-size="9" fill="var(--ink-muted)"><title>' + escAttr(full) + '</title>' + escAttr(line1) + '</text>' +
+        (line2 ? '<text x="' + x.toFixed(1) + '" y="' + y2 + '" text-anchor="middle" font-size="9" fill="var(--ink-muted)">' + escAttr(line2) + '</text>' : '');
+    }).join("");
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '">' + gridLines + refLine + bars + cumLine + labels + '</svg>';
+  }
+
+  function machineFilterOptionsHtml(selected) {
+    return '<option value=""' + (selected ? "" : " selected") + '>Wszystkie maszyny</option>' +
+      state.machines.map(function (m) { return '<option value="' + m.id + '"' + (m.id === selected ? " selected" : "") + '>' + escAttr(m.name) + '</option>'; }).join("");
+  }
+
+  function analyticsHtml(period) {
+    var machineId = analyticsMachineFilter || null;
+    var trend = analyticsTrendData(period, machineId);
+    var pareto = downtimeParetoData(period, machineId);
+
+    var trendSection = '<div class="panel"><div class="section-head"><div class="eyebrow">Analityka</div><h2 class="section-title small">Trend OEE w czasie</h2>' +
+      '<div class="section-sub">Średnie dzienne z wybranego okresu' + (machineId ? " — tylko " + escAttr(machineName(machineId)) : " — wszystkie maszyny razem") + '. Jedna wspólna oś (0–100%): łatwo zobaczyć, który z trzech czynników ciągnie OEE w dół w danym dniu.</div></div>' +
+      (trend.length >= 2
+        ? '<div class="legend-row"><span class="legend-item"><span class="legend-swatch" style="background:var(--brand)"></span>OEE</span>' +
+          '<span class="legend-item"><span class="legend-swatch" style="background:var(--chart-avail)"></span>Dostępność</span>' +
+          '<span class="legend-item"><span class="legend-swatch" style="background:var(--chart-perf)"></span>Wydajność</span>' +
+          '<span class="legend-item"><span class="legend-swatch" style="background:var(--chart-qual)"></span>Jakość</span></div>' +
+          '<div id="trendChartBox" style="margin-top:10px;"></div>'
+        : '<div class="empty-hint">Za mało dni z danymi w tym okresie na wykres trendu (potrzeba przynajmniej dwóch różnych dni ze zmianami).</div>') +
+      '</div>';
+
+    var paretoRows = pareto.rows.map(function (r) {
+      return '<tr><td>' + escAttr(reasonName(r.reasonId)) + '</td>' +
+        '<td class="num tabular">' + Math.round(r.minutes) + '</td>' +
+        '<td class="num tabular">' + Math.round(r.pct * 100) + '%</td>' +
+        '<td class="num tabular">' + Math.round(r.cumPct * 100) + '%</td></tr>';
+    }).join("");
+    var paretoSection = '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Analityka</div><h2 class="section-title small">Pareto przyczyn przestojów</h2>' +
+      '<div class="section-sub">Tylko zatwierdzony przestój, z tych samych zmian co wykres wyżej. Słupki = udział powodu w sumie przestoju, pomarańczowa linia = suma narastająco — przerywana linia to próg 80%: powody na lewo od miejsca, gdzie linia go przekracza, to zwykle te 2–3, na których najbardziej opłaca się skupić.</div></div>' +
+      (pareto.rows.length
+        ? '<div class="legend-row"><span class="legend-item"><span class="legend-swatch" style="background:var(--brand)"></span>Udział w przestojach</span>' +
+          '<span class="legend-item"><span class="legend-swatch" style="background:var(--status-warn)"></span>Suma narastająco</span></div>' +
+          '<div style="margin-top:10px;">' + buildParetoChart(pareto.rows) + '</div>' +
+          '<div class="table-scroll" style="margin-top:14px;"><table class="compact"><thead><tr><th>Powód</th><th class="num">Minuty</th><th class="num">Udział</th><th class="num">Narastająco</th></tr></thead><tbody>' + paretoRows + '</tbody></table></div>'
+        : '<div class="empty-hint">Brak zatwierdzonego przestoju w tym okresie — albo nic się nie zdarzyło, albo zgłoszenia czekają jeszcze na zatwierdzenie w zakładce Przestoje.</div>') +
+      '</div>';
+
+    return periodPickerHtml(period, "manager") +
+      '<div class="field" style="max-width:280px;margin-top:14px;"><label for="analyticsMachineFilter">Maszyna</label>' +
+      '<select id="analyticsMachineFilter">' + machineFilterOptionsHtml(analyticsMachineFilter) + '</select></div>' +
+      trendSection + paretoSection;
+  }
+
+  function mountAnalyticsCharts() {
+    var box = document.getElementById("trendChartBox");
+    if (!box) return;
+    var machineId = analyticsMachineFilter || null;
+    var trend = analyticsTrendData(managerPeriod, machineId);
+    var chart = buildTrendChart(trend);
+    box.innerHTML = chart.svg;
+    attachTrendHover(box, chart.points, chart.w);
+  }
+
+  /* =====================================================================
+     ALERTY — liczone na bieżąco z tego, co już jest w state (żadnej nowej
+     tabeli): (1) OEE poniżej progu w ostatnich 7 dniach, per maszyna,
+     (2) przestój czeka na decyzję dłużej niż ustawiony próg, (3) norma
+     niewykonana na tej samej maszynie kilka zmian z rzędu. Progi ustawia
+     kierownik w Panelu administratora → Ustawienia (companies.alert_*).
+     Na razie widoczne TYLKO w aplikacji (baner + licznik przy „Panel
+     kierownika") — bez maila, patrz komentarz przy dostawie.
+     ===================================================================== */
+  function computeAlerts() {
+    var out = [];
+    var oeeThreshold = state.settings.alertOeeThreshold;
+    var pendingHours = state.settings.alertDowntimePendingHours;
+    var missStreak = Math.max(1, Math.round(state.settings.alertNormMissStreak));
+
+    // 1) OEE poniżej progu — średnia z ostatnich 7 dni, per maszyna
+    var from7 = daysAgoStr(6);
+    state.machines.forEach(function (m) {
+      var hist = machineShifts(m.id).filter(function (s) { return s.date >= from7; });
+      if (!hist.length) return;
+      var ms = hist.map(calc);
+      var avgOee = ms.reduce(function (sum, x) { return sum + x.oee; }, 0) / ms.length;
+      if (avgOee < oeeThreshold) {
+        out.push({
+          severity: "crit",
+          text: "OEE „" + m.name + "” poniżej progu",
+          detail: fmtPct(avgOee) + " średnio z ostatnich 7 dni (próg: " + fmtPct(oeeThreshold) + ")"
+        });
+      }
+    });
+
+    // 2) przestój czeka na decyzję dłużej niż próg
+    var nowMs = Date.now();
+    state.shiftDowntimes.filter(function (d) { return d.status === "pending"; }).forEach(function (d) {
+      if (!d.createdAt) return;
+      var waitedH = (nowMs - new Date(d.createdAt).getTime()) / 3600000;
+      if (waitedH >= pendingHours) {
+        var shift = state.shifts.filter(function (s) { return s.id === d.shiftId; })[0];
+        out.push({
+          severity: "warn",
+          text: "Przestój czeka na decyzję",
+          detail: reasonName(d.reasonId) + " — " + d.minutes + " min" + (shift ? " (" + machineName(shift.machineId) + ", " + fmtDate(shift.date) + ")" : "") + " · czeka " + Math.round(waitedH) + " godz."
+        });
+      }
+    });
+
+    // 3) norma niewykonana kilka zmian z rzędu, per maszyna (licząc od najnowszej
+    // wstecz; zmiany bez policzonego celu — normMet null — pomijamy, nie przerywają serii)
+    state.machines.forEach(function (m) {
+      var hist = machineShifts(m.id).slice().reverse();
+      var streak = 0;
+      for (var i = 0; i < hist.length; i++) {
+        var c = calc(hist[i]);
+        if (c.normMet === null) continue;
+        if (c.normMet === false) { streak++; if (streak >= missStreak) break; }
+        else break;
+      }
+      if (streak >= missStreak) {
+        out.push({
+          severity: "crit",
+          text: "Norma niewykonana kilka zmian z rzędu",
+          detail: "„" + m.name + "” — ostatnie " + streak + " zmian(y) z policzonym celem poniżej normy"
+        });
+      }
+    });
+
+    return out;
+  }
+
+  function alertsPanelHtml() {
+    var alerts = computeAlerts();
+    if (!alerts.length) return "";
+    var rows = alerts.map(function (a) {
+      var tagClass = a.severity === "crit" ? "rejected" : "pending";
+      var tagLabel = a.severity === "crit" ? "pilne" : "uwaga";
+      return '<div class="review-item"><div><div class="meta"><b>' + escAttr(a.text) + '</b></div><div class="meta">' + escAttr(a.detail) + '</div></div>' +
+        '<span class="status-tag ' + tagClass + '">' + tagLabel + '</span></div>';
+    }).join("");
+    return '<section aria-labelledby="alertsTitle" style="margin-bottom:18px;"><div class="section-head"><div class="eyebrow">Wymaga uwagi</div>' +
+      '<h2 id="alertsTitle" class="section-title small">Alerty (' + alerts.length + ')</h2>' +
+      '<div class="section-sub">Progi ustawiasz w Panelu administratora → Ustawienia.</div></div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;">' + rows + '</div></section>';
+  }
+
+  /* =====================================================================
+     RAPORT — podsumowanie okresu gotowe do wysłania (Excel albo PDF przez
+     druk przeglądarki), z tych samych danych co Przegląd/Analityka. Zero
+     nowej tabeli w bazie: to widok + eksport tego, co już liczymy.
+     ===================================================================== */
+  function reportData(period) {
+    var pool = state.shifts.filter(isActiveShift);
+    var inPeriod = periodShiftsFor(pool, period); // malejąco: [0] najnowsza
+    var ms = inPeriod.map(calc);
+    function avg(key) { return ms.length ? ms.reduce(function (s, x) { return s + x[key]; }, 0) / ms.length : 0; }
+    var shop = { availability: avg("availability"), performance: avg("performance"), quality: avg("quality") };
+    shop.oee = shop.availability * shop.performance * shop.quality;
+    var totalGood = inPeriod.reduce(function (s, x) { return s + x.good; }, 0);
+    var totalBad = inPeriod.reduce(function (s, x) { return s + x.bad; }, 0);
+
+    var perMachine = state.machines.map(function (m) {
+      var hist = inPeriod.filter(function (s) { return s.machineId === m.id; });
+      if (!hist.length) return null;
+      var hms = hist.map(calc);
+      function avgM(key) { return hms.reduce(function (s, x) { return s + x[key]; }, 0) / hms.length; }
+      var a = avgM("availability"), p = avgM("performance"), q = avgM("quality");
+      return {
+        name: m.name, availability: a, performance: p, quality: q, oee: a * p * q, shiftCount: hist.length,
+        good: hist.reduce(function (s, x) { return s + x.good; }, 0), bad: hist.reduce(function (s, x) { return s + x.bad; }, 0)
+      };
+    }).filter(Boolean).sort(function (a, b) { return b.oee - a.oee; });
+
+    var byOp = {};
+    inPeriod.forEach(function (s) {
+      if (!s.operatorId) return;
+      if (!byOp[s.operatorId]) byOp[s.operatorId] = [];
+      byOp[s.operatorId].push(s);
+    });
+    var perOperator = Object.keys(byOp).map(function (opId) {
+      var list = byOp[opId], oms = list.map(calc);
+      return { name: operatorName(opId), count: list.length, avgOee: oms.reduce(function (s, x) { return s + x.oee; }, 0) / oms.length };
+    }).sort(function (a, b) { return b.avgOee - a.avgOee; });
+
+    return {
+      period: period, shop: shop, totalGood: totalGood, totalBad: totalBad, shiftCount: inPeriod.length,
+      perMachine: perMachine, perOperator: perOperator, pareto: downtimeParetoData(period, null),
+      from: inPeriod.length ? inPeriod[inPeriod.length - 1].date : null, to: inPeriod.length ? inPeriod[0].date : null,
+      generatedAt: todayStr()
+    };
+  }
+
+  function reportDocHtml(data) {
+    if (!data.shiftCount) {
+      return '<div class="report-doc" id="reportPrintArea"><div class="empty-hint">Brak zmian w wybranym okresie — nie ma z czego zrobić raportu. Wybierz inny okres powyżej.</div></div>';
+    }
+    var rangeTxt = data.from && data.to ? (fmtDate(data.from) + " – " + fmtDate(data.to)) : "—";
+    var machineRows = data.perMachine.map(function (m) {
+      return '<tr><td>' + escAttr(m.name) + '</td><td class="num tabular">' + fmtPct(m.oee) + '</td>' +
+        '<td class="num tabular">' + fmtPct(m.availability) + '</td><td class="num tabular">' + fmtPct(m.performance) + '</td><td class="num tabular">' + fmtPct(m.quality) + '</td>' +
+        '<td class="num tabular">' + m.shiftCount + '</td><td class="num tabular">' + m.good + '</td><td class="num tabular">' + m.bad + '</td></tr>';
+    }).join("");
+    var paretoRows = data.pareto.rows.slice(0, 8).map(function (r) {
+      return '<tr><td>' + escAttr(reasonName(r.reasonId)) + '</td><td class="num tabular">' + Math.round(r.minutes) + '</td><td class="num tabular">' + Math.round(r.pct * 100) + '%</td></tr>';
+    }).join("");
+    var opRows = data.perOperator.map(function (o) {
+      return '<tr><td>' + escAttr(o.name) + '</td><td class="num tabular">' + o.count + '</td><td class="num tabular">' + fmtPct(o.avgOee) + '</td></tr>';
+    }).join("");
+
+    return '<div class="report-doc" id="reportPrintArea">' +
+      '<h1>Raport OEE — ' + escAttr(session.company.name) + '</h1>' +
+      '<div class="report-meta">Okres: ' + rangeTxt + ' (' + data.shiftCount + ' ' + (data.shiftCount === 1 ? "zmiana" : "zmian") + ') · wygenerowano ' + fmtDate(data.generatedAt) + '</div>' +
+      '<div class="report-kpis">' +
+      '<div class="report-kpi"><div class="num tabular">' + fmtPct(data.shop.oee) + '</div><div class="label">OEE</div></div>' +
+      '<div class="report-kpi"><div class="num tabular">' + fmtPct(data.shop.availability) + '</div><div class="label">Dostępność</div></div>' +
+      '<div class="report-kpi"><div class="num tabular">' + fmtPct(data.shop.performance) + '</div><div class="label">Wydajność</div></div>' +
+      '<div class="report-kpi"><div class="num tabular">' + fmtPct(data.shop.quality) + '</div><div class="label">Jakość</div></div>' +
+      '<div class="report-kpi"><div class="num tabular">' + data.totalGood + '</div><div class="label">Sztuk dobrych</div></div>' +
+      '<div class="report-kpi"><div class="num tabular">' + data.totalBad + '</div><div class="label">Sztuk wadliwych</div></div>' +
+      '</div>' +
+      '<h2>Maszyna po maszynie</h2>' +
+      '<div class="table-scroll"><table class="compact"><thead><tr><th>Maszyna</th><th class="num">OEE</th><th class="num">Dostępność</th><th class="num">Wydajność</th><th class="num">Jakość</th><th class="num">Zmian</th><th class="num">Dobrych</th><th class="num">Wadliwych</th></tr></thead><tbody>' + machineRows + '</tbody></table></div>' +
+      '<h2>Największe przyczyny przestojów</h2>' +
+      (data.pareto.rows.length
+        ? '<div class="table-scroll"><table class="compact"><thead><tr><th>Powód</th><th class="num">Minuty</th><th class="num">Udział</th></tr></thead><tbody>' + paretoRows + '</tbody></table></div>'
+        : '<div class="empty-hint">Brak zatwierdzonego przestoju w tym okresie.</div>') +
+      (data.perOperator.length
+        ? '<h2>Operatorzy</h2><div class="table-scroll"><table class="compact"><thead><tr><th>Operator</th><th class="num">Zmian</th><th class="num">Śr. OEE</th></tr></thead><tbody>' + opRows + '</tbody></table></div>'
+        : '') +
+      '<div class="report-actions form-actions" style="margin-top:22px;">' +
+      '<button type="button" class="primary" id="reportPrintBtn">Drukuj / zapisz jako PDF</button>' +
+      '<button type="button" class="ghost" id="reportExcelBtn">Pobierz Excel</button>' +
+      '</div></div>';
+  }
+
+  function reportTabHtml(period) {
+    var data = reportData(period);
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Raport</div><h2 class="section-title small">Podsumowanie okresu — gotowe do wysłania</h2>' +
+      '<div class="section-sub">Wybierz okres, sprawdź podgląd niżej, pobierz jako Excel albo od razu wydrukuj/zapisz jako PDF (przeglądarka drukuje samą treść raportu, bez reszty aplikacji).</div></div>' +
+      periodPickerHtml(period, "report") +
+      '</div>' +
+      '<div style="margin-top:16px;">' + reportDocHtml(data) + '</div>';
+  }
+
+  // eksport do Excela (SheetJS, ta sama biblioteka co import plików) — kilka arkuszy:
+  // podsumowanie, maszyny, przestoje, operatorzy
+  function exportReportExcel(data) {
+    if (!window.XLSX) { bannerMsg = "Biblioteka do zapisu Excela się nie wczytała. Odśwież stronę i spróbuj ponownie."; renderApp(); return; }
+    var wb = XLSX.utils.book_new();
+    var rangeTxt = data.from && data.to ? (fmtDate(data.from) + " – " + fmtDate(data.to)) : "—";
+    var summary = [
+      ["Postojomierz — raport okresu"],
+      ["Firma", session.company.name],
+      ["Okres", rangeTxt],
+      ["Liczba zmian", data.shiftCount],
+      ["Wygenerowano", fmtDate(data.generatedAt)],
+      [],
+      ["OEE", fmtPct(data.shop.oee)],
+      ["Dostępność", fmtPct(data.shop.availability)],
+      ["Wydajność", fmtPct(data.shop.performance)],
+      ["Jakość", fmtPct(data.shop.quality)],
+      ["Sztuk dobrych", data.totalGood],
+      ["Sztuk wadliwych", data.totalBad]
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "Podsumowanie");
+
+    var machineRows = [["Maszyna", "OEE", "Dostępność", "Wydajność", "Jakość", "Zmian", "Dobrych", "Wadliwych"]]
+      .concat(data.perMachine.map(function (m) { return [m.name, fmtPct(m.oee), fmtPct(m.availability), fmtPct(m.performance), fmtPct(m.quality), m.shiftCount, m.good, m.bad]; }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(machineRows), "Maszyny");
+
+    var paretoRows = [["Powód przestoju", "Minuty", "Udział", "Narastająco"]]
+      .concat(data.pareto.rows.map(function (r) { return [reasonName(r.reasonId), Math.round(r.minutes), Math.round(r.pct * 100) + "%", Math.round(r.cumPct * 100) + "%"]; }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(paretoRows), "Przestoje");
+
+    if (data.perOperator.length) {
+      var opRows = [["Operator", "Zmian", "Śr. OEE"]].concat(data.perOperator.map(function (o) { return [o.name, o.count, fmtPct(o.avgOee)]; }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(opRows), "Operatorzy");
+    }
+
+    var fname = "raport-" + (session.company.name || "postojomierz").replace(/[^a-z0-9]+/gi, "_").toLowerCase() + "-" + todayStr() + ".xlsx";
+    XLSX.writeFile(wb, fname);
+  }
+
   function heroHtml(period) {
     var latestByMachine = state.machines.map(function (m) {
       var hist = periodShiftsFor(machineShifts(m.id), period);
@@ -1754,6 +2204,15 @@
       '</div><div class="hint">' + suggestedNote + '</div>' +
       '<div class="form-actions" style="margin-top:0;"><button type="button" class="ghost" id="saveShiftTimeBtn">Zapisz</button><span class="form-msg" id="shiftTimeMsg">Zapisano.</span></div>' +
       '</div>' +
+      '<div class="settings-row" style="flex-direction:column;align-items:stretch;gap:12px;">' +
+      '<div><div class="label">Progi alertów</div><div class="sub">Kiedy Panel kierownika ma pokazać coś jako „wymaga uwagi" (baner na Przeglądzie i licznik przy „Panel kierownika"). Bez maila na razie — trzeba wejść do aplikacji, żeby zobaczyć.</div></div>' +
+      '<div class="form-grid" style="grid-template-columns:repeat(3,1fr);margin-top:0;">' +
+      '<div class="field"><label for="setAlertOee">OEE poniżej (%), śr. z 7 dni</label><input id="setAlertOee" type="number" min="0" max="100" step="1" value="' + Math.round(state.settings.alertOeeThreshold * 100) + '"></div>' +
+      '<div class="field"><label for="setAlertPending">Przestój czeka dłużej niż (godz.)</label><input id="setAlertPending" type="number" min="1" step="1" value="' + state.settings.alertDowntimePendingHours + '"></div>' +
+      '<div class="field"><label for="setAlertStreak">Norma niewykonana (zmian z rzędu)</label><input id="setAlertStreak" type="number" min="1" step="1" value="' + state.settings.alertNormMissStreak + '"></div>' +
+      '</div>' +
+      '<div class="form-actions" style="margin-top:0;"><button type="button" class="ghost" id="saveAlertSettingsBtn">Zapisz</button><span class="form-msg" id="alertSettingsMsg">Zapisano.</span></div>' +
+      '</div>' +
       '<div class="settings-row"><div><div class="label">Firma</div><div class="sub">' + session.company.name + '</div></div></div>' +
       '<div class="settings-row"><div><div class="label">Twoje konto</div><div class="sub">' + session.user.email + ' · rola: administrator</div></div>' +
       '<button type="button" class="ghost small" id="signOutBtn2">Wyloguj</button></div></div>';
@@ -1842,8 +2301,11 @@
   ];
   var MANAGER_TABS = [
     { key: "overview", label: "Przegląd" },
+    { key: "analytics", label: "Analityka" },
+    { key: "report", label: "Raport" },
     { key: "orders", label: "Planowanie" },
     { key: "materialplan", label: "Zapotrzebowanie" },
+    { key: "maintenance", label: "Utrzymanie ruchu" },
     { key: "downtimes", label: "Przestoje" },
     { key: "history", label: "Historia" }
   ];
@@ -1867,12 +2329,15 @@
       case "materials": return materialsAdminHtml() + importBlockHtml("materials");
       case "recipes": return recipesAdminHtml();
       case "downtimes": return downtimesAdminHtml();
+      case "analytics": return analyticsHtml(managerPeriod);
+      case "report": return reportTabHtml(reportPeriod);
       case "orders": return ordersAdminHtml();
       case "materialplan": return materialPlanHtml();
+      case "maintenance": return maintenanceHtml();
       case "history": return tableHtml();
       case "settings": return settingsHtml();
       case "overview":
-      default: return periodPickerHtml(managerPeriod, "manager") + heroHtml(managerPeriod) + machineGridHtml(managerPeriod) + leaderboardHtml(managerPeriod);
+      default: return alertsPanelHtml() + periodPickerHtml(managerPeriod, "manager") + heroHtml(managerPeriod) + machineGridHtml(managerPeriod) + leaderboardHtml(managerPeriod);
     }
   }
 
@@ -2091,6 +2556,93 @@
       '<div class="import-box" style="margin-top:14px;"><div class="import-head"><span class="eyebrow">Wczytaj stany magazynowe</span><span class="hint">Jeden surowiec w linii: Kod albo Nazwa;Ilość na stanie (np. SUR-001;120 albo Blacha 2mm;120 — działa też przecinek albo tabulator). Dopasowujemy po kodzie, a jeśli go nie ma — po nazwie; surowiec musi już być na liście Surowce. Nadpisuje stan tylko surowcom z pliku — reszta zostaje bez zmian. Plik Excel (.xlsx): pierwsza kolumna kod/nazwa, druga ilość.</span></div>' +
       '<div class="inline-add"><input type="file" id="importStockFile" accept=".csv,.txt,.xlsx,.xls"><button type="button" class="ghost small" id="importStockBtn">Wczytaj</button></div>' +
       '<span class="form-msg" id="importStockMsg"></span></div></div>';
+  }
+
+  /* =====================================================================
+     UTRZYMANIE RUCHU — osobny, prosty rejestr awarii/przeglądów/serwisów
+     maszyn (maintenance_logs), NIEZALEŻNY od przestojów w ramach zmiany.
+     Cel: widzieć, czy konkretna maszyna zaczyna się psuć częściej — bez
+     nowego wykresu, prostym porównaniem ostatnich 90 dni z poprzednimi 90.
+     ===================================================================== */
+
+  var MAINTENANCE_KINDS = [
+    { key: "awaria", label: "Awaria" },
+    { key: "przeglad", label: "Przegląd" },
+    { key: "serwis", label: "Serwis" }
+  ];
+  function maintenanceKindLabel(k) { var m = MAINTENANCE_KINDS.filter(function (x) { return x.key === k; })[0]; return m ? m.label : k; }
+
+  // porównanie ostatnich 90 dni z poprzednimi 90 — tylko dla wpisów typu "awaria"
+  // (przeglądy/serwisy są planowane, nie mówią same z siebie, że maszyna się psuje).
+  // Zwraca wiersze tylko dla maszyn, które mają CHOĆ JEDEN wpis w rejestrze — reszta
+  // maszyn nie zaśmieca tabeli samymi kreskami.
+  function maintenanceFrequencyRows() {
+    var from90 = daysAgoStr(89), fromPrev90 = daysAgoStr(179);
+    var byMachine = {};
+    state.maintenanceLogs.forEach(function (l) {
+      if (!byMachine[l.machineId]) byMachine[l.machineId] = [];
+      byMachine[l.machineId].push(l);
+    });
+    return Object.keys(byMachine).map(function (machineId) {
+      var logs = byMachine[machineId];
+      var awarie = logs.filter(function (l) { return l.kind === "awaria"; });
+      var last90 = awarie.filter(function (l) { return l.date >= from90; }).length;
+      var prev90 = awarie.filter(function (l) { return l.date >= fromPrev90 && l.date < from90; }).length;
+      var lastDate = logs.reduce(function (max, l) { return !max || l.date > max ? l.date : max; }, null);
+      var trend;
+      if (last90 === 0 && prev90 === 0) trend = '<span class="hint">— brak awarii</span>';
+      else if (last90 > prev90) trend = '<span class="status-tag rejected">▲ częściej</span>';
+      else if (last90 < prev90) trend = '<span class="status-tag approved">▼ rzadziej</span>';
+      else trend = '<span class="status-tag cancelled">→ bez zmian</span>';
+      return { machineId: machineId, last90: last90, prev90: prev90, lastDate: lastDate, trend: trend };
+    }).sort(function (a, b) { return b.last90 - a.last90; });
+  }
+
+  function maintenanceHtml() {
+    var freq = maintenanceFrequencyRows();
+    var freqRows = freq.map(function (r) {
+      return '<tr><td>' + escAttr(machineName(r.machineId)) + '</td>' +
+        '<td class="num tabular">' + r.last90 + '</td>' +
+        '<td class="num tabular">' + r.prev90 + '</td>' +
+        '<td>' + r.trend + '</td>' +
+        '<td>' + (r.lastDate ? fmtDate(r.lastDate) : "—") + '</td></tr>';
+    }).join("");
+    var freqSection = freq.length
+      ? '<div class="panel"><div class="section-head"><div class="eyebrow">Trend</div><h2 class="section-title small">Czy maszyna psuje się częściej?</h2>' +
+        '<div class="section-sub">Liczba awarii (typ „Awaria") w ostatnich 90 dniach kontra poprzednie 90 dni. Przeglądy i serwisy nie liczą się do tego porównania — są planowane, więc nie mówią same z siebie, że coś się psuje częściej.</div></div>' +
+        '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Maszyna</th><th class="num">Awarie (90 dni)</th><th class="num">Poprz. 90 dni</th><th>Trend</th><th>Ostatnie zdarzenie</th></tr></thead><tbody>' + freqRows + '</tbody></table></div></div>'
+      : "";
+
+    var machOpts = state.machines.map(function (m) { return '<option value="' + m.id + '">' + escAttr(m.name) + '</option>'; }).join("");
+    var kindOpts = MAINTENANCE_KINDS.map(function (k) { return '<option value="' + k.key + '">' + k.label + '</option>'; }).join("");
+    var form = state.machines.length
+      ? '<form class="inline-add" id="addMaintenanceForm" style="flex-wrap:wrap;">' +
+        '<select id="newMntMachine">' + machOpts + '</select>' +
+        '<input type="date" id="newMntDate" value="' + todayStr() + '" max="' + todayStr() + '">' +
+        '<select id="newMntKind">' + kindOpts + '</select>' +
+        '<input type="text" id="newMntDesc" placeholder="Opis (np. wymiana łożyska)" style="flex:1;min-width:180px;">' +
+        '<input type="number" id="newMntDowntime" min="0" step="1" placeholder="Przestój (min)" style="max-width:130px;">' +
+        '<input type="number" id="newMntCost" min="0" step="0.01" placeholder="Koszt (zł)" style="max-width:110px;">' +
+        '<button type="submit" class="primary">Dodaj wpis</button></form>'
+      : '<div class="empty-hint">Dodaj najpierw maszynę w Panelu administratora, żeby móc zapisać zdarzenie.</div>';
+
+    var logRows = state.maintenanceLogs.map(function (l) {
+      return '<tr><td>' + fmtDate(l.date) + '</td>' +
+        '<td>' + escAttr(machineName(l.machineId)) + '</td>' +
+        '<td>' + maintenanceKindLabel(l.kind) + '</td>' +
+        '<td>' + escAttr(l.description) + '</td>' +
+        '<td class="num tabular">' + (l.downtimeMin != null ? fmtQty(l.downtimeMin) : "—") + '</td>' +
+        '<td class="num tabular">' + (l.cost != null ? fmtQty(l.cost) + " zł" : "—") + '</td>' +
+        '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-mnt="' + l.id + '">usuń</button></td></tr>';
+    }).join("");
+    var logTable = state.maintenanceLogs.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Data</th><th>Maszyna</th><th>Typ</th><th>Opis</th><th class="num">Przestój (min)</th><th class="num">Koszt</th><th></th></tr></thead><tbody>' + logRows + '</tbody></table></div>'
+      : '<div class="empty-hint">Brak wpisów — dodaj pierwszy poniżej.</div>';
+
+    return freqSection +
+      '<div class="panel"><div class="section-head"><div class="eyebrow">Utrzymanie ruchu</div><h2 class="section-title small">Rejestr awarii i serwisów</h2>' +
+      '<div class="section-sub">Osobny dziennik zdarzeń maszyny — niezależny od przestojów przypisywanych do zmiany. Zapisuj tu każdą awarię, przegląd czy serwis, nawet jeśli nie ma powiązanej zmiany (np. przegląd po godzinach).</div></div>' +
+      logTable + form + '<span class="form-msg" id="maintenanceMsg"></span></div>';
   }
 
   /* =====================================================================
@@ -2419,6 +2971,7 @@
   function renderAdmin(root) {
     root.innerHTML = bannerHtml() + adminTabsHtml() + '<div id="adminTabContent">' + adminTabContentHtml() + '</div>';
     if (adminTab === "overview") mountSparklines();
+    if (adminTab === "analytics") mountAnalyticsCharts();
     wireAdminEvents(root);
   }
 
@@ -2439,6 +2992,23 @@
 
     if (adminTab === "overview") {
       wirePeriodPicker("manager", managerPeriod, function () { renderAdmin(root); });
+    }
+
+    if (adminTab === "analytics") {
+      wirePeriodPicker("manager", managerPeriod, function () { renderAdmin(root); });
+      var analyticsFilterSel = document.getElementById("analyticsMachineFilter");
+      if (analyticsFilterSel) analyticsFilterSel.addEventListener("change", function () {
+        analyticsMachineFilter = analyticsFilterSel.value;
+        renderAdmin(root);
+      });
+    }
+
+    if (adminTab === "report") {
+      wirePeriodPicker("report", reportPeriod, function () { renderAdmin(root); });
+      var reportPrintBtn = document.getElementById("reportPrintBtn");
+      if (reportPrintBtn) reportPrintBtn.addEventListener("click", function () { window.print(); });
+      var reportExcelBtn = document.getElementById("reportExcelBtn");
+      if (reportExcelBtn) reportExcelBtn.addEventListener("click", function () { exportReportExcel(reportData(reportPeriod)); });
     }
 
     if (adminTab === "history") {
@@ -2889,6 +3459,44 @@
       });
     }
 
+    if (adminTab === "maintenance") {
+      var addMaintenanceForm = document.getElementById("addMaintenanceForm");
+      if (addMaintenanceForm) addMaintenanceForm.addEventListener("submit", async function (evt) {
+        evt.preventDefault();
+        var machineId = document.getElementById("newMntMachine").value;
+        var dateVal = document.getElementById("newMntDate").value || todayStr();
+        var kind = document.getElementById("newMntKind").value;
+        var descInput = document.getElementById("newMntDesc");
+        var desc = descInput.value.trim().slice(0, 500);
+        var dtInput = document.getElementById("newMntDowntime");
+        var costInput = document.getElementById("newMntCost");
+        var downtimeVal = dtInput.value === "" ? null : Number(dtInput.value);
+        var costVal = costInput.value === "" ? null : Number(costInput.value);
+        if (!machineId) return;
+        var msgEl = document.getElementById("maintenanceMsg");
+        var res = await sb.from("maintenance_logs").insert({
+          company_id: session.company.id, machine_id: machineId, log_date: dateVal, kind: kind,
+          description: desc || null, downtime_min: downtimeVal, cost: costVal
+        });
+        if (res.error) {
+          if (msgEl) { msgEl.textContent = "Nie udało się dodać wpisu: " + res.error.message; msgEl.classList.add("show", "error"); }
+          return;
+        }
+        await loadCompanyData();
+        renderAdmin(root);
+      });
+      root.querySelectorAll("[data-remove-mnt]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          if (!confirm("Usunąć ten wpis z rejestru utrzymania ruchu?")) return;
+          var id = btn.getAttribute("data-remove-mnt");
+          var res = await sb.from("maintenance_logs").delete().eq("id", id);
+          if (res.error) { bannerMsg = "Nie udało się usunąć wpisu: " + res.error.message; }
+          await loadCompanyData();
+          renderAdmin(root);
+        });
+      });
+    }
+
     var grid = document.getElementById("machineGrid");
     if (grid) grid.addEventListener("click", function (evt) {
       var openBtn = evt.target.closest("[data-open-diag]");
@@ -3176,6 +3784,35 @@
       renderAdmin(root);
       var freshMsg = document.getElementById("shiftTimeMsg");
       if (freshMsg && !res.error) { freshMsg.textContent = "Zapisano."; freshMsg.classList.add("show"); setTimeout(function () { freshMsg.classList.remove("show"); }, 2000); }
+    });
+
+    var saveAlertSettingsBtn = document.getElementById("saveAlertSettingsBtn");
+    if (saveAlertSettingsBtn) saveAlertSettingsBtn.addEventListener("click", async function () {
+      var oeePct = parseFloat(document.getElementById("setAlertOee").value);
+      var pendingH = parseFloat(document.getElementById("setAlertPending").value);
+      var streak = parseInt(document.getElementById("setAlertStreak").value, 10);
+      if (isNaN(oeePct) || oeePct < 0) oeePct = 60;
+      if (isNaN(pendingH) || pendingH <= 0) pendingH = 24;
+      if (isNaN(streak) || streak <= 0) streak = 3;
+      var oeeFrac = clamp01(oeePct / 100);
+      var res = await sb.from("companies").update({
+        alert_oee_threshold: oeeFrac, alert_downtime_pending_hours: pendingH, alert_norm_miss_streak: streak
+      }).eq("id", session.company.id);
+      if (res.error) {
+        bannerMsg = "Nie udało się zapisać progów alertów: " + res.error.message;
+      } else {
+        bannerMsg = "";
+        session.company.alertOeeThreshold = oeeFrac;
+        session.company.alertDowntimePendingHours = pendingH;
+        session.company.alertNormMissStreak = streak;
+      }
+      await loadCompanyData();
+      // renderApp() (nie renderAdmin) celowo: licznik alertów przy "Panel kierownika" żyje
+      // w headerHtml, poza #adminRoot — sam renderAdmin by go nie odświeżył, zostałby
+      // nieaktualny do następnej pełnej nawigacji
+      renderApp();
+      var freshAlertMsg = document.getElementById("alertSettingsMsg");
+      if (freshAlertMsg && !res.error) { freshAlertMsg.textContent = "Zapisano."; freshAlertMsg.classList.add("show"); setTimeout(function () { freshAlertMsg.classList.remove("show"); }, 2000); }
     });
 
     var signOutBtn2 = document.getElementById("signOutBtn2");
@@ -4004,12 +4641,13 @@
 
   function headerHtml() {
     var isAdmin = session.profile.role === "admin";
+    var alertCount = isAdmin ? computeAlerts().length : 0;
     return '<header class="topbar"><div class="brand-block"><div class="wordmark">POSTOJOMIERZ<span>.</span></div>' +
       '<div class="tagline">Widzisz w minutę, gdzie warsztat traci produkcję.</div></div>' +
       '<div class="topbar-right"><div class="role-tabs">' +
       '<button type="button" class="role-tab ' + (view === "operator" ? "active" : "") + '" data-role="operator">Wpis operatora</button>' +
       '<button type="button" class="role-tab ' + (view === "results" ? "active" : "") + '" data-role="results">Moje wyniki</button>' +
-      (isAdmin ? '<button type="button" class="role-tab ' + (view === "manager" ? "active" : "") + '" data-role="manager">Panel kierownika</button>' : '') +
+      (isAdmin ? '<button type="button" class="role-tab ' + (view === "manager" ? "active" : "") + '" data-role="manager">Panel kierownika' + (alertCount ? " (" + alertCount + ")" : "") + '</button>' : '') +
       (isAdmin ? '<button type="button" class="role-tab ' + (view === "admin" ? "active" : "") + '" data-role="admin">Panel administratora</button>' : '') +
       '</div><div class="topbar-meta"><span class="num tabular" id="todayLabel"></span>' +
       '<button type="button" class="ghost small" id="signOutBtn">Wyloguj (' + session.user.email + ')</button></div></div></header>';
@@ -4098,7 +4736,10 @@
         id: profR.data.companies.id, name: profR.data.companies.name, shiftsPerDay: profR.data.companies.shifts_per_day,
         shiftLengthMin: profR.data.companies.shift_length_min != null ? profR.data.companies.shift_length_min : 480,
         breakMin: profR.data.companies.break_min || 0,
-        ineffectiveMin: profR.data.companies.ineffective_min || 0
+        ineffectiveMin: profR.data.companies.ineffective_min || 0,
+        alertOeeThreshold: profR.data.companies.alert_oee_threshold != null ? profR.data.companies.alert_oee_threshold : 0.6,
+        alertDowntimePendingHours: profR.data.companies.alert_downtime_pending_hours != null ? profR.data.companies.alert_downtime_pending_hours : 24,
+        alertNormMissStreak: profR.data.companies.alert_norm_miss_streak != null ? profR.data.companies.alert_norm_miss_streak : 3
       }
     };
     // po zalogowaniu admin trafia od razu na Panel kierownika (przegląd wyników) — to jest
