@@ -808,7 +808,7 @@
   var state = {
     machines: [], operators: [], people: [], products: [], productRates: {}, shifts: [], diagnoses: {},
     settings: { shiftsPerDay: 2, shiftLengthMin: 480, breakMin: 0, ineffectiveMin: 0 },
-    downtimeReasons: [], shiftDowntimes: [], downtimesByShift: {}
+    downtimeReasons: [], shiftDowntimes: [], downtimesByShift: {}, orders: []
   };
 
   /* =====================================================================
@@ -840,6 +840,14 @@
       shiftNumber: r.shift_number, productId: r.product_id, date: r.shift_date,
       plannedMin: Number(r.planned_min), downtimeMin: Number(r.downtime_min),
       idealCycleSec: Number(r.ideal_cycle_sec), good: Number(r.good_count), bad: Number(r.bad_count),
+      status: r.status || "active", createdAt: r.created_at || null, orderId: r.order_id || null
+    };
+  }
+
+  function orderFromRow(r) {
+    return {
+      id: r.id, machineId: r.machine_id, productId: r.product_id, targetQty: Number(r.target_qty),
+      dueDate: r.due_date || null, note: r.note || "", position: Number(r.position || 0),
       status: r.status || "active", createdAt: r.created_at || null
     };
   }
@@ -853,7 +861,8 @@
       sb.from("diagnoses").select("*"),
       sb.from("operators").select("*").order("created_at"),
       sb.from("downtime_reasons").select("*").order("created_at"),
-      sb.from("shift_downtimes").select("*").order("created_at", { ascending: false }).limit(2000)
+      sb.from("shift_downtimes").select("*").order("created_at", { ascending: false }).limit(2000),
+      sb.from("production_orders").select("*").order("position")
     ]);
     var errs = results.map(function (r) { return r.error; }).filter(Boolean);
     if (errs.length) {
@@ -890,6 +899,8 @@
       if (!state.downtimesByShift[d.shiftId]) state.downtimesByShift[d.shiftId] = [];
       state.downtimesByShift[d.shiftId].push(d);
     });
+
+    state.orders = (results[8].data || []).map(orderFromRow);
   }
 
   // minuty przestoju faktycznie liczone do OEE dla tej zmiany: tylko ZATWIERDZONE
@@ -912,6 +923,33 @@
      bez ograniczenia czasowego, w Historii. */
   function isActiveShift(s) { return s.status !== "cancelled"; }
   function selfEditWindowOpen(s) { return isActiveShift(s) && (s.createdAt || "").slice(0, 10) === todayStr(); }
+
+  /* ---------- planowanie: kolejka zleceń na maszynę ----------
+     Zlecenie (production_orders) nie trzyma "ile zostało" jako osobnej,
+     aktualizowanej liczby — postęp (producedForOrder) liczy się za każdym
+     razem na nowo z sumy AKTYWNYCH zmian podpiętych przez shifts.order_id,
+     tak samo jak norma/OEE. Dzięki temu poprawka albo anulowanie zmiany
+     (patrz wyżej) automatycznie i poprawnie przelicza też postęp zlecenia,
+     bez dodatkowego kodu synchronizującego — i bez ryzyka rozjazdu, które
+     już raz naprawialiśmy przy liczbach opartych na osobnym liczniku. */
+  function isActiveOrder(o) { return o.status !== "cancelled"; }
+  function orderById(id) { return state.orders.filter(function (o) { return o.id === id; })[0]; }
+  function producedForOrder(orderId) {
+    return state.shifts.filter(function (s) { return s.orderId === orderId && isActiveShift(s); })
+      .reduce(function (sum, s) { return sum + s.good + s.bad; }, 0);
+  }
+  function orderDone(o) { return producedForOrder(o.id) >= o.targetQty; }
+  function orderOverdue(o) { return !!o.dueDate && o.dueDate < todayStr() && !orderDone(o); }
+  function ordersForMachine(machineId) {
+    return state.orders.filter(function (o) { return o.machineId === machineId && isActiveOrder(o); })
+      .sort(function (a, b) { return a.position - b.position; });
+  }
+  // produkty, dla których administrator ustawił wydajność na danej maszynie — używane i przy
+  // wpisie zmiany (wybór produktu), i przy dodawaniu zlecenia (żeby nie dało się zaplanować
+  // pary maszyna+produkt, której i tak nie da się później wpisać jako zmiany)
+  function productsForMachine(machineId) {
+    return state.products.filter(function (p) { return state.productRates[p.id] && state.productRates[p.id][machineId] != null; });
+  }
 
   // migawka pól zmiany do zapisania w shift_edits (old_values/new_values) — bez pól
   // czysto technicznych (id/createdAt), żeby log był czytelny przy porównaniu
@@ -1533,6 +1571,7 @@
   ];
   var MANAGER_TABS = [
     { key: "overview", label: "Przegląd" },
+    { key: "orders", label: "Planowanie" },
     { key: "downtimes", label: "Przestoje" },
     { key: "history", label: "Historia" }
   ];
@@ -1554,6 +1593,7 @@
       case "operators": return rosterHtml() + importBlockHtml("operators");
       case "products": return productsHtml() + importBlockHtml("products");
       case "downtimes": return downtimesAdminHtml();
+      case "orders": return ordersAdminHtml();
       case "history": return tableHtml();
       case "settings": return settingsHtml();
       case "overview":
@@ -1619,6 +1659,85 @@
       '<form class="inline-add" id="addReasonForm"><input type="text" id="newReasonName" placeholder="Nazwa powodu" maxlength="120"><button type="submit" class="primary">Dodaj</button></form></div>' +
       '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Ostatnio rozpatrzone</div><h2 class="section-title small">Historia decyzji</h2></div>' +
       reviewedHtml + '</div>';
+  }
+
+  /* =====================================================================
+     PLANOWANIE — kolejka zleceń na maszynę (Panel kierownika). Zarządza
+     wyłącznie kierownik/admin — operator tylko widzi tę kolejkę przy
+     wpisie zmiany (patrz renderOrderQueue w renderOperator).
+     ===================================================================== */
+
+  function orderRowsHtml(machineId) {
+    var list = ordersForMachine(machineId);
+    return list.map(function (o, idx) {
+      var produced = producedForOrder(o.id);
+      var pct = o.targetQty > 0 ? Math.round((produced / o.targetQty) * 100) : 0;
+      var done = orderDone(o);
+      var overdue = orderOverdue(o);
+      var badge = done ? '<span class="status-tag approved">zrealizowane</span>'
+        : overdue ? '<span class="status-tag rejected">przeterminowane</span>'
+        : '<span class="status-tag pending">w kolejce</span>';
+      var dueTxt = o.dueDate ? fmtDate(o.dueDate) : "—";
+      var upAttr = idx === 0 ? " disabled" : "";
+      var downAttr = idx === list.length - 1 ? " disabled" : "";
+      return '<tr><td class="num tabular">' + (idx + 1) + '</td>' +
+        '<td>' + escAttr(productName(o.productId)) + (o.note ? '<div class="hint">' + escAttr(o.note) + '</div>' : '') + '</td>' +
+        '<td class="num tabular">' + o.targetQty + '</td>' +
+        '<td class="num tabular">' + produced + ' z ' + o.targetQty + ' (' + pct + '%)</td>' +
+        '<td class="num tabular">' + dueTxt + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td style="white-space:nowrap;">' +
+        '<button type="button" class="small" data-order-up="' + o.id + '"' + upAttr + ' aria-label="Wyżej w kolejce">↑</button> ' +
+        '<button type="button" class="small" data-order-down="' + o.id + '"' + downAttr + ' aria-label="Niżej w kolejce">↓</button> ' +
+        '<button type="button" class="small" data-order-cancel="' + o.id + '">Anuluj</button>' +
+        '</td></tr>';
+    }).join("");
+  }
+
+  function ordersAdminHtml() {
+    var machinesWithQueue = state.machines.filter(function (m) { return ordersForMachine(m.id).length > 0; });
+    var sections = machinesWithQueue.map(function (m) {
+      return '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Kolejka</div><h2 class="section-title small">' + escAttr(m.name) + '</h2></div>' +
+        '<div class="table-scroll"><table class="compact"><thead><tr><th>#</th><th>Produkt</th><th class="num">Cel</th><th class="num">Zrobiono</th><th>Termin</th><th>Status</th><th>Akcje</th></tr></thead><tbody>' +
+        orderRowsHtml(m.id) + '</tbody></table></div></div>';
+    }).join("");
+
+    if (!state.machines.length || !state.products.length) {
+      return '<div class="panel"><div class="section-head"><div class="eyebrow">Planowanie</div><h2 class="section-title small">Kolejka zleceń</h2></div>' +
+        '<div class="empty-hint">Dodaj najpierw przynajmniej jedną maszynę i produkt z ustawioną wydajnością (zakładki Maszyny i Produkty w Panelu administratora), żeby móc planować zlecenia.</div></div>';
+    }
+
+    var machOpts = state.machines.map(function (m) { return '<option value="' + m.id + '">' + escAttr(m.name) + '</option>'; }).join("");
+
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Planowanie</div><h2 class="section-title small">Kolejka zleceń</h2>' +
+      '<div class="section-sub">Co, w jakiej ilości i w jakiej kolejności ma powstać na każdej maszynie. Operator widzi tę kolejkę przy wpisie zmiany i jednym kliknięciem wypełnia nią formularz — „Zrobiono" liczy się samo, z wpisów zapisanych z tego zlecenia.</div></div>' +
+      '<form class="form-grid" id="addOrderForm">' +
+      '<div class="field span-2"><label for="ordMachine">Maszyna</label><select id="ordMachine">' + machOpts + '</select></div>' +
+      '<div class="field span-2"><label for="ordProduct">Produkt</label><select id="ordProduct"></select></div>' +
+      '<div class="field span-2"><label for="ordQty">Ilość docelowa (szt.)</label><input id="ordQty" type="number" min="1" step="1"></div>' +
+      '<div class="field span-3"><label for="ordDue">Termin (opcjonalnie)</label><input id="ordDue" type="date"></div>' +
+      '<div class="field span-3"><label for="ordNote">Notatka (opcjonalnie)</label><input id="ordNote" type="text" maxlength="250" placeholder="np. dla klienta X"></div>' +
+      '<div class="form-actions"><button type="submit" class="primary">Dodaj do kolejki</button><span class="form-msg" id="addOrderMsg">Dodano.</span></div>' +
+      '</form></div>' +
+      (sections || '<div class="empty-hint" style="margin-top:16px;">Żadna maszyna nie ma jeszcze nic w kolejce — dodaj pierwsze zlecenie powyżej.</div>');
+  }
+
+  // przesuwa zlecenie góra/dół w kolejce JEGO maszyny — zamienia wartości `position` z
+  // sąsiadem, więc nie musi to być ciągła numeracja, liczy się tylko kolejność względna
+  async function moveOrder(root, orderId, direction) {
+    var order = orderById(orderId);
+    if (!order) return;
+    var siblings = ordersForMachine(order.machineId);
+    var idx = siblings.findIndex(function (o) { return o.id === order.id; });
+    var swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= siblings.length) return;
+    var other = siblings[swapIdx];
+    await Promise.all([
+      sb.from("production_orders").update({ position: other.position }).eq("id", order.id),
+      sb.from("production_orders").update({ position: order.position }).eq("id", other.id)
+    ]);
+    await loadCompanyData();
+    renderAdmin(root);
   }
 
   /* =====================================================================
@@ -1980,6 +2099,76 @@
       });
     }
 
+    if (adminTab === "orders") {
+      var ordMachSel = document.getElementById("ordMachine");
+      var ordProdSel = document.getElementById("ordProduct");
+      function refreshOrderProducts() {
+        if (!ordMachSel || !ordProdSel) return;
+        var matching = productsForMachine(ordMachSel.value);
+        ordProdSel.innerHTML = matching.length
+          ? matching.map(function (p) { return '<option value="' + p.id + '">' + escAttr(p.code ? p.code + " — " + p.name : p.name) + '</option>'; }).join("")
+          : '<option value="">— brak produktów z ustawioną wydajnością na tej maszynie —</option>';
+      }
+      if (ordMachSel) {
+        ordMachSel.addEventListener("change", refreshOrderProducts);
+        refreshOrderProducts();
+      }
+
+      var addOrderForm = document.getElementById("addOrderForm");
+      if (addOrderForm) addOrderForm.addEventListener("submit", async function (evt) {
+        evt.preventDefault();
+        var msg = document.getElementById("addOrderMsg");
+        msg.classList.remove("show", "error");
+        var machineId = ordMachSel.value, productId = ordProdSel.value;
+        var qty = parseFloat(document.getElementById("ordQty").value);
+        var due = document.getElementById("ordDue").value || null;
+        var note = document.getElementById("ordNote").value.trim().slice(0, 250) || null;
+        if (!machineId || !productId) {
+          msg.textContent = "Wybierz maszynę i produkt (musi mieć ustawioną wydajność).";
+          msg.classList.add("show", "error");
+          return;
+        }
+        if (!qty || qty <= 0) {
+          msg.textContent = "Podaj ilość docelową większą od zera.";
+          msg.classList.add("show", "error");
+          document.getElementById("ordQty").focus();
+          return;
+        }
+        var submitBtn = addOrderForm.querySelector("button[type=submit]");
+        submitBtn.disabled = true;
+        var position = ordersForMachine(machineId).length;
+        var res = await sb.from("production_orders").insert({
+          company_id: session.company.id, machine_id: machineId, product_id: productId,
+          target_qty: qty, due_date: due, note: note, position: position
+        });
+        if (res.error) {
+          submitBtn.disabled = false;
+          msg.textContent = "Nie udało się dodać: " + res.error.message;
+          msg.classList.add("show", "error");
+          return;
+        }
+        await loadCompanyData();
+        renderAdmin(root);
+      });
+
+      root.querySelectorAll("[data-order-cancel]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          if (!confirm("Anulować to zlecenie? Zniknie z kolejki, także tej widocznej operatorowi przy wpisie zmiany.")) return;
+          var id = btn.getAttribute("data-order-cancel");
+          btn.disabled = true;
+          await sb.from("production_orders").update({ status: "cancelled" }).eq("id", id);
+          await loadCompanyData();
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-order-up]").forEach(function (btn) {
+        btn.addEventListener("click", function () { moveOrder(root, btn.getAttribute("data-order-up"), -1); });
+      });
+      root.querySelectorAll("[data-order-down]").forEach(function (btn) {
+        btn.addEventListener("click", function () { moveOrder(root, btn.getAttribute("data-order-down"), 1); });
+      });
+    }
+
     var grid = document.getElementById("machineGrid");
     if (grid) grid.addEventListener("click", function (evt) {
       var openBtn = evt.target.closest("[data-open-diag]");
@@ -2324,6 +2513,7 @@
       '<div class="field span-3"><label for="fPin">Twój PIN</label><input id="fPin" type="text" inputmode="numeric" maxlength="6" placeholder="np. 1234"></div>' +
       '<div class="field span-3"><label for="fShiftNum">Zmiana</label><select id="fShiftNum">' + shiftOptionsHtml(state.settings.shiftsPerDay) + '</select></div>' +
       '<div class="field span-3"><label for="fMachine">Maszyna</label><select id="fMachine">' + machOpts + '</select></div>' +
+      '<div id="orderQueueBox" style="grid-column:1/-1;"></div>' +
       '<div class="field span-3"><label for="fDate">Data</label><input id="fDate" type="date"></div>' +
       '<div class="field span-3"><label for="fProduct">Produkt</label><select id="fProduct"></select></div>' +
       '<div class="field span-3" id="cycleField"><label>Norma (s/szt.)</label><input id="fCycleAuto" type="text" disabled>' +
@@ -2349,10 +2539,53 @@
     var prodSel = document.getElementById("fProduct");
     var cycleAuto = document.getElementById("fCycleAuto");
     var hintSlot = document.getElementById("rateHintSlot");
+    // zlecenie z kolejki (Panel kierownika → Planowanie), z którego operator kliknął "Rozpocznij"
+    // — zapamiętane tylko, dopóki maszyna/produkt się nie zmienią na coś innego (patrz niżej),
+    // żeby przy zapisie zmiany dopiąć shifts.order_id i policzyć postęp zlecenia
+    var selectedOrderId = null;
+
+    function renderOrderQueue() {
+      var box = document.getElementById("orderQueueBox");
+      if (!box) return;
+      var machineId = machSel.value;
+      var queue = ordersForMachine(machineId).filter(function (o) { return !orderDone(o); });
+      if (!queue.length) { box.innerHTML = ""; return; }
+      box.innerHTML = '<div class="target-banner" style="background:var(--surface-2);border-color:var(--border);">' +
+        '<b style="font-family:inherit;font-size:13px;">Kolejka na tej maszynie</b>' +
+        '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">' +
+        queue.map(function (o) {
+          var produced = producedForOrder(o.id);
+          var active = selectedOrderId === o.id;
+          var overdue = orderOverdue(o);
+          var dueTxt = o.dueDate ? (' · termin ' + fmtDate(o.dueDate) + (overdue ? ' (przeterminowane)' : '')) : '';
+          return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+            '<span>' + escAttr(productName(o.productId)) + ' — ' + produced + ' z ' + o.targetQty + ' szt.' + dueTxt + '</span>' +
+            '<button type="button" class="small' + (active ? ' primary' : '') + '" data-start-order="' + o.id + '">' + (active ? 'Wybrano ✓' : 'Rozpocznij') + '</button>' +
+            '</div>';
+        }).join("") +
+        '</div></div>';
+      box.querySelectorAll("[data-start-order]").forEach(function (btn) {
+        btn.addEventListener("click", function () { startFromOrder(btn.getAttribute("data-start-order")); });
+      });
+    }
+    // wypełnia formularz maszyną/produktem ze zlecenia jednym kliknięciem — woła te same
+    // funkcje co ręczna zmiana pól (bez "change" na machSel/prodSel, więc listenery niżej,
+    // które czyszczą selectedOrderId przy RĘCZNEJ zmianie, tu się nie odpalają)
+    function startFromOrder(orderId) {
+      var order = orderById(orderId);
+      if (!order) return;
+      machSel.value = order.machineId;
+      refreshProducts();
+      suggestPlanned();
+      prodSel.value = order.productId;
+      updateCycle();
+      selectedOrderId = orderId;
+      renderOrderQueue();
+    }
 
     function refreshProducts() {
       var machineId = machSel.value;
-      var matching = state.products.filter(function (p) { return state.productRates[p.id] && state.productRates[p.id][machineId] != null; });
+      var matching = productsForMachine(machineId);
       if (matching.length) {
         prodSel.disabled = false;
         prodSel.innerHTML = matching.map(function (p) { return '<option value="' + p.id + '">' + (p.code ? p.code + " — " + p.name : p.name) + '</option>'; }).join("");
@@ -2407,11 +2640,23 @@
     }
     machSel.addEventListener("change", refreshProducts);
     machSel.addEventListener("change", suggestPlanned);
+    // RĘCZNA zmiana maszyny/produktu (nie ta z startFromOrder, patrz komentarz tam) odczepia
+    // wybrane zlecenie — inaczej dałoby się zapisać zmianę z order_id niepasującym do tego,
+    // co faktycznie wpisano
+    machSel.addEventListener("change", function () { selectedOrderId = null; renderOrderQueue(); });
+    prodSel.addEventListener("change", function () {
+      if (selectedOrderId) {
+        var order = orderById(selectedOrderId);
+        if (!order || order.productId !== prodSel.value) selectedOrderId = null;
+      }
+      renderOrderQueue();
+    });
     var fPlannedInput = document.getElementById("fPlanned");
     if (fPlannedInput) fPlannedInput.addEventListener("input", updateTarget);
     prodSel.addEventListener("change", updateCycle);
     refreshProducts();
     suggestPlanned();
+    renderOrderQueue();
 
     var unlockPlannedBtn = document.getElementById("unlockPlannedBtn");
     if (unlockPlannedBtn) unlockPlannedBtn.addEventListener("click", function () {
@@ -2507,6 +2752,12 @@
         totalDowntimeMin += mins;
       });
 
+      // powiąż ze zleceniem tylko jeśli maszyna/produkt w formularzu wciąż pasują do tego, co
+      // wybrano przyciskiem "Rozpocznij" — zabezpieczenie na wypadek, gdyby coś ręcznie
+      // przestawiono, a listenery czyszczące selectedOrderId (patrz wyżej) czegoś nie złapały
+      var linkedOrder = selectedOrderId ? orderById(selectedOrderId) : null;
+      if (linkedOrder && (linkedOrder.machineId !== machineId || linkedOrder.productId !== productId)) linkedOrder = null;
+
       var row = {
         company_id: session.company.id,
         machine_id: machineId,
@@ -2518,7 +2769,8 @@
         downtime_min: totalDowntimeMin,
         ideal_cycle_sec: idealCycleSec,
         good_count: parseFloat(document.getElementById("fGood").value) || 0,
-        bad_count: parseFloat(document.getElementById("fBad").value) || 0
+        bad_count: parseFloat(document.getElementById("fBad").value) || 0,
+        order_id: linkedOrder ? linkedOrder.id : null
       };
       var submitBtn = document.getElementById("opSubmitBtn");
       submitBtn.disabled = true;
@@ -2548,6 +2800,7 @@
       document.getElementById("opFeedbackOee").style.color = "var(--status-" + t.key + ")";
       var noteText = "— " + t.label + ", zapisano dla " + machineName(machineId);
       if (m.expectedQty > 0) noteText += ". Norma: " + m.produced + " z " + m.expectedQty + " szt. — " + (m.normMet ? "wykonana" : "niewykonana") + ".";
+      if (linkedOrder) noteText += " Zlecenie „" + productName(linkedOrder.productId) + "”: " + producedForOrder(linkedOrder.id) + " z " + linkedOrder.targetQty + " szt.";
       if (totalDowntimeMin > 0) noteText += " Zgłoszony przestój (" + totalDowntimeMin + " min) czeka na zatwierdzenie administratora — do tego czasu nie obniża wyniku OEE, a ocena normy przeliczy się ponownie po decyzji.";
       document.getElementById("opFeedbackNote").textContent = noteText;
       document.getElementById("opFeedback").classList.add("show");
