@@ -946,14 +946,23 @@
     var operatingSec = operatingMin * 60;
     var produced = shift.good + shift.bad;
     var availability = shift.plannedMin > 0 ? clamp01(operatingMin / shift.plannedMin) : 0;
-    var performance = operatingSec > 0 ? clamp01((shift.idealCycleSec * produced) / operatingSec) : 0;
+    // ile sztuk POWINNO powstać w faktycznie dostępnym czasie (plan minus zatwierdzony
+    // przestój) przy normie (idealCycleSec) — to jest punkt odniesienia "norma wykonana czy nie"
+    // ORAZ liczba, którą widzi operator jako cel na ekranie. Liczone na nowo za każdym razem
+    // z aktualnego stanu zatwierdzeń, więc zatwierdzenie albo odrzucenie przestoju przez
+    // admina/kierownika od razu przelicza wynik i ocenę normy.
+    var expectedQty = shift.idealCycleSec > 0 ? Math.floor(operatingSec / shift.idealCycleSec) : 0;
+    // Wydajność liczona względem TEJ SAMEJ zaokrąglonej w dół liczby sztuk (expectedQty), a nie
+    // względem ułamkowej teoretycznej pojemności czasu (operatingSec / idealCycleSec) — inaczej
+    // operator, który zrobi dokładnie tyle, ile pokazuje mu ekran jako cel, nigdy nie zobaczy
+    // 100%, tylko np. 97,8%, i będzie szukał błędu tam, gdzie go nie ma (samo zaokrąglenie normy
+    // w dół zjada resztę). Jeśli dostępny czas nie starcza nawet na jedną całą sztukę
+    // (expectedQty = 0, więc nie ma sensownego celu w sztukach), zostaje stara metoda ciągła.
+    var performance = expectedQty > 0
+      ? clamp01(produced / expectedQty)
+      : (operatingSec > 0 ? clamp01((shift.idealCycleSec * produced) / operatingSec) : 0);
     var quality = produced > 0 ? clamp01(shift.good / produced) : 0;
     var oee = availability * performance * quality;
-    // ile sztuk POWINNO powstać w faktycznie dostępnym czasie (plan minus zatwierdzony
-    // przestój) przy normie (idealCycleSec) — to jest punkt odniesienia "norma wykonana czy nie".
-    // Liczone na nowo za każdym razem z aktualnego stanu zatwierdzeń, więc zatwierdzenie albo
-    // odrzucenie przestoju przez admina/kierownika od razu przelicza wynik i ocenę normy.
-    var expectedQty = shift.idealCycleSec > 0 ? Math.floor(operatingSec / shift.idealCycleSec) : 0;
     var normMet = expectedQty > 0 ? produced >= expectedQty : null;
     return { availability: availability, performance: performance, quality: quality, oee: oee, produced: produced, downtimeMin: downtimeMin, expectedQty: expectedQty, normMet: normMet };
   }
