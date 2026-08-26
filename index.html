@@ -2468,7 +2468,7 @@
       '<div class="field span-3"><label for="recOrdProduct">Produkt (z recepturą)</label><select id="recOrdProduct">' + opts + '</select></div>' +
       '<div class="field span-3"><label for="recOrdQty">Ilość docelowa (szt.)</label><input id="recOrdQty" type="number" min="1" step="1"></div>' +
       '<div class="field" style="grid-column:1/-1;"><span class="hint" id="recOrdPreview"></span></div>' +
-      '<div class="field span-3"><label for="recOrdDue">Termin (opcjonalnie)</label><input id="recOrdDue" type="date"></div>' +
+      '<div class="field span-3"><label for="recOrdDue">Termin</label><input id="recOrdDue" type="date" required></div>' +
       '<div class="field span-3"><label for="recOrdNote">Notatka (opcjonalnie)</label><input id="recOrdNote" type="text" maxlength="250" placeholder="np. dla klienta X"></div>' +
       '<div class="form-actions"><button type="submit" class="primary">Utwórz zlecenia z receptury</button><span class="form-msg" id="addRecipeOrderMsg">Utworzono.</span></div>' +
       '</form></div>';
@@ -2497,7 +2497,7 @@
       '<div class="field span-2"><label for="ordMachine">Maszyna</label><select id="ordMachine">' + machOpts + '</select></div>' +
       '<div class="field span-2"><label for="ordProduct">Produkt</label><select id="ordProduct"></select></div>' +
       '<div class="field span-2"><label for="ordQty">Ilość docelowa (szt.)</label><input id="ordQty" type="number" min="1" step="1"></div>' +
-      '<div class="field span-3"><label for="ordDue">Termin (opcjonalnie)</label><input id="ordDue" type="date"></div>' +
+      '<div class="field span-3"><label for="ordDue">Termin</label><input id="ordDue" type="date" required></div>' +
       '<div class="field span-3"><label for="ordNote">Notatka (opcjonalnie)</label><input id="ordNote" type="text" maxlength="250" placeholder="np. dla klienta X"></div>' +
       '<div class="form-actions"><button type="submit" class="primary">Dodaj do kolejki</button><span class="form-msg" id="addOrderMsg">Dodano.</span></div>' +
       '</form></div>' +
@@ -3121,6 +3121,12 @@
           document.getElementById("recOrdQty").focus();
           return;
         }
+        if (!due) {
+          rMsg.textContent = "Podaj termin — jest wymagany.";
+          rMsg.classList.add("show", "error");
+          document.getElementById("recOrdDue").focus();
+          return;
+        }
         var usable = steps.filter(function (s) { return state.productRates[pid] && state.productRates[pid][s.machineId] != null; });
         var skipped = steps.length - usable.length;
         if (!usable.length) {
@@ -3179,6 +3185,12 @@
           msg.textContent = "Podaj ilość docelową większą od zera.";
           msg.classList.add("show", "error");
           document.getElementById("ordQty").focus();
+          return;
+        }
+        if (!due) {
+          msg.textContent = "Podaj termin — jest wymagany.";
+          msg.classList.add("show", "error");
+          document.getElementById("ordDue").focus();
           return;
         }
         var submitBtn = addOrderForm.querySelector("button[type=submit]");
