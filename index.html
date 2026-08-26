@@ -808,8 +808,18 @@
   var state = {
     machines: [], operators: [], people: [], products: [], productRates: {}, shifts: [], diagnoses: {},
     settings: { shiftsPerDay: 2, shiftLengthMin: 480, breakMin: 0, ineffectiveMin: 0 },
-    downtimeReasons: [], shiftDowntimes: [], downtimesByShift: {}, orders: []
+    downtimeReasons: [], shiftDowntimes: [], downtimesByShift: {}, orders: [],
+    materials: [], recipeMaterials: [], recipeMaterialsByProduct: {}, recipeSteps: [], recipeStepsByProduct: {}
   };
+
+  // stała lista jednostek surowców — patrz komentarz w migracji (jedna linijka tu + w check()
+  // w bazie, gdyby kiedyś zabrakło którejś, zamiast osobnego ekranu zarządzania jednostkami)
+  var MATERIAL_UNITS = [
+    { key: "szt", label: "szt." }, { key: "kg", label: "kg" }, { key: "g", label: "g" }, { key: "t", label: "t" },
+    { key: "m", label: "m" }, { key: "mm", label: "mm" }, { key: "m2", label: "m²" }, { key: "m3", label: "m³" },
+    { key: "l", label: "l" }, { key: "ml", label: "ml" }, { key: "opak", label: "opak." }
+  ];
+  function unitLabel(key) { var u = MATERIAL_UNITS.filter(function (x) { return x.key === key; })[0]; return u ? u.label : key; }
 
   /* =====================================================================
      WCZYTYWANIE DANYCH FIRMY Z SUPABASE
@@ -862,7 +872,10 @@
       sb.from("operators").select("*").order("created_at"),
       sb.from("downtime_reasons").select("*").order("created_at"),
       sb.from("shift_downtimes").select("*").order("created_at", { ascending: false }).limit(2000),
-      sb.from("production_orders").select("*").order("position")
+      sb.from("production_orders").select("*").order("position"),
+      sb.from("materials").select("*").order("name"),
+      sb.from("recipe_materials").select("*"),
+      sb.from("recipe_steps").select("*").order("seq_no")
     ]);
     var errs = results.map(function (r) { return r.error; }).filter(Boolean);
     if (errs.length) {
@@ -901,6 +914,24 @@
     });
 
     state.orders = (results[8].data || []).map(orderFromRow);
+
+    state.materials = (results[9].data || []).map(function (m) { return { id: m.id, name: m.name, unit: m.unit }; })
+      .sort(function (a, b) { return a.name.localeCompare(b.name, "pl", { sensitivity: "base" }); });
+    state.recipeMaterials = (results[10].data || []).map(function (r) { return { productId: r.product_id, materialId: r.material_id, qtyPerUnit: Number(r.qty_per_unit) }; });
+    state.recipeMaterialsByProduct = {};
+    state.recipeMaterials.forEach(function (r) {
+      if (!state.recipeMaterialsByProduct[r.productId]) state.recipeMaterialsByProduct[r.productId] = [];
+      state.recipeMaterialsByProduct[r.productId].push(r);
+    });
+    state.recipeSteps = (results[11].data || []).map(function (r) { return { productId: r.product_id, seqNo: Number(r.seq_no), machineId: r.machine_id, cycleTimeSec: Number(r.cycle_time_sec) }; });
+    state.recipeStepsByProduct = {};
+    state.recipeSteps.forEach(function (r) {
+      if (!state.recipeStepsByProduct[r.productId]) state.recipeStepsByProduct[r.productId] = [];
+      state.recipeStepsByProduct[r.productId].push(r);
+    });
+    Object.keys(state.recipeStepsByProduct).forEach(function (pid) {
+      state.recipeStepsByProduct[pid].sort(function (a, b) { return a.seqNo - b.seqNo; });
+    });
   }
 
   // minuty przestoju faktycznie liczone do OEE dla tej zmiany: tylko ZATWIERDZONE
@@ -1435,6 +1466,159 @@
       '</div>';
   }
 
+  function materialUnitOptionsHtml(selected) {
+    return MATERIAL_UNITS.map(function (u) { return '<option value="' + u.key + '"' + (u.key === selected ? " selected" : "") + '>' + u.label + '</option>'; }).join("");
+  }
+
+  function materialsAdminHtml() {
+    var rows = state.materials.map(function (m) {
+      return '<tr><td><input type="text" data-material-name="' + m.id + '" value="' + escAttr(m.name) + '"></td>' +
+        '<td><select data-material-unit="' + m.id + '" style="max-width:110px;">' + materialUnitOptionsHtml(m.unit) + '</select></td>' +
+        '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-material="' + m.id + '">usuń</button></td></tr>';
+    }).join("");
+    var table = state.materials.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th>Jednostka</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveMaterialsBtn">Zapisz zmiany</button><span class="form-msg" id="materialsMsg">Zapisano.</span></div>'
+      : '<div class="empty-hint">Brak surowców — dodaj pierwszy poniżej.</div>';
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Surowce</h2>' +
+      '<div class="section-sub">Lista surowców do wyboru w recepturach produktów (zakładka Receptury). Nazwę i jednostkę możesz poprawić bezpośrednio w tabeli. Usunięcie surowca kasuje też jego wpisy w recepturach, w których był użyty.</div></div>' +
+      table +
+      '<form class="inline-add" id="addMaterialForm"><input type="text" id="newMaterialName" placeholder="Nazwa surowca">' +
+      '<select id="newMaterialUnit" style="max-width:110px;">' + materialUnitOptionsHtml("szt") + '</select>' +
+      '<button type="submit" class="primary">Dodaj</button></form></div>';
+  }
+
+  /* =====================================================================
+     RECEPTURY — surowce (BOM) + ścisła kolejność etapów na maszynach
+     (routing) dla produktu. Fundament pod przyszłe autoplanowanie; na
+     razie tylko dane + formularz + import, bez wpływu na Wpis zmiany ani
+     Planowanie (patrz komentarz w migracji).
+     ===================================================================== */
+
+  // szkic receptury w edycji — istnieje tylko w pamięci, dopóki nie klikniesz "Zapisz
+  // recepturę" (wtedy: skasuj wszystko co było dla tego produktu, wstaw na nowo aktualny
+  // szkic). recipeEditingProductId === null -> edytor zwinięty, widać tylko listę produktów.
+  var recipeEditingProductId = null;
+  var recipeDraftMaterials = []; // [{materialId, qty}]
+  var recipeDraftSteps = [];     // [{machineId, cycleTimeSec}] — kolejność w tablicy = kolejność etapów
+
+  function openRecipeEditor(productId) {
+    recipeEditingProductId = productId;
+    // druga linia obrony: pomiń wiersze wskazujące na surowiec/maszynę, których już
+    // nie ma na aktualnej liście (np. usunięto je, gdy ten szkic nie był odświeżany)
+    var currentMaterialIds = {};
+    state.materials.forEach(function (m) { currentMaterialIds[m.id] = true; });
+    var currentMachineIds = {};
+    state.machines.forEach(function (m) { currentMachineIds[m.id] = true; });
+    recipeDraftMaterials = (state.recipeMaterialsByProduct[productId] || [])
+      .filter(function (r) { return currentMaterialIds[r.materialId]; })
+      .map(function (r) { return { materialId: r.materialId, qty: r.qtyPerUnit }; });
+    recipeDraftSteps = (state.recipeStepsByProduct[productId] || [])
+      .filter(function (r) { return currentMachineIds[r.machineId]; })
+      .map(function (r) { return { machineId: r.machineId, cycleTimeSec: r.cycleTimeSec }; });
+  }
+  function closeRecipeEditor() {
+    recipeEditingProductId = null;
+    recipeDraftMaterials = [];
+    recipeDraftSteps = [];
+  }
+  // zanim cokolwiek doda/usunie/przesunie wiersz i przerysuje cały ekran, przepisz do szkicu
+  // to, co jest AKTUALNIE wpisane w polach — inaczej pełne przerysowanie zgubiłoby wartość,
+  // którą ktoś właśnie wpisywał w innym wierszu
+  function syncRecipeDraftFromDom() {
+    recipeDraftMaterials.forEach(function (row, idx) {
+      var sel = document.getElementById("recMatSel" + idx), qty = document.getElementById("recMatQty" + idx);
+      if (sel) row.materialId = sel.value;
+      if (qty) row.qty = parseFloat(qty.value) || row.qty;
+    });
+    recipeDraftSteps.forEach(function (row, idx) {
+      var sel = document.getElementById("recStepMach" + idx), t = document.getElementById("recStepTime" + idx);
+      if (sel) row.machineId = sel.value;
+      if (t) row.cycleTimeSec = parseFloat(t.value) || row.cycleTimeSec;
+    });
+  }
+
+  function recipeMaterialRowHtml(row, idx) {
+    var matOpts = state.materials.map(function (m) { return '<option value="' + m.id + '"' + (m.id === row.materialId ? " selected" : "") + '>' + escAttr(m.name) + ' (' + unitLabel(m.unit) + ')</option>'; }).join("");
+    return '<div class="downtime-row" data-recipe-material-row="' + idx + '">' +
+      '<select id="recMatSel' + idx + '">' + matOpts + '</select>' +
+      '<input type="number" id="recMatQty' + idx + '" min="0.001" step="0.001" placeholder="ilość / szt." value="' + (row.qty || "") + '">' +
+      '<button type="button" class="small" data-remove-recipe-material="' + idx + '" aria-label="Usuń">✕</button></div>';
+  }
+
+  function recipeStepRowHtml(row, idx, total) {
+    var machOpts = state.machines.map(function (m) { return '<option value="' + m.id + '"' + (m.id === row.machineId ? " selected" : "") + '>' + escAttr(m.name) + '</option>'; }).join("");
+    return '<div class="downtime-row" data-recipe-step-row="' + idx + '">' +
+      '<span class="hint tabular" style="flex:none;width:22px;">' + (idx + 1) + '.</span>' +
+      '<select id="recStepMach' + idx + '">' + machOpts + '</select>' +
+      '<input type="number" id="recStepTime' + idx + '" min="0.1" step="0.1" placeholder="czas cyklu (s/szt.)" value="' + (row.cycleTimeSec || "") + '">' +
+      '<button type="button" class="small" data-recipe-step-up="' + idx + '"' + (idx === 0 ? " disabled" : "") + ' aria-label="Wyżej">↑</button>' +
+      '<button type="button" class="small" data-recipe-step-down="' + idx + '"' + (idx === total - 1 ? " disabled" : "") + ' aria-label="Niżej">↓</button>' +
+      '<button type="button" class="small" data-remove-recipe-step="' + idx + '" aria-label="Usuń">✕</button></div>';
+  }
+
+  function recipeEditorHtml() {
+    var product = state.products.filter(function (p) { return p.id === recipeEditingProductId; })[0];
+    if (!product) return "";
+    var totalTime = recipeDraftSteps.reduce(function (sum, s) { return sum + (s.cycleTimeSec || 0); }, 0);
+    return '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Receptura</div><h2 class="section-title small">' + escAttr(product.code ? product.code + " — " + product.name : product.name) + '</h2>' +
+      '<div class="section-sub">Surowce liczone na SZTUKĘ produktu. Etapy w ścisłej kolejności — tak, jak fizycznie przechodzi przez maszyny (etap 2 dopiero po etapie 1).</div></div>' +
+
+      '<div class="field" style="max-width:none;"><label>Surowce</label>' +
+      '<div id="recipeMaterialRows">' + (recipeDraftMaterials.length ? recipeDraftMaterials.map(recipeMaterialRowHtml).join("") : '<div class="empty-hint">Brak surowców w recepturze.</div>') + '</div>' +
+      (state.materials.length
+        ? '<button type="button" class="ghost small" id="addRecipeMaterialBtn" style="margin-top:6px;align-self:flex-start;">+ Dodaj surowiec</button>'
+        : '<span class="hint warn">Najpierw dodaj przynajmniej jeden surowiec w zakładce Surowce.</span>') +
+      '<div class="import-box" style="margin-top:10px;"><div class="import-head"><span class="eyebrow">Wczytaj surowce z pliku</span><span class="hint">Jeden surowiec w linii: Nazwa;Ilość na sztukę (np. Blacha 2mm;1.5). Surowiec musi już być na liście Surowce — dopisze się tylko ilość.</span></div>' +
+      '<div class="inline-add"><input type="file" id="importRecipeMaterialsFile" accept=".csv,.txt,.xlsx,.xls"><button type="button" class="ghost small" id="importRecipeMaterialsBtn">Wczytaj</button></div>' +
+      '<span class="form-msg" id="importRecipeMaterialsMsg"></span></div></div>' +
+
+      '<div class="field" style="max-width:none;margin-top:18px;"><label>Etapy (kolejność maszyn)</label>' +
+      '<div id="recipeStepRows">' + (recipeDraftSteps.length ? recipeDraftSteps.map(function (r, i) { return recipeStepRowHtml(r, i, recipeDraftSteps.length); }).join("") : '<div class="empty-hint">Brak etapów w recepturze.</div>') + '</div>' +
+      (state.machines.length
+        ? '<button type="button" class="ghost small" id="addRecipeStepBtn" style="margin-top:6px;align-self:flex-start;">+ Dodaj etap</button>'
+        : '<span class="hint warn">Najpierw dodaj przynajmniej jedną maszynę w zakładce Maszyny.</span>') +
+      (totalTime > 0 ? '<span class="hint" style="margin-top:6px;">Łączny czas marszruty: ' + Math.round(totalTime) + ' s/szt. (' + recipeDraftSteps.length + ' ' + (recipeDraftSteps.length === 1 ? "etap" : "etapy/etapów") + ')</span>' : '') +
+      '<div class="import-box" style="margin-top:10px;"><div class="import-head"><span class="eyebrow">Wczytaj etapy z pliku</span><span class="hint">Jeden etap w linii, W KOLEJNOŚCI marszruty: Maszyna;Czas cyklu w s/szt. (np. Tokarka 1;45). Maszyna musi już istnieć na liście Maszyny.</span></div>' +
+      '<div class="inline-add"><input type="file" id="importRecipeStepsFile" accept=".csv,.txt,.xlsx,.xls"><button type="button" class="ghost small" id="importRecipeStepsBtn">Wczytaj</button></div>' +
+      '<span class="form-msg" id="importRecipeStepsMsg"></span></div></div>' +
+
+      '<div class="form-actions" style="margin-top:16px;"><button type="button" class="primary" id="saveRecipeBtn">Zapisz recepturę</button>' +
+      '<button type="button" class="ghost" id="closeRecipeBtn">Zamknij</button>' +
+      '<span class="form-msg" id="recipeMsg">Zapisano.</span></div></div>';
+  }
+
+  function recipesAdminHtml() {
+    if (!state.products.length) {
+      return '<div class="panel"><div class="section-head"><div class="eyebrow">Receptury</div><h2 class="section-title small">Receptury produktów</h2></div>' +
+        '<div class="empty-hint">Dodaj najpierw przynajmniej jeden produkt (zakładka Produkty), żeby móc zdefiniować dla niego recepturę.</div></div>';
+    }
+    var withRecipe = state.products.filter(function (p) { return (state.recipeMaterialsByProduct[p.id] || []).length || (state.recipeStepsByProduct[p.id] || []).length; });
+    var rows = withRecipe.map(function (p) {
+      var mats = (state.recipeMaterialsByProduct[p.id] || []).length;
+      var steps = state.recipeStepsByProduct[p.id] || [];
+      var totalTime = steps.reduce(function (sum, s) { return sum + s.cycleTimeSec; }, 0);
+      return '<tr><td>' + escAttr(p.code ? p.code + " — " + p.name : p.name) + '</td>' +
+        '<td class="num tabular">' + mats + '</td>' +
+        '<td class="num tabular">' + steps.length + '</td>' +
+        '<td class="num tabular">' + (totalTime > 0 ? Math.round(totalTime) + " s/szt." : "—") + '</td>' +
+        '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-edit-recipe="' + p.id + '">Edytuj</button></td></tr>';
+    }).join("");
+    var table = withRecipe.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Produkt</th><th class="num">Surowców</th><th class="num">Etapów</th><th class="num">Łączny czas</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="empty-hint">Żaden produkt nie ma jeszcze receptury — wybierz produkt poniżej, żeby dodać pierwszą.</div>';
+
+    var withoutRecipe = state.products.filter(function (p) { return withRecipe.indexOf(p) === -1; });
+    var pickOpts = '<option value="">— wybierz produkt —</option>' + withoutRecipe.map(function (p) { return '<option value="' + p.id + '">' + escAttr(p.code ? p.code + " — " + p.name : p.name) + '</option>'; }).join("");
+
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Receptury</div><h2 class="section-title small">Receptury produktów</h2>' +
+      '<div class="section-sub">Surowce (ile na sztukę) i ścisła kolejność maszyn (routing) dla produktu. Na razie tylko dane — nie zmienia to jeszcze dzisiejszego Wpisu zmiany ani Planowania.</div></div>' +
+      table +
+      (withoutRecipe.length ? '<div class="inline-add" style="margin-top:14px;"><select id="newRecipeProduct">' + pickOpts + '</select><button type="button" class="primary" id="newRecipeBtn">Dodaj recepturę</button></div>' : '') +
+      '</div>' +
+      (recipeEditingProductId ? recipeEditorHtml() : '');
+  }
+
   function leaderboardHtml(period) {
     var byOp = {};
     state.shifts.forEach(function (s) {
@@ -1567,6 +1751,8 @@
     { key: "machines", label: "Maszyny" },
     { key: "operators", label: "Operatorzy" },
     { key: "products", label: "Produkty" },
+    { key: "materials", label: "Surowce" },
+    { key: "recipes", label: "Receptury" },
     { key: "settings", label: "Ustawienia" }
   ];
   var MANAGER_TABS = [
@@ -1592,6 +1778,8 @@
       case "machines": return machinesAdminHtml() + importBlockHtml("machines");
       case "operators": return rosterHtml() + importBlockHtml("operators");
       case "products": return productsHtml() + importBlockHtml("products");
+      case "materials": return materialsAdminHtml() + importBlockHtml("materials");
+      case "recipes": return recipesAdminHtml();
       case "downtimes": return downtimesAdminHtml();
       case "orders": return ordersAdminHtml();
       case "history": return tableHtml();
@@ -1753,7 +1941,8 @@
   var IMPORT_LABELS = {
     machines: { hint: 'Jedna maszyna w linii. Plik .txt/.csv: sama nazwa w każdej linii. Plik Excel (.xlsx): jedna kolumna z nazwami.' },
     operators: { hint: 'Jedna osoba w linii, w formacie: Imię i nazwisko;PIN (działa też przecinek albo tabulator). Plik Excel (.xlsx): pierwsza kolumna imię, druga PIN.' },
-    products: { hint: 'Jeden produkt w linii: Produkt;Maszyna;Ilość maksymalna dzienna (np. Wspornik A;Tokarka 1;850) — albo z kodem na początku: Kod;Produkt;Maszyna;Ilość maksymalna dzienna. Maszyna musi już istnieć na liście Maszyny — z ilości dziennej przeliczymy orientacyjny czas cyklu na podstawie ustawień czasu zmiany (zakładka Ustawienia) i TPZ tej maszyny, co zawsze możesz poprawić ręcznie w tabeli obok. Jeśli produkt z takim kodem/nazwą już istnieje, dopiszemy tylko brakującą wydajność (i uzupełnimy kod, jeśli go jeszcze nie było).' }
+    products: { hint: 'Jeden produkt w linii: Produkt;Maszyna;Ilość maksymalna dzienna (np. Wspornik A;Tokarka 1;850) — albo z kodem na początku: Kod;Produkt;Maszyna;Ilość maksymalna dzienna. Maszyna musi już istnieć na liście Maszyny — z ilości dziennej przeliczymy orientacyjny czas cyklu na podstawie ustawień czasu zmiany (zakładka Ustawienia) i TPZ tej maszyny, co zawsze możesz poprawić ręcznie w tabeli obok. Jeśli produkt z takim kodem/nazwą już istnieje, dopiszemy tylko brakującą wydajność (i uzupełnimy kod, jeśli go jeszcze nie było).' },
+    materials: { hint: 'Jeden surowiec w linii, w formacie: Nazwa;Jednostka (np. Blacha 2mm;kg — działa też przecinek albo tabulator). Jednostka musi być jedną z: ' + MATERIAL_UNITS.map(function (u) { return u.key; }).join(", ") + '. Plik Excel (.xlsx): pierwsza kolumna nazwa, druga jednostka.' }
   };
 
   function importBlockHtml(kind) {
@@ -1833,6 +2022,35 @@
       if (seen[low]) return;
       seen[low] = true;
       out.push({ name: name, pin: pin });
+    });
+    return out;
+  }
+
+  // dopasowuje wpisaną jednostkę do jednej z MATERIAL_UNITS po kluczu ALBO po etykiecie,
+  // bez rozróżniania wielkości liter/spacji — "Kg", "kg", "KILOGRAM" nie muszą się różnić
+  // dla kogoś eksportującego z Excela, ale "m2"/"m²" muszą trafić w to samo
+  function matchUnit(raw) {
+    var v = (raw == null ? "" : raw).toString().trim().toLowerCase();
+    var hit = MATERIAL_UNITS.filter(function (u) { return u.key.toLowerCase() === v || u.label.toLowerCase() === v; })[0];
+    return hit ? hit.key : null;
+  }
+
+  function rowsToNewMaterials(rows, existing) {
+    var existingLower = existing.map(function (x) { return x.name.trim().toLowerCase(); });
+    var seen = {}, out = [];
+    rows.forEach(function (r) {
+      var name = (Array.isArray(r) ? r[0] : "");
+      var unitRaw = (Array.isArray(r) ? r[1] : "");
+      name = (name == null ? "" : name).toString().trim();
+      if (!name) return;
+      var low = name.toLowerCase();
+      if (IMPORT_HEADER_WORDS.indexOf(low) !== -1) return;
+      var unit = matchUnit(unitRaw);
+      if (!unit) return;
+      if (existingLower.indexOf(low) !== -1) return;
+      if (seen[low]) return;
+      seen[low] = true;
+      out.push({ name: name, unit: unit });
     });
     return out;
   }
@@ -2035,6 +2253,12 @@
       btn.addEventListener("click", function () {
         adminTab = btn.getAttribute("data-admin-tab");
         historyEditingId = null;
+        // porzuć ewentualny otwarty szkic receptury przy zmianie zakładki — inaczej
+        // mógłby przeżyć w pamięci usunięcie surowca/maszyny gdzie indziej i przy
+        // zapisie po powrocie podstawić stary wiersz pod inny (losowy) surowiec/maszynę
+        recipeEditingProductId = null;
+        recipeDraftMaterials = [];
+        recipeDraftSteps = [];
         renderAdmin(root);
       });
     });
@@ -2169,6 +2393,182 @@
       });
     }
 
+    if (adminTab === "recipes") {
+      root.querySelectorAll("[data-edit-recipe]").forEach(function (btn) {
+        btn.addEventListener("click", function () { openRecipeEditor(btn.getAttribute("data-edit-recipe")); renderAdmin(root); });
+      });
+      var newRecipeBtn = document.getElementById("newRecipeBtn");
+      if (newRecipeBtn) newRecipeBtn.addEventListener("click", function () {
+        var pid = document.getElementById("newRecipeProduct").value;
+        if (!pid) return;
+        openRecipeEditor(pid);
+        renderAdmin(root);
+      });
+      var closeRecipeBtn = document.getElementById("closeRecipeBtn");
+      if (closeRecipeBtn) closeRecipeBtn.addEventListener("click", function () { closeRecipeEditor(); renderAdmin(root); });
+
+      var addRecipeMaterialBtn = document.getElementById("addRecipeMaterialBtn");
+      if (addRecipeMaterialBtn) addRecipeMaterialBtn.addEventListener("click", function () {
+        syncRecipeDraftFromDom();
+        recipeDraftMaterials.push({ materialId: state.materials[0].id, qty: "" });
+        renderAdmin(root);
+      });
+      root.querySelectorAll("[data-remove-recipe-material]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          syncRecipeDraftFromDom();
+          recipeDraftMaterials.splice(parseInt(btn.getAttribute("data-remove-recipe-material"), 10), 1);
+          renderAdmin(root);
+        });
+      });
+
+      var addRecipeStepBtn = document.getElementById("addRecipeStepBtn");
+      if (addRecipeStepBtn) addRecipeStepBtn.addEventListener("click", function () {
+        syncRecipeDraftFromDom();
+        recipeDraftSteps.push({ machineId: state.machines[0].id, cycleTimeSec: "" });
+        renderAdmin(root);
+      });
+      root.querySelectorAll("[data-remove-recipe-step]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          syncRecipeDraftFromDom();
+          recipeDraftSteps.splice(parseInt(btn.getAttribute("data-remove-recipe-step"), 10), 1);
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-recipe-step-up]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          syncRecipeDraftFromDom();
+          var idx = parseInt(btn.getAttribute("data-recipe-step-up"), 10);
+          if (idx <= 0) return;
+          var tmp = recipeDraftSteps[idx - 1]; recipeDraftSteps[idx - 1] = recipeDraftSteps[idx]; recipeDraftSteps[idx] = tmp;
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-recipe-step-down]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          syncRecipeDraftFromDom();
+          var idx = parseInt(btn.getAttribute("data-recipe-step-down"), 10);
+          if (idx >= recipeDraftSteps.length - 1) return;
+          var tmp = recipeDraftSteps[idx + 1]; recipeDraftSteps[idx + 1] = recipeDraftSteps[idx]; recipeDraftSteps[idx] = tmp;
+          renderAdmin(root);
+        });
+      });
+
+      var importRecMatBtn = document.getElementById("importRecipeMaterialsBtn");
+      if (importRecMatBtn) importRecMatBtn.addEventListener("click", function () {
+        var fileInput = document.getElementById("importRecipeMaterialsFile");
+        var msgEl = document.getElementById("importRecipeMaterialsMsg");
+        msgEl.classList.remove("show", "error");
+        var file = fileInput.files[0];
+        if (!file) { msgEl.textContent = "Najpierw wybierz plik."; msgEl.classList.add("show", "error"); return; }
+        importRecMatBtn.disabled = true;
+        parseImportFile(file, function (rows, err) {
+          importRecMatBtn.disabled = false;
+          if (err) { msgEl.textContent = "Błąd odczytu pliku: " + err.message; msgEl.classList.add("show", "error"); return; }
+          syncRecipeDraftFromDom();
+          var byName = {};
+          state.materials.forEach(function (m) { byName[m.name.trim().toLowerCase()] = m.id; });
+          var added = 0, unknown = 0, invalid = 0;
+          rows.forEach(function (r) {
+            var name = ((Array.isArray(r) ? r[0] : r) == null ? "" : (Array.isArray(r) ? r[0] : r)).toString().trim();
+            var qtyRaw = (Array.isArray(r) ? r[1] : "");
+            if (!name) return;
+            if (IMPORT_HEADER_WORDS.indexOf(name.toLowerCase()) !== -1) return;
+            var materialId = byName[name.toLowerCase()];
+            if (!materialId) { unknown++; return; }
+            var qty = parseFloat((qtyRaw == null ? "" : qtyRaw).toString().replace(",", "."));
+            if (!qty || qty <= 0) { invalid++; return; }
+            var existingRow = recipeDraftMaterials.filter(function (x) { return x.materialId === materialId; })[0];
+            if (existingRow) { existingRow.qty = qty; } else { recipeDraftMaterials.push({ materialId: materialId, qty: qty }); added++; }
+          });
+          renderAdmin(root);
+          var freshMsg = document.getElementById("importRecipeMaterialsMsg");
+          if (freshMsg) {
+            var parts = ["dodano/zaktualizowano: " + added];
+            if (unknown) parts.push("nierozpoznany surowiec: " + unknown + " (dodaj go najpierw w zakładce Surowce)");
+            if (invalid) parts.push("brak/zła ilość: " + invalid);
+            freshMsg.textContent = "Wczytano — " + parts.join(", ") + ".";
+            freshMsg.classList.add("show");
+          }
+        });
+      });
+
+      var importRecStepsBtn = document.getElementById("importRecipeStepsBtn");
+      if (importRecStepsBtn) importRecStepsBtn.addEventListener("click", function () {
+        var fileInput = document.getElementById("importRecipeStepsFile");
+        var msgEl = document.getElementById("importRecipeStepsMsg");
+        msgEl.classList.remove("show", "error");
+        var file = fileInput.files[0];
+        if (!file) { msgEl.textContent = "Najpierw wybierz plik."; msgEl.classList.add("show", "error"); return; }
+        importRecStepsBtn.disabled = true;
+        parseImportFile(file, function (rows, err) {
+          importRecStepsBtn.disabled = false;
+          if (err) { msgEl.textContent = "Błąd odczytu pliku: " + err.message; msgEl.classList.add("show", "error"); return; }
+          syncRecipeDraftFromDom();
+          var byName = {};
+          state.machines.forEach(function (m) { byName[m.name.trim().toLowerCase()] = m.id; });
+          var added = 0, unknown = 0, invalid = 0;
+          // kolejność WIERSZY W PLIKU = kolejność etapów, doklejane na koniec obecnej listy
+          rows.forEach(function (r) {
+            var name = ((Array.isArray(r) ? r[0] : r) == null ? "" : (Array.isArray(r) ? r[0] : r)).toString().trim();
+            var timeRaw = (Array.isArray(r) ? r[1] : "");
+            if (!name) return;
+            if (IMPORT_HEADER_WORDS.indexOf(name.toLowerCase()) !== -1) return;
+            var machineId = byName[name.toLowerCase()];
+            if (!machineId) { unknown++; return; }
+            var t = parseFloat((timeRaw == null ? "" : timeRaw).toString().replace(",", "."));
+            if (!t || t <= 0) { invalid++; return; }
+            recipeDraftSteps.push({ machineId: machineId, cycleTimeSec: t });
+            added++;
+          });
+          renderAdmin(root);
+          var freshMsg = document.getElementById("importRecipeStepsMsg");
+          if (freshMsg) {
+            var parts = ["dodano etapów: " + added];
+            if (unknown) parts.push("nierozpoznana maszyna: " + unknown + " (dodaj ją najpierw w zakładce Maszyny)");
+            if (invalid) parts.push("brak/zły czas: " + invalid);
+            freshMsg.textContent = "Wczytano — " + parts.join(", ") + ".";
+            freshMsg.classList.add("show");
+          }
+        });
+      });
+
+      var saveRecipeBtn = document.getElementById("saveRecipeBtn");
+      if (saveRecipeBtn) saveRecipeBtn.addEventListener("click", async function () {
+        syncRecipeDraftFromDom();
+        var msgEl = document.getElementById("recipeMsg");
+        msgEl.classList.remove("show", "error");
+        var pid = recipeEditingProductId;
+        // trzecia (ostatnia) linia obrony tuż przed zapisem: odrzuć wiersze, których
+        // surowiec/maszyna nie istnieją już naprawdę w aktualnym stanie — nawet gdyby
+        // powyższe dwie linie obrony jakoś ominięto
+        var currentMaterialIds = {};
+        state.materials.forEach(function (m) { currentMaterialIds[m.id] = true; });
+        var currentMachineIds = {};
+        state.machines.forEach(function (m) { currentMachineIds[m.id] = true; });
+        var validMaterials = recipeDraftMaterials.filter(function (r) { return r.materialId && currentMaterialIds[r.materialId] && r.qty > 0; });
+        var validSteps = recipeDraftSteps.filter(function (r) { return r.machineId && currentMachineIds[r.machineId] && r.cycleTimeSec > 0; });
+        saveRecipeBtn.disabled = true;
+        await sb.from("recipe_materials").delete().eq("product_id", pid);
+        await sb.from("recipe_steps").delete().eq("product_id", pid);
+        var errors = [];
+        if (validMaterials.length) {
+          var mres = await sb.from("recipe_materials").insert(validMaterials.map(function (r) { return { product_id: pid, material_id: r.materialId, qty_per_unit: r.qty }; }));
+          if (mres.error) errors.push(mres.error.message);
+        }
+        if (validSteps.length) {
+          var sres = await sb.from("recipe_steps").insert(validSteps.map(function (r, i) { return { product_id: pid, seq_no: i + 1, machine_id: r.machineId, cycle_time_sec: r.cycleTimeSec }; }));
+          if (sres.error) errors.push(sres.error.message);
+        }
+        saveRecipeBtn.disabled = false;
+        await loadCompanyData();
+        if (errors.length) { bannerMsg = "Nie udało się w pełni zapisać receptury: " + errors.join("; "); }
+        openRecipeEditor(pid); // odśwież szkic z tego, co faktycznie zapisało się w bazie
+        renderAdmin(root);
+        var freshRecipeMsg = document.getElementById("recipeMsg");
+        if (freshRecipeMsg && !errors.length) { freshRecipeMsg.textContent = "Zapisano."; freshRecipeMsg.classList.add("show"); setTimeout(function () { freshRecipeMsg.classList.remove("show"); }, 2500); }
+      });
+    }
+
     var grid = document.getElementById("machineGrid");
     if (grid) grid.addEventListener("click", function (evt) {
       var openBtn = evt.target.closest("[data-open-diag]");
@@ -2230,6 +2630,59 @@
       renderAdmin(root);
       var freshMsg = document.getElementById("machinesMsg");
       if (freshMsg && !hadError) { freshMsg.textContent = "Zapisano."; freshMsg.classList.add("show"); setTimeout(function () { freshMsg.classList.remove("show"); }, 2000); }
+    });
+
+    var addMaterialForm = document.getElementById("addMaterialForm");
+    if (addMaterialForm) addMaterialForm.addEventListener("submit", async function (evt) {
+      evt.preventDefault();
+      var name = document.getElementById("newMaterialName").value.trim();
+      var unit = document.getElementById("newMaterialUnit").value;
+      if (!name) return;
+      var res = await sb.from("materials").insert({ company_id: session.company.id, name: name, unit: unit });
+      if (res.error) { bannerMsg = "Nie udało się dodać surowca: " + res.error.message; }
+      await loadCompanyData();
+      renderApp();
+    });
+    root.querySelectorAll("[data-remove-material]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        if (!confirm("Usunąć ten surowiec? Razem z nim zniknie z receptur, w których był użyty.")) return;
+        var id = btn.getAttribute("data-remove-material");
+        var res = await sb.from("materials").delete().eq("id", id);
+        if (res.error) { bannerMsg = "Nie udało się usunąć surowca: " + res.error.message; }
+        await loadCompanyData();
+        renderApp();
+      });
+    });
+    var saveMaterialsBtn = document.getElementById("saveMaterialsBtn");
+    if (saveMaterialsBtn) saveMaterialsBtn.addEventListener("click", async function () {
+      var updates = [];
+      root.querySelectorAll("[data-material-name]").forEach(function (inp) {
+        var id = inp.getAttribute("data-material-name");
+        var newName = inp.value.trim();
+        var unitSel = root.querySelector('[data-material-unit="' + id + '"]');
+        var newUnit = unitSel ? unitSel.value : null;
+        var current = state.materials.filter(function (m) { return m.id === id; })[0];
+        if (!current) return;
+        var patch = {};
+        if (newName && newName !== current.name) patch.name = newName;
+        if (newUnit && newUnit !== current.unit) patch.unit = newUnit;
+        if (Object.keys(patch).length) updates.push({ id: id, patch: patch });
+      });
+      var msgEl = document.getElementById("materialsMsg");
+      if (!updates.length) {
+        if (msgEl) { msgEl.textContent = "Brak zmian do zapisania."; msgEl.classList.remove("error"); msgEl.classList.add("show"); setTimeout(function () { msgEl.classList.remove("show"); }, 2000); }
+        return;
+      }
+      var hadError = false;
+      for (var mi = 0; mi < updates.length; mi++) {
+        var mres = await sb.from("materials").update(updates[mi].patch).eq("id", updates[mi].id);
+        if (mres.error) hadError = true;
+      }
+      bannerMsg = hadError ? "Część surowców nie zapisała się poprawnie. Spróbuj ponownie." : "";
+      await loadCompanyData();
+      renderAdmin(root);
+      var freshMaterialsMsg = document.getElementById("materialsMsg");
+      if (freshMaterialsMsg && !hadError) { freshMaterialsMsg.textContent = "Zapisano."; freshMaterialsMsg.classList.add("show"); setTimeout(function () { freshMaterialsMsg.classList.remove("show"); }, 2000); }
     });
 
     var addOpForm = document.getElementById("addOpForm");
@@ -2411,6 +2864,9 @@
       return rowsToNewOperators(rows, state.operators).map(function (o) { return { company_id: session.company.id, name: o.name, pin: o.pin }; });
     });
     wireProductsImportHandler();
+    wireImportHandler("materials", "materials", function (rows) {
+      return rowsToNewMaterials(rows, state.materials).map(function (m) { return { company_id: session.company.id, name: m.name, unit: m.unit }; });
+    });
 
     root.querySelectorAll("[data-approve-downtime]").forEach(function (btn) {
       btn.addEventListener("click", async function () {
