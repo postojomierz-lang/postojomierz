@@ -858,7 +858,13 @@
     return {
       id: r.id, machineId: r.machine_id, productId: r.product_id, targetQty: Number(r.target_qty),
       dueDate: r.due_date || null, note: r.note || "", position: Number(r.position || 0),
-      status: r.status || "active", createdAt: r.created_at || null
+      status: r.status || "active", createdAt: r.created_at || null,
+      // zlecenia rozpisane automatycznie z receptury na kilka maszyn po kolei dzielą ten
+      // sam chainId — chainSeq/chainTotal to tylko etykieta "etap X/N", czysto informacyjna
+      // (patrz komentarz przy renderOrderQueue) — reszta zlecenia działa tak samo jak dodane ręcznie
+      chainId: r.chain_id || null,
+      chainSeq: r.chain_seq != null ? Number(r.chain_seq) : null,
+      chainTotal: r.chain_total != null ? Number(r.chain_total) : null
     };
   }
 
@@ -915,7 +921,7 @@
 
     state.orders = (results[8].data || []).map(orderFromRow);
 
-    state.materials = (results[9].data || []).map(function (m) { return { id: m.id, name: m.name, unit: m.unit }; })
+    state.materials = (results[9].data || []).map(function (m) { return { id: m.id, name: m.name, unit: m.unit, code: m.code || "" }; })
       .sort(function (a, b) { return a.name.localeCompare(b.name, "pl", { sensitivity: "base" }); });
     state.recipeMaterials = (results[10].data || []).map(function (r) { return { productId: r.product_id, materialId: r.material_id, qtyPerUnit: Number(r.qty_per_unit) }; });
     state.recipeMaterialsByProduct = {};
@@ -974,6 +980,14 @@
   function ordersForMachine(machineId) {
     return state.orders.filter(function (o) { return o.machineId === machineId && isActiveOrder(o); })
       .sort(function (a, b) { return a.position - b.position; });
+  }
+  // etap N-1 tego samego łańcucha (patrz recipeOrderFormHtml) — używane WYŁĄCZNIE do pokazania
+  // kierownikowi/operatorowi informacyjnej notatki "poprzedni etap: X/Y szt.", nigdy do blokowania
+  // rozpoczęcia produkcji (ustalone wprost: sekwencja receptury jest informacyjna, zawsze da się
+  // obejść ręcznie)
+  function prevChainOrder(o) {
+    if (!o.chainId || !o.chainSeq || o.chainSeq <= 1) return null;
+    return state.orders.filter(function (x) { return x.chainId === o.chainId && x.chainSeq === o.chainSeq - 1; })[0] || null;
   }
   // produkty, dla których administrator ustawił wydajność na danej maszynie — używane i przy
   // wpisie zmiany (wybór produktu), i przy dodawaniu zlecenia (żeby nie dało się zaplanować
@@ -1472,18 +1486,20 @@
 
   function materialsAdminHtml() {
     var rows = state.materials.map(function (m) {
-      return '<tr><td><input type="text" data-material-name="' + m.id + '" value="' + escAttr(m.name) + '"></td>' +
+      return '<tr><td><input type="text" data-material-code="' + m.id + '" value="' + escAttr(m.code || "") + '" placeholder="—" maxlength="30" style="width:110px;"></td>' +
+        '<td><input type="text" data-material-name="' + m.id + '" value="' + escAttr(m.name) + '"></td>' +
         '<td><select data-material-unit="' + m.id + '" style="max-width:110px;">' + materialUnitOptionsHtml(m.unit) + '</select></td>' +
         '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-material="' + m.id + '">usuń</button></td></tr>';
     }).join("");
     var table = state.materials.length
-      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th>Jednostka</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Kod</th><th>Nazwa</th><th>Jednostka</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
         '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveMaterialsBtn">Zapisz zmiany</button><span class="form-msg" id="materialsMsg">Zapisano.</span></div>'
       : '<div class="empty-hint">Brak surowców — dodaj pierwszy poniżej.</div>';
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Surowce</h2>' +
-      '<div class="section-sub">Lista surowców do wyboru w recepturach produktów (zakładka Receptury). Nazwę i jednostkę możesz poprawić bezpośrednio w tabeli. Usunięcie surowca kasuje też jego wpisy w recepturach, w których był użyty.</div></div>' +
+      '<div class="section-sub">Lista surowców do wyboru w recepturach produktów (zakładka Receptury). Kod jest opcjonalny (musi być unikalny w firmie, jeśli podany). Dane możesz poprawić bezpośrednio w tabeli. Usunięcie surowca kasuje też jego wpisy w recepturach, w których był użyty.</div></div>' +
       table +
-      '<form class="inline-add" id="addMaterialForm"><input type="text" id="newMaterialName" placeholder="Nazwa surowca">' +
+      '<form class="inline-add" id="addMaterialForm"><input type="text" id="newMaterialCode" placeholder="Kod (opcjonalnie)" maxlength="30" style="max-width:140px;">' +
+      '<input type="text" id="newMaterialName" placeholder="Nazwa surowca">' +
       '<select id="newMaterialUnit" style="max-width:110px;">' + materialUnitOptionsHtml("szt") + '</select>' +
       '<button type="submit" class="primary">Dodaj</button></form></div>';
   }
@@ -1539,7 +1555,7 @@
   }
 
   function recipeMaterialRowHtml(row, idx) {
-    var matOpts = state.materials.map(function (m) { return '<option value="' + m.id + '"' + (m.id === row.materialId ? " selected" : "") + '>' + escAttr(m.name) + ' (' + unitLabel(m.unit) + ')</option>'; }).join("");
+    var matOpts = state.materials.map(function (m) { return '<option value="' + m.id + '"' + (m.id === row.materialId ? " selected" : "") + '>' + escAttr((m.code ? m.code + " — " + m.name : m.name)) + ' (' + unitLabel(m.unit) + ')</option>'; }).join("");
     return '<div class="downtime-row" data-recipe-material-row="' + idx + '">' +
       '<select id="recMatSel' + idx + '">' + matOpts + '</select>' +
       '<input type="number" id="recMatQty' + idx + '" min="0.001" step="0.001" placeholder="ilość / szt." value="' + (row.qty || "") + '">' +
@@ -1868,8 +1884,19 @@
       var dueTxt = o.dueDate ? fmtDate(o.dueDate) : "—";
       var upAttr = idx === 0 ? " disabled" : "";
       var downAttr = idx === list.length - 1 ? " disabled" : "";
+      var chainTxt = "";
+      if (o.chainId && o.chainTotal > 1) {
+        chainTxt = '<div class="hint">Etap ' + o.chainSeq + '/' + o.chainTotal + ' z receptury</div>';
+        var prevO = prevChainOrder(o);
+        if (prevO) {
+          var prevProduced = producedForOrder(prevO.id);
+          chainTxt += '<div class="hint">Poprzedni etap (' + escAttr(machineName(prevO.machineId)) + '): ' +
+            (prevO.status === "cancelled" ? "anulowany" : prevProduced + "/" + prevO.targetQty + " szt.") +
+            ' — informacyjnie, nie blokuje</div>';
+        }
+      }
       return '<tr><td class="num tabular">' + (idx + 1) + '</td>' +
-        '<td>' + escAttr(productName(o.productId)) + (o.note ? '<div class="hint">' + escAttr(o.note) + '</div>' : '') + '</td>' +
+        '<td>' + escAttr(productName(o.productId)) + (o.note ? '<div class="hint">' + escAttr(o.note) + '</div>' : '') + chainTxt + '</td>' +
         '<td class="num tabular">' + o.targetQty + '</td>' +
         '<td class="num tabular">' + produced + ' z ' + o.targetQty + ' (' + pct + '%)</td>' +
         '<td class="num tabular">' + dueTxt + '</td>' +
@@ -1882,7 +1909,37 @@
     }).join("");
   }
 
+  // ---- planowanie z receptury: jedno kliknięcie -> zlecenie na KAŻDĄ maszynę z marszruty
+  // produktu, po kolei, w tej samej ilości. Sekwencja jest tylko informacyjna (patrz notatka
+  // "poprzedni etap" w orderRowsHtml/renderOrderQueue) — nic nigdy nie blokuje ręcznego
+  // rozpoczęcia produkcji, zgodnie z tym, co ustaliliśmy (zakłady mają problem z niekompletnymi/
+  // zmieniającymi się recepturami, więc obejście musi zawsze działać). Etap, którego maszyna+
+  // produkt nie ma ustawionej wydajności (product_rates) jest pomijany — bo operator i tak nie
+  // mógłby na niego wpisać zmiany z policzoną normą (patrz refreshProducts w renderOperator) —
+  // kierownik jest o tym jawnie informowany i może taki etap dodać ręcznie poniżej.
+  function recipeOrderFormHtml() {
+    var withRecipeSteps = state.products.filter(function (p) { return (state.recipeStepsByProduct[p.id] || []).length > 0; });
+    if (!withRecipeSteps.length) {
+      return '<div class="panel"><div class="section-head"><div class="eyebrow">Planowanie z receptury</div><h2 class="section-title small">Automatyczne zlecenie na kilku maszynach</h2></div>' +
+        '<div class="empty-hint">Żaden produkt nie ma jeszcze receptury z etapami (zakładka Receptury) — jak dodasz, jednym kliknięciem rozpiszesz tu zlecenie na wszystkie jego maszyny po kolei.</div></div>';
+    }
+    var opts = '<option value="">— wybierz produkt —</option>' + withRecipeSteps.map(function (p) {
+      return '<option value="' + p.id + '">' + escAttr(p.code ? p.code + " — " + p.name : p.name) + '</option>';
+    }).join("");
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Planowanie z receptury</div><h2 class="section-title small">Automatyczne zlecenie na kilku maszynach</h2>' +
+      '<div class="section-sub">Wybierz produkt z receptury — dopiszemy po jednym zleceniu na KAŻDĄ maszynę jego marszruty, w tej samej ilości. Kolejne etapy operator widzi informacyjnie jako „poprzedni etap: X z Y szt." — to nigdy nie blokuje ręcznego rozpoczęcia produkcji.</div></div>' +
+      '<form class="form-grid" id="addRecipeOrderForm">' +
+      '<div class="field span-3"><label for="recOrdProduct">Produkt (z recepturą)</label><select id="recOrdProduct">' + opts + '</select></div>' +
+      '<div class="field span-3"><label for="recOrdQty">Ilość docelowa (szt.)</label><input id="recOrdQty" type="number" min="1" step="1"></div>' +
+      '<div class="field" style="grid-column:1/-1;"><span class="hint" id="recOrdPreview"></span></div>' +
+      '<div class="field span-3"><label for="recOrdDue">Termin (opcjonalnie)</label><input id="recOrdDue" type="date"></div>' +
+      '<div class="field span-3"><label for="recOrdNote">Notatka (opcjonalnie)</label><input id="recOrdNote" type="text" maxlength="250" placeholder="np. dla klienta X"></div>' +
+      '<div class="form-actions"><button type="submit" class="primary">Utwórz zlecenia z receptury</button><span class="form-msg" id="addRecipeOrderMsg">Utworzono.</span></div>' +
+      '</form></div>';
+  }
+
   function ordersAdminHtml() {
+    var recipeSection = recipeOrderFormHtml();
     var machinesWithQueue = state.machines.filter(function (m) { return ordersForMachine(m.id).length > 0; });
     var sections = machinesWithQueue.map(function (m) {
       return '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Kolejka</div><h2 class="section-title small">' + escAttr(m.name) + '</h2></div>' +
@@ -1891,13 +1948,14 @@
     }).join("");
 
     if (!state.machines.length || !state.products.length) {
-      return '<div class="panel"><div class="section-head"><div class="eyebrow">Planowanie</div><h2 class="section-title small">Kolejka zleceń</h2></div>' +
+      return recipeSection + '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Planowanie</div><h2 class="section-title small">Kolejka zleceń</h2></div>' +
         '<div class="empty-hint">Dodaj najpierw przynajmniej jedną maszynę i produkt z ustawioną wydajnością (zakładki Maszyny i Produkty w Panelu administratora), żeby móc planować zlecenia.</div></div>';
     }
 
     var machOpts = state.machines.map(function (m) { return '<option value="' + m.id + '">' + escAttr(m.name) + '</option>'; }).join("");
 
-    return '<div class="panel"><div class="section-head"><div class="eyebrow">Planowanie</div><h2 class="section-title small">Kolejka zleceń</h2>' +
+    return recipeSection +
+      '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Planowanie</div><h2 class="section-title small">Kolejka zleceń</h2>' +
       '<div class="section-sub">Co, w jakiej ilości i w jakiej kolejności ma powstać na każdej maszynie. Operator widzi tę kolejkę przy wpisie zmiany i jednym kliknięciem wypełnia nią formularz — „Zrobiono" liczy się samo, z wpisów zapisanych z tego zlecenia.</div></div>' +
       '<form class="form-grid" id="addOrderForm">' +
       '<div class="field span-2"><label for="ordMachine">Maszyna</label><select id="ordMachine">' + machOpts + '</select></div>' +
@@ -1942,7 +2000,7 @@
     machines: { hint: 'Jedna maszyna w linii. Plik .txt/.csv: sama nazwa w każdej linii. Plik Excel (.xlsx): jedna kolumna z nazwami.' },
     operators: { hint: 'Jedna osoba w linii, w formacie: Imię i nazwisko;PIN (działa też przecinek albo tabulator). Plik Excel (.xlsx): pierwsza kolumna imię, druga PIN.' },
     products: { hint: 'Jeden produkt w linii: Produkt;Maszyna;Ilość maksymalna dzienna (np. Wspornik A;Tokarka 1;850) — albo z kodem na początku: Kod;Produkt;Maszyna;Ilość maksymalna dzienna. Maszyna musi już istnieć na liście Maszyny — z ilości dziennej przeliczymy orientacyjny czas cyklu na podstawie ustawień czasu zmiany (zakładka Ustawienia) i TPZ tej maszyny, co zawsze możesz poprawić ręcznie w tabeli obok. Jeśli produkt z takim kodem/nazwą już istnieje, dopiszemy tylko brakującą wydajność (i uzupełnimy kod, jeśli go jeszcze nie było).' },
-    materials: { hint: 'Jeden surowiec w linii, w formacie: Nazwa;Jednostka (np. Blacha 2mm;kg — działa też przecinek albo tabulator). Jednostka musi być jedną z: ' + MATERIAL_UNITS.map(function (u) { return u.key; }).join(", ") + '. Plik Excel (.xlsx): pierwsza kolumna nazwa, druga jednostka.' }
+    materials: { hint: 'Jeden surowiec w linii: Nazwa;Jednostka (np. Blacha 2mm;kg) — albo z kodem na początku: Kod;Nazwa;Jednostka (działa też przecinek albo tabulator). Jednostka musi być jedną z: ' + MATERIAL_UNITS.map(function (u) { return u.key; }).join(", ") + '. Plik Excel (.xlsx): kolumny w tej samej kolejności.' }
   };
 
   function importBlockHtml(kind) {
@@ -2037,10 +2095,19 @@
 
   function rowsToNewMaterials(rows, existing) {
     var existingLower = existing.map(function (x) { return x.name.trim().toLowerCase(); });
+    // wykryj czy plik ma kolumnę Kod na początku — tak samo jak przy produktach: nagłówek
+    // "kod"/"code" w pierwszej kolumnie, albo po prostu 3+ kolumny w wierszu nagłówkowym
+    var header0 = rows[0] || [];
+    var header0Cols = Array.isArray(header0) ? header0 : [header0];
+    var header0First = (header0Cols[0] == null ? "" : header0Cols[0]).toString().trim().toLowerCase();
+    var hasCodeCol = (header0First === "kod" || header0First === "code" || header0Cols.length >= 3);
     var seen = {}, out = [];
     rows.forEach(function (r) {
-      var name = (Array.isArray(r) ? r[0] : "");
-      var unitRaw = (Array.isArray(r) ? r[1] : "");
+      var cols = Array.isArray(r) ? r : [r];
+      var code, name, unitRaw;
+      if (hasCodeCol) { code = cols[0]; name = cols[1]; unitRaw = cols[2]; }
+      else { code = ""; name = cols[0]; unitRaw = cols[1]; }
+      code = clampCode(code);
       name = (name == null ? "" : name).toString().trim();
       if (!name) return;
       var low = name.toLowerCase();
@@ -2050,7 +2117,7 @@
       if (existingLower.indexOf(low) !== -1) return;
       if (seen[low]) return;
       seen[low] = true;
-      out.push({ name: name, unit: unit });
+      out.push({ name: name, unit: unit, code: code || null });
     });
     return out;
   }
@@ -2337,6 +2404,85 @@
         ordMachSel.addEventListener("change", refreshOrderProducts);
         refreshOrderProducts();
       }
+
+      var recOrdProductSel = document.getElementById("recOrdProduct");
+      var recOrdPreview = document.getElementById("recOrdPreview");
+      function refreshRecipeOrderPreview() {
+        if (!recOrdProductSel || !recOrdPreview) return;
+        var pid = recOrdProductSel.value;
+        var steps = state.recipeStepsByProduct[pid] || [];
+        if (!pid || !steps.length) { recOrdPreview.innerHTML = ""; return; }
+        var parts = steps.map(function (s, i) {
+          var hasRate = state.productRates[pid] && state.productRates[pid][s.machineId] != null;
+          return (i + 1) + ". " + escAttr(machineName(s.machineId)) + (hasRate ? "" : ' <span class="hint warn">⚠ brak wydajności — pominięte</span>');
+        });
+        recOrdPreview.innerHTML = "Marszruta: " + parts.join(" → ");
+      }
+      if (recOrdProductSel) {
+        recOrdProductSel.addEventListener("change", refreshRecipeOrderPreview);
+        refreshRecipeOrderPreview();
+      }
+
+      var addRecipeOrderForm = document.getElementById("addRecipeOrderForm");
+      if (addRecipeOrderForm) addRecipeOrderForm.addEventListener("submit", async function (evt) {
+        evt.preventDefault();
+        var rMsg = document.getElementById("addRecipeOrderMsg");
+        rMsg.classList.remove("show", "error");
+        var pid = recOrdProductSel.value;
+        var qty = parseFloat(document.getElementById("recOrdQty").value);
+        var due = document.getElementById("recOrdDue").value || null;
+        var note = document.getElementById("recOrdNote").value.trim().slice(0, 250) || null;
+        var steps = state.recipeStepsByProduct[pid] || [];
+        if (!pid || !steps.length) {
+          rMsg.textContent = "Wybierz produkt z receptury.";
+          rMsg.classList.add("show", "error");
+          return;
+        }
+        if (!qty || qty <= 0) {
+          rMsg.textContent = "Podaj ilość docelową większą od zera.";
+          rMsg.classList.add("show", "error");
+          document.getElementById("recOrdQty").focus();
+          return;
+        }
+        var usable = steps.filter(function (s) { return state.productRates[pid] && state.productRates[pid][s.machineId] != null; });
+        var skipped = steps.length - usable.length;
+        if (!usable.length) {
+          rMsg.textContent = "Żaden etap tej receptury nie ma ustawionej wydajności produktu na swojej maszynie (zakładka Produkty) — nie ma czego utworzyć automatycznie. Dodaj zlecenie ręcznie poniżej.";
+          rMsg.classList.add("show", "error");
+          return;
+        }
+        var recSubmitBtn = addRecipeOrderForm.querySelector("button[type=submit]");
+        recSubmitBtn.disabled = true;
+        var chainId = "chain-" + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+        // pozycja w kolejce KAŻDEJ maszyny liczona lokalnie (nie tylko ordersForMachine().length),
+        // na wypadek gdyby ta sama receptura wracała na tę samą maszynę więcej niż raz
+        var nextPos = {};
+        var rows = usable.map(function (s, i) {
+          if (nextPos[s.machineId] == null) nextPos[s.machineId] = ordersForMachine(s.machineId).length;
+          var pos = nextPos[s.machineId]++;
+          return {
+            company_id: session.company.id, machine_id: s.machineId, product_id: pid,
+            target_qty: qty, due_date: due, note: note, position: pos,
+            chain_id: chainId, chain_seq: i + 1, chain_total: usable.length
+          };
+        });
+        var recRes = await sb.from("production_orders").insert(rows);
+        recSubmitBtn.disabled = false;
+        if (recRes.error) {
+          rMsg.textContent = "Nie udało się utworzyć zleceń: " + recRes.error.message;
+          rMsg.classList.add("show", "error");
+          return;
+        }
+        await loadCompanyData();
+        renderAdmin(root);
+        var freshRMsg = document.getElementById("addRecipeOrderMsg");
+        if (freshRMsg) {
+          freshRMsg.textContent = "Utworzono zlecenia na " + usable.length + " " + (usable.length === 1 ? "etapie" : "etapach") +
+            (skipped ? " (pominięto " + skipped + " " + (skipped === 1 ? "etap" : "etapy/etapów") + " bez ustawionej wydajności)" : "") + ".";
+          freshRMsg.classList.add("show");
+          setTimeout(function () { freshRMsg.classList.remove("show"); }, 4000);
+        }
+      });
 
       var addOrderForm = document.getElementById("addOrderForm");
       if (addOrderForm) addOrderForm.addEventListener("submit", async function (evt) {
@@ -2637,8 +2783,9 @@
       evt.preventDefault();
       var name = document.getElementById("newMaterialName").value.trim();
       var unit = document.getElementById("newMaterialUnit").value;
+      var code = clampCode(document.getElementById("newMaterialCode").value);
       if (!name) return;
-      var res = await sb.from("materials").insert({ company_id: session.company.id, name: name, unit: unit });
+      var res = await sb.from("materials").insert({ company_id: session.company.id, name: name, unit: unit, code: code || null });
       if (res.error) { bannerMsg = "Nie udało się dodać surowca: " + res.error.message; }
       await loadCompanyData();
       renderApp();
@@ -2661,11 +2808,14 @@
         var newName = inp.value.trim();
         var unitSel = root.querySelector('[data-material-unit="' + id + '"]');
         var newUnit = unitSel ? unitSel.value : null;
+        var codeInp = root.querySelector('[data-material-code="' + id + '"]');
+        var newCode = codeInp ? clampCode(codeInp.value) : "";
         var current = state.materials.filter(function (m) { return m.id === id; })[0];
         if (!current) return;
         var patch = {};
         if (newName && newName !== current.name) patch.name = newName;
         if (newUnit && newUnit !== current.unit) patch.unit = newUnit;
+        if (newCode !== (current.code || "")) patch.code = newCode || null;
         if (Object.keys(patch).length) updates.push({ id: id, patch: patch });
       });
       var msgEl = document.getElementById("materialsMsg");
@@ -2865,7 +3015,7 @@
     });
     wireProductsImportHandler();
     wireImportHandler("materials", "materials", function (rows) {
-      return rowsToNewMaterials(rows, state.materials).map(function (m) { return { company_id: session.company.id, name: m.name, unit: m.unit }; });
+      return rowsToNewMaterials(rows, state.materials).map(function (m) { return { company_id: session.company.id, name: m.name, unit: m.unit, code: m.code }; });
     });
 
     root.querySelectorAll("[data-approve-downtime]").forEach(function (btn) {
@@ -3014,8 +3164,19 @@
           var active = selectedOrderId === o.id;
           var overdue = orderOverdue(o);
           var dueTxt = o.dueDate ? (' · termin ' + fmtDate(o.dueDate) + (overdue ? ' (przeterminowane)' : '')) : '';
+          var chainTxt = "";
+          if (o.chainId && o.chainTotal > 1) {
+            chainTxt = ' · etap ' + o.chainSeq + '/' + o.chainTotal;
+            var prevO = prevChainOrder(o);
+            if (prevO) {
+              var prevProduced = producedForOrder(prevO.id);
+              chainTxt += prevO.status === "cancelled"
+                ? ' (poprzedni etap anulowany)'
+                : ' (poprzedni etap na ' + escAttr(machineName(prevO.machineId)) + ': ' + prevProduced + '/' + prevO.targetQty + ' szt. — informacyjnie)';
+            }
+          }
           return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
-            '<span>' + escAttr(productName(o.productId)) + ' — ' + produced + ' z ' + o.targetQty + ' szt.' + dueTxt + '</span>' +
+            '<span>' + escAttr(productName(o.productId)) + ' — ' + produced + ' z ' + o.targetQty + ' szt.' + dueTxt + chainTxt + '</span>' +
             '<button type="button" class="small' + (active ? ' primary' : '') + '" data-start-order="' + o.id + '">' + (active ? 'Wybrano ✓' : 'Rozpocznij') + '</button>' +
             '</div>';
         }).join("") +
