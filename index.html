@@ -595,6 +595,7 @@
   .status-tag.approved { color: var(--status-good); background: var(--status-good-wash); }
   .status-tag.rejected { color: var(--status-crit); background: var(--status-crit-wash); }
   .status-tag.cancelled { color: var(--ink-muted); background: var(--surface-2); }
+  .status-tag.priority { color: var(--brand); background: var(--brand-wash); }
   tr.cancelled-row { color: var(--ink-muted); text-decoration: line-through; text-decoration-color: var(--border); }
   tr.cancelled-row td { opacity: 0.7; }
   .rate-cell input { text-align: right; padding: 6px 8px; font-size: 12.5px; }
@@ -888,6 +889,9 @@
       id: r.id, machineId: r.machine_id, productId: r.product_id, targetQty: Number(r.target_qty),
       dueDate: r.due_date || null, note: r.note || "", position: Number(r.position || 0),
       status: r.status || "active", createdAt: r.created_at || null,
+      // "Pilne" — ręczny priorytet kierownika, NIE zmienia dueDate (patrz komentarz przy
+      // ordersForMachine) — termin zostaje prawdziwy dla Zapotrzebowania/Raportu
+      priority: !!r.priority,
       // zlecenia rozpisane automatycznie z receptury na kilka maszyn po kolei dzielą ten
       // sam chainId — chainSeq/chainTotal to tylko etykieta "etap X/N", czysto informacyjna
       // (patrz komentarz przy renderOrderQueue) — reszta zlecenia działa tak samo jak dodane ręcznie
@@ -1029,9 +1033,28 @@
   }
   function orderDone(o) { return producedForOrder(o.id) >= o.targetQty; }
   function orderOverdue(o) { return !!o.dueDate && o.dueDate < todayStr() && !orderDone(o); }
+  // kolejka sortuje się automatycznie od najwcześniejszego terminu — przeterminowane
+  // (termin wcześniejszy niż dziś) trafiają na górę same z siebie, bo ich data jest
+  // najmniejsza. Zlecenia bez terminu (starsze wpisy sprzed wymogu daty) lądują na
+  // końcu — nie wiadomo, jak pilne są, więc nie zgadujemy. Przy takim samym terminie
+  // `position` jest tylko cichym tie-breakerem (kolejność dodania), nic więcej nie ustawia.
+  //
+  // Wyjątek: zlecenia oznaczone ręcznie jako "Pilne" (priority) zawsze wskakują NAD
+  // resztę, niezależnie od terminu — to świadomy wentyl bezpieczeństwa dla kierownika
+  // (zwolniła się maszyna, telefon od klienta) BEZ fałszowania samego terminu, bo na
+  // dueDate liczy się Zapotrzebowanie i Raport. Wewnątrz obu grup (pilne / niepilne)
+  // nadal obowiązuje sortowanie po terminie jak wyżej.
   function ordersForMachine(machineId) {
     return state.orders.filter(function (o) { return o.machineId === machineId && isActiveOrder(o); })
-      .sort(function (a, b) { return a.position - b.position; });
+      .sort(function (a, b) {
+        if (!!a.priority !== !!b.priority) return a.priority ? -1 : 1;
+        if (a.dueDate !== b.dueDate) {
+          if (!a.dueDate) return 1;
+          if (!b.dueDate) return -1;
+          return a.dueDate < b.dueDate ? -1 : 1;
+        }
+        return a.position - b.position;
+      });
   }
   // etap N-1 tego samego łańcucha (patrz recipeOrderFormHtml) — używane WYŁĄCZNIE do pokazania
   // kierownikowi/operatorowi informacyjnej notatki "poprzedni etap: X/Y szt.", nigdy do blokowania
@@ -2417,9 +2440,8 @@
       var badge = done ? '<span class="status-tag approved">zrealizowane</span>'
         : overdue ? '<span class="status-tag rejected">przeterminowane</span>'
         : '<span class="status-tag pending">w kolejce</span>';
+      if (o.priority) badge = '<span class="status-tag priority">pilne</span> ' + badge;
       var dueTxt = o.dueDate ? fmtDate(o.dueDate) : "—";
-      var upAttr = idx === 0 ? " disabled" : "";
-      var downAttr = idx === list.length - 1 ? " disabled" : "";
       var chainTxt = "";
       if (o.chainId && o.chainTotal > 1) {
         chainTxt = '<div class="hint">Etap ' + o.chainSeq + '/' + o.chainTotal + ' z receptury</div>';
@@ -2438,8 +2460,7 @@
         '<td class="num tabular">' + dueTxt + '</td>' +
         '<td>' + badge + '</td>' +
         '<td style="white-space:nowrap;">' +
-        '<button type="button" class="small" data-order-up="' + o.id + '"' + upAttr + ' aria-label="Wyżej w kolejce">↑</button> ' +
-        '<button type="button" class="small" data-order-down="' + o.id + '"' + downAttr + ' aria-label="Niżej w kolejce">↓</button> ' +
+        '<button type="button" class="small" data-order-priority="' + o.id + '">' + (o.priority ? "Cofnij pilne" : "Oznacz jako pilne") + '</button> ' +
         '<button type="button" class="small" data-order-cancel="' + o.id + '">Anuluj</button>' +
         '</td></tr>';
     }).join("");
@@ -2492,7 +2513,7 @@
 
     return recipeSection +
       '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Planowanie</div><h2 class="section-title small">Kolejka zleceń</h2>' +
-      '<div class="section-sub">Co, w jakiej ilości i w jakiej kolejności ma powstać na każdej maszynie. Operator widzi tę kolejkę przy wpisie zmiany i jednym kliknięciem wypełnia nią formularz — „Zrobiono" liczy się samo, z wpisów zapisanych z tego zlecenia.</div></div>' +
+      '<div class="section-sub">Co i w jakiej ilości ma powstać na każdej maszynie. Kolejka sortuje się sama od najwcześniejszego terminu — przeterminowane zlecenia są zawsze na górze. Jeśli coś musi powstać szybciej z innego powodu niż termin (np. zwolniła się maszyna), oznacz je jako „Pilne" — wskoczy na samą górę, a termin zostaje bez zmian, więc Zapotrzebowanie i Raport nadal liczą uczciwie. Operator widzi tę kolejkę przy wpisie zmiany i jednym kliknięciem wypełnia nią formularz — „Zrobiono" liczy się samo, z wpisów zapisanych z tego zlecenia.</div></div>' +
       '<form class="form-grid" id="addOrderForm">' +
       '<div class="field span-2"><label for="ordMachine">Maszyna</label><select id="ordMachine">' + machOpts + '</select></div>' +
       '<div class="field span-2"><label for="ordProduct">Produkt</label><select id="ordProduct"></select></div>' +
@@ -2502,24 +2523,6 @@
       '<div class="form-actions"><button type="submit" class="primary">Dodaj do kolejki</button><span class="form-msg" id="addOrderMsg">Dodano.</span></div>' +
       '</form></div>' +
       (sections || '<div class="empty-hint" style="margin-top:16px;">Żadna maszyna nie ma jeszcze nic w kolejce — dodaj pierwsze zlecenie powyżej.</div>');
-  }
-
-  // przesuwa zlecenie góra/dół w kolejce JEGO maszyny — zamienia wartości `position` z
-  // sąsiadem, więc nie musi to być ciągła numeracja, liczy się tylko kolejność względna
-  async function moveOrder(root, orderId, direction) {
-    var order = orderById(orderId);
-    if (!order) return;
-    var siblings = ordersForMachine(order.machineId);
-    var idx = siblings.findIndex(function (o) { return o.id === order.id; });
-    var swapIdx = idx + direction;
-    if (idx === -1 || swapIdx < 0 || swapIdx >= siblings.length) return;
-    var other = siblings[swapIdx];
-    await Promise.all([
-      sb.from("production_orders").update({ position: other.position }).eq("id", order.id),
-      sb.from("production_orders").update({ position: order.position }).eq("id", other.id)
-    ]);
-    await loadCompanyData();
-    renderAdmin(root);
   }
 
   function materialPlanHtml() {
@@ -3220,11 +3223,18 @@
           renderAdmin(root);
         });
       });
-      root.querySelectorAll("[data-order-up]").forEach(function (btn) {
-        btn.addEventListener("click", function () { moveOrder(root, btn.getAttribute("data-order-up"), -1); });
-      });
-      root.querySelectorAll("[data-order-down]").forEach(function (btn) {
-        btn.addEventListener("click", function () { moveOrder(root, btn.getAttribute("data-order-down"), 1); });
+      root.querySelectorAll("[data-order-priority]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          var id = btn.getAttribute("data-order-priority");
+          var order = orderById(id);
+          if (!order) return;
+          btn.disabled = true;
+          // termin zostaje bez zmian — priorytet to tylko ręczna kolejność wyświetlania,
+          // nie ma prawa dotknąć due_date (patrz komentarz przy ordersForMachine)
+          await sb.from("production_orders").update({ priority: !order.priority }).eq("id", id);
+          await loadCompanyData();
+          renderAdmin(root);
+        });
       });
     }
 
@@ -3986,7 +3996,7 @@
           var produced = producedForOrder(o.id);
           var active = selectedOrderId === o.id;
           var overdue = orderOverdue(o);
-          var dueTxt = o.dueDate ? (' · termin ' + fmtDate(o.dueDate) + (overdue ? ' (przeterminowane)' : '')) : '';
+          var dueTxt = (o.priority ? ' · pilne' : '') + (o.dueDate ? (' · termin ' + fmtDate(o.dueDate) + (overdue ? ' (przeterminowane)' : '')) : '');
           var chainTxt = "";
           if (o.chainId && o.chainTotal > 1) {
             chainTxt = ' · etap ' + o.chainSeq + '/' + o.chainTotal;
