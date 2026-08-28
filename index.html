@@ -1,7 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<title>Postojomierz</title>
+<title>Postojomierz+</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -959,7 +959,8 @@
       sb.from("material_stock").select("*"),
       sb.from("product_stock").select("*"),
       sb.from("warehouse_documents").select("*").order("created_at", { ascending: false }),
-      sb.from("warehouse_document_items").select("*")
+      sb.from("warehouse_document_items").select("*"),
+      sb.from("contractors").select("*").order("name")
     ]);
     var errs = results.map(function (r) { return r.error; }).filter(Boolean);
     if (errs.length) {
@@ -1085,12 +1086,19 @@
       state.productStockByProduct[r.productId].push(r);
     });
 
-    // dokumenty magazynowe WZ/RW/MM — patrz komentarz przy warehouseDocumentsHtml niżej.
+    // kontrahenci — prosta lista dostawców/odbiorców, opcjonalnie podpinana pod WZ/PZ
+    // (patrz contractorId niżej w warehouseDocuments).
+    state.contractors = (results[20].data || []).map(function (c) {
+      return { id: c.id, name: c.name, kind: c.kind || "both", note: c.note || "" };
+    });
+
+    // dokumenty magazynowe WZ/PZ/RW/MM — patrz komentarz przy warehouseDocumentsHtml niżej.
     // confirmedAt === null -> szkic (stan magazynowy jeszcze nietknięty).
     state.warehouseDocuments = (results[18].data || []).map(function (d) {
       return {
         id: d.id, docType: d.doc_type, docNo: Number(d.doc_no),
         warehouseId: d.warehouse_id || null, targetWarehouseId: d.target_warehouse_id || null,
+        contractorId: d.contractor_id || null,
         note: d.note || "", createdAt: d.created_at, confirmedAt: d.confirmed_at || null
       };
     });
@@ -1124,6 +1132,8 @@
     return sumStock(state.productStockByProduct[productId] || [], warehouseIds);
   }
   function warehouseName(id) { var w = state.warehouses.filter(function (x) { return x.id === id; })[0]; return w ? w.name : "—"; }
+  function contractorById(id) { return state.contractors.filter(function (c) { return c.id === id; })[0]; }
+  function contractorName(id) { var c = contractorById(id); return c ? c.name : "—"; }
 
   // minuty przestoju faktycznie liczone do OEE dla tej zmiany: tylko ZATWIERDZONE
   // wpisy przestoju się liczą. Zmiany sprzed tej funkcji (albo bez żadnych wpisów
@@ -1957,7 +1967,7 @@
     var wb = XLSX.utils.book_new();
     var rangeTxt = data.from && data.to ? (fmtDate(data.from) + " – " + fmtDate(data.to)) : "—";
     var summary = [
-      ["Postojomierz — raport okresu"],
+      ["Postojomierz+ — raport okresu"],
       ["Firma", session.company.name],
       ["Okres", rangeTxt],
       ["Liczba zmian", data.shiftCount],
@@ -2223,6 +2233,35 @@
       '<div class="section-sub">Fizyczne lub logiczne miejsca, w których leżą surowce i produkty (np. „Hala A", „Magazyn wyrobów gotowych"). Surowiec/produkt może mieć różny stan w różnych magazynach naraz — sumę i podział ustawiasz w Zapotrzebowaniu (surowce) i tutaj przy Produktach. Magazyny wybierasz też przy tworzeniu inwentaryzacji. Usunięcie magazynu kasuje stan magazynowy, jaki był w nim zapisany.</div></div>' +
       table +
       '<form class="inline-add" id="addWarehouseForm"><input type="text" id="newWarehouseName" placeholder="Nazwa magazynu"><button type="submit" class="primary">Dodaj</button></form></div>';
+  }
+
+  var CONTRACTOR_KINDS = [
+    { key: "supplier", label: "Dostawca" },
+    { key: "customer", label: "Odbiorca" },
+    { key: "both", label: "Dostawca i odbiorca" }
+  ];
+  function contractorKindOptionsHtml(selected) {
+    return CONTRACTOR_KINDS.map(function (k) { return '<option value="' + k.key + '"' + (k.key === selected ? " selected" : "") + '>' + k.label + '</option>'; }).join("");
+  }
+
+  function contractorsAdminHtml() {
+    var rows = state.contractors.map(function (c) {
+      return '<tr><td><input type="text" data-contractor-name="' + c.id + '" value="' + escAttr(c.name) + '"></td>' +
+        '<td><select data-contractor-kind="' + c.id + '">' + contractorKindOptionsHtml(c.kind) + '</select></td>' +
+        '<td><input type="text" data-contractor-note="' + c.id + '" value="' + escAttr(c.note) + '" placeholder="Notatka"></td>' +
+        '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-contractor="' + c.id + '">usuń</button></td></tr>';
+    }).join("");
+    var table = state.contractors.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th>Rodzaj</th><th>Notatka</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveContractorsBtn">Zapisz zmiany</button><span class="form-msg" id="contractorsMsg">Zapisano.</span></div>'
+      : '<div class="empty-hint">Brak kontrahentów — dodaj pierwszego poniżej.</div>';
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Kontrahenci</h2>' +
+      '<div class="section-sub">Dostawcy i odbiorcy, których możesz podpiąć pod dokument WZ (odbiorca) albo PZ (dostawca) w zakładce WZ / RW / MM. Pole „Rodzaj" tylko filtruje, którzy kontrahenci pojawiają się do wyboru przy WZ, a którzy przy PZ — „Dostawca i odbiorca" pojawia się w obu miejscach.</div></div>' +
+      table +
+      '<form class="inline-add" id="addContractorForm"><input type="text" id="newContractorName" placeholder="Nazwa kontrahenta">' +
+      '<select id="newContractorKind">' + contractorKindOptionsHtml("both") + '</select>' +
+      '<input type="text" id="newContractorNote" placeholder="Notatka (opcjonalnie)" maxlength="250" style="min-width:160px;">' +
+      '<button type="submit" class="primary">Dodaj</button></form></div>';
   }
 
   /* =====================================================================
@@ -2499,6 +2538,7 @@
     { key: "products", label: "Produkty" },
     { key: "materials", label: "Surowce" },
     { key: "warehouses", label: "Magazyny" },
+    { key: "contractors", label: "Kontrahenci" },
     { key: "recipes", label: "Receptury" },
     { key: "settings", label: "Ustawienia" }
   ];
@@ -2533,6 +2573,7 @@
       case "products": return productsHtml() + importBlockHtml("products") + productStockHtml();
       case "materials": return materialsAdminHtml() + importBlockHtml("materials");
       case "warehouses": return warehousesAdminHtml();
+      case "contractors": return contractorsAdminHtml();
       case "recipes": return recipesAdminHtml();
       case "downtimes": return downtimesAdminHtml();
       case "analytics": return analyticsHtml(managerPeriod);
@@ -3132,7 +3173,8 @@
      ===================================================================== */
 
   var DOC_TYPE_META = {
-    wz: { label: "WZ", full: "Wydanie zewnętrzne", desc: "Towar (surowiec albo produkt) wyjeżdża z zakładu na zewnątrz — np. wysyłka do klienta." },
+    wz: { label: "WZ", full: "Wydanie zewnętrzne", desc: "Towar (surowiec albo produkt) wyjeżdża z zakładu na zewnątrz — np. wysyłka do klienta.", contractorLabel: "Odbiorca", contractorKind: "customer" },
+    pz: { label: "PZ", full: "Przyjęcie zewnętrzne", desc: "Towar (surowiec albo produkt) wjeżdża do zakładu z zewnątrz — np. dostawa od dostawcy.", contractorLabel: "Dostawca", contractorKind: "supplier" },
     rw: { label: "RW", full: "Rozchód wewnętrzny", desc: "Towar zużywany wewnątrz zakładu, nie wyjeżdża na zewnątrz — np. wydanie surowca poza standardowym zużyciem z receptury." },
     mm: { label: "MM", full: "Przesunięcie międzymagazynowe", desc: "Towar wędruje z jednego magazynu firmy do drugiego — stan spada w źródłowym i rośnie w docelowym." }
   };
@@ -3154,7 +3196,8 @@
 
   function documentsListHtml() {
     var meta = DOC_TYPE_META[activeDocType];
-    var subTabsHtml = '<div class="admin-tabs">' + ["wz", "rw", "mm"].map(function (t) {
+    var hasContractor = !!meta.contractorLabel;
+    var subTabsHtml = '<div class="admin-tabs">' + ["wz", "pz", "rw", "mm"].map(function (t) {
       return '<button type="button" class="admin-tab' + (activeDocType === t ? " active" : "") + '" data-doctype-tab="' + t + '">' + DOC_TYPE_META[t].label + '</button>';
     }).join("") + '</div>';
 
@@ -3169,24 +3212,32 @@
       return '<tr><td>' + escAttr(docLabel(d)) + '</td>' +
         '<td>' + fmtDate(d.createdAt.slice(0, 10)) + '</td>' +
         '<td>' + escAttr(whTxt) + '</td>' +
+        (hasContractor ? '<td>' + escAttr(d.contractorId ? contractorName(d.contractorId) : "—") + '</td>' : '') +
         '<td class="num tabular">' + itemCount + '</td>' +
         '<td>' + statusTxt + '</td>' +
         '<td style="white-space:nowrap;"><button type="button" class="small primary" data-open-doc="' + d.id + '">Otwórz</button> ' +
         (d.confirmedAt ? '' : '<button type="button" class="small" data-remove-doc="' + d.id + '">usuń</button>') + '</td></tr>';
     }).join("");
     var table = docs.length
-      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Numer</th><th>Data</th><th>Magazyn</th><th class="num">Pozycji</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Numer</th><th>Data</th><th>Magazyn</th>' +
+        (hasContractor ? '<th>' + meta.contractorLabel + '</th>' : '') +
+        '<th class="num">Pozycji</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
       : '<div class="empty-hint">Brak jeszcze żadnego dokumentu ' + meta.label + ' — utwórz pierwszy poniżej.</div>';
 
     var whOptions = state.warehouses.map(function (w) { return '<option value="' + w.id + '">' + escAttr(w.name) + '</option>'; }).join("");
+    var contractorOptions = hasContractor ? state.contractors
+      .filter(function (c) { return c.kind === "both" || c.kind === meta.contractorKind; })
+      .map(function (c) { return '<option value="' + c.id + '">' + escAttr(c.name) + '</option>'; }).join("") : "";
     var newBlock = state.warehouses.length
       ? '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Nowy dokument</div><h2 class="section-title small">Nowy ' + meta.label + '</h2>' +
         '<div class="section-sub">' + meta.desc + '</div></div>' +
         '<div class="inline-add">' +
         '<select id="newDocWarehouse"><option value="">' + (activeDocType === "mm" ? "Magazyn źródłowy…" : "Magazyn…") + '</option>' + whOptions + '</select>' +
         (activeDocType === "mm" ? '<select id="newDocTargetWarehouse"><option value="">Magazyn docelowy…</option>' + whOptions + '</select>' : '') +
+        (hasContractor ? '<select id="newDocContractor"><option value="">' + meta.contractorLabel + ' (opcjonalnie)…</option>' + contractorOptions + '</select>' : '') +
         '<input type="text" id="newDocNote" placeholder="Notatka (opcjonalnie)" maxlength="250" style="min-width:180px;">' +
         '<button type="button" class="primary" id="createDocBtn">Utwórz dokument</button></div>' +
+        (hasContractor ? '<div class="hint" style="margin-top:6px;">Brak ' + meta.contractorLabel.toLowerCase() + ' na liście? Dodaj go w zakładce Kontrahenci (Panel administratora).</div>' : '') +
         '<span class="form-msg" id="createDocMsg"></span></div>'
       : '<div class="empty-hint" style="margin-top:16px;">Dodaj najpierw magazyn w zakładce Magazyny — dokument zawsze dotyczy konkretnego magazynu.</div>';
 
@@ -3200,10 +3251,11 @@
     var items = warehouseDocumentItemsFor(doc.id);
     var confirmed = !!doc.confirmedAt;
     var isMM = doc.docType === "mm";
+    var isPZ = doc.docType === "pz";
 
     var rows = items.map(function (i) {
       var curFrom = i.materialId ? materialStockQty(i.materialId, [doc.warehouseId]) : productStockQty(i.productId, [doc.warehouseId]);
-      var afterFrom = (curFrom || 0) - i.qty;
+      var afterFrom = (curFrom || 0) + (isPZ ? i.qty : -i.qty);
       var stockHint = ' <span class="hint">(' + (curFrom != null ? fmtQty(curFrom) : "0") + ' → ' + fmtQty(afterFrom) + (afterFrom < 0 ? " ⚠" : "") + ')</span>';
       return '<tr><td>' + escAttr(i.code || "—") + '</td><td>' + escAttr(i.name) + '</td><td>' + escAttr(unitLabel(i.unit) || "—") + '</td>' +
         '<td class="num tabular">' + fmtQty(i.qty) + (confirmed ? '' : stockHint) + '</td>' +
@@ -3231,10 +3283,12 @@
       ? '<div class="hint" style="margin-top:10px;">Zatwierdzony ' + fmtDate(doc.confirmedAt.slice(0, 10)) + " — stan magazynowy zaktualizowany, dokumentu nie można już zmienić.</div>"
       : '<div class="form-actions" style="margin-top:14px;"><button type="button" class="primary" id="confirmDocBtn">Zatwierdź dokument</button><span class="form-msg" id="confirmDocMsg"></span></div>';
 
+    var contractorTxt = meta.contractorLabel && doc.contractorId ? (" · " + meta.contractorLabel + ": " + escAttr(contractorName(doc.contractorId))) : "";
+    var stockVerb = isPZ ? "dodaje" : "odejmuje";
     return '<div class="panel"><div class="section-head">' +
       '<div class="eyebrow">' + meta.full + '</div><h2 class="section-title small">' + escAttr(docLabel(doc)) + '</h2>' +
-      '<div class="section-sub">Magazyn' + (isMM ? "y" : "") + ': ' + whTxt + '. Utworzono ' + fmtDate(doc.createdAt.slice(0, 10)) + (doc.note ? " · " + escAttr(doc.note) : "") + '.' +
-      (confirmed ? "" : ' Dopóki dokument jest szkicem, stan magazynowy się nie zmienia — dopiero zatwierdzenie odejmuje te ilości' + (isMM ? " w magazynie źródłowym i dodaje je w docelowym" : "") + '.') + '</div></div>' +
+      '<div class="section-sub">Magazyn' + (isMM ? "y" : "") + ': ' + whTxt + '. Utworzono ' + fmtDate(doc.createdAt.slice(0, 10)) + (doc.note ? " · " + escAttr(doc.note) : "") + contractorTxt + '.' +
+      (confirmed ? "" : ' Dopóki dokument jest szkicem, stan magazynowy się nie zmienia — dopiero zatwierdzenie ' + stockVerb + ' te ilości' + (isMM ? " w magazynie źródłowym i dodaje je w docelowym" : "") + '.') + '</div></div>' +
       '<div class="form-actions" style="flex-wrap:wrap;"><button type="button" class="ghost" id="backToDocsBtn">← Wróć do listy</button> ' +
       (items.length ? '<button type="button" class="ghost" id="printDocBtn">Wydrukuj</button>' : '') + '</div>' +
       table + addBlock + statusBlock +
@@ -3254,9 +3308,10 @@
     var whLine = isMM
       ? "Magazyn źródłowy: " + escAttr(warehouseName(doc.warehouseId)) + " &nbsp;→&nbsp; Magazyn docelowy: " + escAttr(warehouseName(doc.targetWarehouseId))
       : "Magazyn: " + escAttr(warehouseName(doc.warehouseId));
+    var contractorLine = meta.contractorLabel && doc.contractorId ? (' · ' + meta.contractorLabel + ': ' + escAttr(contractorName(doc.contractorId))) : '';
     return '<div class="report-doc">' +
       '<h1>' + escAttr(session.company.name) + ' — ' + meta.full + ' (' + meta.label + ')</h1>' +
-      '<div class="report-meta">Nr ' + escAttr(docLabel(doc)) + ' · ' + whLine + (doc.note ? ' · ' + escAttr(doc.note) : '') +
+      '<div class="report-meta">Nr ' + escAttr(docLabel(doc)) + ' · ' + whLine + contractorLine + (doc.note ? ' · ' + escAttr(doc.note) : '') +
       (doc.confirmedAt ? ' · zatwierdzony ' + fmtDate(doc.confirmedAt.slice(0, 10)) : ' · SZKIC — niezatwierdzony') + '</div>' +
       '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr>' +
       '<th style="text-align:left;border-bottom:1px solid #999;padding:6px;">#</th>' +
@@ -4574,10 +4629,12 @@
         }
         var noteInp = document.getElementById("newDocNote");
         var note = noteInp ? noteInp.value.trim().slice(0, 250) : "";
+        var contractorSel = document.getElementById("newDocContractor");
+        var contractorId = contractorSel ? contractorSel.value : "";
         var existingNos = state.warehouseDocuments.filter(function (d) { return d.docType === activeDocType; }).map(function (d) { return d.docNo; });
         var nextNo = existingNos.length ? Math.max.apply(null, existingNos) + 1 : 1;
         createDocBtn.disabled = true;
-        var rec = { company_id: session.company.id, doc_type: activeDocType, doc_no: nextNo, warehouse_id: whId, target_warehouse_id: targetId || null, note: note || null };
+        var rec = { company_id: session.company.id, doc_type: activeDocType, doc_no: nextNo, warehouse_id: whId, target_warehouse_id: targetId || null, contractor_id: contractorId || null, note: note || null };
         var res = await sb.from("warehouse_documents").insert(rec).select().single();
         createDocBtn.disabled = false;
         if (res.error || !res.data) {
@@ -4658,6 +4715,8 @@
           return;
         }
         var isMM = doc.docType === "mm";
+        var isPZ = doc.docType === "pz";
+        var sign = isPZ ? 1 : -1; // PZ dodaje do stanu, WZ/RW/MM (magazyn źródłowy) odejmują
         var matAgg = {}, prodAgg = {}, matName = {}, prodName = {}, skipped = 0;
         items.forEach(function (i) {
           if (i.materialId) {
@@ -4675,7 +4734,7 @@
         var matUpdates = [], prodUpdates = [];
         Object.keys(matAgg).forEach(function (materialId) {
           var cur = materialStockQty(materialId, [doc.warehouseId]) || 0;
-          var next = cur - matAgg[materialId];
+          var next = cur + sign * matAgg[materialId];
           if (next < 0) negWarnings.push(matName[materialId] + " (magazyn źródłowy): " + fmtQty(cur) + " → " + fmtQty(next));
           matUpdates.push({ material_id: materialId, warehouse_id: doc.warehouseId, qty: next, updated_at: nowIso });
           if (isMM) {
@@ -4685,7 +4744,7 @@
         });
         Object.keys(prodAgg).forEach(function (productId) {
           var cur = productStockQty(productId, [doc.warehouseId]) || 0;
-          var next = cur - prodAgg[productId];
+          var next = cur + sign * prodAgg[productId];
           if (next < 0) negWarnings.push(prodName[productId] + " (magazyn źródłowy): " + fmtQty(cur) + " → " + fmtQty(next));
           prodUpdates.push({ product_id: productId, warehouse_id: doc.warehouseId, qty: next, updated_at: nowIso });
           if (isMM) {
@@ -4864,6 +4923,60 @@
       renderAdmin(root);
       var freshWhMsg = document.getElementById("warehousesMsg");
       if (freshWhMsg && !whHadError) { freshWhMsg.textContent = "Zapisano."; freshWhMsg.classList.add("show"); setTimeout(function () { freshWhMsg.classList.remove("show"); }, 2000); }
+    });
+
+    var addContractorForm = document.getElementById("addContractorForm");
+    if (addContractorForm) addContractorForm.addEventListener("submit", async function (evt) {
+      evt.preventDefault();
+      var name = document.getElementById("newContractorName").value.trim();
+      var kind = document.getElementById("newContractorKind").value;
+      var note = document.getElementById("newContractorNote").value.trim().slice(0, 250);
+      if (!name) return;
+      var res = await sb.from("contractors").insert({ company_id: session.company.id, name: name, kind: kind, note: note || null });
+      if (res.error) { bannerMsg = "Nie udało się dodać kontrahenta: " + res.error.message; }
+      await loadCompanyData();
+      renderApp();
+    });
+    root.querySelectorAll("[data-remove-contractor]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        if (!confirm("Usunąć tego kontrahenta? Dokumenty, w których był podpięty, zostają — tylko tracą tę powiązaną nazwę.")) return;
+        var id = btn.getAttribute("data-remove-contractor");
+        var res = await sb.from("contractors").delete().eq("id", id);
+        if (res.error) { bannerMsg = "Nie udało się usunąć kontrahenta: " + res.error.message; }
+        await loadCompanyData();
+        renderApp();
+      });
+    });
+    var saveContractorsBtn = document.getElementById("saveContractorsBtn");
+    if (saveContractorsBtn) saveContractorsBtn.addEventListener("click", async function () {
+      var conUpdates = [];
+      state.contractors.forEach(function (c) {
+        var nameInp = root.querySelector('[data-contractor-name="' + c.id + '"]');
+        var kindSel = root.querySelector('[data-contractor-kind="' + c.id + '"]');
+        var noteInp = root.querySelector('[data-contractor-note="' + c.id + '"]');
+        if (!nameInp) return;
+        var newName = nameInp.value.trim();
+        var newKind = kindSel ? kindSel.value : c.kind;
+        var newNote = noteInp ? noteInp.value.trim().slice(0, 250) : c.note;
+        if (!newName) return;
+        if (newName === c.name && newKind === c.kind && newNote === (c.note || "")) return;
+        conUpdates.push({ id: c.id, patch: { name: newName, kind: newKind, note: newNote || null } });
+      });
+      var conMsgEl = document.getElementById("contractorsMsg");
+      if (!conUpdates.length) {
+        if (conMsgEl) { conMsgEl.textContent = "Brak zmian do zapisania."; conMsgEl.classList.remove("error"); conMsgEl.classList.add("show"); setTimeout(function () { conMsgEl.classList.remove("show"); }, 2000); }
+        return;
+      }
+      var conHadError = false;
+      for (var ci = 0; ci < conUpdates.length; ci++) {
+        var cres = await sb.from("contractors").update(conUpdates[ci].patch).eq("id", conUpdates[ci].id);
+        if (cres.error) conHadError = true;
+      }
+      bannerMsg = conHadError ? "Część kontrahentów nie zapisała się poprawnie. Spróbuj ponownie." : "";
+      await loadCompanyData();
+      renderAdmin(root);
+      var freshConMsg = document.getElementById("contractorsMsg");
+      if (freshConMsg && !conHadError) { freshConMsg.textContent = "Zapisano."; freshConMsg.classList.add("show"); setTimeout(function () { freshConMsg.classList.remove("show"); }, 2000); }
     });
 
     var addMaterialForm = document.getElementById("addMaterialForm");
@@ -5958,7 +6071,7 @@
     }
     var isSignup = authScreen === "signup";
     return '<div class="gate-card' + (isSignup ? ' wide' : '') + '">' +
-      '<div class="brand-block" style="margin-bottom:2px;"><div class="wordmark">POSTOJOMIERZ<span>.</span></div></div>' +
+      '<div class="brand-block" style="margin-bottom:2px;"><div class="wordmark">POSTOJOMIERZ<span>+</span></div></div>' +
       '<div class="section-head"><div class="eyebrow">' + (isSignup ? "Nowy warsztat" : "Logowanie") + '</div>' +
       '<div class="section-title small">' + (isSignup ? "Załóż konto firmy" : "Zaloguj się") + '</div>' +
       '<div class="section-sub">' + (isSignup ? "Dostaniesz e-mailem link logowania — bez hasła do zapamiętania." : "Podaj e-mail, wyślemy link logowania.") + '</div></div>' +
@@ -6013,7 +6126,7 @@
   function headerHtml() {
     var isAdmin = session.profile.role === "admin";
     var alertCount = isAdmin ? computeAlerts().length : 0;
-    return '<header class="topbar"><div class="brand-block"><div class="wordmark">POSTOJOMIERZ<span>.</span></div>' +
+    return '<header class="topbar"><div class="brand-block"><div class="wordmark">POSTOJOMIERZ<span>+</span></div>' +
       '<div class="tagline">Widzisz w minutę, gdzie warsztat traci produkcję.</div></div>' +
       '<div class="topbar-right"><div class="role-tabs">' +
       '<button type="button" class="role-tab ' + (view === "operator" ? "active" : "") + '" data-role="operator">Wpis operatora</button>' +
@@ -6025,7 +6138,7 @@
   }
 
   function footerHtml() {
-    return '<footer><span>Dane firmy „' + session.company.name + '" są bezpiecznie oddzielone od danych innych firm.</span><span>Postojomierz — ' + new Date().getFullYear() + '</span></footer>';
+    return '<footer><span>Dane firmy „' + session.company.name + '" są bezpiecznie oddzielone od danych innych firm.</span><span>Postojomierz+ — ' + new Date().getFullYear() + '</span></footer>';
   }
 
   function renderApp() {
