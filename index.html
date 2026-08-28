@@ -960,7 +960,8 @@
       sb.from("product_stock").select("*"),
       sb.from("warehouse_documents").select("*").order("created_at", { ascending: false }),
       sb.from("warehouse_document_items").select("*"),
-      sb.from("contractors").select("*").order("name")
+      sb.from("contractors").select("*").order("name"),
+      sb.from("invites").select("*").order("created_at", { ascending: false })
     ]);
     var errs = results.map(function (r) { return r.error; }).filter(Boolean);
     if (errs.length) {
@@ -972,8 +973,20 @@
     // alfabetycznie po nazwie (lokalizacja "pl", bez rozróżniania wielkości liter) — łatwiej
     // znaleźć maszynę/produkt na oko, gdy jest ich dużo, niż po kolejności dodania
     function byName(a, b) { return a.name.localeCompare(b.name, "pl", { sensitivity: "base" }); }
-    state.machines = (results[0].data || []).map(function (m) { return { id: m.id, name: m.name, tpzMin: Number(m.tpz_min || 0) }; }).sort(byName);
-    state.products = (results[1].data || []).map(function (p) { return { id: p.id, name: p.name, code: p.code || "" }; }).sort(byName);
+    state.machines = (results[0].data || []).map(function (m) {
+      return {
+        id: m.id, name: m.name, tpzMin: Number(m.tpz_min || 0),
+        // orientacyjny koszt minuty przestoju TEJ maszyny — null = nie wpisano, appka wtedy
+        // nie liczy kosztu przestoju wcale (patrz downtimeCostFor w aplikacji)
+        downtimeCostPerMin: m.downtime_cost_per_min != null ? Number(m.downtime_cost_per_min) : null
+      };
+    }).sort(byName);
+    state.products = (results[1].data || []).map(function (p) {
+      return {
+        id: p.id, name: p.name, code: p.code || "", unitCost: p.unit_cost != null ? Number(p.unit_cost) : null,
+        minQty: p.min_qty != null ? Number(p.min_qty) : null
+      };
+    }).sort(byName);
     state.productRates = rowsToProductRates(results[2].data || []);
     state.shifts = (results[3].data || []).map(shiftFromRow);
     state.diagnoses = rowsToDiagnoses(results[4].data || []);
@@ -1012,7 +1025,9 @@
         // null = nigdy nie zaimportowano (pokazujemy "—", nie 0 — inaczej fałszywy alarm "brak")
         stockQty: m.stock_qty != null ? Number(m.stock_qty) : null,
         stockUpdatedAt: m.stock_updated_at || null,
-        location: m.location || ""
+        location: m.location || "",
+        unitCost: m.unit_cost != null ? Number(m.unit_cost) : null,
+        minQty: m.min_qty != null ? Number(m.min_qty) : null
       };
     })
       .sort(function (a, b) { return a.name.localeCompare(b.name, "pl", { sensitivity: "base" }); });
@@ -1092,6 +1107,13 @@
       return { id: c.id, name: c.name, kind: c.kind || "both", note: c.note || "" };
     });
 
+    // zaproszenia — konta z login-em (nie operatorzy z hali): drugi admin/współwłaściciel
+    // albo magazynier. Tylko admin je widzi (RLS invites_admin_all) i tylko admin je tworzy —
+    // patrz teamAdminHtml/zakładka "Zespół" niżej.
+    state.invites = (results[21].data || []).map(function (i) {
+      return { id: i.id, email: i.email, role: i.role, displayName: i.display_name, createdAt: i.created_at, consumedAt: i.consumed_at || null };
+    }).sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+
     // dokumenty magazynowe WZ/PZ/RW/MM — patrz komentarz przy warehouseDocumentsHtml niżej.
     // confirmedAt === null -> szkic (stan magazynowy jeszcze nietknięty).
     state.warehouseDocuments = (results[18].data || []).map(function (d) {
@@ -1132,6 +1154,37 @@
     return sumStock(state.productStockByProduct[productId] || [], warehouseIds);
   }
   function warehouseName(id) { var w = state.warehouses.filter(function (x) { return x.id === id; })[0]; return w ? w.name : "—"; }
+
+  // orientacyjna wartość magazynu (suma ilość × koszt jednostkowy) — POMIJA ciszej pozycje
+  // bez wpisanej ceny (unitCost null), więc to zawsze wartość "co najmniej tyle", nie pełna
+  // wycena, jeśli nie wszystko ma wpisaną cenę (patrz warehouseValueComplete niżej)
+  function warehouseValue(warehouseId) {
+    var matVal = state.materialStock.filter(function (r) { return r.warehouseId === warehouseId; }).reduce(function (sum, r) {
+      var mat = state.materials.filter(function (m) { return m.id === r.materialId; })[0];
+      return (mat && mat.unitCost != null) ? sum + r.qty * mat.unitCost : sum;
+    }, 0);
+    var prodVal = state.productStock.filter(function (r) { return r.warehouseId === warehouseId; }).reduce(function (sum, r) {
+      var p = state.products.filter(function (x) { return x.id === r.productId; })[0];
+      return (p && p.unitCost != null) ? sum + r.qty * p.unitCost : sum;
+    }, 0);
+    return matVal + prodVal;
+  }
+  // czy WSZYSTKIE pozycje ze stanem > 0 w tym magazynie mają wpisaną cenę — decyduje, czy
+  // warehouseValue() pokazać jako pewną sumę, czy jako "co najmniej" z ostrzeżeniem
+  function warehouseValueComplete(warehouseId) {
+    var matMissing = state.materialStock.some(function (r) {
+      if (r.warehouseId !== warehouseId || !r.qty) return false;
+      var mat = state.materials.filter(function (m) { return m.id === r.materialId; })[0];
+      return !mat || mat.unitCost == null;
+    });
+    if (matMissing) return false;
+    var prodMissing = state.productStock.some(function (r) {
+      if (r.warehouseId !== warehouseId || !r.qty) return false;
+      var p = state.products.filter(function (x) { return x.id === r.productId; })[0];
+      return !p || p.unitCost == null;
+    });
+    return !prodMissing;
+  }
   function contractorById(id) { return state.contractors.filter(function (c) { return c.id === id; })[0]; }
   function contractorName(id) { var c = contractorById(id); return c ? c.name : "—"; }
 
@@ -1145,6 +1198,14 @@
     return items.filter(function (d) { return d.status === "approved"; }).reduce(function (sum, d) { return sum + d.minutes; }, 0);
   }
   function reasonName(id) { var r = state.downtimeReasons.filter(function (x) { return x.id === id; })[0]; return r ? r.name : "—"; }
+
+  // orientacyjny koszt przestoju TEJ zmiany w PLN — null, jeśli maszyna nie ma wpisanego
+  // kosztu minuty (patrz machines.downtimeCostPerMin) — pokazujemy wtedy "—", nie 0 zł
+  function downtimeCostFor(shift) {
+    var m = state.machines.filter(function (x) { return x.id === shift.machineId; })[0];
+    if (!m || m.downtimeCostPerMin == null) return null;
+    return effectiveDowntimeMin(shift) * m.downtimeCostPerMin;
+  }
 
   /* ---------- cofanie błędów operatorów: poprawki i anulowanie zmian ----------
      Anulowana zmiana (status "cancelled") zostaje widoczna (przekreślona) w
@@ -1844,6 +1905,32 @@
       }
     });
 
+    // 4) stan poniżej progu minimalnego, per surowiec/produkt — TYLKO dla pozycji z wpisanym
+    // minQty, licząc sumę ze WSZYSTKICH magazynów (materialStockQty/productStockQty z null
+    // zamiast listy magazynów). Pomijamy pozycje bez żadnego zarejestrowanego stanu (null) —
+    // brak danych to nie to samo co potwierdzone zero, nie chcemy fałszywego alarmu tam, gdzie
+    // stanu magazynowego w ogóle nie prowadzi się przez ten moduł.
+    state.materials.forEach(function (m) {
+      if (m.minQty == null) return;
+      var total = materialStockQty(m.id, null);
+      if (total == null || total >= m.minQty) return;
+      out.push({
+        severity: "warn",
+        text: "Niski stan surowca",
+        detail: (m.code ? m.code + " — " : "") + m.name + ": " + fmtQty(total) + " " + (unitLabel(m.unit) || m.unit) + " (próg: " + fmtQty(m.minQty) + ")"
+      });
+    });
+    state.products.forEach(function (p) {
+      if (p.minQty == null) return;
+      var total = productStockQty(p.id, null);
+      if (total == null || total >= p.minQty) return;
+      out.push({
+        severity: "warn",
+        text: "Niski stan produktu",
+        detail: (p.code ? p.code + " — " : "") + p.name + ": " + fmtQty(total) + " szt. (próg: " + fmtQty(p.minQty) + ")"
+      });
+    });
+
     return out;
   }
 
@@ -1877,6 +1964,15 @@
     var totalGood = inPeriod.reduce(function (s, x) { return s + x.good; }, 0);
     var totalBad = inPeriod.reduce(function (s, x) { return s + x.bad; }, 0);
 
+    // koszt przestojów w okresie — TYLKO zmiany na maszynach z wpisanym kosztem minuty się liczą
+    // (patrz downtimeCostFor); jeśli choć jedna maszyna w okresie go nie ma, suma jest dolną
+    // granicą ("≥"), nie pełnym kosztem — hasDowntimeCost=false ukrywa kafelek całkowicie,
+    // gdy nikt nic nie wpisał, żeby nie sugerować fałszywego 0 zł
+    var costedShifts = inPeriod.filter(function (s) { return downtimeCostFor(s) != null; });
+    var totalDowntimeCost = costedShifts.reduce(function (s, x) { return s + downtimeCostFor(x); }, 0);
+    var hasDowntimeCost = costedShifts.length > 0;
+    var downtimeCostComplete = costedShifts.length === inPeriod.length;
+
     var perMachine = state.machines.map(function (m) {
       var hist = inPeriod.filter(function (s) { return s.machineId === m.id; });
       if (!hist.length) return null;
@@ -1903,6 +1999,7 @@
     return {
       period: period, shop: shop, totalGood: totalGood, totalBad: totalBad, shiftCount: inPeriod.length,
       perMachine: perMachine, perOperator: perOperator, pareto: downtimeParetoData(period, null),
+      totalDowntimeCost: totalDowntimeCost, hasDowntimeCost: hasDowntimeCost, downtimeCostComplete: downtimeCostComplete,
       from: inPeriod.length ? inPeriod[inPeriod.length - 1].date : null, to: inPeriod.length ? inPeriod[0].date : null,
       generatedAt: todayStr()
     };
@@ -1935,6 +2032,9 @@
       '<div class="report-kpi"><div class="num tabular">' + fmtPct(data.shop.quality) + '</div><div class="label">Jakość</div></div>' +
       '<div class="report-kpi"><div class="num tabular">' + data.totalGood + '</div><div class="label">Sztuk dobrych</div></div>' +
       '<div class="report-kpi"><div class="num tabular">' + data.totalBad + '</div><div class="label">Sztuk wadliwych</div></div>' +
+      (data.hasDowntimeCost
+        ? '<div class="report-kpi"><div class="num tabular">' + (data.downtimeCostComplete ? "" : "≥ ") + fmtQty(data.totalDowntimeCost) + ' zł</div><div class="label">Koszt przestojów</div></div>'
+        : '') +
       '</div>' +
       '<h2>Maszyna po maszynie</h2>' +
       '<div class="table-scroll"><table class="compact"><thead><tr><th>Maszyna</th><th class="num">OEE</th><th class="num">Dostępność</th><th class="num">Wydajność</th><th class="num">Jakość</th><th class="num">Zmian</th><th class="num">Dobrych</th><th class="num">Wadliwych</th></tr></thead><tbody>' + machineRows + '</tbody></table></div>' +
@@ -1980,6 +2080,7 @@
       ["Sztuk dobrych", data.totalGood],
       ["Sztuk wadliwych", data.totalBad]
     ];
+    if (data.hasDowntimeCost) summary.push(["Koszt przestojów (zł)" + (data.downtimeCostComplete ? "" : ", co najmniej"), Math.round(data.totalDowntimeCost * 100) / 100]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "Podsumowanie");
 
     var machineRows = [["Maszyna", "OEE", "Dostępność", "Wydajność", "Jakość", "Zmian", "Dobrych", "Wadliwych"]]
@@ -2076,14 +2177,15 @@
     var rows = state.machines.map(function (m) {
       return '<tr><td><input type="text" data-machine-name="' + m.id + '" value="' + escAttr(m.name) + '"></td>' +
         '<td><input type="number" min="0" step="1" data-machine-tpz="' + m.id + '" value="' + (m.tpzMin || 0) + '" style="max-width:90px;"></td>' +
+        '<td><input type="number" min="0" step="0.01" data-machine-downtime-cost="' + m.id + '" value="' + (m.downtimeCostPerMin != null ? m.downtimeCostPerMin : "") + '" placeholder="—" style="max-width:100px;"></td>' +
         '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-machine="' + m.id + '">usuń</button></td></tr>';
     }).join("");
     var table = state.machines.length
-      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th>TPZ (min)</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th>TPZ (min)</th><th>Koszt przestoju (zł/min)</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
         '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveMachinesBtn">Zapisz zmiany</button><span class="form-msg" id="machinesMsg">Zapisano.</span></div>'
       : '<div class="empty-hint">Brak maszyn — dodaj pierwszą poniżej.</div>';
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Park maszynowy</div><h2 class="section-title small">Maszyny</h2>' +
-      '<div class="section-sub">Lista maszyn w warsztacie — widoczna do wyboru przy wpisie zmiany. TPZ to czas przygotowawczo-zakończeniowy (przezbrojenie, rozruch) tej maszyny — odejmujemy go od czasu zmiany, podpowiadając operatorowi gotowy „czas planowany". Nazwę i TPZ możesz poprawić bezpośrednio w tabeli. Usunięcie maszyny kasuje też jej historię zmian.</div></div>' +
+      '<div class="section-sub">Lista maszyn w warsztacie — widoczna do wyboru przy wpisie zmiany. TPZ to czas przygotowawczo-zakończeniowy (przezbrojenie, rozruch) tej maszyny — odejmujemy go od czasu zmiany, podpowiadając operatorowi gotowy „czas planowany". Koszt przestoju (zł za minutę) jest opcjonalny — jeśli go wpiszesz, Raport i Historia pokażą orientacyjny koszt przestoju każdej zmiany. Dane możesz poprawić bezpośrednio w tabeli. Usunięcie maszyny kasuje też jej historię zmian.</div></div>' +
       table +
       '<form class="inline-add" id="addMachineForm"><input type="text" id="newMachineName" placeholder="Nazwa maszyny"><input type="number" id="newMachineTpz" min="0" step="1" placeholder="TPZ (min)" style="max-width:110px;"><button type="submit" class="primary">Dodaj</button></form></div>';
   }
@@ -2128,6 +2230,8 @@
       return '<tr data-search="' + escAttr(search) + '">' +
         '<td><input type="text" data-product-code="' + p.id + '" value="' + escAttr(p.code || "") + '" placeholder="—" maxlength="30" style="width:120px;"></td>' +
         '<td><input type="text" data-product-name="' + p.id + '" value="' + escAttr(p.name) + '" maxlength="250" style="min-width:220px;"></td>' +
+        '<td><input type="number" min="0" step="0.01" data-product-min="' + p.id + '" value="' + (p.minQty != null ? p.minQty : "") + '" placeholder="—" style="max-width:90px;"></td>' +
+        '<td><input type="number" min="0" step="0.01" data-product-cost="' + p.id + '" value="' + (p.unitCost != null ? p.unitCost : "") + '" placeholder="—" style="max-width:100px;"></td>' +
         cells +
         '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-product="' + p.id + '">usuń</button></td></tr>';
     }).join("");
@@ -2146,11 +2250,11 @@
       ? '<div class="empty-hint">Masz ' + machineCount + ' maszyn — wybierz jedną z listy wyżej, żeby zobaczyć i ustawić jej wydajności. Bez wyboru tabela pokazuje tylko kod i nazwę produktu.</div>'
       : '';
 
-    var table = '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th style="min-width:120px;">Kod produktu</th><th style="min-width:220px;">Nazwa produktu</th>' + rateHead + '<th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    var table = '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th style="min-width:120px;">Kod produktu</th><th style="min-width:220px;">Nazwa produktu</th><th>Próg min.</th><th>Koszt jedn. (zł)</th>' + rateHead + '<th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     var tableOrHint = state.products.length ? (hintMsg + table) : '<div class="empty-hint">Brak produktów — dodaj pierwszy poniżej.</div>';
 
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Produkty i wydajność na maszynach</h2>' +
-      '<div class="section-sub">Kod i nazwę produktu edytujesz wprost w tabeli. Czas cyklu idealnego (s/szt.) dla każdej pary produkt–maszyna — puste pole = produkt nie jest robiony na tej maszynie.' +
+      '<div class="section-sub">Kod i nazwę produktu edytujesz wprost w tabeli. Próg min. jest opcjonalny — jeśli go wpiszesz, spadek sumy stanu (Stan wyrobów gotowych niżej) poniżej progu trafi do Alertów w Panelu kierownika. Koszt jednostkowy jest opcjonalny — jeśli go wpiszesz, appka policzy orientacyjną wartość magazynu (zakładka Magazyny). Czas cyklu idealnego (s/szt.) dla każdej pary produkt–maszyna — puste pole = produkt nie jest robiony na tej maszynie.' +
       (state.machines.length ? '' : ' Dodaj najpierw przynajmniej jedną maszynę, żeby ustawiać wydajności.') + '</div></div>' +
       controls + tableOrHint +
       '<form class="inline-add" id="addProductForm">' +
@@ -2171,7 +2275,12 @@
     }).filter(function (r) { return r.stock != null; })
       .sort(function (a, b) { return a.p.name.localeCompare(b.p.name, "pl", { sensitivity: "base" }); });
     var body = rows.map(function (r) {
-      return '<tr><td>' + escAttr(r.p.code ? r.p.code + " — " + r.p.name : r.p.name) + '</td><td class="num tabular">' + fmtQty(r.stock) + '</td></tr>';
+      // próg min. dotyczy zawsze SUMY ze wszystkich magazynów (jak w Alertach), niezależnie
+      // od tego, czy powyższy filtr aktualnie zawęża widok do części magazynów
+      var totalStock = productStockQty(r.p.id, null);
+      var low = r.p.minQty != null && totalStock != null && totalStock < r.p.minQty;
+      return '<tr><td>' + escAttr(r.p.code ? r.p.code + " — " + r.p.name : r.p.name) + '</td>' +
+        '<td class="num tabular"' + (low ? ' style="color:var(--status-warn);font-weight:600;"' : '') + '>' + fmtQty(r.stock) + (low ? " ⚠" : "") + '</td></tr>';
     }).join("");
     var table = body
       ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Produkt</th><th class="num">Stan' + (prodStockWarehouseFilter ? " (wybrane magazyny)" : "") + '</th></tr></thead><tbody>' + body + '</tbody></table></div>'
@@ -2197,18 +2306,21 @@
   function materialsAdminHtml() {
     var rows = state.materials.map(function (m) {
       var stock = materialStockQty(m.id, null);
+      var low = m.minQty != null && stock != null && stock < m.minQty;
       return '<tr><td><input type="text" data-material-code="' + m.id + '" value="' + escAttr(m.code || "") + '" placeholder="—" maxlength="30" style="width:110px;"></td>' +
         '<td><input type="text" data-material-name="' + m.id + '" value="' + escAttr(m.name) + '"></td>' +
         '<td><select data-material-unit="' + m.id + '" style="max-width:110px;">' + materialUnitOptionsHtml(m.unit) + '</select></td>' +
-        '<td class="num">' + (stock != null ? fmtQty(stock) : "—") + '</td>' +
+        '<td class="num"' + (low ? ' style="color:var(--status-warn);font-weight:600;"' : '') + '>' + (stock != null ? fmtQty(stock) : "—") + (low ? " ⚠" : "") + '</td>' +
+        '<td><input type="number" min="0" step="0.01" data-material-min="' + m.id + '" value="' + (m.minQty != null ? m.minQty : "") + '" placeholder="—" style="max-width:90px;"></td>' +
+        '<td><input type="number" min="0" step="0.01" data-material-cost="' + m.id + '" value="' + (m.unitCost != null ? m.unitCost : "") + '" placeholder="—" style="max-width:100px;"></td>' +
         '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-material="' + m.id + '">usuń</button></td></tr>';
     }).join("");
     var table = state.materials.length
-      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Kod</th><th>Nazwa</th><th>Jednostka</th><th>Stan (suma magazynów)</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Kod</th><th>Nazwa</th><th>Jednostka</th><th>Stan (suma magazynów)</th><th>Próg min.</th><th>Koszt jedn. (zł)</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
         '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveMaterialsBtn">Zapisz zmiany</button><span class="form-msg" id="materialsMsg">Zapisano.</span></div>'
       : '<div class="empty-hint">Brak surowców — dodaj pierwszy poniżej.</div>';
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Surowce</h2>' +
-      '<div class="section-sub">Lista surowców do wyboru w recepturach produktów (zakładka Receptury). Kod jest opcjonalny (musi być unikalny w firmie, jeśli podany). Stan magazynowy (per magazyn) ustawiasz w zakładce Zapotrzebowanie — tu widać tylko sumę. Dane możesz poprawić bezpośrednio w tabeli. Usunięcie surowca kasuje też jego wpisy w recepturach, w których był użyty.</div></div>' +
+      '<div class="section-sub">Lista surowców do wyboru w recepturach produktów (zakładka Receptury). Kod jest opcjonalny (musi być unikalny w firmie, jeśli podany). Stan magazynowy (per magazyn) ustawiasz w zakładce Zapotrzebowanie — tu widać tylko sumę. Próg min. jest opcjonalny — jeśli go wpiszesz, spadek sumy poniżej progu pokaże się tu na czerwono i trafi do Alertów w Panelu kierownika. Koszt jednostkowy jest opcjonalny — jeśli go wpiszesz, appka policzy orientacyjną wartość magazynu (zakładka Magazyny). Dane możesz poprawić bezpośrednio w tabeli. Usunięcie surowca kasuje też jego wpisy w recepturach, w których był użyty.</div></div>' +
       table +
       '<form class="inline-add" id="addMaterialForm"><input type="text" id="newMaterialCode" placeholder="Kod (opcjonalnie)" maxlength="30" style="max-width:140px;">' +
       '<input type="text" id="newMaterialName" placeholder="Nazwa surowca">' +
@@ -2217,20 +2329,33 @@
   }
 
   function warehousesAdminHtml() {
+    var totalValue = 0, totalComplete = true;
     var rows = state.warehouses.map(function (w) {
       var matCount = (state.materialStockByMaterial ? Object.keys(state.materialStockByMaterial).reduce(function (n, mid) {
         return n + state.materialStockByMaterial[mid].filter(function (r) { return r.warehouseId === w.id; }).length;
       }, 0) : 0);
+      var value = warehouseValue(w.id);
+      var complete = warehouseValueComplete(w.id);
+      var hasAnyStock = state.materialStock.some(function (r) { return r.warehouseId === w.id && r.qty > 0; }) ||
+        state.productStock.some(function (r) { return r.warehouseId === w.id && r.qty > 0; });
+      totalValue += value;
+      if (!complete) totalComplete = false;
+      var valueTxt = hasAnyStock ? (complete ? "" : "≥ ") + fmtQty(value) + " zł" : "—";
       return '<tr><td><input type="text" data-warehouse-name="' + w.id + '" value="' + escAttr(w.name) + '"></td>' +
         '<td class="num">' + matCount + '</td>' +
+        '<td class="num tabular">' + valueTxt + '</td>' +
         '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-warehouse="' + w.id + '">usuń</button></td></tr>';
     }).join("");
+    var valueNote = state.warehouses.length
+      ? '<div class="hint" style="margin-top:8px;">Łącznie: ' + (totalComplete ? "" : "≥ ") + fmtQty(totalValue) + ' zł' +
+        (totalComplete ? "" : " — nie wszystkie pozycje mają wpisany koszt jednostkowy (Surowce/Produkty), więc to dolna granica, nie pełna wartość") + '.</div>'
+      : "";
     var table = state.warehouses.length
-      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th class="num">Pozycji stanu</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th class="num">Pozycji stanu</th><th class="num">Wartość</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' + valueNote +
         '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveWarehousesBtn">Zapisz zmiany</button><span class="form-msg" id="warehousesMsg">Zapisano.</span></div>'
       : '<div class="empty-hint">Brak magazynów — dodaj pierwszy poniżej.</div>';
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Magazyny</h2>' +
-      '<div class="section-sub">Fizyczne lub logiczne miejsca, w których leżą surowce i produkty (np. „Hala A", „Magazyn wyrobów gotowych"). Surowiec/produkt może mieć różny stan w różnych magazynach naraz — sumę i podział ustawiasz w Zapotrzebowaniu (surowce) i tutaj przy Produktach. Magazyny wybierasz też przy tworzeniu inwentaryzacji. Usunięcie magazynu kasuje stan magazynowy, jaki był w nim zapisany.</div></div>' +
+      '<div class="section-sub">Fizyczne lub logiczne miejsca, w których leżą surowce i produkty (np. „Hala A", „Magazyn wyrobów gotowych"). Surowiec/produkt może mieć różny stan w różnych magazynach naraz — sumę i podział ustawiasz w Zapotrzebowaniu (surowce) i tutaj przy Produktach. Magazyny wybierasz też przy tworzeniu inwentaryzacji. Kolumna „Wartość" to ilość razy koszt jednostkowy (Surowce/Produkty) — puste, jeśli nic w tym magazynie nie ma wpisanej ceny. Usunięcie magazynu kasuje stan magazynowy, jaki był w nim zapisany.</div></div>' +
       table +
       '<form class="inline-add" id="addWarehouseForm"><input type="text" id="newWarehouseName" placeholder="Nazwa magazynu"><button type="submit" class="primary">Dodaj</button></form></div>';
   }
@@ -2262,6 +2387,52 @@
       '<select id="newContractorKind">' + contractorKindOptionsHtml("both") + '</select>' +
       '<input type="text" id="newContractorNote" placeholder="Notatka (opcjonalnie)" maxlength="250" style="min-width:160px;">' +
       '<button type="submit" class="primary">Dodaj</button></form></div>';
+  }
+
+  /* =====================================================================
+     ZESPÓŁ — zapraszanie dodatkowych osób z kontem logowania (nie operatorów
+     z hali, ci są w Panelu administratora → Operatorzy). Zaproszona osoba
+     NIE zakłada nowej firmy — loguje się (przyciskiem "Zaloguj się", tym
+     samym e-mailem) na zwykłym ekranie logowania, a trigger po stronie bazy
+     dopasowuje niekonsumowane zaproszenie po e-mailu i sam przypisuje jej
+     rolę/firmę/wyświetlaną nazwę z tego wiersza. Tylko admin widzi tę
+     zakładkę i tylko admin może tu cokolwiek zrobić (RLS invites_admin_all).
+     ===================================================================== */
+  var INVITE_ROLES = [
+    { key: "operator", label: "Operator" },
+    { key: "magazynier", label: "Magazynier (Inwentaryzacja + WZ/RW/MM)" },
+    { key: "admin", label: "Administrator" }
+  ];
+  function inviteRoleOptionsHtml(selected) {
+    return INVITE_ROLES.map(function (r) { return '<option value="' + r.key + '"' + (r.key === selected ? " selected" : "") + '>' + r.label + '</option>'; }).join("");
+  }
+  function inviteRoleLabel(role) {
+    var r = INVITE_ROLES.filter(function (x) { return x.key === role; })[0];
+    return r ? r.label : role;
+  }
+
+  function teamAdminHtml() {
+    var rows = state.invites.map(function (i) {
+      var status = i.consumedAt ? '<span class="status-pill good"><span class="dot"></span>Aktywowane</span>' : '<span class="status-pill warn"><span class="dot"></span>Oczekuje</span>';
+      var revokeBtn = i.consumedAt ? "" : '<button type="button" class="small" data-revoke-invite="' + i.id + '">wycofaj</button>';
+      return '<tr><td>' + escAttr(i.displayName) + '</td>' +
+        '<td>' + escAttr(i.email) + '</td>' +
+        '<td>' + escAttr(inviteRoleLabel(i.role)) + '</td>' +
+        '<td>' + status + '</td>' +
+        '<td style="width:1%;white-space:nowrap;">' + revokeBtn + '</td></tr>';
+    }).join("");
+    var table = state.invites.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Imię i nazwisko</th><th>E-mail</th><th>Rola</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="empty-hint">Brak zaproszeń — dodaj pierwsze poniżej.</div>';
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Dostęp</div><h2 class="section-title small">Zespół</h2>' +
+      '<div class="section-sub">Zapraszasz tu osobę z własnym kontem logowania (drugiego administratora/współwłaściciela, albo magazyniera) — nie operatora z hali, tych dodajesz w zakładce Operatorzy. Po dodaniu zaproszenia poproś tę osobę, żeby na ekranie logowania wybrała „Zaloguj się" (NIE „Załóż konto firmy") i podała ten sam e-mail — rola i dostęp przypiszą się automatycznie. Magazynier widzi w Panelu kierownika tylko Inwentaryzację i WZ/RW/MM, żadnego Panelu administratora.</div></div>' +
+      table +
+      '<form class="inline-add" id="addInviteForm">' +
+      '<input type="text" id="newInviteName" placeholder="Imię i nazwisko" required>' +
+      '<input type="email" id="newInviteEmail" placeholder="E-mail" required>' +
+      '<select id="newInviteRole">' + inviteRoleOptionsHtml("magazynier") + '</select>' +
+      '<button type="submit" class="primary">Zaproś</button></form>' +
+      '<div class="form-msg" id="inviteMsg" style="margin-top:8px;"></div></div>';
   }
 
   /* =====================================================================
@@ -2464,6 +2635,12 @@
     if (Math.abs(claimed - effective) < 0.001) return String(effective);
     return effective + ' <span title="Zgłoszono ' + claimed + ' min łącznie — część czeka na zatwierdzenie albo została odrzucona, więc na razie nie liczy się do wyniku" style="color:var(--status-warn);cursor:help;">⏳</span>';
   }
+  // "—" jeśli maszyna nie ma wpisanego kosztu minuty przestoju (patrz downtimeCostFor) —
+  // orientacyjny koszt liczy się z EFEKTYWNEGO (zatwierdzonego) przestoju, tego samego co OEE
+  function downtimeCostCellHtml(shift) {
+    var cost = downtimeCostFor(shift);
+    return cost == null ? "—" : fmtQty(cost) + " zł";
+  }
 
   // "Norma wykonana?" — porównanie sztuk zrobionych do sztuk, które powinny powstać
   // w czasie plan minus zatwierdzony przestój. Przelicza się na nowo przy każdym
@@ -2503,6 +2680,7 @@
         '<td>' + operatorName(s.operatorId) + '</td><td class="num tabular">' + (s.shiftNumber || "—") + '</td>' +
         '<td>' + productName(s.productId) + '</td>' +
         '<td class="num tabular">' + s.plannedMin + '</td><td class="num tabular">' + downtimeCellHtml(s, m) + '</td>' +
+        '<td class="num tabular">' + downtimeCostCellHtml(s) + '</td>' +
         '<td class="num tabular">' + s.good + '</td><td class="num tabular">' + s.bad + '</td>' +
         '<td class="num tabular">' + fmtPct(m.availability) + '</td><td class="num tabular">' + fmtPct(m.performance) + '</td><td class="num tabular">' + fmtPct(m.quality) + '</td>' +
         '<td class="num tabular" style="font-weight:600;">' + fmtPct(m.oee) + '</td>' +
@@ -2514,7 +2692,7 @@
     return '<section aria-labelledby="logTitle"><div class="section-head"><div class="eyebrow">Pełne dane</div><h2 id="logTitle" class="section-title small">Dziennik zmian</h2>' +
       '<div class="section-sub">Wszystkie wpisy, od najnowszego. Kolumna „Norma" pokazuje, czy w czasie planowanym (po odjęciu zatwierdzonego przestoju) zrobiono tyle sztuk, ile powinno — po zatwierdzeniu albo odrzuceniu przestoju w zakładce Przestoje ta ocena od razu się przelicza. Anulowane zmiany zostają widoczne (przekreślone) dla śladu, ale nigdzie się nie liczą.</div></div>' +
       '<div class="table-scroll"><table><thead><tr><th>Data</th><th>Maszyna</th><th>Operator</th><th class="num">Zmiana</th><th>Produkt</th>' +
-      '<th class="num">Plan (min)</th><th class="num">Przestój (min)</th><th class="num">Dobre</th><th class="num">Wadliwe</th>' +
+      '<th class="num">Plan (min)</th><th class="num">Przestój (min)</th><th class="num">Koszt przestoju</th><th class="num">Dobre</th><th class="num">Wadliwe</th>' +
       '<th class="num">Dostępność</th><th class="num">Wydajność</th><th class="num">Jakość</th><th class="num">OEE</th><th>Norma</th><th>Status</th><th>Akcje</th></tr></thead>' +
       '<tbody>' + body + '</tbody></table></div></section>';
   }
@@ -2540,6 +2718,7 @@
     { key: "warehouses", label: "Magazyny" },
     { key: "contractors", label: "Kontrahenci" },
     { key: "recipes", label: "Receptury" },
+    { key: "team", label: "Zespół" },
     { key: "settings", label: "Ustawienia" }
   ];
   var MANAGER_TABS = [
@@ -2555,7 +2734,15 @@
     { key: "history", label: "Historia" }
   ];
 
-  function currentTabSet() { return view === "manager" ? MANAGER_TABS : CONFIG_TABS; }
+  // Magazynier widzi w Panelu kierownika tylko Inwentaryzację i WZ/RW/MM — resztę zakładek
+  // (Przegląd, Analityka, Raport, Planowanie...) filtrujemy tutaj, w jednym miejscu, tak żeby
+  // adminTabsHtml() i sprawdzenie "czy adminTab nadal istnieje w zestawie" (patrz handler kliknięcia
+  // roli) automatycznie się zgadzały. RLS w bazie i tak jest twardym backstopem niezależnie od tego.
+  var MAGAZYNIER_TABS = MANAGER_TABS.filter(function (t) { return t.key === "inventory" || t.key === "wzrwmm"; });
+  function currentTabSet() {
+    if (view !== "manager") return CONFIG_TABS;
+    return session.profile.role === "magazynier" ? MAGAZYNIER_TABS : MANAGER_TABS;
+  }
 
   function adminTabsHtml() {
     var pendingCount = state.shiftDowntimes.filter(function (d) { return d.status === "pending"; }).length;
@@ -2575,6 +2762,7 @@
       case "warehouses": return warehousesAdminHtml();
       case "contractors": return contractorsAdminHtml();
       case "recipes": return recipesAdminHtml();
+      case "team": return teamAdminHtml();
       case "downtimes": return downtimesAdminHtml();
       case "analytics": return analyticsHtml(managerPeriod);
       case "report": return reportTabHtml(reportPeriod);
@@ -4853,11 +5041,15 @@
         var newName = inp.value.trim();
         var tpzInp = root.querySelector('[data-machine-tpz="' + id + '"]');
         var newTpz = tpzInp ? (parseInt(tpzInp.value, 10) || 0) : 0;
+        var costInp = root.querySelector('[data-machine-downtime-cost="' + id + '"]');
+        var newCostRaw = costInp ? costInp.value.trim() : "";
+        var newCost = newCostRaw === "" ? null : Number(newCostRaw);
         var current = state.machines.filter(function (m) { return m.id === id; })[0];
         if (!current) return;
         var patch = {};
         if (newName && newName !== current.name) patch.name = newName;
         if (newTpz !== (current.tpzMin || 0)) patch.tpz_min = newTpz;
+        if (newCost !== current.downtimeCostPerMin) patch.downtime_cost_per_min = newCost;
         if (Object.keys(patch).length) updates.push({ id: id, patch: patch });
       });
       var msgEl = document.getElementById("machinesMsg");
@@ -4979,6 +5171,35 @@
       if (freshConMsg && !conHadError) { freshConMsg.textContent = "Zapisano."; freshConMsg.classList.add("show"); setTimeout(function () { freshConMsg.classList.remove("show"); }, 2000); }
     });
 
+    var addInviteForm = document.getElementById("addInviteForm");
+    if (addInviteForm) addInviteForm.addEventListener("submit", async function (evt) {
+      evt.preventDefault();
+      var name = document.getElementById("newInviteName").value.trim();
+      var email = document.getElementById("newInviteEmail").value.trim().toLowerCase();
+      var role = document.getElementById("newInviteRole").value;
+      var inviteMsgEl = document.getElementById("inviteMsg");
+      if (!name || !email) return;
+      var res = await sb.from("invites").insert({ company_id: session.company.id, email: email, role: role, display_name: name });
+      if (res.error) {
+        bannerMsg = "Nie udało się dodać zaproszenia: " + res.error.message;
+      } else if (inviteMsgEl) {
+        inviteMsgEl.textContent = "Dodano zaproszenie. Poproś tę osobę o zalogowanie się (nie zakładanie nowej firmy) e-mailem " + email + ".";
+        inviteMsgEl.classList.add("show");
+      }
+      await loadCompanyData();
+      renderAdmin(root);
+    });
+    root.querySelectorAll("[data-revoke-invite]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        if (!confirm("Wycofać to zaproszenie? Osoba nie będzie już mogła się nim zalogować.")) return;
+        var id = btn.getAttribute("data-revoke-invite");
+        var res = await sb.from("invites").delete().eq("id", id);
+        if (res.error) { bannerMsg = "Nie udało się wycofać zaproszenia: " + res.error.message; }
+        await loadCompanyData();
+        renderApp();
+      });
+    });
+
     var addMaterialForm = document.getElementById("addMaterialForm");
     if (addMaterialForm) addMaterialForm.addEventListener("submit", async function (evt) {
       evt.preventDefault();
@@ -5011,12 +5232,20 @@
         var newUnit = unitSel ? unitSel.value : null;
         var codeInp = root.querySelector('[data-material-code="' + id + '"]');
         var newCode = codeInp ? clampCode(codeInp.value) : "";
+        var costInp = root.querySelector('[data-material-cost="' + id + '"]');
+        var costRaw = costInp ? costInp.value.trim() : "";
+        var newCost = costRaw === "" ? null : Number(costRaw);
+        var minInp = root.querySelector('[data-material-min="' + id + '"]');
+        var minRaw = minInp ? minInp.value.trim() : "";
+        var newMin = minRaw === "" ? null : Number(minRaw);
         var current = state.materials.filter(function (m) { return m.id === id; })[0];
         if (!current) return;
         var patch = {};
         if (newName && newName !== current.name) patch.name = newName;
         if (newUnit && newUnit !== current.unit) patch.unit = newUnit;
         if (newCode !== (current.code || "")) patch.code = newCode || null;
+        if (newCost !== current.unitCost) patch.unit_cost = newCost;
+        if (newMin !== current.minQty) patch.min_qty = newMin;
         if (Object.keys(patch).length) updates.push({ id: id, patch: patch });
       });
       var msgEl = document.getElementById("materialsMsg");
@@ -5137,11 +5366,19 @@
         var newName = clampName(inp.value);
         var codeInp = root.querySelector('[data-product-code="' + id + '"]');
         var newCode = codeInp ? clampCode(codeInp.value) : "";
+        var costInp = root.querySelector('[data-product-cost="' + id + '"]');
+        var costRaw = costInp ? costInp.value.trim() : "";
+        var newCost = costRaw === "" ? null : Number(costRaw);
+        var minInp = root.querySelector('[data-product-min="' + id + '"]');
+        var minRaw = minInp ? minInp.value.trim() : "";
+        var newMin = minRaw === "" ? null : Number(minRaw);
         var current = state.products.filter(function (p) { return p.id === id; })[0];
         if (!current) return;
         var patch = {};
         if (newName && newName !== current.name) patch.name = newName;
         if (newCode !== (current.code || "")) patch.code = newCode || null;
+        if (newCost !== current.unitCost) patch.unit_cost = newCost;
+        if (newMin !== current.minQty) patch.min_qty = newMin;
         if (Object.keys(patch).length) nameUpdates.push({ id: id, patch: patch });
       });
       for (var n = 0; n < nameUpdates.length; n++) {
@@ -6125,13 +6362,17 @@
 
   function headerHtml() {
     var isAdmin = session.profile.role === "admin";
+    // magazynier dostaje Panel kierownika (ograniczony do Inwentaryzacji i WZ/RW/MM przez
+    // MAGAZYNIER_TABS/currentTabSet), ale nigdy Panel administratora ani licznik alertów
+    // (alerty admin-only, jak dotąd).
+    var canManager = isAdmin || session.profile.role === "magazynier";
     var alertCount = isAdmin ? computeAlerts().length : 0;
     return '<header class="topbar"><div class="brand-block"><div class="wordmark">POSTOJOMIERZ<span>+</span></div>' +
       '<div class="tagline">Widzisz w minutę, gdzie warsztat traci produkcję.</div></div>' +
       '<div class="topbar-right"><div class="role-tabs">' +
       '<button type="button" class="role-tab ' + (view === "operator" ? "active" : "") + '" data-role="operator">Wpis operatora</button>' +
       '<button type="button" class="role-tab ' + (view === "results" ? "active" : "") + '" data-role="results">Moje wyniki</button>' +
-      (isAdmin ? '<button type="button" class="role-tab ' + (view === "manager" ? "active" : "") + '" data-role="manager">Panel kierownika' + (alertCount ? " (" + alertCount + ")" : "") + '</button>' : '') +
+      (canManager ? '<button type="button" class="role-tab ' + (view === "manager" ? "active" : "") + '" data-role="manager">Panel kierownika' + (alertCount ? " (" + alertCount + ")" : "") + '</button>' : '') +
       (isAdmin ? '<button type="button" class="role-tab ' + (view === "admin" ? "active" : "") + '" data-role="admin">Panel administratora</button>' : '') +
       '</div><div class="topbar-meta"><span class="num tabular" id="todayLabel"></span>' +
       '<button type="button" class="ghost small" id="signOutBtn">Wyloguj (' + session.user.email + ')</button></div></div></header>';
@@ -6152,11 +6393,11 @@
       return;
     }
 
-    // Panel administratora i Panel kierownika są na razie oba dostępne tylko roli 'admin' —
-    // prawdziwej, osobnej roli "kierownik" (z własnym logowaniem) jeszcze nie ma w bazie,
-    // ale ekrany są już rozdzielone, więc podłączenie tej roli później to tylko zmiana
-    // tego warunku, bez przebudowy interfejsu.
-    if ((view === "admin" || view === "manager") && session.profile.role !== "admin") view = "operator";
+    // Panel administratora zostaje 'admin'-only. Panel kierownika dopuszcza też 'magazynier' —
+    // ale MAGAZYNIER_TABS/currentTabSet w środku i tak pokazuje mu tylko Inwentaryzację i
+    // WZ/RW/MM, nie cały panel. RLS w bazie jest twardym backstopem niezależnie od tych bramek.
+    if (view === "admin" && session.profile.role !== "admin") view = "operator";
+    if (view === "manager" && session.profile.role !== "admin" && session.profile.role !== "magazynier") view = "operator";
 
     var viewportHtml = view === "admin" ? '<div id="adminRoot"></div>'
       : view === "manager" ? '<div id="managerRoot"></div>'
@@ -6175,7 +6416,10 @@
           // panel administratora i panel kierownika mają teraz osobne zestawy zakładek —
           // przy przejściu między nimi wróć na domyślną zakładkę tego panelu, żeby nie
           // pokazać treści zakładki, której przycisku w ogóle tam nie ma
-          if (nextView === "manager" && !MANAGER_TABS.some(function (t) { return t.key === adminTab; })) adminTab = "overview";
+          if (nextView === "manager") {
+            var managerTabSet = session.profile.role === "magazynier" ? MAGAZYNIER_TABS : MANAGER_TABS;
+            if (!managerTabSet.some(function (t) { return t.key === adminTab; })) adminTab = session.profile.role === "magazynier" ? "inventory" : "overview";
+          }
           if (nextView === "admin" && !CONFIG_TABS.some(function (t) { return t.key === adminTab; })) adminTab = "machines";
         }
         view = nextView;
@@ -6230,12 +6474,13 @@
     // ekran, który dawniej był domyślną zakładką jednego wspólnego panelu administratora;
     // po rozdzieleniu na Panel kierownika / Panel administratora to on został "pierwszym ekranem",
     // a konfiguracja (Maszyny/Operatorzy/Produkty/Ustawienia) jest jedno kliknięcie dalej
-    view = session.profile.role === "admin" ? "manager" : "operator";
+    view = (session.profile.role === "admin" || session.profile.role === "magazynier") ? "manager" : "operator";
     // adminTab domyślnie startuje na "machines" (zakładka Panelu administratora) — przy
     // pierwszym wejściu prosto na Panel kierownika trzeba go ustawić na jego własną,
     // domyślną zakładkę, inaczej adminTabContentHtml() pokaże zawartość zakładki, której
     // w Panelu kierownika w ogóle nie ma (patrz analogiczny reset przy klikaniu w role-tabs).
-    if (view === "manager") adminTab = "overview";
+    // Magazynier nie ma zakładki "overview" (patrz MAGAZYNIER_TABS) — jego domyślna to Inwentaryzacja.
+    if (view === "manager") adminTab = session.profile.role === "magazynier" ? "inventory" : "overview";
     await loadCompanyData();
     booting = false;
     renderApp();
