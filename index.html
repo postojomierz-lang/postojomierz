@@ -673,10 +673,11 @@
      nie duplikuje tabeli liczeń. display:none tutaj musi wygrać z visibility w @media print
      niżej, dlatego dostaje tam osobne display:block. */
   #stocktakePrintArea { display: none; }
+  #docPrintArea { display: none; }
   @media print {
     body * { visibility: hidden; }
-    #reportPrintArea, #reportPrintArea *, #stocktakePrintArea, #stocktakePrintArea * { visibility: visible; }
-    #reportPrintArea, #stocktakePrintArea { position: absolute; left: 0; top: 0; width: 100%; padding: 0; display: block; }
+    #reportPrintArea, #reportPrintArea *, #stocktakePrintArea, #stocktakePrintArea *, #docPrintArea, #docPrintArea * { visibility: visible; }
+    #reportPrintArea, #stocktakePrintArea, #docPrintArea { position: absolute; left: 0; top: 0; width: 100%; padding: 0; display: block; }
     #reportPrintArea .report-actions { display: none; }
   }
   /* Arkusze inwentaryzacji do wydruku: NIE jedna duża tabela, tylko stos pojedynczych,
@@ -756,6 +757,8 @@
   var stocktakeSubTab = "count1"; // "count1" | "count2" | "diff" — aktywna podzakładka w szczegółach spisu
   var newStocktakeWarehouseIds = null; // zaznaczone magazyny w formularzu "Nowa inwentaryzacja" (null = jeszcze nie dotknięte -> traktuj jako "wszystkie")
   var newStocktakeKinds = { material: true, product: false }; // zaznaczone typy towaru w formularzu "Nowa inwentaryzacja"
+  var activeDocType = "wz"; // "wz" | "rw" | "mm" — aktywna podzakładka w Dokumentach magazynowych
+  var activeDocumentId = null; // null = lista dokumentów danego typu
   var resultsEditingId = null;    // id zmiany, którą operator właśnie sam poprawia na ekranie Moje wyniki
   var historyEditingId = null;    // id zmiany, którą kierownik właśnie poprawia w zakładce Historia
   var booting = true;
@@ -954,7 +957,9 @@
       sb.from("stocktake_items").select("*"),
       sb.from("warehouses").select("*").order("name"),
       sb.from("material_stock").select("*"),
-      sb.from("product_stock").select("*")
+      sb.from("product_stock").select("*"),
+      sb.from("warehouse_documents").select("*").order("created_at", { ascending: false }),
+      sb.from("warehouse_document_items").select("*")
     ]);
     var errs = results.map(function (r) { return r.error; }).filter(Boolean);
     if (errs.length) {
@@ -1078,6 +1083,28 @@
     state.productStock.forEach(function (r) {
       if (!state.productStockByProduct[r.productId]) state.productStockByProduct[r.productId] = [];
       state.productStockByProduct[r.productId].push(r);
+    });
+
+    // dokumenty magazynowe WZ/RW/MM — patrz komentarz przy warehouseDocumentsHtml niżej.
+    // confirmedAt === null -> szkic (stan magazynowy jeszcze nietknięty).
+    state.warehouseDocuments = (results[18].data || []).map(function (d) {
+      return {
+        id: d.id, docType: d.doc_type, docNo: Number(d.doc_no),
+        warehouseId: d.warehouse_id || null, targetWarehouseId: d.target_warehouse_id || null,
+        note: d.note || "", createdAt: d.created_at, confirmedAt: d.confirmed_at || null
+      };
+    });
+    state.warehouseDocumentItems = (results[19].data || []).map(function (i) {
+      return {
+        id: i.id, documentId: i.document_id, materialId: i.material_id || null, productId: i.product_id || null,
+        itemKind: i.item_kind || null, code: i.code || "", name: i.name || "", unit: i.unit || "",
+        qty: Number(i.qty), createdAt: i.created_at
+      };
+    });
+    state.warehouseDocumentItemsByDocument = {};
+    state.warehouseDocumentItems.forEach(function (i) {
+      if (!state.warehouseDocumentItemsByDocument[i.documentId]) state.warehouseDocumentItemsByDocument[i.documentId] = [];
+      state.warehouseDocumentItemsByDocument[i.documentId].push(i);
     });
   }
 
@@ -2482,6 +2509,7 @@
     { key: "orders", label: "Planowanie" },
     { key: "materialplan", label: "Zapotrzebowanie" },
     { key: "inventory", label: "Inwentaryzacja" },
+    { key: "wzrwmm", label: "WZ / RW / MM" },
     { key: "maintenance", label: "Utrzymanie ruchu" },
     { key: "downtimes", label: "Przestoje" },
     { key: "history", label: "Historia" }
@@ -2512,6 +2540,7 @@
       case "orders": return ordersAdminHtml();
       case "materialplan": return materialPlanHtml();
       case "inventory": return inventoryHtml();
+      case "wzrwmm": return warehouseDocumentsHtml();
       case "maintenance": return maintenanceHtml();
       case "history": return tableHtml();
       case "settings": return settingsHtml();
@@ -3085,6 +3114,159 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  /* =====================================================================
+     DOKUMENTY MAGAZYNOWE — WZ (wydanie zewnętrzne: towar wyjeżdża z firmy,
+     np. do klienta), RW (rozchód wewnętrzny: towar zużyty wewnątrz firmy)
+     i MM (przesunięcie międzymagazynowe: towar wędruje między magazynami).
+     Każdy dokument może zawierać zarówno surowce, jak i produkty. Dokument
+     to SZKIC, dopóki confirmedAt jest puste — dodawanie/usuwanie pozycji
+     wtedy NIE dotyka stanu magazynowego. Dopiero "Zatwierdź dokument"
+     faktycznie odejmuje ilości od stanu w warehouseId (dla MM: i dodaje w
+     targetWarehouseId) — po zatwierdzeniu dokument jest trwały, aplikacja
+     nie pozwala go już edytować ani usunąć (ślad dla rozliczeń). Tak jak
+     stocktake_items, warehouse_document_items to ZDJĘCIE towaru w chwili
+     dodania (kod/nazwa/jednostka jako tekst), więc historyczny dokument
+     zostaje dokładnie taki, jaki był.
+     ===================================================================== */
+
+  var DOC_TYPE_META = {
+    wz: { label: "WZ", full: "Wydanie zewnętrzne", desc: "Towar (surowiec albo produkt) wyjeżdża z zakładu na zewnątrz — np. wysyłka do klienta." },
+    rw: { label: "RW", full: "Rozchód wewnętrzny", desc: "Towar zużywany wewnątrz zakładu, nie wyjeżdża na zewnątrz — np. wydanie surowca poza standardowym zużyciem z receptury." },
+    mm: { label: "MM", full: "Przesunięcie międzymagazynowe", desc: "Towar wędruje z jednego magazynu firmy do drugiego — stan spada w źródłowym i rośnie w docelowym." }
+  };
+
+  function warehouseDocumentById(id) { return state.warehouseDocuments.filter(function (d) { return d.id === id; })[0]; }
+  function warehouseDocumentItemsFor(id) { return state.warehouseDocumentItemsByDocument[id] || []; }
+  // etykieta dokumentu: "WZ DD_MM_RRRR-N" — ten sam pomysł co etykieta arkusza inwentaryzacji,
+  // N jest numerem w obrębie TEGO typu dokumentu (WZ/RW/MM liczą się osobno)
+  function docLabel(doc) { return DOC_TYPE_META[doc.docType].label + " " + fmtSheetDate(doc.createdAt) + "-" + doc.docNo; }
+
+  function warehouseDocumentsHtml() {
+    if (activeDocumentId) {
+      var doc = warehouseDocumentById(activeDocumentId);
+      if (doc) return documentDetailHtml(doc);
+      activeDocumentId = null; // dokument skasowany/niedostępny w międzyczasie — wróć do listy
+    }
+    return documentsListHtml();
+  }
+
+  function documentsListHtml() {
+    var meta = DOC_TYPE_META[activeDocType];
+    var subTabsHtml = '<div class="admin-tabs">' + ["wz", "rw", "mm"].map(function (t) {
+      return '<button type="button" class="admin-tab' + (activeDocType === t ? " active" : "") + '" data-doctype-tab="' + t + '">' + DOC_TYPE_META[t].label + '</button>';
+    }).join("") + '</div>';
+
+    var docs = state.warehouseDocuments.filter(function (d) { return d.docType === activeDocType; })
+      .slice().sort(function (a, b) { return b.docNo - a.docNo; });
+    var rows = docs.map(function (d) {
+      var itemCount = warehouseDocumentItemsFor(d.id).length;
+      var statusTxt = d.confirmedAt
+        ? '<span class="status-tag approved">zatwierdzony ' + fmtDate(d.confirmedAt.slice(0, 10)) + '</span>'
+        : '<span class="status-tag pending">szkic</span>';
+      var whTxt = d.docType === "mm" ? (warehouseName(d.warehouseId) + " → " + warehouseName(d.targetWarehouseId)) : warehouseName(d.warehouseId);
+      return '<tr><td>' + escAttr(docLabel(d)) + '</td>' +
+        '<td>' + fmtDate(d.createdAt.slice(0, 10)) + '</td>' +
+        '<td>' + escAttr(whTxt) + '</td>' +
+        '<td class="num tabular">' + itemCount + '</td>' +
+        '<td>' + statusTxt + '</td>' +
+        '<td style="white-space:nowrap;"><button type="button" class="small primary" data-open-doc="' + d.id + '">Otwórz</button> ' +
+        (d.confirmedAt ? '' : '<button type="button" class="small" data-remove-doc="' + d.id + '">usuń</button>') + '</td></tr>';
+    }).join("");
+    var table = docs.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Numer</th><th>Data</th><th>Magazyn</th><th class="num">Pozycji</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="empty-hint">Brak jeszcze żadnego dokumentu ' + meta.label + ' — utwórz pierwszy poniżej.</div>';
+
+    var whOptions = state.warehouses.map(function (w) { return '<option value="' + w.id + '">' + escAttr(w.name) + '</option>'; }).join("");
+    var newBlock = state.warehouses.length
+      ? '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Nowy dokument</div><h2 class="section-title small">Nowy ' + meta.label + '</h2>' +
+        '<div class="section-sub">' + meta.desc + '</div></div>' +
+        '<div class="inline-add">' +
+        '<select id="newDocWarehouse"><option value="">' + (activeDocType === "mm" ? "Magazyn źródłowy…" : "Magazyn…") + '</option>' + whOptions + '</select>' +
+        (activeDocType === "mm" ? '<select id="newDocTargetWarehouse"><option value="">Magazyn docelowy…</option>' + whOptions + '</select>' : '') +
+        '<input type="text" id="newDocNote" placeholder="Notatka (opcjonalnie)" maxlength="250" style="min-width:180px;">' +
+        '<button type="button" class="primary" id="createDocBtn">Utwórz dokument</button></div>' +
+        '<span class="form-msg" id="createDocMsg"></span></div>'
+      : '<div class="empty-hint" style="margin-top:16px;">Dodaj najpierw magazyn w zakładce Magazyny — dokument zawsze dotyczy konkretnego magazynu.</div>';
+
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Dokumenty magazynowe</div><h2 class="section-title small">' + meta.full + ' (' + meta.label + ')</h2>' +
+      '<div class="section-sub">' + meta.desc + ' Dokument zaczyna jako szkic — dodajesz pozycje na spokojnie, a stan magazynowy zmienia się dopiero po zatwierdzeniu.</div></div>' +
+      subTabsHtml + table + '</div>' + newBlock;
+  }
+
+  function documentDetailHtml(doc) {
+    var meta = DOC_TYPE_META[doc.docType];
+    var items = warehouseDocumentItemsFor(doc.id);
+    var confirmed = !!doc.confirmedAt;
+    var isMM = doc.docType === "mm";
+
+    var rows = items.map(function (i) {
+      var curFrom = i.materialId ? materialStockQty(i.materialId, [doc.warehouseId]) : productStockQty(i.productId, [doc.warehouseId]);
+      var afterFrom = (curFrom || 0) - i.qty;
+      var stockHint = ' <span class="hint">(' + (curFrom != null ? fmtQty(curFrom) : "0") + ' → ' + fmtQty(afterFrom) + (afterFrom < 0 ? " ⚠" : "") + ')</span>';
+      return '<tr><td>' + escAttr(i.code || "—") + '</td><td>' + escAttr(i.name) + '</td><td>' + escAttr(unitLabel(i.unit) || "—") + '</td>' +
+        '<td class="num tabular">' + fmtQty(i.qty) + (confirmed ? '' : stockHint) + '</td>' +
+        (confirmed ? '<td></td>' : '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-doc-item="' + i.id + '">usuń</button></td>') +
+        '</tr>';
+    }).join("");
+
+    var table = items.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Kod</th><th>Nazwa</th><th>J.m.</th><th class="num">Ilość' + (confirmed ? '' : ' <span class="hint">(stan przed → po)</span>') + '</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="empty-hint">Brak jeszcze żadnej pozycji — dodaj poniżej.</div>';
+
+    var itemOptions = '<option value="">Wybierz surowiec/produkt…</option>' +
+      '<optgroup label="Surowce">' + state.materials.map(function (m) { return '<option value="material:' + m.id + '">' + escAttr(m.code ? m.code + " — " + m.name : m.name) + '</option>'; }).join("") + '</optgroup>' +
+      '<optgroup label="Produkty">' + state.products.map(function (p) { return '<option value="product:' + p.id + '">' + escAttr(p.code ? p.code + " — " + p.name : p.name) + '</option>'; }).join("") + '</optgroup>';
+
+    var addBlock = confirmed ? "" :
+      '<form class="inline-add" id="addDocItemForm" style="margin-top:12px;">' +
+      '<select id="docItemSelect">' + itemOptions + '</select>' +
+      '<input type="number" id="docItemQty" min="0.001" step="0.001" placeholder="Ilość">' +
+      '<button type="submit" class="primary">Dodaj pozycję</button></form>';
+
+    var whTxt = isMM ? (escAttr(warehouseName(doc.warehouseId)) + " → " + escAttr(warehouseName(doc.targetWarehouseId))) : escAttr(warehouseName(doc.warehouseId));
+
+    var statusBlock = confirmed
+      ? '<div class="hint" style="margin-top:10px;">Zatwierdzony ' + fmtDate(doc.confirmedAt.slice(0, 10)) + " — stan magazynowy zaktualizowany, dokumentu nie można już zmienić.</div>"
+      : '<div class="form-actions" style="margin-top:14px;"><button type="button" class="primary" id="confirmDocBtn">Zatwierdź dokument</button><span class="form-msg" id="confirmDocMsg"></span></div>';
+
+    return '<div class="panel"><div class="section-head">' +
+      '<div class="eyebrow">' + meta.full + '</div><h2 class="section-title small">' + escAttr(docLabel(doc)) + '</h2>' +
+      '<div class="section-sub">Magazyn' + (isMM ? "y" : "") + ': ' + whTxt + '. Utworzono ' + fmtDate(doc.createdAt.slice(0, 10)) + (doc.note ? " · " + escAttr(doc.note) : "") + '.' +
+      (confirmed ? "" : ' Dopóki dokument jest szkicem, stan magazynowy się nie zmienia — dopiero zatwierdzenie odejmuje te ilości' + (isMM ? " w magazynie źródłowym i dodaje je w docelowym" : "") + '.') + '</div></div>' +
+      '<div class="form-actions" style="flex-wrap:wrap;"><button type="button" class="ghost" id="backToDocsBtn">← Wróć do listy</button> ' +
+      (items.length ? '<button type="button" class="ghost" id="printDocBtn">Wydrukuj</button>' : '') + '</div>' +
+      table + addBlock + statusBlock +
+      '</div><div id="docPrintArea"></div>';
+  }
+
+  function docPrintHtml(doc, items) {
+    var meta = DOC_TYPE_META[doc.docType];
+    var isMM = doc.docType === "mm";
+    var rows = items.map(function (i, idx) {
+      return '<tr><td style="padding:6px;border-bottom:1px solid #ddd;">' + (idx + 1) + '</td>' +
+        '<td style="padding:6px;border-bottom:1px solid #ddd;">' + escAttr(i.code || "—") + '</td>' +
+        '<td style="padding:6px;border-bottom:1px solid #ddd;">' + escAttr(i.name) + '</td>' +
+        '<td style="padding:6px;border-bottom:1px solid #ddd;">' + escAttr(unitLabel(i.unit) || "—") + '</td>' +
+        '<td style="padding:6px;border-bottom:1px solid #ddd;text-align:right;">' + fmtQty(i.qty) + '</td></tr>';
+    }).join("");
+    var whLine = isMM
+      ? "Magazyn źródłowy: " + escAttr(warehouseName(doc.warehouseId)) + " &nbsp;→&nbsp; Magazyn docelowy: " + escAttr(warehouseName(doc.targetWarehouseId))
+      : "Magazyn: " + escAttr(warehouseName(doc.warehouseId));
+    return '<div class="report-doc">' +
+      '<h1>' + escAttr(session.company.name) + ' — ' + meta.full + ' (' + meta.label + ')</h1>' +
+      '<div class="report-meta">Nr ' + escAttr(docLabel(doc)) + ' · ' + whLine + (doc.note ? ' · ' + escAttr(doc.note) : '') +
+      (doc.confirmedAt ? ' · zatwierdzony ' + fmtDate(doc.confirmedAt.slice(0, 10)) : ' · SZKIC — niezatwierdzony') + '</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr>' +
+      '<th style="text-align:left;border-bottom:1px solid #999;padding:6px;">#</th>' +
+      '<th style="text-align:left;border-bottom:1px solid #999;padding:6px;">Kod</th>' +
+      '<th style="text-align:left;border-bottom:1px solid #999;padding:6px;">Nazwa</th>' +
+      '<th style="text-align:left;border-bottom:1px solid #999;padding:6px;">J.m.</th>' +
+      '<th style="text-align:right;border-bottom:1px solid #999;padding:6px;">Ilość</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<div style="margin-top:40px;display:flex;justify-content:space-between;font-size:12px;color:var(--ink-muted);">' +
+      '<div>Wydał: ______________________</div><div>Przyjął/odebrał: ______________________</div></div>' +
+      '</div>';
   }
 
   /* =====================================================================
@@ -4042,6 +4224,21 @@
         });
       });
 
+      // Enter w polu ilości = przejdź do następnego pola ilości w tabeli (w dół), zamiast nic
+      // nie robić — przy wpisywaniu dziesiątek/setek liczeń z klawiatury to oszczędza wyciąganie
+      // ręki do myszki po każdej pozycji. Tylko jeden typ pola (l1 albo l2) istnieje naraz w
+      // DOM — bo Liczenie 1/2 to teraz osobne zakładki — więc kolejność w NodeList = kolejność
+      // wierszy tabeli.
+      var qtyInputs = Array.prototype.slice.call(root.querySelectorAll("[data-l1-qty], [data-l2-qty]"));
+      qtyInputs.forEach(function (inp, idx) {
+        inp.addEventListener("keydown", function (evt) {
+          if (evt.key !== "Enter") return;
+          evt.preventDefault();
+          var next = qtyInputs[idx + 1];
+          if (next) { next.focus(); next.select(); }
+        });
+      });
+
       root.querySelectorAll("[data-newst-warehouse]").forEach(function (box) {
         box.addEventListener("change", function () {
           newStocktakeWarehouseIds = readWarehouseCheckboxes(root, "newst");
@@ -4333,6 +4530,190 @@
           (hadError ? " Uwaga: część aktualizacji stanu nie zapisała się poprawnie." : "") +
           (diffCount ? " Arkuszy z różnicą (bez aktualizacji stanu): " + diffCount + "." : "") +
           (unmatched ? " Zgodnych pustych arkuszy bez powiązanego towaru (bez aktualizacji stanu): " + unmatched + "." : ""));
+      });
+    }
+
+    if (adminTab === "wzrwmm") {
+      root.querySelectorAll("[data-doctype-tab]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          activeDocType = btn.getAttribute("data-doctype-tab");
+          activeDocumentId = null;
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-open-doc]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          activeDocumentId = btn.getAttribute("data-open-doc");
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-remove-doc]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          if (!confirm("Usunąć ten dokument razem z pozycjami? Tego nie da się cofnąć.")) return;
+          var id = btn.getAttribute("data-remove-doc");
+          var res = await sb.from("warehouse_documents").delete().eq("id", id);
+          if (res.error) { bannerMsg = "Nie udało się usunąć dokumentu: " + res.error.message; }
+          await loadCompanyData();
+          renderAdmin(root);
+        });
+      });
+
+      var createDocBtn = document.getElementById("createDocBtn");
+      if (createDocBtn) createDocBtn.addEventListener("click", async function () {
+        var msgEl = document.getElementById("createDocMsg");
+        msgEl.classList.remove("show", "error");
+        var whSel = document.getElementById("newDocWarehouse");
+        var whId = whSel ? whSel.value : "";
+        if (!whId) { msgEl.textContent = "Wybierz magazyn."; msgEl.classList.add("show", "error"); return; }
+        var targetId = null;
+        if (activeDocType === "mm") {
+          var targetSel = document.getElementById("newDocTargetWarehouse");
+          targetId = targetSel ? targetSel.value : "";
+          if (!targetId) { msgEl.textContent = "Wybierz magazyn docelowy."; msgEl.classList.add("show", "error"); return; }
+          if (targetId === whId) { msgEl.textContent = "Magazyn docelowy musi być inny niż źródłowy."; msgEl.classList.add("show", "error"); return; }
+        }
+        var noteInp = document.getElementById("newDocNote");
+        var note = noteInp ? noteInp.value.trim().slice(0, 250) : "";
+        var existingNos = state.warehouseDocuments.filter(function (d) { return d.docType === activeDocType; }).map(function (d) { return d.docNo; });
+        var nextNo = existingNos.length ? Math.max.apply(null, existingNos) + 1 : 1;
+        createDocBtn.disabled = true;
+        var rec = { company_id: session.company.id, doc_type: activeDocType, doc_no: nextNo, warehouse_id: whId, target_warehouse_id: targetId || null, note: note || null };
+        var res = await sb.from("warehouse_documents").insert(rec).select().single();
+        createDocBtn.disabled = false;
+        if (res.error || !res.data) {
+          msgEl.textContent = "Nie udało się utworzyć dokumentu: " + (res.error ? res.error.message : "nieznany błąd");
+          msgEl.classList.add("show", "error");
+          return;
+        }
+        activeDocumentId = res.data.id;
+        await loadCompanyData();
+        renderAdmin(root);
+      });
+
+      var addDocItemForm = document.getElementById("addDocItemForm");
+      if (addDocItemForm) addDocItemForm.addEventListener("submit", async function (evt) {
+        evt.preventDefault();
+        var doc = warehouseDocumentById(activeDocumentId);
+        if (!doc) return;
+        var sel = document.getElementById("docItemSelect");
+        var qtyInp = document.getElementById("docItemQty");
+        var val = sel ? sel.value : "";
+        var qty = qtyInp ? Number(qtyInp.value) : NaN;
+        if (!val || !qty || qty <= 0) return;
+        var parts = val.split(":");
+        var kind = parts[0], itemId = parts[1];
+        var rec = { document_id: doc.id, qty: qty };
+        if (kind === "material") {
+          var m = state.materials.filter(function (x) { return x.id === itemId; })[0];
+          if (!m) return;
+          rec.material_id = m.id; rec.item_kind = "material"; rec.code = m.code || null; rec.name = m.name; rec.unit = m.unit || null;
+        } else {
+          var p = state.products.filter(function (x) { return x.id === itemId; })[0];
+          if (!p) return;
+          rec.product_id = p.id; rec.item_kind = "product"; rec.code = p.code || null; rec.name = p.name; rec.unit = null;
+        }
+        var res = await sb.from("warehouse_document_items").insert(rec);
+        if (res.error) { bannerMsg = "Nie udało się dodać pozycji: " + res.error.message; }
+        await loadCompanyData();
+        renderAdmin(root);
+      });
+
+      root.querySelectorAll("[data-remove-doc-item]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          var id = btn.getAttribute("data-remove-doc-item");
+          await sb.from("warehouse_document_items").delete().eq("id", id);
+          await loadCompanyData();
+          renderAdmin(root);
+        });
+      });
+
+      var backToDocsBtn = document.getElementById("backToDocsBtn");
+      if (backToDocsBtn) backToDocsBtn.addEventListener("click", function () {
+        activeDocumentId = null;
+        renderAdmin(root);
+      });
+
+      var printDocBtn = document.getElementById("printDocBtn");
+      if (printDocBtn) printDocBtn.addEventListener("click", function () {
+        var doc = warehouseDocumentById(activeDocumentId);
+        if (!doc) return;
+        document.getElementById("docPrintArea").innerHTML = docPrintHtml(doc, warehouseDocumentItemsFor(doc.id));
+        window.print();
+      });
+
+      // Zatwierdzenie dokumentu: jedyny moment, kiedy WZ/RW/MM faktycznie dotyka stanu
+      // magazynowego. Sumujemy ilości per surowiec/produkt (na wypadek kilku pozycji tego
+      // samego towaru na jednym dokumencie), liczymy nowy stan bezwzględny (obecny ± ilość) i
+      // zapisujemy go przez upsert — dokładnie tak, jak przy zamykaniu inwentaryzacji. Ujemny
+      // wynik NIE blokuje zapisu (użytkownik świadomie na to się zgodził) — tylko ostrzegamy w
+      // oknie potwierdzenia przed zapisaniem czegokolwiek.
+      var confirmDocBtn = document.getElementById("confirmDocBtn");
+      if (confirmDocBtn) confirmDocBtn.addEventListener("click", async function () {
+        var doc = warehouseDocumentById(activeDocumentId);
+        if (!doc) return;
+        var items = warehouseDocumentItemsFor(doc.id);
+        var confirmMsgEl = document.getElementById("confirmDocMsg");
+        if (!items.length) {
+          if (confirmMsgEl) { confirmMsgEl.textContent = "Dodaj przynajmniej jedną pozycję przed zatwierdzeniem."; confirmMsgEl.classList.add("show", "error"); }
+          return;
+        }
+        var isMM = doc.docType === "mm";
+        var matAgg = {}, prodAgg = {}, matName = {}, prodName = {}, skipped = 0;
+        items.forEach(function (i) {
+          if (i.materialId) {
+            matAgg[i.materialId] = (matAgg[i.materialId] || 0) + i.qty;
+            matName[i.materialId] = (i.code ? i.code + " — " : "") + i.name;
+          } else if (i.productId) {
+            prodAgg[i.productId] = (prodAgg[i.productId] || 0) + i.qty;
+            prodName[i.productId] = (i.code ? i.code + " — " : "") + i.name;
+          } else {
+            skipped++;
+          }
+        });
+        var nowIso = new Date().toISOString();
+        var negWarnings = [];
+        var matUpdates = [], prodUpdates = [];
+        Object.keys(matAgg).forEach(function (materialId) {
+          var cur = materialStockQty(materialId, [doc.warehouseId]) || 0;
+          var next = cur - matAgg[materialId];
+          if (next < 0) negWarnings.push(matName[materialId] + " (magazyn źródłowy): " + fmtQty(cur) + " → " + fmtQty(next));
+          matUpdates.push({ material_id: materialId, warehouse_id: doc.warehouseId, qty: next, updated_at: nowIso });
+          if (isMM) {
+            var curT = materialStockQty(materialId, [doc.targetWarehouseId]) || 0;
+            matUpdates.push({ material_id: materialId, warehouse_id: doc.targetWarehouseId, qty: curT + matAgg[materialId], updated_at: nowIso });
+          }
+        });
+        Object.keys(prodAgg).forEach(function (productId) {
+          var cur = productStockQty(productId, [doc.warehouseId]) || 0;
+          var next = cur - prodAgg[productId];
+          if (next < 0) negWarnings.push(prodName[productId] + " (magazyn źródłowy): " + fmtQty(cur) + " → " + fmtQty(next));
+          prodUpdates.push({ product_id: productId, warehouse_id: doc.warehouseId, qty: next, updated_at: nowIso });
+          if (isMM) {
+            var curT = productStockQty(productId, [doc.targetWarehouseId]) || 0;
+            prodUpdates.push({ product_id: productId, warehouse_id: doc.targetWarehouseId, qty: curT + prodAgg[productId], updated_at: nowIso });
+          }
+        });
+
+        var confirmText = "Zatwierdzić ten dokument " + DOC_TYPE_META[doc.docType].label + "? Zmiana stanu magazynowego jest trwała — dokumentu nie będzie już można edytować ani usunąć.";
+        if (negWarnings.length) confirmText += "\n\nUwaga — poniższe pozycje spadną poniżej zera:\n" + negWarnings.join("\n");
+        if (skipped) confirmText += "\n\n" + skipped + " pozycji nie ma już powiązanego towaru w bazie — zostaną pominięte przy aktualizacji stanu.";
+        if (!confirm(confirmText)) return;
+
+        confirmDocBtn.disabled = true;
+        var hadError = false;
+        if (matUpdates.length) {
+          var mres = await sb.from("material_stock").upsert(matUpdates, { onConflict: "material_id,warehouse_id" });
+          if (mres.error) hadError = true;
+        }
+        if (prodUpdates.length) {
+          var pres = await sb.from("product_stock").upsert(prodUpdates, { onConflict: "product_id,warehouse_id" });
+          if (pres.error) hadError = true;
+        }
+        await sb.from("warehouse_documents").update({ confirmed_at: nowIso }).eq("id", doc.id);
+        confirmDocBtn.disabled = false;
+        await loadCompanyData();
+        renderAdmin(root);
+        if (hadError) alert("Zatwierdzono dokument, ale część aktualizacji stanu magazynowego nie zapisała się poprawnie.");
       });
     }
 
