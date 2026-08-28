@@ -665,12 +665,24 @@
      dookoła (topbar, zakładki, przyciski) — standardowa sztuczka "ukryj
      wszystko poza jednym elementem" zamiast oznaczania każdego innego
      elementu z osobna klasą .no-print ---------- */
+  /* #stocktakePrintArea jest puste i ukryte na ekranie na co dzień (w przeciwieństwie do
+     #reportPrintArea, które JEST widocznym widokiem raportu) — dostaje treść dopiero na
+     chwilę przed window.print() (patrz przycisk "Wydrukuj arkusz"), więc na ekranie nigdy
+     nie duplikuje tabeli liczeń. display:none tutaj musi wygrać z visibility w @media print
+     niżej, dlatego dostaje tam osobne display:block. */
+  #stocktakePrintArea { display: none; }
   @media print {
     body * { visibility: hidden; }
-    #reportPrintArea, #reportPrintArea * { visibility: visible; }
-    #reportPrintArea { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+    #reportPrintArea, #reportPrintArea *, #stocktakePrintArea, #stocktakePrintArea * { visibility: visible; }
+    #reportPrintArea, #stocktakePrintArea { position: absolute; left: 0; top: 0; width: 100%; padding: 0; display: block; }
     #reportPrintArea .report-actions { display: none; }
   }
+  .stocktake-sheet { padding: 10px; }
+  .stocktake-sheet h1 { font-size: 18px; margin: 0 0 2px; }
+  .stocktake-sheet .stocktake-meta { color: var(--ink-muted); font-size: 12.5px; margin-bottom: 14px; }
+  .stocktake-sheet table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .stocktake-sheet th, .stocktake-sheet td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
+  .stocktake-sheet th.num, .stocktake-sheet td.num { text-align: right; }
   .report-doc { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; }
   .report-doc h1 { font-size: 20px; margin: 0 0 4px; }
   .report-doc .report-meta { color: var(--ink-muted); font-size: 13px; margin-bottom: 18px; }
@@ -722,6 +734,7 @@
   var managerPeriod = { mode: "week", count: 20, from: null, to: null };  // okres podsumowania w Panelu kierownika → Przegląd (dzielony z zakładką Analityka)
   var analyticsMachineFilter = ""; // "" = wszystkie maszyny razem, albo id konkretnej — filtr w zakładce Analityka
   var reportPeriod = { mode: "month", count: 20, from: null, to: null }; // okres raportu — osobny od managerPeriod (raport to zwykle "ostatni miesiąc", nie to, co akurat przeglądasz)
+  var activeStocktakeId = null; // które liczenie jest otwarte w zakładce Inwentaryzacja — null = widok listy
   var resultsEditingId = null;    // id zmiany, którą operator właśnie sam poprawia na ekranie Moje wyniki
   var historyEditingId = null;    // id zmiany, którą kierownik właśnie poprawia w zakładce Historia
   var booting = true;
@@ -915,7 +928,9 @@
       sb.from("materials").select("*").order("name"),
       sb.from("recipe_materials").select("*"),
       sb.from("recipe_steps").select("*").order("seq_no"),
-      sb.from("maintenance_logs").select("*").order("log_date", { ascending: false }).limit(1000)
+      sb.from("maintenance_logs").select("*").order("log_date", { ascending: false }).limit(1000),
+      sb.from("stocktakes").select("*").order("created_at", { ascending: false }),
+      sb.from("stocktake_items").select("*")
     ]);
     var errs = results.map(function (r) { return r.error; }).filter(Boolean);
     if (errs.length) {
@@ -966,7 +981,8 @@
         // bo pochodzi z zewnątrz (MRP zakładu), nie da się jej policzyć z niczego w aplikacji.
         // null = nigdy nie zaimportowano (pokazujemy "—", nie 0 — inaczej fałszywy alarm "brak")
         stockQty: m.stock_qty != null ? Number(m.stock_qty) : null,
-        stockUpdatedAt: m.stock_updated_at || null
+        stockUpdatedAt: m.stock_updated_at || null,
+        location: m.location || ""
       };
     })
       .sort(function (a, b) { return a.name.localeCompare(b.name, "pl", { sensitivity: "base" }); });
@@ -993,6 +1009,23 @@
         downtimeMin: m.downtime_min != null ? Number(m.downtime_min) : null,
         cost: m.cost != null ? Number(m.cost) : null
       };
+    });
+
+    state.stocktakes = (results[13].data || []).map(function (s) {
+      return { id: s.id, name: s.name, createdAt: s.created_at, closedAt: s.closed_at || null };
+    });
+    state.stocktakeItems = (results[14].data || []).map(function (i) {
+      return {
+        id: i.id, stocktakeId: i.stocktake_id, materialId: i.material_id || null,
+        code: i.code || "", name: i.name, unit: i.unit || "", location: i.location || "",
+        count1Qty: i.count1_qty != null ? Number(i.count1_qty) : null,
+        count2Qty: i.count2_qty != null ? Number(i.count2_qty) : null
+      };
+    });
+    state.stocktakeItemsByStocktake = {};
+    state.stocktakeItems.forEach(function (i) {
+      if (!state.stocktakeItemsByStocktake[i.stocktakeId]) state.stocktakeItemsByStocktake[i.stocktakeId] = [];
+      state.stocktakeItemsByStocktake[i.stocktakeId].push(i);
     });
   }
 
@@ -2031,18 +2064,20 @@
       return '<tr><td><input type="text" data-material-code="' + m.id + '" value="' + escAttr(m.code || "") + '" placeholder="—" maxlength="30" style="width:110px;"></td>' +
         '<td><input type="text" data-material-name="' + m.id + '" value="' + escAttr(m.name) + '"></td>' +
         '<td><select data-material-unit="' + m.id + '" style="max-width:110px;">' + materialUnitOptionsHtml(m.unit) + '</select></td>' +
+        '<td><input type="text" data-material-location="' + m.id + '" value="' + escAttr(m.location || "") + '" placeholder="—" maxlength="120" style="width:140px;"></td>' +
         '<td style="width:1%;white-space:nowrap;"><button type="button" class="small" data-remove-material="' + m.id + '">usuń</button></td></tr>';
     }).join("");
     var table = state.materials.length
-      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Kod</th><th>Nazwa</th><th>Jednostka</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Kod</th><th>Nazwa</th><th>Jednostka</th><th>Lokalizacja</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
         '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveMaterialsBtn">Zapisz zmiany</button><span class="form-msg" id="materialsMsg">Zapisano.</span></div>'
       : '<div class="empty-hint">Brak surowców — dodaj pierwszy poniżej.</div>';
     return '<div class="panel"><div class="section-head"><div class="eyebrow">Słownik</div><h2 class="section-title small">Surowce</h2>' +
-      '<div class="section-sub">Lista surowców do wyboru w recepturach produktów (zakładka Receptury). Kod jest opcjonalny (musi być unikalny w firmie, jeśli podany). Dane możesz poprawić bezpośrednio w tabeli. Usunięcie surowca kasuje też jego wpisy w recepturach, w których był użyty.</div></div>' +
+      '<div class="section-sub">Lista surowców do wyboru w recepturach produktów (zakładka Receptury). Kod jest opcjonalny (musi być unikalny w firmie, jeśli podany). Lokalizacja to opisowa podpowiedź, gdzie fizycznie szukać surowca (np. „Hala A - regał 3") — pojawia się na wydrukach inwentaryzacji. Dane możesz poprawić bezpośrednio w tabeli. Usunięcie surowca kasuje też jego wpisy w recepturach, w których był użyty.</div></div>' +
       table +
       '<form class="inline-add" id="addMaterialForm"><input type="text" id="newMaterialCode" placeholder="Kod (opcjonalnie)" maxlength="30" style="max-width:140px;">' +
       '<input type="text" id="newMaterialName" placeholder="Nazwa surowca">' +
       '<select id="newMaterialUnit" style="max-width:110px;">' + materialUnitOptionsHtml("szt") + '</select>' +
+      '<input type="text" id="newMaterialLocation" placeholder="Lokalizacja (opcjonalnie)" maxlength="120" style="max-width:170px;">' +
       '<button type="submit" class="primary">Dodaj</button></form></div>';
   }
 
@@ -2328,6 +2363,7 @@
     { key: "report", label: "Raport" },
     { key: "orders", label: "Planowanie" },
     { key: "materialplan", label: "Zapotrzebowanie" },
+    { key: "inventory", label: "Inwentaryzacja" },
     { key: "maintenance", label: "Utrzymanie ruchu" },
     { key: "downtimes", label: "Przestoje" },
     { key: "history", label: "Historia" }
@@ -2356,6 +2392,7 @@
       case "report": return reportTabHtml(reportPeriod);
       case "orders": return ordersAdminHtml();
       case "materialplan": return materialPlanHtml();
+      case "inventory": return inventoryHtml();
       case "maintenance": return maintenanceHtml();
       case "history": return tableHtml();
       case "settings": return settingsHtml();
@@ -2559,6 +2596,210 @@
       '<div class="import-box" style="margin-top:14px;"><div class="import-head"><span class="eyebrow">Wczytaj stany magazynowe</span><span class="hint">Jeden surowiec w linii: Kod albo Nazwa;Ilość na stanie (np. SUR-001;120 albo Blacha 2mm;120 — działa też przecinek albo tabulator). Dopasowujemy po kodzie, a jeśli go nie ma — po nazwie; surowiec musi już być na liście Surowce. Nadpisuje stan tylko surowcom z pliku — reszta zostaje bez zmian. Plik Excel (.xlsx): pierwsza kolumna kod/nazwa, druga ilość.</span></div>' +
       '<div class="inline-add"><input type="file" id="importStockFile" accept=".csv,.txt,.xlsx,.xls"><button type="button" class="ghost small" id="importStockBtn">Wczytaj</button></div>' +
       '<span class="form-msg" id="importStockMsg"></span></div></div>';
+  }
+
+  /* =====================================================================
+     INWENTARYZACJA — dwa NIEZALEŻNE liczenia tej samej listy towarów (spis
+     z natury), porównywane na końcu, żeby wyłapać rozbieżności. Lista
+     pozycji (stocktake_items) to ZDJĘCIE stanu w chwili utworzenia spisu —
+     kod/nazwa/jednostka/lokalizacja skopiowane jako tekst, więc stara
+     inwentaryzacja zostaje dokładnie taka, jaka była na wydruku, nawet
+     jeśli później zmienisz/usuniesz surowiec (patrz komentarz w migracji).
+     Jedna tabela na ekranie robi podwójną robotę: wpisywanie OBU liczeń
+     I porównanie na żywo — nie ma potrzeby osobnego "trzeciego" widoku.
+     ===================================================================== */
+
+  function stocktakeById(id) { return state.stocktakes.filter(function (s) { return s.id === id; })[0]; }
+  function stocktakeItemsFor(id) { return state.stocktakeItemsByStocktake[id] || []; }
+
+  function stocktakeItemStatus(item) {
+    if (item.count1Qty == null || item.count2Qty == null) return "missing";
+    return item.count1Qty === item.count2Qty ? "match" : "diff";
+  }
+
+  function stocktakeSummary(items) {
+    var match = 0, diff = 0, missing = 0;
+    items.forEach(function (i) {
+      var s = stocktakeItemStatus(i);
+      if (s === "match") match++; else if (s === "diff") diff++; else missing++;
+    });
+    return { match: match, diff: diff, missing: missing, total: items.length };
+  }
+
+  function sortedStocktakeItems(id) {
+    return stocktakeItemsFor(id).slice().sort(function (a, b) {
+      return ((a.code || "") + a.name).localeCompare((b.code || "") + b.name, "pl", { sensitivity: "base" });
+    });
+  }
+
+  function inventoryHtml() {
+    if (activeStocktakeId) {
+      var st = stocktakeById(activeStocktakeId);
+      if (st) return stocktakeDetailHtml(st);
+      activeStocktakeId = null; // spis skasowany/niedostępny w międzyczasie — wróć do listy
+    }
+    return stocktakeListHtml();
+  }
+
+  function stocktakeListHtml() {
+    var sorted = state.stocktakes.slice().sort(function (a, b) { return b.createdAt < a.createdAt ? -1 : 1; });
+    var rows = sorted.map(function (s) {
+      var items = stocktakeItemsFor(s.id);
+      var sum = stocktakeSummary(items);
+      var statusTxt = s.closedAt
+        ? '<span class="status-tag cancelled">zamknięta ' + fmtDate(s.closedAt.slice(0, 10)) + '</span>'
+        : '<span class="status-tag pending">w toku</span>';
+      return '<tr><td>' + escAttr(s.name) + '</td>' +
+        '<td>' + fmtDate(s.createdAt.slice(0, 10)) + '</td>' +
+        '<td class="num tabular">' + sum.total + '</td>' +
+        '<td>' + statusTxt + (sum.diff ? ' <span class="status-tag rejected">' + sum.diff + ' z różnicą</span>' : '') + '</td>' +
+        '<td style="white-space:nowrap;"><button type="button" class="small primary" data-open-stocktake="' + s.id + '">Otwórz</button> ' +
+        '<button type="button" class="small" data-remove-stocktake="' + s.id + '">usuń</button></td></tr>';
+    }).join("");
+    var table = state.stocktakes.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Nazwa</th><th>Utworzono</th><th class="num">Pozycji</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="empty-hint">Brak jeszcze żadnej inwentaryzacji — utwórz pierwszą poniżej.</div>';
+
+    var newBlock = '<div class="panel" style="margin-top:16px;"><div class="section-head"><div class="eyebrow">Nowa inwentaryzacja</div><h2 class="section-title small">Zacznij nowy spis</h2>' +
+      '<div class="section-sub">Lista towarów do policzenia — z aktualnej listy Surowce albo z pliku (ten sam styl co inne importy w aplikacji, z dodatkową kolumną lokalizacji). Dalej wydrukujesz dwa arkusze do ręcznego liczenia, a wpisane liczenia porównają się same.</div></div>' +
+      (state.materials.length
+        ? '<div class="inline-add"><button type="button" class="primary" id="newStocktakeFromMaterialsBtn">Utwórz z listy surowców (' + state.materials.length + ')</button></div>'
+        : '<div class="empty-hint">Brak surowców na liście — dodaj je w zakładce Surowce, albo wczytaj listę bezpośrednio z pliku poniżej.</div>') +
+      '<div class="import-box" style="margin-top:14px;"><div class="import-head"><span class="eyebrow">Albo z pliku</span><span class="hint">Jedna pozycja w linii: Kod;Nazwa;Jednostka;Lokalizacja (kod i lokalizacja opcjonalne — bez kodu: Nazwa;Jednostka;Lokalizacja). Działa też przecinek albo tabulator. Plik Excel (.xlsx): kolumny w tej samej kolejności. Jeśli kod/nazwa dopasuje się do surowca z listy Surowce, po zamknięciu inwentaryzacji będzie można nim zaktualizować stan magazynowy.</span></div>' +
+      '<div class="inline-add"><input type="text" id="newStocktakeFileName" placeholder="Nazwa inwentaryzacji (opcjonalnie)" style="max-width:220px;"><input type="file" id="importStocktakeFile" accept=".csv,.txt,.xlsx,.xls"><button type="button" class="ghost small" id="importStocktakeBtn">Wczytaj i utwórz</button></div>' +
+      '<span class="form-msg" id="importStocktakeMsg"></span></div></div>';
+
+    return '<div class="panel"><div class="section-head"><div class="eyebrow">Inwentaryzacja</div><h2 class="section-title small">Spisy z natury</h2>' +
+      '<div class="section-sub">Dwa niezależne liczenia tej samej listy towarów, porównywane na końcu, żeby wyłapać rozbieżności — standardowy spis z natury.</div></div>' +
+      table + '</div>' + newBlock;
+  }
+
+  // arkusz do wydruku — pusta kolumna Ilość i Podpis do ręcznego wypełnienia; ten sam
+  // układ dla liczenia 1 i 2 (tylko nagłówek się różni), żeby wygenerować oba jednym kliknięciem
+  function stocktakeSheetPrintHtml(st, items, countNum) {
+    var rows = items.map(function (i, idx) {
+      return '<tr><td>' + (idx + 1) + '</td><td>' + escAttr(i.code) + '</td><td>' + escAttr(i.name) + '</td>' +
+        '<td>' + escAttr(i.location) + '</td><td>' + escAttr(unitLabel(i.unit)) + '</td>' +
+        '<td></td><td></td></tr>';
+    }).join("");
+    return '<div class="stocktake-sheet">' +
+      '<h1>' + escAttr(session.company.name) + ' — Inwentaryzacja: ' + escAttr(st.name) + '</h1>' +
+      '<div class="stocktake-meta">Liczenie ' + countNum + ' · data: _____________________</div>' +
+      '<table><thead><tr><th>#</th><th>Kod</th><th>Nazwa towaru</th><th>Magazyn</th><th>J.m.</th><th class="num">Ilość</th><th>Podpis</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function stocktakeDetailHtml(st) {
+    var items = sortedStocktakeItems(st.id);
+    var sum = stocktakeSummary(items);
+    var closed = !!st.closedAt;
+
+    var rows = items.map(function (i) {
+      var status = stocktakeItemStatus(i);
+      var badge = status === "match" ? '<span class="status-tag approved">zgodne</span>'
+        : status === "diff" ? '<span class="status-tag rejected">różnica</span>'
+        : '<span class="status-tag cancelled">brak liczenia</span>';
+      var diffTxt = (i.count1Qty != null && i.count2Qty != null) ? fmtQty(i.count2Qty - i.count1Qty) : "—";
+      var c1Cell = closed ? (i.count1Qty != null ? fmtQty(i.count1Qty) : "—")
+        : '<input type="number" min="0" step="0.001" data-l1-qty="' + i.id + '" value="' + (i.count1Qty != null ? i.count1Qty : "") + '" style="width:90px;">';
+      var c2Cell = closed ? (i.count2Qty != null ? fmtQty(i.count2Qty) : "—")
+        : '<input type="number" min="0" step="0.001" data-l2-qty="' + i.id + '" value="' + (i.count2Qty != null ? i.count2Qty : "") + '" style="width:90px;">';
+      return '<tr><td>' + escAttr(i.code) + '</td><td>' + escAttr(i.name) + '</td><td>' + escAttr(i.location) + '</td>' +
+        '<td>' + escAttr(unitLabel(i.unit)) + '</td>' +
+        '<td class="num tabular">' + c1Cell + '</td>' +
+        '<td class="num tabular">' + c2Cell + '</td>' +
+        '<td class="num tabular">' + diffTxt + '</td>' +
+        '<td>' + badge + '</td></tr>';
+    }).join("");
+
+    var table = items.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Kod</th><th>Nazwa</th><th>Magazyn</th><th>J.m.</th><th class="num">Liczenie 1</th><th class="num">Liczenie 2</th><th class="num">Różnica</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="empty-hint">Brak pozycji na tym spisie.</div>';
+
+    var saveBlock = closed ? "" :
+      '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveStocktakeCountsBtn">Zapisz liczenia</button><span class="form-msg" id="stocktakeCountsMsg">Zapisano.</span></div>';
+
+    var summaryTxt = "Pozycji: " + sum.total + " · zgodnych: " + sum.match + " · z różnicą: " + sum.diff + " · bez pełnego liczenia: " + sum.missing;
+
+    var closeBlock = closed
+      ? '<div class="hint" style="margin-top:10px;">Zamknięta ' + fmtDate(st.closedAt.slice(0, 10)) + ".</div>"
+      : '<div class="form-actions" style="margin-top:14px;"><button type="button" class="primary" id="closeStocktakeBtn">Zamknij inwentaryzację</button><span class="form-msg" id="closeStocktakeMsg"></span></div>';
+
+    return '<div class="panel"><div class="section-head">' +
+      '<div class="eyebrow">Inwentaryzacja</div><h2 class="section-title small">' + escAttr(st.name) + '</h2>' +
+      '<div class="section-sub">Utworzono ' + fmtDate(st.createdAt.slice(0, 10)) + (closed ? " · zamknięta " + fmtDate(st.closedAt.slice(0, 10)) : " · w toku") + ". " + summaryTxt + '. Wpisz oba liczenia (nie muszą być tego samego dnia) — różnice widać od razu w tabeli.' + (closed ? "" : ' Zamknięcie inwentaryzacji zaktualizuje stan magazynowy (Zapotrzebowanie) dla pozycji, gdzie oba liczenia się zgadzają i są dopasowane do surowca z listy.') + '</div></div>' +
+      '<div class="form-actions" style="flex-wrap:wrap;"><button type="button" class="ghost" id="backToStocktakesBtn">← Wróć do listy</button> ' +
+      '<button type="button" class="ghost" id="printStocktake1Btn">Wydrukuj arkusz — Liczenie 1</button> ' +
+      '<button type="button" class="ghost" id="printStocktake2Btn">Wydrukuj arkusz — Liczenie 2</button> ' +
+      '<button type="button" class="ghost" id="exportStocktakeXlsxBtn">Pobierz XLSX</button> ' +
+      '<button type="button" class="ghost" id="exportStocktakeTxtBtn">Pobierz TXT</button></div>' +
+      table + saveBlock + closeBlock +
+      '</div><div id="stocktakePrintArea"></div>';
+  }
+
+  var STOCKTAKE_IMPORT_HEADER_WORDS = ["kod", "code", "nazwa", "name", "surowiec", "jednostka", "unit", "lokalizacja", "location", "magazyn"];
+
+  // parsuje plik "z pliku" dla nowej inwentaryzacji: Kod;Nazwa;Jednostka;Lokalizacja, albo
+  // bez kodu: Nazwa;Jednostka;Lokalizacja — ta sama heurystyka wykrywania kolumny Kod co przy
+  // imporcie Surowców/Produktów (nagłówek "kod"/"code" w pierwszej kolumnie, albo liczba
+  // kolumn). Jednostka NIE jest tu walidowana do MATERIAL_UNITS (w przeciwieństwie do importu
+  // Surowców) — to tylko migawka na wydruk/eksport, dowolny tekst z pliku się nadaje.
+  function rowsToStocktakeItems(rows) {
+    var header0 = rows[0] || [];
+    var header0Cols = Array.isArray(header0) ? header0 : [header0];
+    var header0First = (header0Cols[0] == null ? "" : header0Cols[0]).toString().trim().toLowerCase();
+    var hasCodeCol = (header0First === "kod" || header0First === "code" || header0Cols.length >= 4);
+    var out = [];
+    rows.forEach(function (r) {
+      var cols = Array.isArray(r) ? r : [r];
+      var code, name, unit, location;
+      if (hasCodeCol) { code = cols[0]; name = cols[1]; unit = cols[2]; location = cols[3]; }
+      else { code = ""; name = cols[0]; unit = cols[1]; location = cols[2]; }
+      code = clampCode(code);
+      name = (name == null ? "" : name).toString().trim();
+      if (!name) return;
+      var low = name.toLowerCase();
+      if (STOCKTAKE_IMPORT_HEADER_WORDS.indexOf(low) !== -1) return;
+      unit = (unit == null ? "" : unit).toString().trim();
+      location = (location == null ? "" : location).toString().trim().slice(0, 120);
+      out.push({ code: code, name: name, unit: unit, location: location });
+    });
+    return out;
+  }
+
+  function exportStocktakeXlsx(st, items) {
+    if (!window.XLSX) { bannerMsg = "Biblioteka do zapisu Excela się nie wczytała. Odśwież stronę i spróbuj ponownie."; renderApp(); return; }
+    var wb = XLSX.utils.book_new();
+    var header = ["Kod", "Nazwa", "Magazyn", "J.m.", "Liczenie 1", "Liczenie 2", "Różnica", "Status"];
+    var STATUS_LABEL = { match: "zgodne", diff: "różnica", missing: "brak liczenia" };
+    var body = items.map(function (i) {
+      var status = stocktakeItemStatus(i);
+      var diff = (i.count1Qty != null && i.count2Qty != null) ? (i.count2Qty - i.count1Qty) : "";
+      return [i.code, i.name, i.location, unitLabel(i.unit), i.count1Qty != null ? i.count1Qty : "", i.count2Qty != null ? i.count2Qty : "", diff, STATUS_LABEL[status]];
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header].concat(body)), "Inwentaryzacja");
+    var fname = "inwentaryzacja-" + st.name.replace(/[^a-z0-9]+/gi, "_").toLowerCase() + "-" + todayStr() + ".xlsx";
+    XLSX.writeFile(wb, fname);
+  }
+
+  function exportStocktakeTxt(st, items) {
+    var STATUS_LABEL = { match: "zgodne", diff: "różnica", missing: "brak liczenia" };
+    var lines = ["Kod;Nazwa;Magazyn;J.m.;Liczenie 1;Liczenie 2;Różnica;Status"];
+    items.forEach(function (i) {
+      var status = stocktakeItemStatus(i);
+      var diff = (i.count1Qty != null && i.count2Qty != null) ? fmtQty(i.count2Qty - i.count1Qty) : "";
+      lines.push([i.code, i.name, i.location, unitLabel(i.unit),
+        i.count1Qty != null ? fmtQty(i.count1Qty) : "", i.count2Qty != null ? fmtQty(i.count2Qty) : "",
+        diff, STATUS_LABEL[status]].join(";"));
+    });
+    var blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "inwentaryzacja-" + st.name.replace(/[^a-z0-9]+/gi, "_").toLowerCase() + "-" + todayStr() + ".txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   /* =====================================================================
@@ -3481,6 +3722,206 @@
       });
     }
 
+    if (adminTab === "inventory") {
+      root.querySelectorAll("[data-open-stocktake]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          activeStocktakeId = btn.getAttribute("data-open-stocktake");
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-remove-stocktake]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          if (!confirm("Usunąć tę inwentaryzację razem z wpisanymi liczeniami? Tego nie da się cofnąć.")) return;
+          var id = btn.getAttribute("data-remove-stocktake");
+          var res = await sb.from("stocktakes").delete().eq("id", id);
+          if (res.error) { bannerMsg = "Nie udało się usunąć inwentaryzacji: " + res.error.message; }
+          await loadCompanyData();
+          renderAdmin(root);
+        });
+      });
+
+      var newFromMaterialsBtn = document.getElementById("newStocktakeFromMaterialsBtn");
+      if (newFromMaterialsBtn) newFromMaterialsBtn.addEventListener("click", async function () {
+        newFromMaterialsBtn.disabled = true;
+        var name = "Inwentaryzacja " + fmtDate(todayStr());
+        var stRes = await sb.from("stocktakes").insert({ company_id: session.company.id, name: name }).select().single();
+        if (stRes.error || !stRes.data) {
+          newFromMaterialsBtn.disabled = false;
+          bannerMsg = "Nie udało się utworzyć inwentaryzacji: " + (stRes.error ? stRes.error.message : "nieznany błąd");
+          renderApp();
+          return;
+        }
+        var stId = stRes.data.id;
+        var items = state.materials.map(function (m) {
+          return { stocktake_id: stId, material_id: m.id, code: m.code || null, name: m.name, unit: m.unit, location: m.location || null };
+        });
+        var itemsRes = items.length ? await sb.from("stocktake_items").insert(items) : { error: null };
+        newFromMaterialsBtn.disabled = false;
+        if (itemsRes.error) { bannerMsg = "Utworzono inwentaryzację, ale nie udało się wczytać wszystkich pozycji: " + itemsRes.error.message; }
+        activeStocktakeId = stId;
+        await loadCompanyData();
+        renderAdmin(root);
+      });
+
+      var importStocktakeBtn = document.getElementById("importStocktakeBtn");
+      var importStocktakeFile = document.getElementById("importStocktakeFile");
+      var importStocktakeMsg = document.getElementById("importStocktakeMsg");
+      if (importStocktakeBtn && importStocktakeFile) importStocktakeBtn.addEventListener("click", function () {
+        importStocktakeMsg.classList.remove("show", "error");
+        var file = importStocktakeFile.files[0];
+        if (!file) { importStocktakeMsg.textContent = "Najpierw wybierz plik."; importStocktakeMsg.classList.add("show", "error"); return; }
+        importStocktakeBtn.disabled = true;
+        parseImportFile(file, async function (rows, err) {
+          if (err) { importStocktakeBtn.disabled = false; importStocktakeMsg.textContent = "Błąd odczytu pliku: " + err.message; importStocktakeMsg.classList.add("show", "error"); return; }
+          var parsed = rowsToStocktakeItems(rows);
+          if (!parsed.length) {
+            importStocktakeBtn.disabled = false;
+            importStocktakeMsg.textContent = "Nie znaleziono żadnych poprawnych wierszy w pliku.";
+            importStocktakeMsg.classList.add("show", "error");
+            return;
+          }
+          // dopasuj po kodzie ALBO po nazwie (jak przy wczytywaniu stanów w Zapotrzebowaniu) —
+          // tylko po to, żeby zamknięcie inwentaryzacji mogło zaktualizować stan tego surowca
+          var byCode = {}, byName = {};
+          state.materials.forEach(function (m) {
+            if (m.code) byCode[m.code.trim().toLowerCase()] = m;
+            byName[m.name.trim().toLowerCase()] = m;
+          });
+          var nameInput = document.getElementById("newStocktakeFileName");
+          var name = (nameInput.value.trim() || ("Inwentaryzacja " + fmtDate(todayStr()))).slice(0, 200);
+          var stRes = await sb.from("stocktakes").insert({ company_id: session.company.id, name: name }).select().single();
+          if (stRes.error || !stRes.data) {
+            importStocktakeBtn.disabled = false;
+            importStocktakeMsg.textContent = "Nie udało się utworzyć inwentaryzacji: " + (stRes.error ? stRes.error.message : "nieznany błąd");
+            importStocktakeMsg.classList.add("show", "error");
+            return;
+          }
+          var stId = stRes.data.id;
+          var newItems = parsed.map(function (p) {
+            var m = (p.code && byCode[p.code.trim().toLowerCase()]) || byName[p.name.trim().toLowerCase()];
+            return { stocktake_id: stId, material_id: m ? m.id : null, code: p.code || null, name: p.name, unit: p.unit || null, location: p.location || null };
+          });
+          var itemsRes = await sb.from("stocktake_items").insert(newItems);
+          importStocktakeBtn.disabled = false;
+          if (itemsRes.error) { bannerMsg = "Utworzono inwentaryzację, ale nie udało się wczytać wszystkich pozycji: " + itemsRes.error.message; }
+          activeStocktakeId = stId;
+          await loadCompanyData();
+          renderAdmin(root);
+        });
+      });
+
+      var backToStocktakesBtn = document.getElementById("backToStocktakesBtn");
+      if (backToStocktakesBtn) backToStocktakesBtn.addEventListener("click", function () {
+        activeStocktakeId = null;
+        renderAdmin(root);
+      });
+
+      var print1Btn = document.getElementById("printStocktake1Btn");
+      var print2Btn = document.getElementById("printStocktake2Btn");
+      if (print1Btn) print1Btn.addEventListener("click", function () {
+        var st = stocktakeById(activeStocktakeId);
+        if (!st) return;
+        document.getElementById("stocktakePrintArea").innerHTML = stocktakeSheetPrintHtml(st, sortedStocktakeItems(st.id), 1);
+        window.print();
+      });
+      if (print2Btn) print2Btn.addEventListener("click", function () {
+        var st = stocktakeById(activeStocktakeId);
+        if (!st) return;
+        document.getElementById("stocktakePrintArea").innerHTML = stocktakeSheetPrintHtml(st, sortedStocktakeItems(st.id), 2);
+        window.print();
+      });
+
+      var exportXlsxBtn = document.getElementById("exportStocktakeXlsxBtn");
+      if (exportXlsxBtn) exportXlsxBtn.addEventListener("click", function () {
+        var st = stocktakeById(activeStocktakeId);
+        if (!st) return;
+        exportStocktakeXlsx(st, sortedStocktakeItems(st.id));
+      });
+      var exportTxtBtn = document.getElementById("exportStocktakeTxtBtn");
+      if (exportTxtBtn) exportTxtBtn.addEventListener("click", function () {
+        var st = stocktakeById(activeStocktakeId);
+        if (!st) return;
+        exportStocktakeTxt(st, sortedStocktakeItems(st.id));
+      });
+
+      var saveCountsBtn = document.getElementById("saveStocktakeCountsBtn");
+      if (saveCountsBtn) saveCountsBtn.addEventListener("click", async function () {
+        var updates = [];
+        var items = stocktakeItemsFor(activeStocktakeId);
+        var byId = {};
+        items.forEach(function (i) { byId[i.id] = i; });
+        root.querySelectorAll("[data-l1-qty]").forEach(function (inp) {
+          var id = inp.getAttribute("data-l1-qty");
+          var cur = byId[id];
+          if (!cur) return;
+          var raw = inp.value.trim();
+          var val = raw === "" ? null : parseFloat(raw);
+          if (raw !== "" && isNaN(val)) return;
+          if (val !== cur.count1Qty) {
+            var existing = updates.filter(function (u) { return u.id === id; })[0];
+            if (!existing) { existing = { id: id, patch: {} }; updates.push(existing); }
+            existing.patch.count1_qty = val;
+          }
+        });
+        root.querySelectorAll("[data-l2-qty]").forEach(function (inp) {
+          var id = inp.getAttribute("data-l2-qty");
+          var cur = byId[id];
+          if (!cur) return;
+          var raw = inp.value.trim();
+          var val = raw === "" ? null : parseFloat(raw);
+          if (raw !== "" && isNaN(val)) return;
+          if (val !== cur.count2Qty) {
+            var existing = updates.filter(function (u) { return u.id === id; })[0];
+            if (!existing) { existing = { id: id, patch: {} }; updates.push(existing); }
+            existing.patch.count2_qty = val;
+          }
+        });
+        var msgEl = document.getElementById("stocktakeCountsMsg");
+        if (!updates.length) {
+          if (msgEl) { msgEl.textContent = "Brak zmian do zapisania."; msgEl.classList.remove("error"); msgEl.classList.add("show"); setTimeout(function () { msgEl.classList.remove("show"); }, 2000); }
+          return;
+        }
+        saveCountsBtn.disabled = true;
+        var hadError = false;
+        for (var si = 0; si < updates.length; si++) {
+          var sres = await sb.from("stocktake_items").update(updates[si].patch).eq("id", updates[si].id);
+          if (sres.error) hadError = true;
+        }
+        saveCountsBtn.disabled = false;
+        bannerMsg = hadError ? "Część liczeń nie zapisała się poprawnie. Spróbuj ponownie." : "";
+        await loadCompanyData();
+        renderAdmin(root);
+        var freshMsg = document.getElementById("stocktakeCountsMsg");
+        if (freshMsg && !hadError) { freshMsg.textContent = "Zapisano."; freshMsg.classList.add("show"); setTimeout(function () { freshMsg.classList.remove("show"); }, 2000); }
+      });
+
+      var closeStocktakeBtn = document.getElementById("closeStocktakeBtn");
+      if (closeStocktakeBtn) closeStocktakeBtn.addEventListener("click", async function () {
+        var st = stocktakeById(activeStocktakeId);
+        if (!st) return;
+        if (!confirm("Zamknąć tę inwentaryzację? Dla pozycji, gdzie oba liczenia się zgadzają i są dopasowane do surowca z listy, zaktualizujemy jego stan magazynowy w Zapotrzebowaniu. Różnice trzeba będzie poprawić ręcznie.")) return;
+        closeStocktakeBtn.disabled = true;
+        var items = stocktakeItemsFor(st.id);
+        var updated = 0, diffCount = 0, unmatched = 0;
+        for (var ci = 0; ci < items.length; ci++) {
+          var it = items[ci];
+          var status = stocktakeItemStatus(it);
+          if (status === "diff") { diffCount++; continue; }
+          if (status !== "match") continue;
+          if (!it.materialId) { unmatched++; continue; }
+          var mres = await sb.from("materials").update({ stock_qty: it.count1Qty, stock_updated_at: new Date().toISOString() }).eq("id", it.materialId);
+          if (!mres.error) updated++;
+        }
+        await sb.from("stocktakes").update({ closed_at: new Date().toISOString() }).eq("id", st.id);
+        closeStocktakeBtn.disabled = false;
+        await loadCompanyData();
+        renderAdmin(root);
+        alert("Zamknięto inwentaryzację „" + st.name + "”. Zaktualizowano stan magazynowy dla " + updated + " surowców." +
+          (diffCount ? " Pozycji z różnicą (bez aktualizacji stanu): " + diffCount + "." : "") +
+          (unmatched ? " Pozycji zgodnych bez dopasowanego surowca (bez aktualizacji stanu): " + unmatched + "." : ""));
+      });
+    }
+
     if (adminTab === "maintenance") {
       var addMaintenanceForm = document.getElementById("addMaintenanceForm");
       if (addMaintenanceForm) addMaintenanceForm.addEventListener("submit", async function (evt) {
@@ -3588,8 +4029,9 @@
       var name = document.getElementById("newMaterialName").value.trim();
       var unit = document.getElementById("newMaterialUnit").value;
       var code = clampCode(document.getElementById("newMaterialCode").value);
+      var location = document.getElementById("newMaterialLocation").value.trim().slice(0, 120);
       if (!name) return;
-      var res = await sb.from("materials").insert({ company_id: session.company.id, name: name, unit: unit, code: code || null });
+      var res = await sb.from("materials").insert({ company_id: session.company.id, name: name, unit: unit, code: code || null, location: location || null });
       if (res.error) { bannerMsg = "Nie udało się dodać surowca: " + res.error.message; }
       await loadCompanyData();
       renderApp();
@@ -3614,12 +4056,15 @@
         var newUnit = unitSel ? unitSel.value : null;
         var codeInp = root.querySelector('[data-material-code="' + id + '"]');
         var newCode = codeInp ? clampCode(codeInp.value) : "";
+        var locInp = root.querySelector('[data-material-location="' + id + '"]');
+        var newLocation = locInp ? locInp.value.trim().slice(0, 120) : "";
         var current = state.materials.filter(function (m) { return m.id === id; })[0];
         if (!current) return;
         var patch = {};
         if (newName && newName !== current.name) patch.name = newName;
         if (newUnit && newUnit !== current.unit) patch.unit = newUnit;
         if (newCode !== (current.code || "")) patch.code = newCode || null;
+        if (newLocation !== (current.location || "")) patch.location = newLocation || null;
         if (Object.keys(patch).length) updates.push({ id: id, patch: patch });
       });
       var msgEl = document.getElementById("materialsMsg");
