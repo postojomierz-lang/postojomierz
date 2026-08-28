@@ -690,8 +690,8 @@
   .stocktake-slip .slip-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
   .stocktake-slip .slip-company { font-size: 11px; color: var(--ink-muted); }
   .stocktake-slip .slip-title { font-size: 13.5px; font-weight: 700; margin-top: 1px; }
-  .stocktake-slip .slip-badge { border: 1.5px solid #333; border-radius: 6px; padding: 4px 10px; text-align: center; font-weight: 700; font-size: 13px; white-space: nowrap; }
-  .stocktake-slip .slip-badge .n { font-size: 17px; }
+  .stocktake-slip .slip-badge { border: 1.5px solid #333; border-radius: 6px; padding: 4px 10px; text-align: center; font-weight: 700; font-size: 12px; white-space: nowrap; }
+  .stocktake-slip .slip-badge .n { font-size: 14px; letter-spacing: 0.2px; }
   .stocktake-slip .slip-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 18px; margin-top: 6px; font-size: 12px; }
   .stocktake-slip .slip-field b { display: inline-block; min-width: 50px; }
   .stocktake-slip .slip-blank { display: inline-block; border-bottom: 1px solid #999; min-width: 120px; }
@@ -753,6 +753,7 @@
   var prodStockWarehouseFilter = null; // to samo, ale dla stanu magazynowego produktów (zakładka Produkty)
   var stocktakeSheetFrom = null; // filtr zakresu numerów arkuszy na ekranie inwentaryzacji (null = od początku)
   var stocktakeSheetTo = null;   // (null = do końca)
+  var stocktakeSubTab = "count1"; // "count1" | "count2" | "diff" — aktywna podzakładka w szczegółach spisu
   var newStocktakeWarehouseIds = null; // zaznaczone magazyny w formularzu "Nowa inwentaryzacja" (null = jeszcze nie dotknięte -> traktuj jako "wszystkie")
   var newStocktakeKinds = { material: true, product: false }; // zaznaczone typy towaru w formularzu "Nowa inwentaryzacja"
   var resultsEditingId = null;    // id zmiany, którą operator właśnie sam poprawia na ekranie Moje wyniki
@@ -1046,7 +1047,7 @@
         id: i.id, stocktakeId: i.stocktake_id, sheetNo: Number(i.sheet_no),
         materialId: i.material_id || null, productId: i.product_id || null,
         itemKind: i.item_kind || null, warehouseId: i.warehouse_id || null,
-        code: i.code || "", name: i.name || "", unit: i.unit || "",
+        code: i.code || "", name: i.name || "", unit: i.unit || "", createdAt: i.created_at,
         count1Qty: i.count1_qty != null ? Number(i.count1_qty) : null,
         count2Qty: i.count2_qty != null ? Number(i.count2_qty) : null
       };
@@ -2795,6 +2796,19 @@
   var STOCKTAKE_KIND_LABEL = { material: "surowiec", product: "produkt" };
   function stocktakeItemKindLabel(i) { return STOCKTAKE_KIND_LABEL[i.itemKind] || "puste"; }
 
+  // etykieta arkusza pokazywana na ekranie/wydruku/eksporcie: "DD_MM_RRRR-N", gdzie data to
+  // dzień UTWORZENIA TEGO KONKRETNEGO arkusza (dla dołożonych później pustych arkuszy — dzień
+  // dołożenia, nie dzień założenia całego spisu) i N to jego numer w obrębie spisu. N zostaje
+  // zwykłą liczbą (patrz sheetNo) — to on rządzi sortowaniem/filtrem zakresu, etykieta służy
+  // tylko do czytania/drukowania.
+  function fmtSheetDate(isoStr) {
+    var d = new Date((isoStr || "").slice(0, 10) + "T00:00:00");
+    if (isNaN(d.getTime())) return "00_00_0000";
+    var dd = ("0" + d.getDate()).slice(-2), mm = ("0" + (d.getMonth() + 1)).slice(-2);
+    return dd + "_" + mm + "_" + d.getFullYear();
+  }
+  function sheetLabel(item) { return fmtSheetDate(item.createdAt) + "-" + item.sheetNo; }
+
   // buduje pełny "przekrój" (surowce/produkty × magazyny) + puste arkusze dla nowej
   // inwentaryzacji "z systemu" — CELOWO bez filtrowania po istniejącym stanie magazynowym
   // (żeby dało się policzyć też towar, który jeszcze nigdy nie miał wczytanego stanu).
@@ -2893,7 +2907,7 @@
       return '<div class="stocktake-slip">' +
         '<div class="slip-head"><div><div class="slip-company">' + escAttr(session.company.name) + ' — ' + escAttr(st.name) + '</div>' +
         '<div class="slip-title">Magazyn: ' + escAttr(whName) + '</div></div>' +
-        '<div class="slip-badge">Arkusz nr<div class="n">' + i.sheetNo + '</div>Liczenie ' + countNum + '</div></div>' +
+        '<div class="slip-badge">Arkusz nr<div class="n">' + sheetLabel(i) + '</div>Liczenie ' + countNum + '</div></div>' +
         '<div class="slip-fields">' +
         '<div class="slip-field"><b>Kod:</b> ' + codeField + '</div>' +
         '<div class="slip-field"><b>Magazyn:</b> ' + escAttr(whName) + '</div>' +
@@ -2906,52 +2920,90 @@
     return '<div class="stocktake-slips">' + slips + '</div>';
   }
 
-  function stocktakeDetailHtml(st) {
-    var allItems = stocktakeItemsFor(st.id);
+  // wpisywanie Liczenia 1 i Liczenia 2 to osobne zakładki (każda pokazuje TYLKO swoją kolumnę
+  // ilości — łatwiej wpisywać jedno liczenie na raz, bez patrzenia na drugie), a "Różnice" to
+  // trzecia zakładka z gotową listą tylko tych arkuszy, gdzie oba liczenia się nie zgadzają.
+  function stocktakeCountTabHtml(st, allItems, countNum, closed, maxSheetNo) {
     var items = filteredStocktakeItems(st.id);
-    var sum = stocktakeSummary(allItems);
-    var closed = !!st.closedAt;
-    var maxSheetNo = allItems.reduce(function (mx, i) { return Math.max(mx, i.sheetNo); }, 0);
-
     var rows = items.map(function (i) {
-      var status = stocktakeItemStatus(i);
-      var badge = status === "match" ? '<span class="status-tag approved">zgodne</span>'
-        : status === "diff" ? '<span class="status-tag rejected">różnica</span>'
-        : '<span class="status-tag cancelled">brak liczenia</span>';
-      var diffTxt = (i.count1Qty != null && i.count2Qty != null) ? fmtQty(i.count2Qty - i.count1Qty) : "—";
       var blank = isBlankStocktakeItem(i);
-      var c1Cell = closed ? (i.count1Qty != null ? fmtQty(i.count1Qty) : "—")
-        : '<input type="number" min="0" step="0.001" data-l1-qty="' + i.id + '" value="' + (i.count1Qty != null ? i.count1Qty : "") + '" style="width:90px;">';
-      var c2Cell = closed ? (i.count2Qty != null ? fmtQty(i.count2Qty) : "—")
-        : '<input type="number" min="0" step="0.001" data-l2-qty="' + i.id + '" value="' + (i.count2Qty != null ? i.count2Qty : "") + '" style="width:90px;">';
+      var qty = countNum === 1 ? i.count1Qty : i.count2Qty;
+      var qCell = closed ? (qty != null ? fmtQty(qty) : "—")
+        : '<input type="number" min="0" step="0.001" data-l' + countNum + '-qty="' + i.id + '" value="' + (qty != null ? qty : "") + '" style="width:90px;">';
       // kod/nazwa/jednostka edytowalne TYLKO dla pustych arkuszy (bez material_id/product_id) —
       // nazwane arkusze pokazują je jako statyczny tekst, żeby nie rozjechać się z powiązanym FK
       var codeCell = (blank && !closed) ? '<input type="text" data-blank-code="' + i.id + '" value="' + escAttr(i.code || "") + '" maxlength="30" style="width:90px;">' : escAttr(i.code || "—");
       var nameCell = (blank && !closed) ? '<input type="text" data-blank-name="' + i.id + '" value="' + escAttr(i.name || "") + '" maxlength="250" style="min-width:160px;">' : escAttr(i.name || "(puste)");
       var unitCell = (blank && !closed) ? '<input type="text" data-blank-unit="' + i.id + '" value="' + escAttr(i.unit || "") + '" maxlength="20" style="width:70px;">' : escAttr(unitLabel(i.unit) || "—");
-      return '<tr><td class="num tabular">' + i.sheetNo + '</td>' +
+      return '<tr><td class="tabular">' + sheetLabel(i) + '</td>' +
         '<td>' + escAttr(warehouseName(i.warehouseId)) + '</td>' +
         '<td>' + codeCell + '</td><td>' + nameCell + '</td><td>' + unitCell + '</td>' +
         '<td class="hint">' + stocktakeItemKindLabel(i) + '</td>' +
-        '<td class="num tabular">' + c1Cell + '</td>' +
-        '<td class="num tabular">' + c2Cell + '</td>' +
-        '<td class="num tabular">' + diffTxt + '</td>' +
-        '<td>' + badge + '</td></tr>';
+        '<td class="num tabular">' + qCell + '</td></tr>';
     }).join("");
 
     var table = items.length
-      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th class="num">Arkusz</th><th>Magazyn</th><th>Kod</th><th>Nazwa</th><th>J.m.</th><th>Rodzaj</th><th class="num">Liczenie 1</th><th class="num">Liczenie 2</th><th class="num">Różnica</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Arkusz</th><th>Magazyn</th><th>Kod</th><th>Nazwa</th><th>J.m.</th><th>Rodzaj</th><th class="num">Liczenie ' + countNum + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
       : '<div class="empty-hint">Brak arkuszy w wybranym zakresie numerów.</div>';
 
     var filterBlock = '<div class="inline-add" style="margin-top:10px;">' +
-      '<span class="hint">Pokaż arkusze od</span><input type="number" id="stFilterFrom" min="1" step="1" value="' + (stocktakeSheetFrom != null ? stocktakeSheetFrom : "") + '" style="max-width:90px;">' +
+      '<span class="hint">Pokaż arkusze o numerze od</span><input type="number" id="stFilterFrom" min="1" step="1" value="' + (stocktakeSheetFrom != null ? stocktakeSheetFrom : "") + '" style="max-width:90px;">' +
       '<span class="hint">do</span><input type="number" id="stFilterTo" min="1" step="1" value="' + (stocktakeSheetTo != null ? stocktakeSheetTo : "") + '" style="max-width:90px;">' +
       '<button type="button" class="ghost small" id="stFilterApplyBtn">Filtruj</button>' +
       (stocktakeSheetFrom != null || stocktakeSheetTo != null ? '<button type="button" class="ghost small" id="stFilterClearBtn">Pokaż wszystkie (' + allItems.length + ')</button>' : '') +
+      '<span class="hint">— wpisz sam numer, bez daty (np. „1", nie „' + fmtSheetDate(todayStr()) + '-1")</span>' +
       '</div>';
 
+    var printBlock = '<div class="form-actions" style="margin-top:10px;"><button type="button" class="ghost" id="printStocktakeBtn">Wydrukuj arkusze — Liczenie ' + countNum + '</button></div>';
+
     var saveBlock = closed ? "" :
-      '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveStocktakeCountsBtn">Zapisz liczenia i opisy pustych arkuszy</button><span class="form-msg" id="stocktakeCountsMsg">Zapisano.</span></div>';
+      '<div class="form-actions" style="margin-top:12px;"><button type="button" class="ghost" id="saveStocktakeCountsBtn">Zapisz liczenie ' + countNum + '</button><span class="form-msg" id="stocktakeCountsMsg">Zapisano.</span></div>';
+
+    var addBlankBlock = (!closed && state.warehouses.length)
+      ? '<div class="import-box" style="margin-top:14px;"><div class="import-head"><span class="eyebrow">Dodaj puste arkusze</span><span class="hint">Kolejny numer arkusza (od ' + fmtSheetDate(todayStr()) + '-' + (maxSheetNo + 1) + ') bez przypisanego surowca/produktu — na towar znaleziony na hali bez ewidencji.</span></div>' +
+        '<div class="inline-add"><select id="addBlankWarehouse">' + state.warehouses.map(function (w) { return '<option value="' + w.id + '">' + escAttr(w.name) + '</option>'; }).join("") + '</select>' +
+        '<input type="number" id="addBlankCount" min="1" step="1" value="5" style="max-width:90px;">' +
+        '<button type="button" class="ghost small" id="addBlankBtn">Dodaj puste arkusze</button></div>' +
+        '<span class="form-msg" id="addBlankMsg"></span></div>'
+      : "";
+
+    return filterBlock + table + printBlock + saveBlock + addBlankBlock;
+  }
+
+  function stocktakeDiffTabHtml(allItems, sum) {
+    var diffItems = allItems.filter(function (i) { return stocktakeItemStatus(i) === "diff"; });
+    var rows = diffItems.map(function (i) {
+      return '<tr><td class="tabular">' + sheetLabel(i) + '</td>' +
+        '<td>' + escAttr(warehouseName(i.warehouseId)) + '</td>' +
+        '<td>' + escAttr(i.code || "—") + '</td><td>' + escAttr(i.name || "(puste)") + '</td>' +
+        '<td>' + escAttr(unitLabel(i.unit) || "—") + '</td>' +
+        '<td class="num tabular">' + fmtQty(i.count1Qty) + '</td>' +
+        '<td class="num tabular">' + fmtQty(i.count2Qty) + '</td>' +
+        '<td class="num tabular"><b>' + fmtQty(i.count2Qty - i.count1Qty) + '</b></td></tr>';
+    }).join("");
+    var table = diffItems.length
+      ? '<div class="table-scroll" style="margin-top:12px;"><table class="compact"><thead><tr><th>Arkusz</th><th>Magazyn</th><th>Kod</th><th>Nazwa</th><th>J.m.</th><th class="num">Liczenie 1</th><th class="num">Liczenie 2</th><th class="num">Różnica</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="empty-hint">Brak rozbieżności — wszystkie policzone jak dotąd arkusze się zgadzają.' + (sum.missing ? " (" + sum.missing + " arkuszy ma jeszcze niepełne liczenie — brak Liczenia 1 albo 2, patrz odpowiednie zakładki.)" : "") + '</div>';
+    var missingNote = (diffItems.length && sum.missing)
+      ? '<div class="hint" style="margin-top:8px;">Dodatkowo ' + sum.missing + ' arkuszy ma jeszcze niepełne liczenie — nie liczą się tu jako różnica, dopóki nie zostaną wpisane oba liczenia.</div>'
+      : '';
+    return table + missingNote;
+  }
+
+  function stocktakeDetailHtml(st) {
+    var allItems = stocktakeItemsFor(st.id);
+    var sum = stocktakeSummary(allItems);
+    var closed = !!st.closedAt;
+    var maxSheetNo = allItems.reduce(function (mx, i) { return Math.max(mx, i.sheetNo); }, 0);
+    var subTab = stocktakeSubTab;
+
+    var subTabsHtml = '<div class="admin-tabs" style="margin-top:12px;">' +
+      '<button type="button" class="admin-tab' + (subTab === "count1" ? " active" : "") + '" data-stocktake-subtab="count1">Liczenie 1</button>' +
+      '<button type="button" class="admin-tab' + (subTab === "count2" ? " active" : "") + '" data-stocktake-subtab="count2">Liczenie 2</button>' +
+      '<button type="button" class="admin-tab' + (subTab === "diff" ? " active" : "") + '" data-stocktake-subtab="diff">Różnice' + (sum.diff ? " (" + sum.diff + ")" : "") + '</button>' +
+      '</div>';
+
+    var body = subTab === "diff" ? stocktakeDiffTabHtml(allItems, sum) : stocktakeCountTabHtml(st, allItems, subTab === "count2" ? 2 : 1, closed, maxSheetNo);
 
     var summaryTxt = "Arkuszy: " + sum.total + " · zgodnych: " + sum.match + " · z różnicą: " + sum.diff + " · bez pełnego liczenia: " + sum.missing;
 
@@ -2959,23 +3011,13 @@
       ? '<div class="hint" style="margin-top:10px;">Zamknięta ' + fmtDate(st.closedAt.slice(0, 10)) + ".</div>"
       : '<div class="form-actions" style="margin-top:14px;"><button type="button" class="primary" id="closeStocktakeBtn">Zamknij inwentaryzację</button><span class="form-msg" id="closeStocktakeMsg"></span></div>';
 
-    var addBlankBlock = (!closed && state.warehouses.length)
-      ? '<div class="import-box" style="margin-top:14px;"><div class="import-head"><span class="eyebrow">Dodaj puste arkusze</span><span class="hint">Kolejne numery arkuszy (od ' + (maxSheetNo + 1) + ') bez przypisanego surowca/produktu — na towar znaleziony na hali bez ewidencji.</span></div>' +
-        '<div class="inline-add"><select id="addBlankWarehouse">' + state.warehouses.map(function (w) { return '<option value="' + w.id + '">' + escAttr(w.name) + '</option>'; }).join("") + '</select>' +
-        '<input type="number" id="addBlankCount" min="1" step="1" value="5" style="max-width:90px;">' +
-        '<button type="button" class="ghost small" id="addBlankBtn">Dodaj puste arkusze</button></div>' +
-        '<span class="form-msg" id="addBlankMsg"></span></div>'
-      : "";
-
     return '<div class="panel"><div class="section-head">' +
       '<div class="eyebrow">Inwentaryzacja</div><h2 class="section-title small">' + escAttr(st.name) + '</h2>' +
-      '<div class="section-sub">Utworzono ' + fmtDate(st.createdAt.slice(0, 10)) + (closed ? " · zamknięta " + fmtDate(st.closedAt.slice(0, 10)) : " · w toku") + ". " + summaryTxt + '. Wpisz oba liczenia (nie muszą być tego samego dnia) — różnice widać od razu w tabeli. Filtr numerów arkuszy niżej zawęża tabelę I wydruk — przydatny, gdy wpisujesz właśnie zebraną partię kartek.' + (closed ? "" : ' Zamknięcie inwentaryzacji zaktualizuje stan magazynowy dla pozycji, gdzie oba liczenia się zgadzają i są dopasowane do surowca/produktu.') + '</div></div>' +
+      '<div class="section-sub">Utworzono ' + fmtDate(st.createdAt.slice(0, 10)) + (closed ? " · zamknięta " + fmtDate(st.closedAt.slice(0, 10)) : " · w toku") + ". " + summaryTxt + '. Liczenie 1 i Liczenie 2 wpisujesz w osobnych zakładkach niżej (nie muszą być tego samego dnia) — zakładka „Różnice" pokazuje same arkusze, na których się nie zgadzały. Filtr numerów arkuszy w zakładkach liczenia zawęża tabelę I wydruk — przydatny, gdy wpisujesz właśnie zebraną partię kartek.' + (closed ? "" : ' Zamknięcie inwentaryzacji zaktualizuje stan magazynowy dla arkuszy, gdzie oba liczenia się zgadzają i są dopasowane do surowca/produktu.') + '</div></div>' +
       '<div class="form-actions" style="flex-wrap:wrap;"><button type="button" class="ghost" id="backToStocktakesBtn">← Wróć do listy</button> ' +
-      '<button type="button" class="ghost" id="printStocktake1Btn">Wydrukuj arkusze — Liczenie 1</button> ' +
-      '<button type="button" class="ghost" id="printStocktake2Btn">Wydrukuj arkusze — Liczenie 2</button> ' +
       '<button type="button" class="ghost" id="exportStocktakeXlsxBtn">Pobierz XLSX</button> ' +
       '<button type="button" class="ghost" id="exportStocktakeTxtBtn">Pobierz TXT</button></div>' +
-      filterBlock + table + saveBlock + addBlankBlock + closeBlock +
+      subTabsHtml + body + closeBlock +
       '</div><div id="stocktakePrintArea"></div>';
   }
 
@@ -3017,7 +3059,7 @@
     var body = items.map(function (i) {
       var status = stocktakeItemStatus(i);
       var diff = (i.count1Qty != null && i.count2Qty != null) ? (i.count2Qty - i.count1Qty) : "";
-      return [i.sheetNo, warehouseName(i.warehouseId), stocktakeItemKindLabel(i), i.code, i.name, unitLabel(i.unit), i.count1Qty != null ? i.count1Qty : "", i.count2Qty != null ? i.count2Qty : "", diff, STATUS_LABEL[status]];
+      return [sheetLabel(i), warehouseName(i.warehouseId), stocktakeItemKindLabel(i), i.code, i.name, unitLabel(i.unit), i.count1Qty != null ? i.count1Qty : "", i.count2Qty != null ? i.count2Qty : "", diff, STATUS_LABEL[status]];
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header].concat(body)), "Inwentaryzacja");
     var fname = "inwentaryzacja-" + st.name.replace(/[^a-z0-9]+/gi, "_").toLowerCase() + "-" + todayStr() + ".xlsx";
@@ -3030,7 +3072,7 @@
     items.forEach(function (i) {
       var status = stocktakeItemStatus(i);
       var diff = (i.count1Qty != null && i.count2Qty != null) ? fmtQty(i.count2Qty - i.count1Qty) : "";
-      lines.push([i.sheetNo, warehouseName(i.warehouseId), stocktakeItemKindLabel(i), i.code, i.name, unitLabel(i.unit),
+      lines.push([sheetLabel(i), warehouseName(i.warehouseId), stocktakeItemKindLabel(i), i.code, i.name, unitLabel(i.unit),
         i.count1Qty != null ? fmtQty(i.count1Qty) : "", i.count2Qty != null ? fmtQty(i.count2Qty) : "",
         diff, STATUS_LABEL[status]].join(";"));
     });
@@ -3977,6 +4019,15 @@
           activeStocktakeId = btn.getAttribute("data-open-stocktake");
           stocktakeSheetFrom = null;
           stocktakeSheetTo = null;
+          stocktakeSubTab = "count1";
+          renderAdmin(root);
+        });
+      });
+      root.querySelectorAll("[data-stocktake-subtab]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          stocktakeSubTab = btn.getAttribute("data-stocktake-subtab");
+          stocktakeSheetFrom = null;
+          stocktakeSheetTo = null;
           renderAdmin(root);
         });
       });
@@ -4042,6 +4093,9 @@
         createStocktakeBtn.disabled = false;
         if (insErr) { bannerMsg = "Utworzono inwentaryzację, ale nie udało się wczytać wszystkich arkuszy: " + insErr.message; }
         activeStocktakeId = stId;
+        stocktakeSubTab = "count1";
+        stocktakeSheetFrom = null;
+        stocktakeSheetTo = null;
         await loadCompanyData();
         renderAdmin(root);
       });
@@ -4106,6 +4160,9 @@
           importStocktakeBtn.disabled = false;
           if (itemsRes.error) { bannerMsg = "Utworzono inwentaryzację, ale nie udało się wczytać wszystkich arkuszy: " + itemsRes.error.message; }
           activeStocktakeId = stId;
+          stocktakeSubTab = "count1";
+          stocktakeSheetFrom = null;
+          stocktakeSheetTo = null;
           await loadCompanyData();
           renderAdmin(root);
         });
@@ -4133,18 +4190,14 @@
         renderAdmin(root);
       });
 
-      var print1Btn = document.getElementById("printStocktake1Btn");
-      var print2Btn = document.getElementById("printStocktake2Btn");
-      if (print1Btn) print1Btn.addEventListener("click", function () {
+      // jeden przycisk wydruku na zakładkę liczenia — który to numer liczenia, wynika z tego,
+      // która zakładka (Liczenie 1 / Liczenie 2) jest akurat aktywna (patrz stocktakeSubTab)
+      var printBtn = document.getElementById("printStocktakeBtn");
+      if (printBtn) printBtn.addEventListener("click", function () {
         var st = stocktakeById(activeStocktakeId);
         if (!st) return;
-        document.getElementById("stocktakePrintArea").innerHTML = stocktakeSlipHtml(st, filteredStocktakeItems(st.id), 1);
-        window.print();
-      });
-      if (print2Btn) print2Btn.addEventListener("click", function () {
-        var st = stocktakeById(activeStocktakeId);
-        if (!st) return;
-        document.getElementById("stocktakePrintArea").innerHTML = stocktakeSlipHtml(st, filteredStocktakeItems(st.id), 2);
+        var countNum = stocktakeSubTab === "count2" ? 2 : 1;
+        document.getElementById("stocktakePrintArea").innerHTML = stocktakeSlipHtml(st, filteredStocktakeItems(st.id), countNum);
         window.print();
       });
 
