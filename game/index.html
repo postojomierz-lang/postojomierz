@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plastic Front</title>
+<meta name="description" content="Toy soldier auto-battler: build your base, then watch the plastic armies fight it out.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rubik:wght@400;500;600;700&display=swap">
+</head>
+<body>
+<div id="stage">
+  <canvas id="overlay"></canvas>
+</div>
+
+<header class="topbar panel">
+  <div class="brand">PLASTIC <span>FRONT</span></div>
+  <div class="sep"></div>
+  <div class="stat"><small>Round</small><b id="round">1</b></div>
+  <div class="stat"><small>Phase</small><b id="phase">Deploy</b></div>
+  <div class="stat" id="timerBox"><small>Battle</small><b id="timer">0:40</b></div>
+  <div class="grow"></div>
+  <div class="speed" id="speed" hidden>
+    <button data-speed="0" title="Pause (Space)">❚❚</button>
+    <button data-speed="1" class="on">1×</button>
+    <button data-speed="2">2×</button>
+    <button data-speed="4">4×</button>
+  </div>
+  <button id="btnHelp" class="ghost">Controls</button>
+  <button id="btnMenu" class="ghost">New game</button>
+</header>
+
+<aside class="armies panel" id="armies"></aside>
+
+<footer class="build panel" id="build">
+  <div class="build-head">
+    <div class="tabs" id="tabs"></div>
+    <div class="grow"></div>
+    <div class="money"><small>Supply</small><b id="money">$0</b></div>
+    <div class="money"><small>Vehicles</small><b id="vehicles">0/3</b></div>
+    <button id="btnAuto" class="ghost" title="Spend the remaining supply on a balanced army">Auto-fill</button>
+    <button id="btnUndo" class="ghost" title="Undo last placement (Ctrl+Z)">Undo</button>
+    <button id="btnStart" class="go">Start battle ▶</button>
+  </div>
+  <div class="cards" id="cards"></div>
+  <div class="hint" id="hint">Pick a piece, then click (or drag) inside your zone to place it. <b>R</b> rotates · right-click removes · <b>Esc</b> cancels.</div>
+</footer>
+
+<div id="toast"></div>
+<div id="tip" class="panel"></div>
+
+<dialog id="dlgSetup" class="panel">
+  <form method="dialog">
+    <h1>PLASTIC <span>FRONT</span></h1>
+    <p class="lead">Tip out the toy box. Spend your supply on soldiers, vehicles and fortifications, then watch the plastic armies fight it out. Each round brings reinforcements. The last headquarters standing wins.</p>
+    <div class="grid2">
+      <label>Armies on the map
+        <select id="optTeams">
+          <option value="2" selected>2 — you vs 1 army</option>
+          <option value="3">3 — free-for-all</option>
+          <option value="4">4 — free-for-all</option>
+          <option value="6">6 — free-for-all</option>
+          <option value="8">8 — free-for-all</option>
+        </select>
+      </label>
+      <label>Your army
+        <select id="optColor"></select>
+      </label>
+      <label>Battlefield
+        <select id="optTheme">
+          <option value="">Random</option>
+          <option value="wood">Living room floor</option>
+          <option value="carpet">Bedroom rug</option>
+          <option value="kitchen">Kitchen tiles</option>
+          <option value="sand">Sandbox</option>
+          <option value="grass">Back garden</option>
+          <option value="snow">Snowy yard</option>
+        </select>
+      </label>
+      <label>Enemy commanders
+        <select id="optDiff">
+          <option value="easy">Recruit (less supply)</option>
+          <option value="normal" selected>Sergeant (same supply)</option>
+          <option value="hard">General (more supply)</option>
+        </select>
+      </label>
+      <label>Graphics
+        <select id="optQuality">
+          <option value="low">Low (fast)</option>
+          <option value="medium" selected>Medium (miniature blur)</option>
+          <option value="high">High (+ ambient occlusion)</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="optSound" checked> Sound effects</label>
+    </div>
+    <p class="note">Online battles against other players come in a later stage. Right now the other armies are commanded by the computer.</p>
+    <div class="actions"><button value="go" class="go">Tip out the toy box ▶</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgEnd" class="panel">
+  <form method="dialog">
+    <h1 id="endTitle">Victory</h1>
+    <p id="endText" class="lead"></p>
+    <div id="endStats" class="endstats"></div>
+    <div class="actions"><button value="again" class="go">Play again</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgHelp" class="panel">
+  <form method="dialog">
+    <h1>Controls</h1>
+    <div class="help">
+      <b>Camera</b><span>Left-drag or WASD to pan · right-drag or Q/E to rotate · wheel or pinch to zoom</span>
+      <b>Build</b><span>Pick a piece at the bottom, click or drag inside your zone · R rotates walls · right-click removes a piece placed this round · Ctrl+Z undo</span>
+      <b>Battle</b><span>Space starts the battle / pauses · 1, 2, 4 change speed</span>
+      <b>Rounds</b><span>Each battle lasts 40 seconds. Survivors stay where they are; you then get more supply to reinforce. Up to 3 vehicles per round.</span>
+      <b>Winning</b><span>Destroy the enemy headquarters. After 10 rounds the strongest army wins.</span>
+    </div>
+    <div class="actions"><button value="ok" class="go">Got it</button></div>
+  </form>
+</dialog>
+
+<div id="fail" hidden></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
