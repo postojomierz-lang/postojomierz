@@ -47,6 +47,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .army .bar { grid-column: 2 / 4; height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
 .army .bar i { display: block; height: 100%; background: #8fe05a; }
 
+#minimap { position: fixed; right: 10px; bottom: 10px; z-index: 5; width: 230px; height: 150px; padding: 0; cursor: crosshair; }
 .build { position: fixed; left: 10px; right: 250px; bottom: 10px; padding: 8px 10px 6px; z-index: 5; }
 .build[hidden] { display: none; }
 .build-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -86,11 +87,12 @@ select { font: inherit; color: var(--ink); background: var(--panel-2); border: 1
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
 .help { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; color: var(--ink-2); }
 .help b { color: var(--ink); }
-.endstats { display: grid; grid-template-columns: 1fr auto auto auto; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+.endstats { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 4px 14px; font-variant-numeric: tabular-nums; }
 .endstats .h { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
 #fail { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; background: #111; z-index: 20; }
 
 @media (max-width: 800px) {
+  #minimap { width: 150px; height: 98px; bottom: auto; top: 60px; left: 10px; right: auto; }
   .armies { top: auto; bottom: 200px; width: 170px; font-size: 12px; }
   .build { right: 10px; }
   .hint, .brand + .sep, .stat:nth-of-type(2) { display: none; }

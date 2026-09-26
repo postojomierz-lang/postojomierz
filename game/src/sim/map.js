@@ -14,25 +14,30 @@ const OBSTACLES = {
   snow:    { tall: ['snowman', 'rock', 'bucket'], low: ['twigs'], water: ['ice'] },
 };
 
-// Deployment zones for 2..8 armies, as fractions of the map.
-function zoneRects(n, W, H) {
-  if (n === 2) return [[0, 0, 14, H], [W - 14, 0, 14, H]];
-  const zw = 15, zh = 12;
+// Map size grows with the number of armies so 8 armies still have room to build.
+export function mapSize(n) {
+  if (n <= 2) return { W: 64, H: 40, zw: 16, zh: 40 };
+  if (n <= 4) return { W: 96, H: 64, zw: 22, zh: 17 };
+  return { W: 140, H: 96, zw: 24, zh: 18 };
+}
+
+// Deployment zones for 2..8 armies.
+function zoneRects(n, W, H, zw, zh) {
+  if (n === 2) return [[0, 0, zw, H], [W - zw, 0, zw, H]];
   const spots = [
-    [0, H - zh], [W - zw, 0], [W - zw, H - zh], [0, 0],                 // corners
-    [Math.floor(W / 2 - zw / 2), 0], [Math.floor(W / 2 - zw / 2), H - zh], // top / bottom middle
-    [0, Math.floor(H / 2 - zh / 2)], [W - zw, Math.floor(H / 2 - zh / 2)], // left / right middle
+    [0, H - zh], [W - zw, 0], [W - zw, H - zh], [0, 0],                     // corners
+    [Math.floor(W / 2 - zw / 2), 0], [Math.floor(W / 2 - zw / 2), H - zh],  // top / bottom middle
+    [0, Math.floor(H / 2 - zh / 2)], [W - zw, Math.floor(H / 2 - zh / 2)],  // left / right middle
   ];
   return spots.slice(0, n).map(([x, y]) => [x, y, zw, zh]);
 }
 
 export function makeMap({ teams, theme, seed }) {
   const rng = mulberry(seed);
-  const W = teams <= 2 ? 56 : teams <= 4 ? 60 : 76;
-  const H = teams <= 2 ? 36 : teams <= 4 ? 44 : 56;
+  const { W, H, zw, zh } = mapSize(teams);
   theme = THEMES.includes(theme) ? theme : THEMES[Math.floor(rng() * THEMES.length)];
   const grid = new Uint8Array(W * H);
-  const zones = zoneRects(teams, W, H).map(([x, y, w, h]) => ({ x, y, w, h }));
+  const zones = zoneRects(teams, W, H, zw, zh).map(([x, y, w, h]) => ({ x, y, w, h }));
   const inZone = (x, y) => zones.some(z => x >= z.x - 1 && x < z.x + z.w + 1 && y >= z.y - 1 && y < z.y + z.h + 1);
   const objects = [];
   const pal = OBSTACLES[theme];

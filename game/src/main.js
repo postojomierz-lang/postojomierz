@@ -38,7 +38,7 @@ function newGame() {
   view.setQuality(settings.quality);
   view.load(game.sim, 0);
   sounds.enabled = settings.sound;
-  game.thumbs = renderThumbnails(Object.keys(CATALOG).filter(k => k !== 'hq'), TEAM_COLORS[humanColor].id);
+  game.thumbs = renderThumbnails(Object.keys(CATALOG).filter(k => k !== 'hq' && CATALOG[k].group !== 'hidden'), TEAM_COLORS[humanColor].id);
   deployAI();
   buildPalette();
   setTool(null);
@@ -76,6 +76,11 @@ function onEvent(ev) {
     toast(`Round ${sim.round} — reinforcements arrived`, true);
     setTool(null);
     refresh();
+  } else if (ev.t === 'returned' && ev.team === game.human) {
+    toast(`${ev.n} rescued soldier${ev.n > 1 ? 's are' : ' is'} back in the fight`);
+  } else if (ev.t === 'drop') {
+    const e = sim.byId.get(ev.id);
+    if (e && e.team !== game.human) toast('Enemy paratroopers incoming!');
   } else if (ev.t === 'over') {
     setTimeout(showEnd, 1800);
     refresh();
@@ -83,7 +88,15 @@ function onEvent(ev) {
 }
 
 // ---------------------------------------------------------------- main loop
-let last = performance.now(), hudT = 0;
+let last = performance.now(), hudT = 0, miniT = 0;
+const miniCanvas = $('minimap'), miniCtx = miniCanvas.getContext('2d');
+function miniJump(e) {
+  if (!game.sim) return;
+  const r = miniCanvas.getBoundingClientRect(), map = game.sim.map;
+  view.lookAt((e.clientX - r.left) / r.width * map.W, (e.clientY - r.top) / r.height * map.H);
+}
+miniCanvas.addEventListener('pointerdown', e => { miniJump(e); miniCanvas.setPointerCapture(e.pointerId); });
+miniCanvas.addEventListener('pointermove', e => { if (e.buttons & 1) miniJump(e); });
 function loop(t) {
   requestAnimationFrame(loop);
   const dt = Math.min(250, t - last); last = t;
@@ -102,6 +115,7 @@ function loop(t) {
   sounds.listener = view.controls.target;
   view.render(alpha, dt);
   if (t - hudT > 200) { hudT = t; refresh(); }
+  if (t - miniT > 100) { miniT = t; view.drawMinimap(miniCtx, miniCanvas.width, miniCanvas.height); }
 }
 requestAnimationFrame(loop);
 
@@ -115,6 +129,7 @@ function refresh() {
   $('timer').textContent = sim.phase === 'battle' ? `0:${String(Math.ceil(left)).padStart(2, '0')}` : `0:${RULES.battleSeconds}`;
   $('money').textContent = '$' + me.money;
   $('vehicles').textContent = `${me.vehicles}/${RULES.vehiclesPerRound}`;
+  $('aircraft').textContent = `${me.aircraft}/${RULES.aircraftPerRound}`;
   $('build').hidden = sim.phase !== 'deploy' || !me.alive;
   $('speed').hidden = sim.phase !== 'battle';
   $('btnUndo').disabled = !game.undo.length;
@@ -122,7 +137,7 @@ function refresh() {
   // army list
   const rows = sim.teams.map(t => {
     const hq = sim.byId.get(t.hq), f = hq && !hq.dead ? hq.hp / hq.maxHp : 0;
-    const units = sim.ents.filter(e => !e.dead && e.team === t.id && !e.def.static).length;
+    const units = sim.ents.filter(e => !e.dead && !e.down && e.team === t.id && !e.def.static).length;
     return `<div class="army ${t.alive ? '' : 'out'}"><span class="sw" style="background:${TEAM_COLORS[t.color].main}"></span>
       <span class="nm">${t.name}</span><span class="v">${t.alive ? units + ' units' : 'defeated'}</span>
       <span class="bar"><i style="width:${Math.round(f * 100)}%"></i></span></div>`;
@@ -131,7 +146,7 @@ function refresh() {
   // palette affordability
   for (const c of $('cards').children) {
     const def = CATALOG[c.dataset.type];
-    c.classList.toggle('off', def.cost > me.money || (def.vehicle && me.vehicles >= RULES.vehiclesPerRound));
+    c.classList.toggle('off', def.cost > me.money || (def.vehicle && me.vehicles >= RULES.vehiclesPerRound) || (def.aircraft && me.aircraft >= RULES.aircraftPerRound));
   }
 }
 
@@ -150,7 +165,7 @@ $('cards').onmouseover = e => {
   if (!c) { tip.style.display = 'none'; return; }
   const d = CATALOG[c.dataset.type], w = d.weapon;
   const stats = [['Cost', '$' + d.cost], ['Health', d.hp], d.armor ? ['Armour', d.armor] : null, w ? ['Range', w.range] : null,
-    w ? ['Damage', w.salvo ? `${w.dmg} × ${w.salvo}` : w.dmg] : null, d.speed ? ['Speed', d.speed] : null, d.vehicle ? ['Limit', `${RULES.vehiclesPerRound} vehicles / round`] : null].filter(Boolean);
+    w ? ['Damage', w.salvo ? `${w.dmg} × ${w.salvo}` : w.dmg] : null, d.speed ? ['Speed', d.speed] : null, d.vehicle ? ['Limit', `${RULES.vehiclesPerRound} vehicles / round`] : null, d.aircraft ? ['Limit', `${RULES.aircraftPerRound} aircraft / round`] : null].filter(Boolean);
   tip.innerHTML = `<b>${d.name}</b><div class="s">${stats.map(([a, b]) => `<span>${a}</span><span>${b}</span>`).join('')}</div>${d.blurb}`;
   const r = c.getBoundingClientRect();
   tip.style.display = 'block';
@@ -279,8 +294,8 @@ function showEnd() {
   $('endText').textContent = win
     ? `Your plastic army holds the floor after ${sim.round} round${sim.round > 1 ? 's' : ''}.`
     : w ? `${w.name} wins. Your soldiers go back in the toy box… for now.` : 'Nobody is left standing.';
-  $('endStats').innerHTML = '<span class="h">Army</span><span class="h">Kills</span><span class="h">Losses</span><span class="h">Spent</span>' +
-    sim.teams.map(t => `<span style="color:${TEAM_COLORS[t.color].main}">${t.name}</span><span>${t.kills}</span><span>${t.losses}</span><span>$${t.spent}</span>`).join('');
+  $('endStats').innerHTML = '<span class="h">Army</span><span class="h">Kills</span><span class="h">Losses</span><span class="h">Rescued</span><span class="h">Spent</span>' +
+    sim.teams.map(t => `<span style="color:${TEAM_COLORS[t.color].main}">${t.name}</span><span>${t.kills}</span><span>${t.losses}</span><span>${t.saved}</span><span>$${t.spent}</span>`).join('');
   $('dlgEnd').showModal();
 }
 $('dlgEnd').addEventListener('close', () => openSetup());

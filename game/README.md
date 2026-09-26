@@ -5,6 +5,12 @@ on soldiers, vehicles and fortifications inside its deployment zone, then the ba
 out on its own for 40 seconds. Survivors stay on the field, reinforcements follow, and the
 last headquarters standing wins.
 
+Features: 2–8 armies on maps that grow with the number of armies, infantry (incl. AA missile
+soldiers), vehicles, aircraft (fighters, ground-attack planes, bombers, paratroop transports,
+helicopters), defences and fortifications. Soldiers are often wounded rather than killed:
+comrades drag them to cover and field ambulances carry them home, and everyone saved fights
+again next round. Explosions cause friendly fire.
+
 - `src/sim/` — deterministic battle simulation (no DOM, no `Math.random`): the same map,
   seed and placement orders always produce the same battle, which is what online play
   will build on.
@@ -15,5 +21,6 @@ last headquarters standing wins.
 npm install
 npm run dev     # local dev server
 npm test        # AI-vs-AI games, checks the simulation is deterministic
+node test/air.test.mjs   # scripted aircraft / paratrooper / ambulance battle
 npm run build   # writes a single self-contained ../plastic-front/index.html
 ```

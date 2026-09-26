@@ -43,12 +43,26 @@ export const CATALOG = {
     weapon: { kind: 'bullet', range: 8, dmg: 2, cd: 1.0, acc: 0.7, air: true },
     blurb: 'Soldiers within 5 cells fire 30% faster.',
   },
+  manpads: {
+    name: 'AA missile soldier', group: 'infantry', cls: 'infantry', cost: 35, hp: 10, speed: 1.4, size: [1, 1], radius: 0.32,
+    weapon: { kind: 'missile', range: 17, dmg: 40, cd: 6, acc: 0.85, airOnly: true, projSpeed: 18 },
+    blurb: 'Shoulder-fired homing missile. Only shoots at aircraft.',
+  },
+  para: {
+    name: 'Paratrooper', group: 'hidden', cls: 'infantry', cost: 10, hp: 10, speed: 1.7, size: [1, 1], radius: 0.32,
+    weapon: { kind: 'bullet', range: 9, dmg: 2, cd: 1.1, acc: 0.72, air: true },
+    blurb: 'Dropped behind enemy lines by a transport plane.',
+  },
 
   // ---- vehicles (limited per round) ---------------------------------------
   jeep: {
     name: 'Jeep', group: 'vehicles', cls: 'vehicle', vehicle: true, cost: 60, hp: 45, armor: 1, speed: 4.2, size: [2, 2], radius: 0.9,
     weapon: { kind: 'bullet', range: 10, dmg: 1, cd: 0.2, acc: 0.45, air: true },
     blurb: 'Fast raider with a mounted machine gun.',
+  },
+  ambulance: {
+    name: 'Field ambulance', group: 'vehicles', cls: 'vehicle', vehicle: true, medic: true, capacity: 4, cost: 70, hp: 55, armor: 1, speed: 3.6, size: [2, 2], radius: 0.95,
+    blurb: 'Picks up wounded soldiers (4 at a time) and brings them home. Saved soldiers fight again next round.',
   },
   apc: {
     name: 'Armored car', group: 'vehicles', cls: 'vehicle', vehicle: true, cost: 100, hp: 95, armor: 2, speed: 2.9, size: [2, 2], radius: 1.0,
@@ -71,9 +85,31 @@ export const CATALOG = {
     blurb: 'Rains rocket salvos from far away. Keep it protected.',
   },
   heli: {
-    name: 'Helicopter', group: 'vehicles', cls: 'air', vehicle: true, move: 'air', cost: 200, hp: 70, armor: 1, speed: 4.5, size: [2, 2], radius: 1.2,
+    name: 'Helicopter', group: 'air', cls: 'air', aircraft: true, move: 'air', alt: 3.2, cost: 200, hp: 70, armor: 1, speed: 4.5, size: [2, 2], radius: 1.2,
     weapon: { kind: 'rocket', range: 12, dmg: 14, cd: 1.6, acc: 0.7, splash: 1.0, projSpeed: 16 },
-    blurb: 'Flies over everything. Only bullets and flak can hit it.',
+    blurb: 'Hovers over the battle. Bullets, flak and AA missiles can hit it.',
+  },
+
+  // ---- aircraft (limited per round; they fly passes instead of hovering) ------
+  fighter: {
+    name: 'Fighter', group: 'air', cls: 'plane', aircraft: true, move: 'plane', alt: 6, cost: 220, hp: 60, armor: 1, speed: 9, turn: 2.4, size: [2, 2], radius: 1.2,
+    weapon: { kind: 'bullet', range: 10, dmg: 3, cd: 0.12, acc: 0.6, air: true, prefer: 'air' },
+    blurb: 'Hunts helicopters and planes. Strafes infantry when the sky is clear.',
+  },
+  attacker: {
+    name: 'Ground-attack plane', group: 'air', cls: 'plane', aircraft: true, move: 'plane', alt: 5, cost: 240, hp: 75, armor: 1, speed: 7.5, turn: 2.0, size: [2, 2], radius: 1.2,
+    weapon: { kind: 'rocket', range: 12, dmg: 18, cd: 0.7, acc: 0.75, splash: 1.0, projSpeed: 24, prefer: 'armor' },
+    blurb: 'Makes rocket runs on tanks, guns and bunkers.',
+  },
+  bomber: {
+    name: 'Bomber', group: 'air', cls: 'plane', aircraft: true, move: 'plane', alt: 7, sortie: 'bomb', cost: 260, hp: 110, armor: 1, speed: 6, turn: 1.2, size: [2, 2], radius: 1.4,
+    bombs: 10, bomb: { dmg: 24, splash: 2.0 },
+    blurb: 'One run: carpets a line near the nearest enemy HQ with bombs, then flies home. Bombs hurt everyone.',
+  },
+  transport: {
+    name: 'Paratroop plane', group: 'air', cls: 'plane', aircraft: true, move: 'plane', alt: 7, sortie: 'drop', cost: 180, hp: 80, armor: 1, speed: 7, turn: 1.4, size: [2, 2], radius: 1.4,
+    paras: 6,
+    blurb: 'Drops 6 paratroopers behind enemy lines, then flies home.',
   },
 
   // ---- emplacements (static guns) ----------------------------------------
@@ -127,6 +163,7 @@ export const CATALOG = {
 export const GROUPS = [
   { id: 'infantry', name: 'Infantry' },
   { id: 'vehicles', name: 'Vehicles' },
+  { id: 'air', name: 'Aircraft' },
   { id: 'defense', name: 'Defenses' },
   { id: 'forts', name: 'Fortifications' },
 ];
@@ -143,11 +180,14 @@ export const TEAM_COLORS = [
 ];
 
 export const RULES = {
-  startBudget: 900,
+  startBudget: 1000,
   income: 320,
   incomeGrowth: 80,       // extra income per round, so battles escalate
   killBounty: 0.25,        // share of a destroyed enemy's cost paid to the killer's army
   vehiclesPerRound: 3,
+  aircraftPerRound: 2,
+  bleedSeconds: 18,       // a wounded soldier dies if nobody helps in time
+  woundChance: 0.55,      // share of 'killed' infantry that are only wounded
   battleSeconds: 40,
   maxRounds: 10,
   tickRate: 20,

@@ -137,7 +137,7 @@ export class Fx {
       const dir = m.position.clone().sub(prev);
       if (dir.lengthSq() > 1e-6 && kind !== 'grenade') m.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir.normalize());
       prev.copy(m.position);
-      if ((kind === 'rocket' || kind === 'arty') && t - lastPuff > 35) { lastPuff = t; this.puff(m.position.clone(), 0.35, 0xdedad0, 0.55, 0.15, 700); }
+      if ((kind === 'rocket' || kind === 'arty' || kind === 'missile') && t - lastPuff > 35) { lastPuff = t; this.puff(m.position.clone(), 0.35, 0xdedad0, 0.55, 0.15, 700); }
     } });
   }
 
@@ -152,6 +152,7 @@ export class Fx {
       const p = pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * r, 0.3 + Math.random() * r * 0.5, (Math.random() - 0.5) * r));
       this.add({ t0: this.now + i * 40, dur: 1, obj: null, init: () => this.puff(p, r * (1.2 + Math.random() * 0.8), i % 2 ? 0x5a554c : 0x8a8272, 0.75, 1.2 + Math.random(), 1600 + Math.random() * 800) });
     }
+    if (pos.y > 0.5) return; // air burst: no crater
     for (let i = 0; i < (big ? 10 : 5); i++) this.debris(pos, r);
     this.scorch(pos.x, pos.z, r * 0.8);
   }

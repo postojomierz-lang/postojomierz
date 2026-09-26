@@ -9,18 +9,69 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { HorizontalTiltShiftShader } from 'three/addons/shaders/HorizontalTiltShiftShader.js';
 import { VerticalTiltShiftShader } from 'three/addons/shaders/VerticalTiltShiftShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { model, plastic } from './models.js';
+import { model, modelKey, plastic } from './models.js';
 import { buildTerrain, floorTexture, FLOOR, buildTape } from './terrain.js';
 import { Fx } from './fx.js';
 import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
-  rifleman: [0.55, 0.78], officer: [0.4, 0.9], grenadier: [-0.2, 1.1], bazooka: [0.5, 0.78], sniper: [0.8, 0.27], mg: [0.62, 0.3],
-  jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.12, 1.6], tank: [2.05, 1.05], rockets: [0.2, 1.8], heli: [0.8, -0.25],
+  rifleman: [0.55, 0.78], para: [0.55, 0.78], officer: [0.4, 0.9], grenadier: [-0.2, 1.1], bazooka: [0.5, 0.78], manpads: [0.45, 1.05],
+  sniper: [0.8, 0.27], mg: [0.62, 0.3], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.12, 1.6], tank: [2.05, 1.05], rockets: [0.2, 1.8],
+  heli: [0.8, -0.25], fighter: [1.0, -0.1], attacker: [0.4, -0.2], bomber: [0, -0.35], transport: [-1, -0.35],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
-const HEIGHT = { mg: 0.45, sniper: 0.45, tank: 1.5, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
+const HEIGHT = { mg: 0.45, sniper: 0.45, tank: 1.5, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
+const isAir = def => def.cls === 'air' || def.cls === 'plane';
+
+// One InstancedMesh per model part, shared by every army (colour comes per instance),
+// so hundreds of soldiers cost a handful of draw calls.
+class Batches {
+  constructor(parent) { this.parent = parent; this.list = new Map(); }
+  get(key, geo, mat) {
+    let b = this.list.get(key);
+    if (!b) { b = { geo, mat, cap: 0, n: 0, mesh: null, ids: [] }; this.grow(b, 32); this.list.set(key, b); }
+    return b;
+  }
+  grow(b, cap) {
+    const m = new THREE.InstancedMesh(b.geo, b.mat, cap);
+    m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+    m.setColorAt(0, new THREE.Color(1, 1, 1));
+    if (b.mesh) {
+      m.instanceMatrix.array.set(b.mesh.instanceMatrix.array.subarray(0, b.n * 16));
+      m.instanceColor.array.set(b.mesh.instanceColor.array.subarray(0, b.n * 3));
+      this.parent.remove(b.mesh); b.mesh.dispose();
+    }
+    b.mesh = m; b.cap = cap; m.userData.batch = b;
+    this.parent.add(m);
+  }
+  begin() { for (const b of this.list.values()) b.n = 0; }
+  push(b, matrix, color, id) {
+    if (b.n >= b.cap) this.grow(b, b.cap * 2);
+    b.mesh.setMatrixAt(b.n, matrix); b.mesh.setColorAt(b.n, color); b.ids[b.n] = id; b.n++;
+  }
+  end() {
+    for (const b of this.list.values()) {
+      b.mesh.count = b.n;
+      b.mesh.instanceMatrix.needsUpdate = true;
+      if (b.mesh.instanceColor) b.mesh.instanceColor.needsUpdate = true;
+    }
+  }
+  clear() { for (const b of this.list.values()) { this.parent.remove(b.mesh); b.mesh.dispose(); } this.list.clear(); }
+}
+
+const WHITE = new THREE.Color(1, 1, 1);
+function teamPalette(col) {
+  const main = new THREE.Color(col.main), dark = new THREE.Color(col.dark);
+  const dead = c => c.clone().lerp(new THREE.Color('#6f6c64'), 0.45).multiplyScalar(0.75);
+  const burnt = c => c.clone().lerp(new THREE.Color('#1c1a17'), 0.8);
+  return {
+    main, dark, accent: WHITE,
+    deadMain: dead(main), deadDark: dead(dark), deadAccent: dead(WHITE),
+    burntMain: burnt(main), burntDark: burnt(dark), burntAccent: burnt(WHITE),
+    flash: main.clone().lerp(WHITE, 0.75),
+  };
+}
 
 export class View {
   constructor(stage, overlay) {
@@ -31,10 +82,10 @@ export class View {
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
     stage.prepend(r.domElement);
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(30, 1.6, 0.5, 400);
+    this.camera = new THREE.PerspectiveCamera(30, 1.6, 0.5, 600);
     const c = this.controls = new OrbitControls(this.camera, r.domElement);
     c.enableDamping = true; c.dampingFactor = 0.09;
-    c.minPolarAngle = 0.15; c.maxPolarAngle = 1.2; c.minDistance = 8; c.maxDistance = 140;
+    c.minPolarAngle = 0.15; c.maxPolarAngle = 1.2; c.minDistance = 8; c.maxDistance = 160;
     c.screenSpacePanning = false; c.zoomToCursor = true;
     c.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
     c.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
@@ -45,13 +96,20 @@ export class View {
     this.sun = new THREE.DirectionalLight(0xffffff, 2.8);
     this.sun.castShadow = true;
     this.sun.shadow.bias = -0.0003; this.sun.shadow.normalBias = 0.03;
+    this.sunDir = new THREE.Vector3(-0.6, 0.45, 0.4).normalize();
     this.scene.add(this.hemi, this.sun, this.sun.target);
     this.world = new THREE.Group(); this.scene.add(this.world);
+    this.unitsGroup = new THREE.Group(); this.scene.add(this.unitsGroup);
+    this.batches = new Batches(this.unitsGroup);
+    this.plasticMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.42, metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.35 });
+    this.accentMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.4, clearcoat: 0.3 });
     this.ents = new Map();
+    this.palettes = [];
     this.quality = 'medium';
     this.ghost = null;
     this.now = performance.now();
     this.keys = new Set();
+    this.tmpM = new THREE.Matrix4();
     new ResizeObserver(() => this.resize()).observe(stage);
     this.resize();
     window.addEventListener('keydown', e => { if (!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) this.keys.add(e.key.toLowerCase()); });
@@ -115,22 +173,22 @@ export class View {
   load(sim, human) {
     this.sim = sim; this.map = sim.map; this.human = human;
     if (this.ghost) { this.world.remove(this.ghost.g); this.world.remove(this.ghost.pad); this.ghost = null; }
-    for (const v of this.ents.values()) this.world.remove(v.g);
     this.ents.clear();
+    this.batches.clear();
+    this.palettes = sim.teams.map(t => teamPalette(TEAM_COLORS[t.color]));
     this.world.traverse(o => { if (o.geometry && !o.userData.shared) o.geometry.dispose(); });
     this.world.clear();
     if (this.fx) { this.fx.clear(); this.scene.remove(this.fx.group); this.fx.decalTex.dispose(); }
     const map = this.map, st = FLOOR[map.theme];
     this.scene.background = new THREE.Color(st.bg);
-    this.scene.fog = new THREE.Fog(st.bg, 90, 220);
+    const span0 = Math.max(map.W, map.H);
+    this.scene.fog = new THREE.Fog(st.bg, span0 * 1.6, span0 * 3.6);
+    this.controls.maxDistance = span0 * 2;
     this.hemi.color.set(st.sky); this.hemi.groundColor.set(st.ground);
     this.sun.color.set(st.sunColor);
     const span = Math.max(map.W, map.H);
-    const dir = new THREE.Vector3(...st.sun).normalize();
-    this.sun.position.copy(dir.multiplyScalar(span * 1.2)); this.sun.target.position.set(0, 0, 0);
-    const sc = this.sun.shadow.camera;
-    sc.left = -span * 0.75; sc.right = span * 0.75; sc.top = span * 0.75; sc.bottom = -span * 0.75; sc.near = 1; sc.far = span * 3;
-    sc.updateProjectionMatrix();
+    this.sunDir.set(...st.sun).normalize();
+    this.span = span; this.shadowHalf = 0;
 
     const tex = floorTexture(map.theme, map.seed);
     const FS = map.W + 160, FD = map.H + 160;
@@ -152,62 +210,65 @@ export class View {
     }
     this.fx = new Fx(this.scene, map, this.world);
     for (const e of sim.ents) this.addEnt(e);
+    this.buildMinimapBase();
     this.focusZone(human);
   }
 
+  // Sun and shadow camera follow what the player is looking at, so shadows stay crisp on big maps.
+  updateSun() {
+    const t = this.controls.target, dist = this.camera.position.distanceTo(t);
+    const half = Math.max(18, Math.min(this.span * 0.8, dist * 0.85));
+    this.sun.target.position.copy(t);
+    this.sun.position.copy(t).addScaledVector(this.sunDir, this.span * 1.4);
+    if (Math.abs(half - this.shadowHalf) > this.shadowHalf * 0.08) {
+      this.shadowHalf = half;
+      const sc = this.sun.shadow.camera;
+      sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 1; sc.far = this.span * 4;
+      sc.updateProjectionMatrix();
+    }
+  }
+
   focusZone(teamId) {
-    const z = this.sim.teams[teamId].zone, map = this.map;
+    const z = this.sim.teams[teamId].zone, map = this.map, few = this.sim.teams.length <= 2;
     const zx = this.wx(z.x + z.w / 2), zz = this.wz(z.y + z.h / 2);
-    // frame our own zone plus the middle of the map, looking from behind our lines
-    const tx = zx * 0.55, tz = zz * 0.55;
+    // frame our own zone plus the way towards the middle, looking from behind our lines
+    const k = few ? 0.55 : 0.8;
+    const tx = zx * k, tz = zz * k;
     let dx = -zx, dz = -zz; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-    const dist = Math.max(map.W, map.H) * 1.1;
+    const dist = few ? Math.max(map.W, map.H) * 1.1 : Math.max(z.w, z.h) * 3.4;
     this.controls.target.set(tx, 0, tz);
     this.camera.position.set(tx - dx * dist * 0.62 + dz * dist * 0.18, dist * 0.8, tz - dz * dist * 0.62 - dx * dist * 0.18);
     this.controls.update();
+  }
+  lookAt(x, z) {
+    const off = this.camera.position.clone().sub(this.controls.target);
+    this.controls.target.set(this.wx(x), 0, this.wz(z));
+    this.camera.position.copy(this.controls.target).add(off);
   }
 
   // ---------------------------------------------------------------- entities
   addEnt(e) {
     if (this.ents.has(e.id)) return;
-    const team = this.sim.teams[e.team], col = TEAM_COLORS[team.color];
-    const m = model(e.type, e.id);
-    const g = new THREE.Group(), pivot = new THREE.Group(); g.add(pivot);
-    const main = new THREE.Mesh(m.main, plastic(col.main)); main.castShadow = true; main.receiveShadow = true; main.userData = { id: e.id, shared: true };
-    pivot.add(main);
-    let dark = null;
-    if (m.dark) { dark = new THREE.Mesh(m.dark, plastic(col.dark, 'dark')); dark.castShadow = true; dark.receiveShadow = true; dark.userData = { id: e.id, shared: true }; pivot.add(dark); }
-    let rotor = null, tail = null;
+    const key = modelKey(e.type, e.id), m = model(e.type, e.id);
+    // transform-only scene graph (never rendered): root -> pivot -> parts
+    const g = new THREE.Object3D(), pivot = new THREE.Object3D(); g.add(pivot);
+    let rotor = null, tail = null, chute = null;
     if (m.rotor) {
-      rotor = new THREE.Mesh(m.rotor, plastic(col.dark, 'dark')); rotor.position.set(0.3, 0.7, 0); rotor.castShadow = true; rotor.userData.shared = true; pivot.add(rotor);
-      tail = new THREE.Mesh(m.tailRotor, plastic(col.dark, 'dark')); tail.position.set(-1.85, 0.45, 0.06); tail.userData.shared = true; pivot.add(tail);
+      rotor = new THREE.Object3D(); rotor.position.set(0.3, 0.7, 0); pivot.add(rotor);
+      tail = new THREE.Object3D(); tail.position.set(-1.85, 0.45, 0.06); pivot.add(tail);
     }
+    if (e.def.cls === 'infantry') { chute = new THREE.Object3D(); g.add(chute); }
     const yaw = Math.atan2(-e.dirZ, e.dirX);
-    const v = { e, g, pivot, main, dark, rotor, tail, yaw, col, deadAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1, burnt: false };
+    const v = { e, g, pivot, rotor, tail, chute, key, m, yaw, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
     if (e.def.static && e.def.cls === 'fort') g.rotation.y = e.rot & 1 ? Math.PI / 2 : 0;
     else g.rotation.y = yaw;
     g.position.set(this.wx(e.x), e.y, this.wz(e.z));
-    this.world.add(g);
     this.ents.set(e.id, v);
-    if (e.dead) { v.deadAt = this.now - 5000; this.applyDeadLook(v); }
+    if (e.dead) v.deadAt = this.now - 5000;
+    if (e.down) v.downAt = this.now - 5000;
     return v;
   }
-  removeEnt(id) {
-    const v = this.ents.get(id);
-    if (!v) return;
-    this.world.remove(v.g);
-    this.ents.delete(id);
-  }
-  setMat(v, variant) {
-    if (v.variant === variant) return;
-    v.variant = variant;
-    v.main.material = plastic(v.col.main, variant === 'normal' ? 'main' : variant);
-    if (v.dark) v.dark.material = plastic(v.col.dark, variant === 'normal' ? 'dark' : variant);
-  }
-  applyDeadLook(v) {
-    const vehicle = v.e.def.vehicle || v.e.def.cls === 'hq' || v.e.def.cls === 'emplacement';
-    this.setMat(v, vehicle ? 'burnt' : 'dead');
-  }
+  removeEnt(id) { this.ents.delete(id); }
 
   muzzleOf(v) {
     const [f, h] = MUZZLE[v.e.type] || [0.4, 0.7];
@@ -227,32 +288,42 @@ export class View {
           this.fx.tracer(from, to, ev.kind === 'flak');
           this.fx.muzzle(from, false);
           if (!ev.hit && ev.ty < 1) this.fx.dust(to);
-          sounds && sounds.play(ev.kind === 'flak' ? 'flak' : v.e.type === 'mg' || v.e.type === 'mgnest' || v.e.def.vehicle ? 'mg' : 'shot', from);
+          sounds && sounds.play(ev.kind === 'flak' ? 'flak' : v.e.type === 'mg' || v.e.type === 'mgnest' || v.e.def.vehicle || v.e.def.cls === 'plane' ? 'mg' : 'shot', from);
           break;
         }
         case 'launch': {
           const v = this.ents.get(ev.id); const p = ev.p;
-          const from = v ? this.muzzleOf(v) : new THREE.Vector3(this.wx(p.fx), 0.8, this.wz(p.fz));
+          const from = v ? this.muzzleOf(v) : new THREE.Vector3(this.wx(p.fx), p.fy, this.wz(p.fz));
           const to = new THREE.Vector3(this.wx(p.tx), p.ty, this.wz(p.tz));
           this.fx.projectile(p, from, to);
-          this.fx.muzzle(from, p.kind !== 'grenade');
-          if (p.kind !== 'grenade') this.fx.puff(from, 0.8, 0xd8d2c4, 0.6, 0.4, 900);
-          sounds && sounds.play(p.kind === 'grenade' ? 'throw' : p.kind === 'shell' ? 'cannon' : 'rocket', from);
+          if (p.kind !== 'bomb') this.fx.muzzle(from, p.kind !== 'grenade');
+          if (p.kind !== 'grenade' && p.kind !== 'bomb') this.fx.puff(from, 0.8, 0xd8d2c4, 0.6, 0.4, 900);
+          sounds && sounds.play(p.kind === 'grenade' || p.kind === 'bomb' ? 'throw' : p.kind === 'shell' ? 'cannon' : 'rocket', from);
           break;
         }
         case 'boom': {
-          const p = new THREE.Vector3(this.wx(ev.x), 0, this.wz(ev.z));
+          const p = new THREE.Vector3(this.wx(ev.x), ev.y || 0, this.wz(ev.z));
           this.fx.explosion(p, ev.r, ev.kind);
           sounds && sounds.play(ev.r >= 1.5 || ev.kind === 'barrel' ? 'bigboom' : 'boom', p);
           break;
         }
         case 'deploy': this.fx.fadeDecals(0.45); break;
         case 'hit': { const v = this.ents.get(ev.id); if (v) v.flashUntil = this.now + 70; break; }
+        case 'down': {
+          const v = this.ents.get(ev.id); if (!v) break;
+          v.downAt = this.now;
+          sounds && sounds.play('topple', v.g.position);
+          break;
+        }
+        case 'drop': { const v = this.ents.get(ev.id); if (v) sounds && sounds.play('start', v.g.position); break; }
         case 'death': {
           const v = this.ents.get(ev.id); if (!v) break;
           v.deadAt = this.now + (ev.surrender ? Math.random() * 600 : 0);
           const e = v.e;
-          if (e.def.vehicle && e.def.cls !== 'air') {
+          v.deadPos = v.g.position.clone(); v.deadYaw = v.yaw;
+          if (isAir(e.def) && e.y > 0.5) {
+            // falls out of the sky; the crash is handled in the animation
+          } else if (e.def.vehicle) {
             this.fx.explosion(v.g.position.clone(), 1.4, 'vehicle');
             this.fx.smokeColumn(() => (this.ents.has(e.id) ? v.g.position : null), 9);
             sounds && sounds.play('bigboom', v.g.position);
@@ -264,7 +335,7 @@ export class View {
             for (let i = 0; i < 4; i++) this.fx.debris(v.g.position, 0.6, 0x7a7466);
             this.fx.puff(v.g.position.clone().add(new THREE.Vector3(0, 0.3, 0)), 1.2, 0xbdb4a0, 0.6, 0.5, 1000);
           }
-          if (e.def.cls === 'infantry') sounds && sounds.play('topple', v.g.position);
+          if (e.def.cls === 'infantry' && !ev.wasDown) sounds && sounds.play('topple', v.g.position);
           break;
         }
       }
@@ -278,9 +349,12 @@ export class View {
     this.keyboardPan(dt);
     this.controls.update();
     if (this.sim) {
+      this.updateSun();
       const deploy = this.sim.phase === 'deploy';
       this.zones.visible = deploy;
+      this.batches.begin();
       for (const v of this.ents.values()) this.updateEnt(v, alpha, now, dt, deploy);
+      this.batches.end();
       this.fx.update(now);
     }
     // camera shake from explosions
@@ -292,63 +366,117 @@ export class View {
     this.drawOverlay();
   }
 
+  hidden(e, deploy) {
+    return e.loaded || (deploy && e.team !== this.human && e.placedRound === this.sim.round);
+  }
+
   updateEnt(v, alpha, now, dt, deploy) {
-    const e = v.e, g = v.g;
-    g.visible = !(deploy && e.team !== this.human && e.placedRound === this.sim.round);
-    if (!g.visible) return;
+    const e = v.e, g = v.g, def = e.def;
+    v.visible = !this.hidden(e, deploy);
+    if (!v.visible) return;
     const x = e.px + (e.x - e.px) * alpha, z = e.pz + (e.z - e.pz) * alpha;
-    g.position.x = this.wx(x); g.position.z = this.wz(z);
-    const def = e.def;
-    if (!def.static || def.cls !== 'fort') {
-      if (!e.dead || !v.deadAt) {
-        const target = Math.atan2(-e.dirZ, e.dirX);
-        let d = target - v.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
-        v.yaw += d * (1 - Math.exp(-dt * (def.vehicle ? 5 : 12)));
-        g.rotation.y = v.yaw;
-      }
+    const y = e.py + (e.y - e.py) * alpha;
+    g.position.set(this.wx(x), 0, this.wz(z));
+    const air = isAir(def);
+    let dyaw = 0;
+    if ((!def.static || def.cls !== 'fort') && !(e.dead && v.deadAt) && !(e.down && e.carrier === 0 && v.downAt)) {
+      const target = Math.atan2(-e.dirZ, e.dirX);
+      let d = target - v.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+      const step = d * (1 - Math.exp(-dt * (def.cls === 'plane' ? 8 : def.vehicle ? 5 : 12)));
+      v.yaw += step; dyaw = dt > 0 ? step / dt : 0;
+      g.rotation.y = v.yaw;
     }
     const moved = Math.hypot(x - v.lastX, z - v.lastZ);
     v.lastX = x; v.lastZ = z;
-    if (def.cls === 'air') {
-      if (!e.dead) {
-        g.position.y = e.y + Math.sin(now * 0.002 + e.id) * 0.12;
+    let variant = 'normal';
+    if (air && !e.dead) {
+      g.position.y = def.cls === 'air' ? y + Math.sin(now * 0.002 + e.id) * 0.12 : y;
+      if (def.cls === 'plane') {
+        // bank into turns, nose up while climbing
+        v.roll += (Math.max(-0.9, Math.min(0.9, -dyaw * 0.45)) - v.roll) * Math.min(1, dt * 4);
+        v.pivot.rotation.set(v.roll, 0, y < def.alt - 0.3 && e.moving ? 0.12 : 0);
+      } else {
         v.rotor.rotation.y += dt * 28; v.tail.rotation.z += dt * 40;
         v.pivot.rotation.z = e.moving ? -0.12 : 0;
       }
-    } else if (def.cls === 'infantry' && !e.dead) {
+    } else if (def.cls === 'infantry' && !e.dead && !e.down) {
+      if (e.falling) g.position.y = y;
       // plastic soldiers "hop" along as if a kid is moving them
-      g.position.y = e.moving && this.sim.phase === 'battle' ? Math.abs(Math.sin(now * 0.016 + e.id)) * 0.14 : 0;
+      else g.position.y = e.moving && this.sim.phase === 'battle' ? Math.abs(Math.sin(now * 0.016 + e.id)) * 0.14 : 0;
     }
-    if (def.vehicle && def.cls !== 'air' && !e.dead && moved > 0) {
+    if (def.vehicle && !air && !e.dead && moved > 0) {
       v.trackAcc += moved;
       if (v.trackAcc > 0.22) {
         v.trackAcc = 0;
         this.fx.track(g.position.x, g.position.z, Math.cos(v.yaw), -Math.sin(v.yaw), e.type === 'tank' ? 0.62 : 0.5, e.type === 'tank');
       }
     }
-    // hit flash
-    if (!e.dead) this.setMat(v, v.flashUntil > now ? 'flash' : 'normal');
+    if (!e.dead && v.flashUntil > now) variant = 'flash';
+    // wounded soldiers lie on the ground (and get dragged along)
+    if (e.down && !e.dead) {
+      const k = Math.min(1, (now - v.downAt) / 450), ease = 1 - (1 - k) ** 3;
+      v.pivot.rotation.set(0, 0, ease * Math.PI / 2 * v.fallSide * 0.98);
+      v.pivot.position.y = Math.sin(ease * Math.PI) * 0.12;
+      if (e.carrier) { v.pivot.rotation.set(0, 0, -Math.PI / 2 * 0.98); g.rotation.y = v.yaw = Math.atan2(-e.dirZ, e.dirX); }
+    }
     // death animations
     if (e.dead && v.deadAt && now >= v.deadAt) {
       const k = Math.min(1, (now - v.deadAt) / 500), ease = 1 - (1 - k) ** 3;
       if (def.cls === 'infantry') {
-        v.pivot.rotation.z = ease * Math.PI / 2 * v.fallSide * 0.98;
-        v.pivot.position.y = Math.sin(ease * Math.PI) * 0.15;
-        this.setMat(v, 'dead');
-      } else if (def.cls === 'air') {
-        const kk = Math.min(1, (now - v.deadAt) / 900);
-        g.position.y = e.y * (1 - kk * kk);
-        v.pivot.rotation.y += dt * 6 * (1 - kk);
-        v.pivot.rotation.z = kk * 0.5;
-        if (kk >= 1 && !v.crashed) { v.crashed = true; this.fx.explosion(g.position.clone(), 1.5, 'heli'); this.fx.smokeColumn(() => (this.ents.has(e.id) ? g.position : null), 8); }
-        this.setMat(v, 'burnt');
-      } else if (def.vehicle) {
+        if (!v.downAt) { v.pivot.rotation.z = ease * Math.PI / 2 * v.fallSide * 0.98; v.pivot.position.y = Math.sin(ease * Math.PI) * 0.15; }
+        g.position.y = 0;
+        variant = 'dead';
+      } else if (air && v.deadPos && v.deadPos.y > 0.5) {
+        // shot down: spin and fall, then burn on the ground
+        const kk = Math.min(1, (now - v.deadAt) / (def.cls === 'plane' ? 1300 : 900));
+        const fwd = def.cls === 'plane' ? 5 * kk : 0;
+        g.position.set(v.deadPos.x + Math.cos(v.deadYaw) * fwd, Math.max(0.15, v.deadPos.y * (1 - kk * kk)), v.deadPos.z - Math.sin(v.deadYaw) * fwd);
+        g.rotation.y = v.deadYaw;
+        if (def.cls === 'plane') v.pivot.rotation.set(kk * 5, 0, -kk * 0.6); else { v.pivot.rotation.y += dt * 6 * (1 - kk); v.pivot.rotation.z = kk * 0.5; }
+        if (kk >= 1 && !v.crashed) {
+          v.crashed = true;
+          this.fx.explosion(g.position.clone().setY(0), 1.6, 'crash');
+          this.fx.smokeColumn(() => (this.ents.has(e.id) ? g.position : null), 8);
+        }
+        if (kk < 1 && Math.random() < 0.5) this.fx.puff(g.position.clone(), 0.5, 0x3d3a36, 0.6, 0.3, 900);
+        variant = 'burnt';
+      } else if (def.vehicle || air) {
         v.pivot.rotation.x = ease * 0.12 * v.fallSide;
-        this.setMat(v, 'burnt');
+        g.position.y = 0;
+        variant = 'burnt';
       } else {
         v.pivot.scale.y = 1 - ease * (def.cls === 'fort' && def.wire ? 0.85 : 0.6);
-        this.setMat(v, def.cls === 'fort' ? 'dead' : 'burnt');
+        variant = def.cls === 'fort' ? 'dead' : 'burnt';
       }
+    }
+    // paratrooper canopy: open while falling, then collapses after landing
+    if (v.chute) {
+      if (e.falling) { v.chuteT = 1; v.chute.scale.setScalar(1); }
+      else if (v.chuteT > 0) { v.chuteT -= dt * 2; v.chute.scale.set(Math.max(0.01, v.chuteT), Math.max(0.01, v.chuteT * v.chuteT), Math.max(0.01, v.chuteT)); }
+    }
+    this.emit(v, variant);
+  }
+
+  // push this entity's parts into the instanced batches
+  emit(v, variant) {
+    const p = v.pal, m = v.m;
+    v.g.updateMatrixWorld(true);
+    const pm = v.pivot.matrixWorld;
+    const mainC = variant === 'flash' ? p.flash : variant === 'dead' ? p.deadMain : variant === 'burnt' ? p.burntMain : p.main;
+    const darkC = variant === 'flash' ? p.flash : variant === 'dead' ? p.deadDark : variant === 'burnt' ? p.burntDark : p.dark;
+    const accC = variant === 'dead' ? p.deadAccent : variant === 'burnt' ? p.burntAccent : WHITE;
+    const id = v.e.id;
+    this.batches.push(this.batches.get(v.key + ':m', m.main, this.plasticMat), pm, mainC, id);
+    if (m.dark) this.batches.push(this.batches.get(v.key + ':d', m.dark, this.plasticMat), pm, darkC, id);
+    if (m.accent) this.batches.push(this.batches.get(v.key + ':a', m.accent, this.accentMat), pm, accC, id);
+    if (v.rotor && !v.e.dead) {
+      this.batches.push(this.batches.get(v.key + ':r', m.rotor, this.plasticMat), v.rotor.matrixWorld, darkC, id);
+      this.batches.push(this.batches.get(v.key + ':t', m.tailRotor, this.plasticMat), v.tail.matrixWorld, darkC, id);
+    }
+    if (v.chute && v.chuteT > 0) {
+      const c = model('chute');
+      this.batches.push(this.batches.get('chute:m', c.main, this.plasticMat), v.chute.matrixWorld, WHITE, id);
+      this.batches.push(this.batches.get('chute:d', c.dark, this.plasticMat), v.chute.matrixWorld, darkC, id);
     }
   }
 
@@ -359,13 +487,23 @@ export class View {
     const p = new THREE.Vector3();
     for (const v of this.ents.values()) {
       const e = v.e;
-      if (e.dead || !v.g.visible) continue;
+      if (e.dead || !v.visible) continue;
       const hq = e.def.cls === 'hq';
+      if (e.down) {
+        // wounded marker: red cross with a bleeding-out ring (green once safe)
+        p.set(v.g.position.x, 0.8, v.g.position.z).project(this.camera);
+        if (p.z > 1 || Math.abs(p.x) > 1.1 || Math.abs(p.y) > 1.1) continue;
+        const sx = (p.x + 1) / 2 * w, sy = (1 - p.y) / 2 * h, safe = e.stable || e.carrier;
+        c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(sx, sy, 7, 0, 7); c.fill();
+        c.fillStyle = safe ? '#3a9a4a' : '#d63a2f'; c.fillRect(sx - 4.5, sy - 1.5, 9, 3); c.fillRect(sx - 1.5, sy - 4.5, 3, 9);
+        if (!safe) { c.strokeStyle = '#d63a2f'; c.lineWidth = 2; c.beginPath(); c.arc(sx, sy, 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, e.bleed) / 18); c.stroke(); }
+        continue;
+      }
       if (!hq && e.hp >= e.maxHp) continue;
       p.set(v.g.position.x, v.g.position.y + (HEIGHT[e.type] || 1.25) + 0.25, v.g.position.z).project(this.camera);
       if (p.z > 1 || p.x < -1.1 || p.x > 1.1 || p.y < -1.1 || p.y > 1.1) continue;
       const sx = (p.x + 1) / 2 * w, sy = (1 - p.y) / 2 * h;
-      const bw = hq ? 60 : e.def.vehicle || e.def.static ? 30 : 18, bh = hq ? 6 : 4;
+      const bw = hq ? 60 : e.def.vehicle || e.def.static || e.def.aircraft ? 30 : 18, bh = hq ? 6 : 4;
       const f = Math.max(0, e.hp / e.maxHp);
       c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(sx - bw / 2 - 1, sy - 1, bw + 2, bh + 2);
       c.fillStyle = f > 0.5 ? '#8fe05a' : f > 0.25 ? '#f0c13a' : '#f05a3a';
@@ -374,8 +512,55 @@ export class View {
         const t = this.sim.teams[e.team];
         c.font = '600 12px Rubik, system-ui, sans-serif'; c.textAlign = 'center';
         c.fillStyle = 'rgba(0,0,0,.6)'; c.fillText(t.name, sx + 1, sy - 5);
-        c.fillStyle = TEAM_COLORS[t.color].main; c.fillStyle = '#fff'; c.fillText(t.name, sx, sy - 6);
+        c.fillStyle = '#fff'; c.fillText(t.name, sx, sy - 6);
       }
+    }
+  }
+
+  // ---------------------------------------------------------------- minimap
+  buildMinimapBase() {
+    const map = this.map, S = 4, c = document.createElement('canvas');
+    c.width = map.W * S; c.height = map.H * S;
+    const g = c.getContext('2d');
+    g.fillStyle = FLOOR[map.theme].base; g.fillRect(0, 0, c.width, c.height);
+    for (let y = 0; y < map.H; y++) for (let x = 0; x < map.W; x++) {
+      const t = map.grid[y * map.W + x];
+      if (!t) continue;
+      g.fillStyle = t === 2 ? '#4f8fc0' : t === 1 ? 'rgba(60,45,30,.75)' : 'rgba(60,45,30,.45)';
+      g.fillRect(x * S, y * S, S, S);
+    }
+    this.miniBase = c;
+  }
+  drawMinimap(ctx, w, h) {
+    if (!this.sim || !this.miniBase) return;
+    const map = this.map, sx = w / map.W, sz = h / map.H;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(this.miniBase, 0, 0, w, h);
+    if (this.sim.phase === 'deploy') for (const t of this.sim.teams) {
+      ctx.strokeStyle = TEAM_COLORS[t.color].main; ctx.lineWidth = 1;
+      ctx.strokeRect(t.zone.x * sx + 0.5, t.zone.y * sz + 0.5, t.zone.w * sx - 1, t.zone.h * sz - 1);
+    }
+    for (const v of this.ents.values()) {
+      const e = v.e;
+      if (!v.visible || e.dead) continue;
+      ctx.fillStyle = e.down ? '#ffffff' : TEAM_COLORS[this.sim.teams[e.team].color].main;
+      if (e.def.static) ctx.fillRect(e.cx * sx, e.cy * sz, Math.max(2, e.w * sx), Math.max(2, e.h * sz));
+      else {
+        const r = e.def.aircraft ? 3 : e.def.vehicle ? 2.2 : 1.5;
+        ctx.beginPath(); ctx.arc(e.x * sx, e.z * sz, r, 0, 7); ctx.fill();
+        if (e.def.aircraft) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke(); }
+      }
+    }
+    // camera footprint
+    const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([nx, ny]) => {
+      const ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
+      const p = new THREE.Vector3();
+      if (!ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p)) return null;
+      return [(p.x + map.W / 2) * sx, (p.z + map.H / 2) * sz];
+    });
+    if (pts.every(Boolean)) {
+      ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.5; ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.stroke();
     }
   }
 
@@ -412,9 +597,13 @@ export class View {
   entityAt(clientX, clientY, filter) {
     const ray = new THREE.Raycaster(); ray.setFromCamera(this.ndc(clientX, clientY), this.camera);
     const meshes = [];
-    for (const v of this.ents.values()) if (v.g.visible && (!filter || filter(v.e))) meshes.push(v.main);
-    const hit = ray.intersectObjects(meshes, false)[0];
-    return hit ? hit.object.userData.id : 0;
+    for (const b of this.batches.list.values()) if (b.n) { b.mesh.computeBoundingSphere(); meshes.push(b.mesh); }
+    for (const hit of ray.intersectObjects(meshes, false)) {
+      const id = hit.object.userData.batch.ids[hit.instanceId];
+      const e = this.sim.byId.get(id);
+      if (e && (!filter || filter(e))) return id;
+    }
+    return 0;
   }
   setGhost(type, teamId, cx, cy, rot, valid) {
     if (!type) { if (this.ghost) this.ghost.g.visible = false; return; }
@@ -422,7 +611,8 @@ export class View {
       if (this.ghost) this.world.remove(this.ghost.g);
       const m = model(type, 1), g = new THREE.Group();
       const mat = new THREE.MeshStandardMaterial({ color: 0x9fe06a, transparent: true, opacity: 0.55, depthWrite: false });
-      g.add(new THREE.Mesh(m.main, mat)); if (m.dark) g.add(new THREE.Mesh(m.dark, mat));
+      g.add(new THREE.Mesh(m.main, mat)); if (m.dark) g.add(new THREE.Mesh(m.dark, mat)); if (m.accent) g.add(new THREE.Mesh(m.accent, mat));
+      g.traverse(o => { o.userData.shared = true; });
       const pad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x9fe06a, transparent: true, opacity: 0.35, depthWrite: false }));
       pad.rotation.x = -Math.PI / 2; pad.position.y = 0.03;
       this.world.add(g); this.world.add(pad);
@@ -435,7 +625,7 @@ export class View {
     gh.g.visible = gh.pad.visible = true;
     const col = valid ? 0x9fe06a : 0xf0503a;
     gh.mat.color.setHex(col); gh.pad.material.color.setHex(col);
-    gh.g.position.set(this.wx(cx + w / 2), def.cls === 'air' ? 3.2 : 0, this.wz(cy + h / 2));
+    gh.g.position.set(this.wx(cx + w / 2), def.cls === 'air' ? def.alt : 0, this.wz(cy + h / 2));
     gh.pad.position.set(gh.g.position.x, 0.03, gh.g.position.z); gh.pad.scale.set(w, h, 1);
     if (def.static && def.cls === 'fort') gh.g.rotation.y = rot & 1 ? Math.PI / 2 : 0;
     else {
@@ -460,6 +650,7 @@ export function renderThumbnails(types, color) {
     const m = model(type, 1), g = new THREE.Group();
     g.add(new THREE.Mesh(m.main, plastic(col.main)));
     if (m.dark) g.add(new THREE.Mesh(m.dark, plastic(col.dark, 'dark')));
+    if (m.accent) g.add(new THREE.Mesh(m.accent, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 })));
     if (m.rotor) { const ro = new THREE.Mesh(m.rotor, plastic(col.dark, 'dark')); ro.position.set(0.3, 0.7, 0); g.add(ro); }
     g.rotation.y = -0.6;
     scene.add(g);
