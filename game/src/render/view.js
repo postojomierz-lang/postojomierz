@@ -125,13 +125,17 @@ export class View {
     this.ghost = null;
     this.now = performance.now();
     this.keys = new Set();
-    this.tmpM = new THREE.Matrix4();
+    this.tmpM = new THREE.Matrix4(); this.legM = new THREE.Matrix4();
+    this.living = false;
     new ResizeObserver(() => this.resize()).observe(stage);
     this.resize();
     window.addEventListener('keydown', e => { if (!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) this.keys.add(e.key.toLowerCase()); });
     window.addEventListener('keyup', e => this.keys.delete(e.key.toLowerCase()));
     window.addEventListener('blur', () => this.keys.clear());
   }
+
+  // "Living soldiers": figures without bases whose legs walk (toy style otherwise)
+  setLiving(on) { this.living = !!on; }
 
   // ---------------------------------------------------------------- quality / post
   setQuality(q) {
@@ -279,7 +283,9 @@ export class View {
   // ---------------------------------------------------------------- entities
   addEnt(e) {
     if (this.ents.has(e.id)) return;
-    const key = modelKey(e.type, e.id), m = model(e.type, e.id);
+    const inf = e.def.cls === 'infantry';
+    const first = inf ? (this.living ? 'living:' : '') + basePose(e.type) : null;
+    const key = inf ? first : modelKey(e.type, e.id), m = inf ? model(first) : model(e.type, e.id);
     // transform-only scene graph (never rendered): root -> pivot -> parts
     const g = new THREE.Object3D(), pivot = new THREE.Object3D(); g.add(pivot);
     let rotor = null, tail = null, chute = null;
@@ -291,7 +297,7 @@ export class View {
     let turret = null;
     if (m.turret) { turret = new THREE.Object3D(); pivot.add(turret); }
     const yaw = Math.atan2(-e.dirZ, e.dirX);
-    const v = { e, g, pivot, rotor, tail, chute, turret, tyaw: yaw, key, m, yaw, pose: e.type, poseAt: 0, lastFire: 0, fireAt: 0, lastHit: 0, wobbleAt: 0, throwUntil: 0, celebrate: false, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
+    const v = { e, g, pivot, rotor, tail, chute, turret, tyaw: yaw, key, m, yaw, pose: inf ? basePose(e.type) : e.type, poseAt: 0, walk: 0, swing: 0, lastFire: 0, fireAt: 0, lastHit: 0, wobbleAt: 0, throwUntil: 0, celebrate: false, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
     if (e.def.static && e.def.cls === 'fort') g.rotation.y = e.rot & 1 ? Math.PI / 2 : 0;
     else g.rotation.y = yaw;
     g.position.set(this.wx(e.x), e.y, this.wz(e.z));
@@ -460,9 +466,18 @@ export class View {
     // toy-style animation
     if (def.cls === 'infantry' && !e.dead && !e.down && !e.falling) {
       const pose = poseFor(v, now, this.sim.phase === 'battle');
-      if (pose !== v.pose) { v.pose = pose; v.poseAt = now; v.key = pose; v.m = model(pose); }
-      const hk = (now - v.poseAt) / 180;
-      if (hk < 1) g.position.y += Math.sin(hk * Math.PI) * 0.15;
+      const name = (this.living ? 'living:' : '') + pose;
+      if (pose !== v.pose || name !== v.key) { v.pose = pose; v.poseAt = now; v.key = name; v.m = model(name); }
+      if (this.living) {
+        // walking legs: the stride follows the distance actually covered, so feet don't slide
+        const walking = e.moving && this.sim.phase === 'battle' && v.m.legs;
+        if (walking) { v.walk += moved * 7.5; v.swing = Math.sin(v.walk) * 0.6; }
+        else v.swing *= Math.exp(-dt * 10);
+        g.position.y = walking ? Math.abs(Math.sin(v.walk)) * 0.035 : 0;
+      } else {
+        const hk = (now - v.poseAt) / 180;
+        if (hk < 1) g.position.y += Math.sin(hk * Math.PI) * 0.15;
+      }
       if (v.celebrate) g.position.y = Math.abs(Math.sin(now * 0.011 + e.id * 1.7)) * 0.45;
     }
     if (!e.dead && !e.down) {
@@ -535,6 +550,14 @@ export class View {
     this.batches.push(this.batches.get(v.key + ':m', m.main, this.plasticMat), pm, mainC, id);
     if (m.dark) this.batches.push(this.batches.get(v.key + ':d', m.dark, this.plasticMat), pm, darkC, id);
     if (m.accent) this.batches.push(this.batches.get(v.key + ':a', m.accent, this.accentMat), pm, accC, id);
+    if (m.legs) {
+      for (let i = 0; i < m.legs.length; i++) {
+        const L = m.legs[i];
+        this.legM.makeRotationZ(i ? -v.swing : v.swing).setPosition(L.hip[0], L.hip[1], L.hip[2]);
+        this.tmpM.multiplyMatrices(pm, this.legM);
+        this.batches.push(this.batches.get(v.key + ':L' + i, L.geo, this.plasticMat), this.tmpM, mainC, id);
+      }
+    }
     if (v.turret) {
       const tm = v.turret.matrixWorld;
       this.batches.push(this.batches.get(v.key + ':tm', m.turret.main, this.plasticMat), tm, mainC, id);

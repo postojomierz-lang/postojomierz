@@ -16,7 +16,7 @@ const DT = 1 / RULES.tickRate;
 
 // ---------------------------------------------------------------- settings (per-browser convenience)
 const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal', source: 'random', library: LIBRARY[0].id,
-  useClaude: false, claudeMode: 'text', apiKey: '', model: 'claude-opus-5', prompt: '' };
+  useClaude: false, claudeMode: 'text', living: 'toy', apiKey: '', model: 'claude-opus-5', prompt: '' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
 const save = () => { try { localStorage.setItem('plasticfront3d', JSON.stringify(settings)); } catch {} };
 
@@ -75,6 +75,7 @@ async function newGame(files = {}, layout = null) {
   game.sim = new Sim(map, specs, seed);
   game.human = 0; game.diff = settings.diff; game.acc = 0; game.undo = []; game.speed = 1;
   view.setQuality(settings.quality);
+  view.setLiving(settings.living === 'living');
   view.load(game.sim, 0);
   sounds.enabled = settings.sound;
   game.thumbs = renderThumbnails(Object.keys(CATALOG).filter(k => k !== 'hq' && CATALOG[k].group !== 'hidden'), TEAM_COLORS[humanColor].id);
@@ -347,7 +348,7 @@ colorSel.innerHTML = TEAM_COLORS.map(c => `<option value="${c.id}">${c.name}</op
 function openSetup() {
   $('optTeams').value = settings.teams; colorSel.value = settings.color; $('optTheme').value = settings.theme;
   $('optDiff').value = settings.diff; $('optQuality').value = settings.quality; $('optSound').checked = settings.sound;
-  $('optSource').value = settings.source; $('optLibrary').value = settings.library;
+  $('optSource').value = settings.source; $('optLibrary').value = settings.library; $('optLiving').value = settings.living;
   $('optUseClaude').checked = settings.useClaude; $('optClaudeMode').value = settings.claudeMode;
   $('optKey').value = settings.apiKey; $('optModel').value = settings.model; $('optPrompt').value = settings.prompt;
   if (settings.useClaude) $('advanced').open = true;
@@ -357,7 +358,7 @@ function openSetup() {
 function readSetup() {
   settings.teams = +$('optTeams').value; settings.color = colorSel.value; settings.theme = $('optTheme').value;
   settings.diff = $('optDiff').value; settings.quality = $('optQuality').value; settings.sound = $('optSound').checked;
-  settings.source = $('optSource').value; settings.library = $('optLibrary').value;
+  settings.source = $('optSource').value; settings.library = $('optLibrary').value; settings.living = $('optLiving').value;
   settings.useClaude = $('optUseClaude').checked; settings.claudeMode = $('optClaudeMode').value;
   settings.apiKey = $('optKey').value.trim(); settings.model = $('optModel').value; settings.prompt = $('optPrompt').value.trim().slice(0, 600);
   save();

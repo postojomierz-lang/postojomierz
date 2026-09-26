@@ -56,7 +56,7 @@ function pose(type) {
   const C = (x, y, r, z = 0) => ({ t: 'c', x, y, z, r });
   const Hm = (x, y) => ({ t: 'h', x, y });
   const Bx = (x, y, w, h, d, z = 0) => ({ t: 'b', x, y, w, h, d, z });
-  const legs = [L(-5, -2, -3, -20, 5.8, -3.5), L(6, -2, 2, -20, 5.8, 3.5)];
+  const legs = [Object.assign(L(-5, -2, -3, -20, 5.8, -3.5), { leg: 0 }), Object.assign(L(6, -2, 2, -20, 5.8, 3.5), { leg: 1 })];
   const kneelLegs = [L(-7, -2, -2, -12, 5.8, -3.5), L(-7, -2, -16, -2, 5.2, -3.5), L(-2, -12, 7, -12, 5.8, 3.5), L(7, -12, 7, -2, 5.8, 3.5)];
   const body = [L(-1, -20, 0, -34, 11.5), C(1, -39, 5.6), Hm(1, -41), Bx(-7, -30, 5, 9, 9)];   // torso, head, helmet, backpack
   const rifle = (x1, y1, x2, y2, z) => [L(x1, y1, x2, y2, 3.2, z), Bx(x1 + 2, y1 + 1.5, 7, 4, 3, z)];
@@ -69,7 +69,7 @@ function pose(type) {
       L(1, -24, 10, -25, 4.6, 6, 3), L(1, -24, 6, -23, 4.6, -6, 2), ...rifle(-3, -24, 24, -26, 3)];
     case 'pose-prone': return [L(-24, -3, -8, -5, 5.8, -5, -2), L(-24, -3, -8, -5, 5.8, 5, 2), L(-9, -6, 6, -8, 11.5), C(11, -11, 5.6), Hm(11, -13), Bx(-4, -12, 8, 4, 8),
       L(4, -8, 12, -9, 4.2, -6, -1), L(4, -8, 13, -9, 4.2, 6, 1), ...rifle(4, -10, 30, -11, 0)];
-    case 'pose-drag': return [L(-5, -2, -7, -20, 5.8, -3.5), L(7, -2, 0, -20, 5.8, 3.5), L(-4, -20, -9, -33, 11.5), C(-10, -38, 5.6), Hm(-10, -40), Bx(-15, -29, 5, 9, 9),
+    case 'pose-drag': return [Object.assign(L(-5, -2, -7, -20, 5.8, -3.5), { leg: 0 }), Object.assign(L(7, -2, 0, -20, 5.8, 3.5), { leg: 1 }), L(-4, -20, -9, -33, 11.5), C(-10, -38, 5.6), Hm(-10, -40), Bx(-15, -29, 5, 9, 9),
       L(-8, -30, 6, -21, 4.6, 6, 5), L(-8, -30, 6, -21, 4.6, -6, -5), L(-14, -20, -6, -38, 3.2, -7)];
     case 'pose-bazooka-stand': return [...legs, ...body, L(0, -31, 7, -35, 4.6, 6, 4), L(0, -31, 8, -34, 4.6, -6, 2), L(-15, -37, 20, -40, 7.4, 5), C(20, -40, 4.6, 5)];
     case 'pose-manpads-kneel': return [...kneelLegs, L(-2, -12, 0, -26, 11.5), C(2, -31, 5.6), Hm(2, -33), Bx(-8, -22, 5, 8, 9),
@@ -86,19 +86,28 @@ function pose(type) {
   }
   return [];
 }
-function buildSoldier(type) {
-  const b = new Builder();
+// living = "Living soldiers" mode: no plastic base, legs are separate parts that swing when walking
+function buildSoldier(type, living = false) {
+  const b = new Builder(), legs = [], lift = living ? 0 : 0.05;
   for (const p of pose(type)) {
-    if (p.t === 'l') b.limb([p.x1 * S, -p.y1 * S + 0.05, p.z1 * S], [p.x2 * S, -p.y2 * S + 0.05, p.z2 * S], p.w / 2 * S);
-    else if (p.t === 'c') b.sphere(p.r * S, { p: [p.x * S, -p.y * S + 0.05, p.z * S] });
-    else if (p.t === 'b') b.box(p.w * S, p.h * S, p.d * S, { p: [p.x * S, -p.y * S + 0.05, p.z * S] }, 0.01);
+    if (p.t === 'l' && living && p.leg !== undefined) {
+      const hip = [p.x2 * S, -p.y2 * S + lift, p.z2 * S], lb = new Builder();
+      lb.limb([p.x1 * S - hip[0], -p.y1 * S + lift - hip[1], p.z1 * S - hip[2]], [0, 0, 0], p.w / 2 * S);
+      legs.push({ geo: lb.done().main, hip });
+      continue;
+    }
+    if (p.t === 'l') b.limb([p.x1 * S, -p.y1 * S + lift, p.z1 * S], [p.x2 * S, -p.y2 * S + lift, p.z2 * S], p.w / 2 * S);
+    else if (p.t === 'c') b.sphere(p.r * S, { p: [p.x * S, -p.y * S + lift, p.z * S] });
+    else if (p.t === 'b') b.box(p.w * S, p.h * S, p.d * S, { p: [p.x * S, -p.y * S + lift, p.z * S] }, 0.01);
     else {
-      b.add(new THREE.SphereGeometry(7.4 * S, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), { p: [p.x * S, -p.y * S + 0.05, 0], s: [1, 0.82, 1] });
-      b.cyl(9.2 * S, 9.4 * S, 0.02, { p: [p.x * S, -p.y * S + 0.05, 0] }, 18);
+      b.add(new THREE.SphereGeometry(7.4 * S, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), { p: [p.x * S, -p.y * S + lift, 0], s: [1, 0.82, 1] });
+      b.cyl(9.2 * S, 9.4 * S, 0.02, { p: [p.x * S, -p.y * S + lift, 0] }, 18);
     }
   }
-  b.cyl(0.29, 0.31, 0.05, { p: [0, 0.025, 0] }, 24);    // the plastic base
-  return b.done();
+  if (!living) b.cyl(0.29, 0.31, 0.05, { p: [0, 0.025, 0] }, 24);    // the plastic base
+  const out = b.done();
+  if (legs.length) out.legs = legs;
+  return out;
 }
 
 // ---------------------------------------------------------------------------------
@@ -465,6 +474,12 @@ export function model(type, seed = 0) {
   const k = modelKey(type, seed);
   if (cache.has(k)) return cache.get(k);
   let m;
+  if (type.startsWith('living:')) {
+    const t = type.slice(7);
+    m = buildSoldier(t === 'para' ? 'rifleman' : t, true);
+    cache.set(k, m);
+    return m;
+  }
   switch (type) {
     case 'rifleman': case 'mg': case 'bazooka': case 'sniper': case 'grenadier': case 'officer': case 'manpads': m = buildSoldier(type); break;
     case 'para': m = buildSoldier('rifleman'); break;
