@@ -11,6 +11,7 @@ import { aiDeploy, aiOrders } from './sim/ai.js';
 import { View, renderThumbnails } from './render/view.js';
 import { modelsReady, loadLiving } from './render/models.js';
 import { Sounds } from './audio.js';
+import { Host, Client, cleanCode } from './net.js';
 
 const $ = id => document.getElementById(id);
 const DT = 1 / RULES.tickRate;
@@ -30,20 +31,20 @@ try {
   throw e;
 }
 const sounds = new Sounds();
-const game = { sim: null, human: 0, seed: 0, diff: 'normal', tool: null, rot: 0, speed: 1, acc: 0, undo: [], thumbs: null, group: 'infantry', mode: 'play' };
+const game = { sim: null, human: 0, seed: 0, diff: 'normal', tool: null, rot: 0, speed: 1, acc: 0, undo: [], thumbs: null, group: 'infantry', mode: 'play', net: null };
 
 // ---------------------------------------------------------------- new game
-// files: { photo, mapFile, drawing } picked in the setup screen; layout: a map to play directly
-async function newGame(files = {}, layout = null) {
-  await modelsReady;
-  const n = +settings.teams;
-  const seed = game.seed = (Math.random() * 2 ** 31) >>> 0;
+const busy = (lines) => {
+  let i = 0; $('loadingText').textContent = lines[0]; $('loading').hidden = false;
+  const timer = setInterval(() => { $('loadingText').textContent = lines[++i % lines.length]; }, 2500);
+  return () => { clearInterval(timer); $('loading').hidden = true; };
+};
+
+// Works out the battlefield from the setup screen. files: { photo, mapFile, drawing }.
+// Returns everything every player needs to build the very same map: { n, seed, layout, theme }.
+async function prepareMap(files = {}, layout = null, n = +settings.teams) {
+  const seed = (Math.random() * 2 ** 31) >>> 0;
   const blank = makeMap({ teams: n, seed });
-  const busy = (lines) => {
-    let i = 0; $('loadingText').textContent = lines[0]; $('loading').hidden = false;
-    const timer = setInterval(() => { $('loadingText').textContent = lines[++i % lines.length]; }, 2500);
-    return () => { clearInterval(timer); $('loading').hidden = true; };
-  };
   if (!layout && settings.useClaude) {
     if (!settings.apiKey) toast('Add an Anthropic API key to let Claude design the battlefield — using a random one.', false, true);
     else if (settings.claudeMode === 'photo' && !files.photo) toast('Pick a photo for Claude first — using a random battlefield.', false, true);
@@ -69,13 +70,17 @@ async function newGame(files = {}, layout = null) {
       finally { done(); }
     }
   }
-  const map = makeMap({ teams: n, theme: settings.source === 'random' && !layout ? settings.theme || null : null, seed, layout });
-  game.mode = 'play';
-  const humanColor = TEAM_COLORS.findIndex(c => c.id === settings.color);
-  const colors = [humanColor, ...TEAM_COLORS.map((_, i) => i).filter(i => i !== humanColor)].slice(0, n);
-  const specs = colors.map((c, i) => ({ name: i === 0 ? 'You' : TEAM_COLORS[c].name + ' army', color: c, human: i === 0 }));
-  game.sim = new Sim(map, specs, seed);
-  game.human = 0; game.diff = settings.diff; game.acc = 0; game.undo = []; game.speed = 1;
+  const theme = settings.source === 'random' && !layout ? settings.theme || null : null;
+  return { n, seed, layout, theme };
+}
+
+// armies: [{ name, color (index), human }]; me: which of them this browser plays
+async function beginGame({ n, seed, layout, theme, armies, me, diff }) {
+  await modelsReady;
+  const map = makeMap({ teams: n, theme, seed, layout });
+  game.mode = 'play'; game.seed = seed;
+  game.sim = new Sim(map, armies, seed);
+  game.human = me; game.diff = diff; game.acc = 0; game.undo = []; game.speed = 1;
   view.setQuality(settings.quality);
   let living = settings.living === 'living';
   if (living) {
@@ -84,15 +89,26 @@ async function newGame(files = {}, layout = null) {
     if (!living) toast('Could not load Living soldiers (they need the online version) — using toy style.', false, true);
   }
   view.setLiving(living);
-  view.load(game.sim, 0);
+  view.load(game.sim, me);
   sounds.enabled = settings.sound;
-  game.thumbs = renderThumbnails(Object.keys(CATALOG).filter(k => k !== 'hq' && CATALOG[k].group !== 'hidden'), TEAM_COLORS[humanColor].id);
+  game.thumbs = renderThumbnails(Object.keys(CATALOG).filter(k => k !== 'hq' && CATALOG[k].group !== 'hidden'), TEAM_COLORS[armies[me].color].id);
   deployAI();
+  markDeploy();
   buildPalette();
   setTool(null);
   refresh();
   if (map.title) { toast(map.title, true); if (map.briefing) toast(map.briefing, false, true); }
   else toast(`Round 1 — build your base`, true);
+}
+
+// a single-player game against the computer
+async function newGame(files = {}, layout = null) {
+  leaveOnline();
+  const setup = await prepareMap(files, layout);
+  const humanColor = TEAM_COLORS.findIndex(c => c.id === settings.color);
+  const colors = [humanColor, ...TEAM_COLORS.map((_, i) => i).filter(i => i !== humanColor)].slice(0, setup.n);
+  const armies = colors.map((c, i) => ({ name: i === 0 ? 'You' : TEAM_COLORS[c].name + ' army', color: c, human: i === 0 }));
+  await beginGame({ ...setup, armies, me: 0, diff: settings.diff });
 }
 
 function deployAI() {
@@ -119,11 +135,13 @@ function onEvent(ev) {
   const sim = game.sim;
   if (ev.t === 'eliminated') {
     const t = sim.teams[ev.team];
-    toast(t.human ? 'Your headquarters has fallen!' : `${t.name} is out!`, true);
-    if (t.human && sim.phase !== 'over') toast('You can keep watching — the remaining armies fight on', false, true);
+    const mine = t.id === game.human;
+    toast(mine ? 'Your headquarters has fallen!' : `${t.name} is out!`, true);
+    if (mine && sim.phase !== 'over') toast('You can keep watching — the remaining armies fight on', false, true);
   } else if (ev.t === 'deploy') {
     game.undo = [];
     deployAI();
+    markDeploy();
     toast(`Round ${sim.round} — reinforcements arrived`, true);
     setTool(null);
     refresh();
@@ -188,7 +206,10 @@ function refresh() {
   $('aircraft').textContent = `${me.aircraft}/${RULES.aircraftPerRound}`;
   $('build').hidden = sim.phase !== 'deploy' || !me.alive;
   $('speed').hidden = sim.phase !== 'battle';
-  $('btnUndo').disabled = !game.undo.length;
+  $('btnUndo').disabled = !game.undo.length || !editable();
+  const waiting = !!game.net && game.net.sentRound === sim.round && sim.phase === 'deploy';
+  $('btnStart').disabled = waiting;
+  $('btnStart').textContent = game.net ? (waiting ? 'Waiting for the others…' : 'Ready ✓') : 'Start battle ▶';
   for (const b of $('speed').children) b.classList.toggle('on', +b.dataset.speed === game.speed);
   // army list
   const pickable = sim.phase === 'deploy' && me.alive;
@@ -199,7 +220,7 @@ function refresh() {
     const order = !t.alive ? '' : t.stance === 'defend' ? '🛡 defending' : foc === game.human && t.id !== game.human ? '⚔ attacking <b>you</b>' : `⚔ → ${foc >= 0 ? sim.teams[foc].name : 'nearest'}`;
     const cls = [t.alive ? '' : 'out', pickable && t.alive && t.id !== game.human ? 'pick' : '', me.focus === t.id ? 'focus' : ''].join(' ');
     return `<div class="army ${cls}" data-team="${t.id}" ${pickable && t.id !== game.human && t.alive ? 'title="Make this army your main target"' : ''}><span class="sw" style="background:${TEAM_COLORS[t.color].main}"></span>
-      <span class="nm">${t.name}</span><span class="v">${t.alive ? units + ' units' : 'defeated'}</span>
+      <span class="nm">${t.id === game.human ? 'You' : t.name}</span><span class="v">${t.alive ? units + ' units' : 'defeated'}</span>
       <span class="bar"><i style="width:${Math.round(f * 100)}%"></i></span>${order ? `<span class="tg ${foc === game.human && t.id !== game.human && t.stance !== 'defend' ? 'me' : ''}">${order}</span>` : ''}</div>`;
   }).join('');
   if ($('armies').dataset.last !== rows) { $('armies').innerHTML = rows; $('armies').dataset.last = rows; }
@@ -237,9 +258,14 @@ function refreshOrders() {
   }
   view.setArrow(arrow);
 }
+// can this player still change their deployment? (online: not after pressing Ready)
+function editable() {
+  const sim = game.sim;
+  return !!sim && game.mode === 'play' && sim.phase === 'deploy' && !(game.net && game.net.sentRound === sim.round);
+}
 function setOrders(o) {
   const sim = game.sim;
-  if (!sim || sim.phase !== 'deploy') return;
+  if (!editable()) return;
   sim.setOrders(game.human, o); flushEvents(); sounds.play('place'); refresh();
 }
 $('stance').onclick = e => { const st = e.target.closest('[data-stance]'); if (st) setOrders({ stance: st.dataset.stance }); };
@@ -311,7 +337,7 @@ canvas.addEventListener('pointerdown', e => {
   sounds.unlock();
   downAt = { x: e.clientX, y: e.clientY };
   const sim = game.sim;
-  if (e.button === 0 && game.tool && sim && sim.phase === 'deploy') {
+  if (e.button === 0 && game.tool && editable()) {
     view.controls.enabled = false;
     painting = true;
     const c = cellUnder(e);
@@ -323,7 +349,7 @@ window.addEventListener('pointerup', () => {
 });
 canvas.addEventListener('pointermove', e => {
   const sim = game.sim;
-  if (!sim || sim.phase !== 'deploy' || !game.tool) return;
+  if (!editable() || !game.tool) return;
   const c = cellUnder(e);
   if (!c) { view.hideGhost(); return; }
   const err = sim.canPlace(game.human, game.tool, c.cx, c.cy, game.rot);
@@ -339,7 +365,7 @@ canvas.addEventListener('contextmenu', e => {
   const sim = game.sim;
   if (game.mode !== 'play') return;
   if (game.tool) { setTool(null); return; }
-  if (sim && sim.phase === 'deploy') {
+  if (editable()) {
     const id = view.entityAt(e.clientX, e.clientY, x => x.team === game.human && x.placedRound === sim.round && x.def.cls !== 'hq');
     if (id && sim.sell(game.human, id)) { game.undo = game.undo.filter(u => u !== id); flushEvents(); refresh(); }
   }
@@ -347,6 +373,7 @@ canvas.addEventListener('contextmenu', e => {
 
 function undo() {
   const sim = game.sim;
+  if (!editable()) return;
   while (game.undo.length) {
     const id = game.undo.pop();
     if (sim.sell(game.human, id)) { flushEvents(); break; }
@@ -356,7 +383,7 @@ function undo() {
 $('btnUndo').onclick = undo;
 // let the computer spend the rest of our supply on a sensible army
 $('btnAuto').onclick = () => {
-  const sim = game.sim; if (!sim || sim.phase !== 'deploy') return;
+  const sim = game.sim; if (!editable()) return;
   const before = new Set(sim.ents.map(e => e.id));
   aiDeploy(sim, game.human, (Math.random() * 1e9) | 0);
   for (const e of sim.ents) if (!before.has(e.id)) game.undo.push(e.id);
@@ -366,6 +393,11 @@ $('btnAuto').onclick = () => {
 function startBattle() {
   const sim = game.sim;
   if (!sim || sim.phase !== 'deploy') return;
+  if (game.net) { submitOrders(); return; }
+  launchBattle();
+}
+function launchBattle() {
+  const sim = game.sim;
   setTool(null);
   sim.startBattle(); flushEvents();
   game.acc = 0;
@@ -425,6 +457,7 @@ $('dlgSetup').addEventListener('close', () => {
   readSetup();
   sounds.unlock();
   if ($('dlgSetup').returnValue === 'editor') { openEditor(); return; }
+  if ($('dlgSetup').returnValue === 'online') { if (!game.net) openOnline(); return; }
   newGame({ photo: $('optPhoto').files[0] || null, mapFile: $('optMapFile').files[0] || null, drawing: $('optDrawing').files[0] || null });
 });
 $('dlgSetup').addEventListener('cancel', e => { if (!game.sim) e.preventDefault(); });
@@ -467,8 +500,235 @@ function openEditor() {
 $('btnMenu').onclick = openSetup;
 $('btnHelp').onclick = () => $('dlgHelp').showModal();
 
+// ---------------------------------------------------------------- online play
+// The battle simulation is deterministic, so players only exchange their deployment orders.
+// Each round everyone places pieces on their own copy of the game (the others cannot see them yet),
+// presses Ready and sends the list to the host. When all orders are in, the host sends everyone the
+// full set; each browser takes back its own draft pieces and places everybody's pieces in the same
+// order, so all copies stay identical, and the battle plays out the same way everywhere.
+const online = { host: null, client: null, players: [], myName: '', beat: 0 };   // lobby state
+// heartbeat: players say "still here" every few seconds; the host drops anyone silent for a minute
+// (browsers slow down timers in background tabs, so be patient; quicker in local test mode)
+const BEAT_MS = 4000, SILENT_MS = new URLSearchParams(location.search).has('localnet') ? 30000 : 60000;
+
+function markDeploy() {
+  const net = game.net, sim = game.sim;
+  if (!net || !sim) return;
+  net.deploy = { round: sim.round, nextId: sim.nextId, hash: sim.stateHash() };
+}
+
+function submitOrders() {
+  const net = game.net, sim = game.sim, me = game.human;
+  if (net.sentRound === sim.round) return;
+  net.sentRound = sim.round;
+  const t = sim.teams[me];
+  const placements = sim.orders.filter(o => !o.kind && o.round === sim.round && o.team === me).map(o => [o.type, o.cx, o.cy, o.rot]);
+  const msg = { t: 'orders', round: sim.round, team: me, hash: net.deploy.hash, placements, focus: t.focus, stance: t.stance };
+  setTool(null); refresh();
+  if (t.alive) toast('Ready — waiting for the other players…');
+  if (net.role === 'host') hostOrders(msg); else online.client.send(msg);
+}
+
+// host: collect orders; when every connected player has sent theirs, start the round for everybody
+function hostOrders(msg) {
+  const net = game.net;
+  net.pending.set(msg.round + ':' + msg.team, msg);
+  tryGo();
+}
+function tryGo() {
+  const net = game.net, sim = game.sim;
+  if (!net || net.role !== 'host' || sim.phase !== 'deploy' || net.sentRound !== sim.round) return;
+  const round = sim.round, orders = [], missing = [];
+  for (const t of sim.teams) {
+    if (!t.human) continue;
+    const m = net.pending.get(round + ':' + t.id);
+    if (m) orders.push({ team: t.id, placements: m.placements, focus: m.focus, stance: m.stance });
+    else if (net.dropped.has(t.id)) orders.push({ team: t.id, ai: true });            // left the game: the computer takes over
+    else missing.push(t.name);
+  }
+  if (missing.length) { online.host.broadcast({ t: 'status', text: 'Waiting for ' + missing.join(', ') }); return; }
+  const hashes = new Set([...net.pending.entries()].filter(([k]) => k.startsWith(round + ':')).map(([, m]) => m.hash));
+  const go = { t: 'go', round, orders, desync: hashes.size > 1 };
+  for (const k of [...net.pending.keys()]) if (k.startsWith(round + ':')) net.pending.delete(k);
+  online.host.broadcast(go);
+  applyGo(go);
+}
+
+// everybody: replace our draft with the full set of orders and start the battle
+function applyGo(go) {
+  const net = game.net, sim = game.sim;
+  if (!net || sim.round !== go.round || sim.phase !== 'deploy') return;
+  if (go.desync) toast('Warning: the games got out of step — results may differ between players.', false, true);
+  for (const e of [...sim.ents]) {
+    if (e.team === game.human && e.placedRound === sim.round && !e.free && !e.dead && e.def.cls !== 'hq') sim.sell(game.human, e.id);
+  }
+  sim.nextId = net.deploy.nextId;
+  game.undo = [];
+  for (const o of go.orders) {
+    const t = sim.teams[o.team];
+    if (o.ai) {
+      t.human = false; t.name = t.name.replace(/ \(computer\)$/, '') + ' (computer)';
+      aiDeploy(sim, o.team, game.seed); aiOrders(sim, o.team, game.seed);
+      continue;
+    }
+    for (const [type, cx, cy, rot] of o.placements) {
+      const r = sim.place(o.team, type, cx, cy, rot);
+      if (r.error) console.warn('online: could not place', type, 'for', t.name, r.error);
+    }
+    sim.setOrders(o.team, { focus: o.focus, stance: o.stance });
+  }
+  flushEvents();
+  launchBattle();
+}
+
+function leaveOnline() {
+  clearInterval(online.beat);
+  if (online.host) online.host.close();
+  if (online.client) online.client.close();
+  online.host = online.client = null; online.players = [];
+  game.net = null;
+}
+
+// ---- lobby screen
+function lobbyRender() {
+  $('lobby').hidden = !(online.host || online.client);
+  $('netPlayers').innerHTML = online.players.map((p, i) => `<div class="army"><span class="sw" style="background:${TEAM_COLORS[p.color].main}"></span>
+    <span class="nm">${escapeHtml(p.name)}${i === 0 ? ' (host)' : ''}${p.me ? ' — you' : ''}</span><span class="v">army ${i + 1}</span></div>`).join('');
+  $('btnNetStart').hidden = !online.host;
+  $('btnNetStart').disabled = online.players.length < 2;
+  const n = Math.max(+settings.teams, online.players.length);
+  $('netInfo').textContent = online.host
+    ? `${online.players.length} player${online.players.length > 1 ? 's' : ''} · ${n} armies (${Math.max(0, n - online.players.length)} played by the computer) · map and rules from your setup screen`
+    : 'The host picks the map and starts the game.';
+}
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function myName() { const n = $('netName').value.trim().slice(0, 16) || 'Player'; settings.netName = n; save(); return n; }
+function preferredColor() { return Math.max(0, TEAM_COLORS.findIndex(c => c.id === settings.color)); }
+
+async function hostGame() {
+  leaveOnline();
+  $('netStatus').textContent = 'Opening a room…';
+  const host = new Host({
+    onHello: (id, msg) => {
+      if (game.net || online.players.length >= 8) { host.send(id, { t: 'full' }); host.kick(id); return; }
+      online.players.push({ id, name: String(msg.name || 'Player').slice(0, 16), color: +msg.color || 0, seen: Date.now() });
+      lobbySync();
+    },
+    onMessage: (id, msg) => {
+      const p = online.players.find(p => p.id === id); if (!p) return;
+      p.seen = Date.now();
+      if (msg.t === 'orders' && game.net && p.team === msg.team) hostOrders(msg);
+    },
+    onLeave: id => playerLeft(id),
+  });
+  const playerLeft = id => {
+    const p = online.players.find(p => p.id === id); if (!p) return;
+    if (!game.net) { online.players = online.players.filter(q => q !== p); lobbySync(); return; }
+    if (game.net.dropped.has(p.team)) return;
+    p.gone = true;
+    game.net.dropped.add(p.team);
+    toast(`${p.name} left the game — the computer takes over their army`, false, true);
+    host.broadcast({ t: 'left', name: p.name });
+    tryGo();
+  };
+  online.beat = setInterval(() => {
+    for (const p of [...online.players]) if (p.id && !p.gone && Date.now() - p.seen > SILENT_MS) { p.gone = true; host.kick(p.id); playerLeft(p.id); }
+  }, BEAT_MS);
+  try {
+    const code = await host.open();
+    online.host = host;
+    online.players = [{ id: null, name: myName(), color: preferredColor(), me: true }];
+    $('netRoom').textContent = code;
+    $('netStatus').textContent = 'Share the code or the invite link with your friends.';
+    lobbyRender();
+  } catch (e) { $('netStatus').textContent = 'Could not open a room: ' + (e.message || e.type || e); host.close(); }
+}
+function lobbySync() {
+  online.players.forEach((p, i) => { if (p.id) online.host.send(p.id, { t: 'lobby', players: online.players.map(q => ({ name: q.name, color: q.color })), you: i }); });
+  lobbyRender();
+}
+
+async function joinGame(code) {
+  leaveOnline();
+  code = cleanCode(code);
+  if (code.length !== 5) { $('netStatus').textContent = 'The room code has 5 letters.'; return; }
+  $('netStatus').textContent = 'Connecting…';
+  const client = new Client({
+    onMessage: msg => clientMessage(msg),
+    onClose: () => {
+      if (online.client !== client) return;
+      online.client = null;
+      if (game.net) {
+        // play on alone: every other player's army is taken over by the computer
+        for (const t of game.sim.teams) if (t.id !== game.human) t.human = false;
+        game.net = null; refresh();
+        toast('Lost the connection to the host — the computer plays the other armies now.', false, true);
+      } else { $('netStatus').textContent = 'The host closed the room.'; online.players = []; lobbyRender(); }
+    },
+  });
+  try {
+    await client.join(code, { name: myName(), color: preferredColor() });
+    online.client = client;
+    online.beat = setInterval(() => client.send({ t: 'ping' }), BEAT_MS);
+    $('netRoom').textContent = code;
+    $('netStatus').textContent = 'Connected — waiting for the host to start.';
+    lobbyRender();
+  } catch (e) { $('netStatus').textContent = 'Could not join: ' + (e.message || e.type || e); client.close(); }
+}
+
+async function clientMessage(msg) {
+  if (msg.t === 'lobby') {
+    online.players = msg.players.map((p, i) => ({ ...p, me: i === msg.you }));
+    lobbyRender();
+  } else if (msg.t === 'full') {
+    $('netStatus').textContent = 'That game has already started or is full.';
+  } else if (msg.t === 'start') {
+    game.net = { role: 'client', sentRound: 0, deploy: null };
+    $('dlgOnline').close(); if ($('dlgSetup').open) $('dlgSetup').close('online');
+    await beginGame({ ...msg.setup, me: msg.you });
+    toast('Online game — you are ' + msg.setup.armies[msg.you].name, false, true);
+  } else if (msg.t === 'go') applyGo(msg);
+  else if (msg.t === 'status') { if (game.net && game.net.sentRound === game.sim.round) toast(msg.text); }
+  else if (msg.t === 'left') toast(`${msg.name} left the game — the computer takes over their army`, false, true);
+}
+
+async function startOnline() {
+  const host = online.host; if (!host || online.players.length < 2) return;
+  readSetup();
+  const n = Math.min(8, Math.max(+settings.teams, online.players.length));
+  const setup = await prepareMap({ photo: $('optPhoto').files[0] || null, mapFile: $('optMapFile').files[0] || null, drawing: $('optDrawing').files[0] || null }, null, n);
+  // colours: everyone keeps their favourite unless somebody earlier already took it
+  const used = new Set(), pick = c => { if (used.has(c)) c = TEAM_COLORS.findIndex((_, i) => !used.has(i)); used.add(c); return c; };
+  const armies = online.players.map((p, i) => { p.team = i; return { name: p.name, color: pick(p.color), human: true }; });
+  while (armies.length < n) { const c = pick(0); armies.push({ name: TEAM_COLORS[c].name + ' army (computer)', color: c, human: false }); }
+  const full = { ...setup, armies, diff: settings.diff };
+  online.players.forEach((p, i) => { if (p.id) host.send(p.id, { t: 'start', setup: full, you: i }); });
+  game.net = { role: 'host', sentRound: 0, deploy: null, pending: new Map(), dropped: new Set() };
+  $('dlgOnline').close(); if ($('dlgSetup').open) $('dlgSetup').close('online');
+  await beginGame({ ...full, me: 0 });
+  toast('Online game started — press Ready when your army is set', false, true);
+}
+
+function openOnline(code = '') {
+  $('netName').value = settings.netName || '';
+  if (code) $('netCode').value = code;
+  lobbyRender();
+  if (!$('dlgOnline').open) $('dlgOnline').showModal();
+}
+window.addEventListener('pagehide', () => leaveOnline());   // tell the others right away when the tab closes
+$('btnHost').onclick = () => hostGame();
+$('btnJoin').onclick = () => joinGame($('netCode').value);
+$('btnNetStart').onclick = () => startOnline();
+$('btnCopyLink').onclick = async () => {
+  const url = location.href.split(/[?#]/)[0] + '?join=' + $('netRoom').textContent;
+  try { await navigator.clipboard.writeText(url); $('netStatus').textContent = 'Invite link copied: ' + url; }
+  catch { $('netStatus').textContent = 'Invite link: ' + url; }
+};
+$('btnNetBack').onclick = () => { if (!game.net) leaveOnline(); $('dlgOnline').close(); if (!game.net) openSetup(); };
+
 // a first battlefield behind the setup screen
 openSetup();
+{ const code = new URLSearchParams(location.search).get('join'); if (code) { $('dlgSetup').close('online'); openOnline(cleanCode(code)); } }
 
 window.__game = game; window.__flush = flushEvents;
 window.__onEv = onEvent;

@@ -128,3 +128,8 @@ details.claude[open] summary { margin-bottom: 4px; }
   .hint, .brand + .sep, .stat:nth-of-type(2) { display: none; }
   .grid2 { grid-template-columns: 1fr; }
 }
+
+.netrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.netcode { width: 110px; text-transform: uppercase; letter-spacing: .2em; font-weight: 700; }
+.netroom { font: 22px "Black Ops One", Rubik, sans-serif; letter-spacing: .15em; color: var(--accent); }
+.netplayers { display: flex; flex-direction: column; gap: 4px; }

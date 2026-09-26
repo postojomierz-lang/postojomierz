@@ -67,3 +67,14 @@ Those figures live in `public/living-figures.js` (copied next to the game as
 `plastic-front/living-figures.js`) and are downloaded only when the option is switched on, so the
 main file stays smaller; opened straight from disk the game falls back to toy style. Every model has a detailed
 close-up version and a light one for distant units; the data is meshopt-compressed.
+
+## Online play
+
+"🌐 Play online" on the setup screen: one player hosts a room (5-letter code or invite link
+`...?join=CODE`), friends join, the host starts; armies nobody plays are commanded by the computer.
+Browsers connect peer-to-peer over WebRTC ([PeerJS](https://peerjs.com); its free public broker only
+introduces the players). Because the simulation is deterministic, players only exchange their
+deployment orders: each round everyone deploys, presses **Ready**, the host collects the orders and
+sends the full set back, every browser rebuilds the same deployment and plays the same battle.
+A player who leaves (or stays silent for a minute) is replaced by the computer. For testing on one
+machine add `?localnet` to the URL: tabs of one browser then talk over a BroadcastChannel.
