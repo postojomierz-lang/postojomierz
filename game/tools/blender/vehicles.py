@@ -476,8 +476,42 @@ def transport():
     m.box('dark', (0.4, -0.02, 0.37), (0.28, 0.4, 0.012), bevel=0.0)                     # jump door
     m.finish()
 
+def chute():
+    """paratrooper's canopy: 12 bulging gores with seams, a vent at the top, rigging lines and risers."""
+    m = Model('chute')
+    R, top = 0.75, 1.62
+    for i in range(12):
+        a0, a1 = i / 12 * 2 * math.pi, (i + 1) / 12 * 2 * math.pi
+        am = (a0 + a1) / 2
+        # one gore: a curved panel from the vent down to the skirt, bulging outwards between seams
+        pts = []
+        for k in range(7):
+            t = k / 6
+            phi = 0.18 + t * (math.pi / 2 - 0.35)
+            for a in (a0, am, a1):
+                bulge = 1.05 if a == am else 1.0
+                r = R * math.sin(phi) * bulge
+                pts.append((math.cos(a) * r, top - R * 0.62 * (1 - math.cos(phi)) * 1.6 + (0.015 if a == am else 0), math.sin(a) * r))
+        for k in range(6):
+            for j in range(2):
+                p00, p01 = pts[k * 3 + j], pts[k * 3 + j + 1]
+                p10, p11 = pts[(k + 1) * 3 + j], pts[(k + 1) * 3 + j + 1]
+                for tri in ((p00, p10, p11), (p00, p11, p01)):
+                    me = bpy.data.meshes.new('g'); me.from_pydata([G(*p) for p in tri], [], [(0, 1, 2)])
+                    o = bpy.data.objects.new('g', me); bpy.context.scene.collection.objects.link(o)
+                    sol = o.modifiers.new('s', 'SOLIDIFY'); sol.thickness = 0.012
+                    m.parts.setdefault('main', []).append(o)
+        edge = pts[18]
+        m.cyl('dark', (edge[0], edge[1], edge[2]), (0, 0.78, 0), 0.004, seg=5)                  # rigging line
+        m.cyl('main', pts[0], pts[18], 0.008, seg=6)                                           # seam tape
+    m.torus('main', (0, top - 0.01, 0), (0, 1, 0), R * math.sin(0.18), 0.012, seg=24)          # vent band
+    m.torus('main', (0, pts[18][1], 0), (0, 1, 0), R * math.sin(math.pi / 2 - 0.17), 0.012, seg=48)   # skirt band
+    for z in (-0.06, 0.06): m.cyl('dark', (0, 0.78, z), (0, 0.62, z * 1.6), 0.01, seg=6)        # risers to the harness
+    m.box('dark', (0, 0.78, 0), (0.05, 0.03, 0.14), bevel=0.005)                               # connector links
+    m.finish()
+
 MODELS = {'jeep': jeep, 'ambulance': ambulance, 'apc': apc, 'amphib': amphib, 'tank': tank, 'rockets': rockets,
-          'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'transport': transport}
+          'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'transport': transport, 'chute': chute}
 
 if __name__ == '__main__':
     only = sys.argv[1:]

@@ -335,10 +335,9 @@ export class View {
 
   muzzleOf(v) {
     let [f, h] = MUZZLE[v.e.type] || [0.4, 0.7];
-    if (v.pose === 'pose-prone') { if (this.living) { f = 0.75; h = 0.27; } else { f = 0.52; h = 0.12; } }   // plastic figure: the crawling army man
-    else if (v.pose === 'pose-kneel' && !this.living) { f = 0.59; h = 0.56; }
-    else if (v.pose === 'pose-manpads-kneel' && !this.living) { f = 0.29; h = 1.0; }
-    else if (v.pose === 'pose-kneel' || v.pose === 'pose-manpads-kneel') { h *= 0.7; }
+    if (v.pose === 'pose-prone') { f = 0.52; h = 0.12; }            // the crawling army man
+    else if (v.pose === 'pose-kneel') { f = 0.59; h = 0.56; }
+    else if (v.pose === 'pose-manpads-kneel') { f = 0.29; h = 1.0; }
     const y = v.turret ? v.tyaw : v.g.rotation.y;
     return new THREE.Vector3(v.g.position.x + Math.cos(y) * f, v.g.position.y + h, v.g.position.z - Math.sin(y) * f);
   }
