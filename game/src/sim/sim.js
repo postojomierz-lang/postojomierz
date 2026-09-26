@@ -531,8 +531,8 @@ export class Sim {
       const d = Math.sqrt(dx * dx + dz * dz) - (tgt.def.static ? Math.min(tgt.w, tgt.h) / 2 : 0);
       inRange = d <= w.range && d >= (w.minRange || 0) && this.los(e, tgt);
       if (inRange) {
-        const l = Math.sqrt(dx * dx + dz * dz) || 1;
-        e.dirX = dx / l; e.dirZ = dz / l;
+        // buildings and emplacements keep facing the way they were built
+        if (!def.static) { const l = Math.sqrt(dx * dx + dz * dz) || 1; e.dirX = dx / l; e.dirZ = dz / l; }
         if (e.cd <= 0 && e.salvo === 0) this.fire(e, tgt);
       }
     }

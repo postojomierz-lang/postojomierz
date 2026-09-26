@@ -393,7 +393,7 @@ export class View {
     g.position.set(this.wx(x), 0, this.wz(z));
     const air = isAir(def);
     let dyaw = 0;
-    if ((!def.static || def.cls !== 'fort') && !(e.dead && v.deadAt) && !(e.down && e.carrier === 0 && v.downAt)) {
+    if (!def.static && !(e.dead && v.deadAt) && !(e.down && e.carrier === 0 && v.downAt)) {
       const target = Math.atan2(-e.dirZ, e.dirX);
       let d = target - v.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
       const step = d * (1 - Math.exp(-dt * (def.cls === 'plane' ? 8 : def.vehicle ? 5 : 12)));
