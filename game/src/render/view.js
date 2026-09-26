@@ -16,7 +16,7 @@ import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
-  rifleman: [0.47, 0.81], para: [0.47, 0.81], officer: [0.53, 0.76], grenadier: [-0.2, 1.1], bazooka: [0.5, 0.78], manpads: [0.45, 1.05], medic: [0.22, 0.71],
+  rifleman: [0.47, 0.81], para: [0.47, 0.81], officer: [0.53, 0.76], grenadier: [-0.16, 1.1], bazooka: [0.47, 0.79], manpads: [0.32, 1.17], medic: [0.26, 0.82],
   sniper: [0.66, 0.76], mg: [0.9, 0.5], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.12, 1.6], tank: [2.05, 1.05], rockets: [0.2, 1.8],
   heli: [0.8, -0.25], fighter: [1.0, -0.1], attacker: [0.4, -0.2], bomber: [0, -0.35], transport: [-1, -0.35],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
@@ -337,6 +337,7 @@ export class View {
     let [f, h] = MUZZLE[v.e.type] || [0.4, 0.7];
     if (v.pose === 'pose-prone') { if (this.living) { f = 0.75; h = 0.27; } else { f = 0.52; h = 0.12; } }   // plastic figure: the crawling army man
     else if (v.pose === 'pose-kneel' && !this.living) { f = 0.59; h = 0.56; }
+    else if (v.pose === 'pose-manpads-kneel' && !this.living) { f = 0.29; h = 1.0; }
     else if (v.pose === 'pose-kneel' || v.pose === 'pose-manpads-kneel') { h *= 0.7; }
     const y = v.turret ? v.tyaw : v.g.rotation.y;
     return new THREE.Vector3(v.g.position.x + Math.cos(y) * f, v.g.position.y + h, v.g.position.z - Math.sin(y) * f);
