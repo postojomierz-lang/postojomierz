@@ -8,7 +8,10 @@
 #
 # Writes .cache/figures/blender/<pose>.stl (plus <pose>__<colour>.stl for painted parts),
 # which tools/figures.mjs turns into game data. Units are millimetres, Z up, facing -Y.
-import math, os, sys
+# Every pose is also built for "Living soldiers" mode (living-<pose>.stl): no plastic stands,
+# and standing figures get their legs as separate parts (living-<pose>-legL/R.stl) that the
+# game swings from the hip while walking; the hip pivots go to living-<pose>.json.
+import json, math, os, sys
 import bpy
 from mathutils import Vector, Quaternion
 
@@ -16,13 +19,16 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '.cac
 VOXEL = 0.17          # remesh resolution (mm): fine enough for straps, pouches and faces
 TARGET_TRIS = 16000   # before the game pipeline simplifies further
 
+LIVING = False     # set while building the "Living soldiers" versions
+
 def P(f, l, u):
     """pose sketch coordinates -> Blender: f forward, l to the figure's left, u up."""
     return Vector((-l, -f, u))
 
 class Fig:
     def __init__(self, name):
-        self.name = name
+        self.name = name = ('living-' + name) if LIVING else name
+        self.hips = []
         mb = bpy.data.metaballs.new(name + '_mb')
         mb.resolution = 0.16; mb.render_resolution = 0.16; mb.threshold = 0.6
         self.mb = mb
@@ -84,7 +90,8 @@ class Fig:
         self.box(c + Vector((0, 0, r * 1.05)), (r * 0.5, r * 0.5, r * 0.5), colour)       # fuse
         self.box(c + Vector((r * 0.45, 0, r * 0.5)), (r * 0.25, r * 0.5, r * 1.3), colour)  # spoon
         self.ring(c + Vector((-r * 0.5, 0, r * 1.15)), Vector((0, 1, 0)), r * 0.35, r * 0.07, colour)   # pin
-    def disc(self, f, l, r=3.0):                       # the little stand under a foot or knee
+    def disc(self, f, l, r=3.0):
+        if LIVING: return                              # living soldiers stand on their own feet                       # the little stand under a foot or knee
         self.cyl(P(f, l, 0), P(f, l, 1.1), r)
     def helmet(self, head, r=3.6, tilt=0.0):
         """round head under a steel pot with a brim; tilt leans it forward (radians)."""
@@ -139,6 +146,8 @@ class Fig:
         joined = join(objs)
         remesh_and_reduce(joined, VOXEL, TARGET_TRIS)
         export(joined, self.name)
+        if self.hips:
+            with open(os.path.join(OUT, self.name + '.json'), 'w') as fh: json.dump({'hips': self.hips}, fh)
         for colour, parts in self.paint.items():
             for o in parts: apply_transform(o)
             p = join(parts)
@@ -179,6 +188,17 @@ LEG, ARM, TORSO = 2.05, 1.6, 3.7
 def standing_legs(fig, stride=3.0, lean=0.0):
     hip = P(lean, 0, 17.5)
     fig.blob(hip, 1.8, 1.1, 1.0, 2.5)                                    # hips
+    if LIVING:
+        # straight legs as separate parts, swung from the hip by the game
+        for side, l in (('L', 2.1), ('R', -2.1)):
+            leg = Fig.__new__(Fig)
+            Fig.__init__(leg, 'x'); leg.name = f'{fig.name}-leg{side}'
+            top, knee, foot = P(lean, l, 18.2), P(lean, l, 9.5), P(lean, l, 1.6)
+            leg.limb(top, knee, LEG); leg.limb(knee, foot, LEG * 0.95)
+            boot(leg, knee, foot, P(1, 0, 0))
+            leg.finish()
+            fig.hips.append([lean, l, 17.0])
+        return hip
     for l, s in ((2.1, stride), (-2.1, -stride * 0.6)):
         knee, foot = P(lean * 0.5 + s * 0.45, l, 9.5), P(s, l, 1.6)
         fig.limb(P(lean, l, 17), knee, LEG); fig.limb(knee, foot, LEG * 0.95)
@@ -388,12 +408,68 @@ def lookout():
     fig.rifle(hip + P(-4, -4.6, -4), hip + P(-2.5, -4.6, 13))                 # rifle slung on the back
     fig.finish()
 
+def rifleman():
+    """walks with the rifle held ready across the body (Living soldiers mode; the toy set uses alo89's)."""
+    fig = Fig('rifleman')
+    hip = standing_legs(fig, 2.5)
+    chest = torso(fig, hip, 0.6)
+    head = chest + P(0.8, 0, 5.4)
+    fig.helmet(head, tilt=0.05)
+    butt, muzzle = chest + P(0.5, -3.2, -6.5), chest + P(14.5, -0.8, 0.5)
+    fig.rifle(butt, muzzle, sling=True)
+    arm(fig, chest + P(0, -4.3, 0), chest + P(1.2, -4.8, -4.5), butt + (muzzle - butt) * 0.28 + P(0, -0.8, -0.6))
+    arm(fig, chest + P(0, 4.3, 0), chest + P(5.0, 3.6, -3.8), butt + (muzzle - butt) * 0.62 + P(0, 0.9, -0.8))
+    fig.finish()
+
+def officer():
+    """points the way with his pistol, map case on the hip."""
+    fig = Fig('officer')
+    hip = standing_legs(fig, 2.6)
+    chest = torso(fig, hip, 0.4, pack=False)
+    head = chest + P(0.6, 0, 5.4)
+    fig.helmet(head)
+    hand = chest + P(11.5, -2.8, 1.5)
+    arm(fig, chest + P(0, -4.3, 0), chest + P(5.5, -4.2, 1.0), hand)
+    fig.box(hand + P(1.3, 0, 0.6), (3.2, 0.9, 1.1))                       # pistol slide
+    fig.box(hand + P(0.2, 0, -0.6), (1.0, 0.8, 2.0))                      # grip
+    arm(fig, chest + P(0, 4.3, 0), chest + P(1.5, 6.0, -4.5), hip + P(1.5, 4.0, 2.2))   # hand on the hip
+    fig.box(hip + P(-0.5, 4.3, -1.5), (3.6, 0.9, 3.0))                     # map case
+    fig.strap([hip + P(0.5, 4.2, 0.2), chest + P(2.5, -2.0, 1.0)], 0.3)
+    fig.cyl(chest + P(3.9, 0.9, -1.5), chest + P(3.9, 0.9, -3.6), 0.7)    # binoculars on the chest
+    fig.cyl(chest + P(3.9, -0.9, -1.5), chest + P(3.9, -0.9, -3.6), 0.7)
+    fig.finish()
+
+def sniper():
+    """aims a scoped rifle from the shoulder."""
+    fig = Fig('sniper')
+    hip = standing_legs(fig, 3.4)
+    chest = torso(fig, hip, 0.8)
+    head = chest + P(1.4, 0, 5.0)
+    fig.helmet(head, tilt=0.2)
+    butt, muzzle = chest + P(-1.5, -3.4, 2.2), chest + P(20, -2.2, 3.2)
+    fig.rifle(butt, muzzle, sling=False)
+    d = (muzzle - butt).normalized()
+    fig.cyl(butt + d * 6.5 + Vector((0, 0, 1.3)), butt + d * 12 + Vector((0, 0, 1.3)), 0.6)     # telescopic sight
+    for k in (6.3, 12.2): fig.cyl(butt + d * k + Vector((0, 0, 1.3)), butt + d * (k + 0.5) + Vector((0, 0, 1.3)), 0.8)
+    arm(fig, chest + P(0, -4.3, 0), chest + P(1.0, -5.5, -2.5), butt + d * 4.2 + P(0, -0.8, -0.8))
+    arm(fig, chest + P(0, 4.3, 0), chest + P(6.0, 3.2, -2.5), butt + d * 10.5 + P(0, 0.9, -0.9))
+    fig.finish()
+
 POSES = {'bazooka': lambda: bazooka(False), 'bazooka-stand': lambda: bazooka(True), 'manpads': lambda: manpads(False),
          'manpads-kneel': lambda: manpads(True), 'grenadier': lambda: grenadier(True), 'grenadier-idle': lambda: grenadier(False),
-         'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag, 'gunner': gunner, 'lookout': lookout}
+         'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag, 'gunner': gunner, 'lookout': lookout,
+         'rifleman': rifleman, 'officer': officer, 'sniper': sniper}
+TOY_ONLY = {'gunner', 'lookout'}                 # crews sit in emplacements
+LIVING_ONLY = {'rifleman', 'officer', 'sniper'}  # the toy set uses alo89's figures for these
 
 if __name__ == '__main__':
-    only = sys.argv[1:]
-    for name, build in POSES.items():
-        if only and name not in only: continue
-        clear(); build()
+    args = sys.argv[1:]
+    modes = [False, True]
+    if '--toy' in args: modes = [False]
+    if '--living' in args: modes = [True]
+    only = [a for a in args if not a.startswith('--')]
+    for LIVING in modes:
+        for name, build in POSES.items():
+            if only and name not in only: continue
+            if (LIVING and name in TOY_ONLY) or (not LIVING and name in LIVING_ONLY): continue
+            clear(); build()

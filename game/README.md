@@ -59,5 +59,8 @@ The vehicles and aircraft (jeep, ambulance, armored car, amphibian, tank, rocket
 fighter, ground-attack plane, bomber, transport) are modelled the same way by
 `tools/blender/vehicles.py`, and the headquarters, emplacements (MG nest with its gunner, field gun,
 AA gun, watchtower with a lookout) and fortifications (sandbags, brick walls, barbed wire, oil drums)
-by `tools/blender/structures.py`; all of them are packed into `src/data/vehicles.js`. Every model has a detailed
+by `tools/blender/structures.py`; all of them are packed into `src/data/vehicles.js`.
+The parachute is in `vehicles.py` too. For "Living soldiers" mode `army_men.py` builds a second set
+of figures without stands (including rifleman, officer and sniper poses), with the legs of standing
+figures as separate parts that the game swings from the hips while they walk. Every model has a detailed
 close-up version and a light one for distant units; the data is meshopt-compressed.
