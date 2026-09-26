@@ -57,12 +57,24 @@ function pose(type) {
   const Hm = (x, y) => ({ t: 'h', x, y });
   const Bx = (x, y, w, h, d, z = 0) => ({ t: 'b', x, y, w, h, d, z });
   const legs = [L(-5, -2, -3, -20, 5.8, -3.5), L(6, -2, 2, -20, 5.8, 3.5)];
+  const kneelLegs = [L(-7, -2, -2, -12, 5.8, -3.5), L(-7, -2, -16, -2, 5.2, -3.5), L(-2, -12, 7, -12, 5.8, 3.5), L(7, -12, 7, -2, 5.8, 3.5)];
   const body = [L(-1, -20, 0, -34, 11.5), C(1, -39, 5.6), Hm(1, -41), Bx(-7, -30, 5, 9, 9)];   // torso, head, helmet, backpack
   const rifle = (x1, y1, x2, y2, z) => [L(x1, y1, x2, y2, 3.2, z), Bx(x1 + 2, y1 + 1.5, 7, 4, 3, z)];
   switch (type) {
     case 'rifleman': return [...legs, ...body, L(-1, -31, 10, -31, 4.6, 6, 3), L(-1, -31, 6, -29, 4.6, -6, 2), ...rifle(-4, -31, 24, -33, 3)];
     case 'officer': return [...legs, ...body, L(0, -32, 16, -39, 4.6, 6, 7), C(17, -40, 2.6, 7), L(-1, -30, -6, -24, 4.6, -6), L(-6, -24, -2, -21, 4, -6, -5), Bx(3, -26, 4, 3, 5, -6)];
     case 'grenadier': return [...legs, ...body, L(-1, -32, -9, -45, 4.6, 6), C(-10, -48, 3.8, 6), L(1, -30, 11, -27, 4.6, -6, -3), ...rifle(4, -27, 16, -12, -4)];
+    // extra poses used by the toy-style animation (the figure is swapped, like a kid repositioning it)
+    case 'pose-kneel': return [...kneelLegs, L(-2, -12, 0, -26, 11.5), C(2, -31, 5.6), Hm(2, -33), Bx(-8, -22, 5, 8, 9),
+      L(1, -24, 10, -25, 4.6, 6, 3), L(1, -24, 6, -23, 4.6, -6, 2), ...rifle(-3, -24, 24, -26, 3)];
+    case 'pose-prone': return [L(-24, -3, -8, -5, 5.8, -5, -2), L(-24, -3, -8, -5, 5.8, 5, 2), L(-9, -6, 6, -8, 11.5), C(11, -11, 5.6), Hm(11, -13), Bx(-4, -12, 8, 4, 8),
+      L(4, -8, 12, -9, 4.2, -6, -1), L(4, -8, 13, -9, 4.2, 6, 1), ...rifle(4, -10, 30, -11, 0)];
+    case 'pose-drag': return [L(-5, -2, -7, -20, 5.8, -3.5), L(7, -2, 0, -20, 5.8, 3.5), L(-4, -20, -9, -33, 11.5), C(-10, -38, 5.6), Hm(-10, -40), Bx(-15, -29, 5, 9, 9),
+      L(-8, -30, 6, -21, 4.6, 6, 5), L(-8, -30, 6, -21, 4.6, -6, -5), L(-14, -20, -6, -38, 3.2, -7)];
+    case 'pose-bazooka-stand': return [...legs, ...body, L(0, -31, 7, -35, 4.6, 6, 4), L(0, -31, 8, -34, 4.6, -6, 2), L(-15, -37, 20, -40, 7.4, 5), C(20, -40, 4.6, 5)];
+    case 'pose-manpads-kneel': return [...kneelLegs, L(-2, -12, 0, -26, 11.5), C(2, -31, 5.6), Hm(2, -33), Bx(-8, -22, 5, 8, 9),
+      L(1, -24, 6, -29, 4.6, 6, 5), L(1, -24, 8, -30, 4.6, -6, 3), L(-12, -22, 20, -40, 6.2, 5), Bx(19, -40, 5, 5, 6, 5)];
+    case 'pose-grenadier-idle': return [...legs, ...body, L(-1, -31, 8, -27, 4.6, 6, 3), L(-1, -31, 6, -24, 4.6, -6, 2), ...rifle(-2, -22, 14, -38, 3), C(-4, -24, 3.2, -6)];
     case 'manpads': return [...legs, ...body, L(0, -31, 6, -36, 4.6, 6, 5), L(0, -31, 8, -37, 4.6, -6, 3), L(-14, -30, 20, -46, 6.2, 5), Bx(19, -46, 5, 5, 6, 5), Bx(4, -38, 4, 5, 3, 5)];
     case 'bazooka': return [L(-7, -2, -2, -12, 5.8, -3.5), L(-7, -2, -16, -2, 5.2, -3.5), L(-2, -12, 7, -12, 5.8, 3.5), L(7, -12, 7, -2, 5.8, 3.5),
       L(-2, -12, 0, -26, 11.5), C(2, -31, 5.6), Hm(2, -33), Bx(-8, -22, 5, 8, 9),
@@ -456,6 +468,7 @@ export function model(type, seed = 0) {
   switch (type) {
     case 'rifleman': case 'mg': case 'bazooka': case 'sniper': case 'grenadier': case 'officer': case 'manpads': m = buildSoldier(type); break;
     case 'para': m = buildSoldier('rifleman'); break;
+    case 'pose-kneel': case 'pose-prone': case 'pose-drag': case 'pose-bazooka-stand': case 'pose-manpads-kneel': case 'pose-grenadier-idle': m = buildSoldier(type); break;
     case 'ambulance': m = buildAmbulance(); break;
     case 'fighter': m = buildFighter(); break;
     case 'attacker': m = buildAttacker(); break;
