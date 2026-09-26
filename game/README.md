@@ -43,3 +43,11 @@ node test/medic.test.mjs # wounded dragged to cover, medics heal, ambulances avo
 node test/orders.test.mjs # main target steers the army, Defend keeps it home
 npm run build   # writes a single self-contained ../plastic-front/index.html
 ```
+
+## Credits
+
+The rifleman, officer, sniper, machine-gunner, kneeling and crawling figures are based on
+"Miniature Army Men" [1](https://www.printables.com/model/449280) and
+[2](https://www.printables.com/model/744788) by **alo89**, licensed
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). They were re-oriented, scaled and
+simplified for the game by `tools/figures.mjs` (`npm run figures`), which writes `src/data/figures.js`.

@@ -16,12 +16,12 @@ import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
-  rifleman: [0.55, 0.78], para: [0.55, 0.78], officer: [0.4, 0.9], grenadier: [-0.2, 1.1], bazooka: [0.5, 0.78], manpads: [0.45, 1.05], medic: [0.22, 0.71],
-  sniper: [0.8, 0.27], mg: [0.62, 0.3], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.12, 1.6], tank: [2.05, 1.05], rockets: [0.2, 1.8],
+  rifleman: [0.47, 0.81], para: [0.47, 0.81], officer: [0.53, 0.76], grenadier: [-0.2, 1.1], bazooka: [0.5, 0.78], manpads: [0.45, 1.05], medic: [0.22, 0.71],
+  sniper: [0.66, 0.76], mg: [0.9, 0.5], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.12, 1.6], tank: [2.05, 1.05], rockets: [0.2, 1.8],
   heli: [0.8, -0.25], fighter: [1.0, -0.1], attacker: [0.4, -0.2], bomber: [0, -0.35], transport: [-1, -0.35],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
-const HEIGHT = { mg: 0.45, sniper: 0.45, tank: 1.5, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
+const HEIGHT = { mg: 0.95, tank: 1.5, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
 const isAir = def => def.cls === 'air' || def.cls === 'plane';
 
 // Toy-style animation: soldiers stay rigid plastic figures but are swapped between poses,
@@ -335,7 +335,9 @@ export class View {
 
   muzzleOf(v) {
     let [f, h] = MUZZLE[v.e.type] || [0.4, 0.7];
-    if (v.pose === 'pose-prone') { f = 0.75; h = 0.27; } else if (v.pose === 'pose-kneel' || v.pose === 'pose-manpads-kneel') { h *= 0.7; }
+    if (v.pose === 'pose-prone') { if (this.living) { f = 0.75; h = 0.27; } else { f = 0.52; h = 0.12; } }   // plastic figure: the crawling army man
+    else if (v.pose === 'pose-kneel' && !this.living) { f = 0.59; h = 0.56; }
+    else if (v.pose === 'pose-kneel' || v.pose === 'pose-manpads-kneel') { h *= 0.7; }
     const y = v.turret ? v.tyaw : v.g.rotation.y;
     return new THREE.Vector3(v.g.position.x + Math.cos(y) * f, v.g.position.y + h, v.g.position.z - Math.sin(y) * f);
   }
