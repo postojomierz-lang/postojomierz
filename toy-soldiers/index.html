@@ -1,0 +1,1731 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plastic Front</title>
+<meta name="description" content="Turn-based plastic toy soldier battles, with battlefields generated live by Claude.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rubik:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #efe7d6;
+    --surface: #fbf7ee;
+    --surface-2: #f3ecdc;
+    --border: rgba(60,48,20,0.16);
+    --ink: #2b2616;
+    --ink-2: #5d5538;
+    --ink-muted: #8a8163;
+    --green: #4d7a2a;
+    --green-ink: #f5f9ee;
+    --tan: #b98e4f;
+    --danger: #b8402f;
+    --accent: #d9a21b;
+    --shadow: 0 1px 2px rgba(40,30,10,.08), 0 10px 26px -12px rgba(40,30,10,.3);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #16150f;
+      --surface: #211f17;
+      --surface-2: #2a271d;
+      --border: rgba(240,230,200,0.13);
+      --ink: #f0e9d6;
+      --ink-2: #c4bb9f;
+      --ink-muted: #948b70;
+      --green: #7fae4d;
+      --green-ink: #10160a;
+      --tan: #d6b27a;
+      --danger: #e2705e;
+      --accent: #f0bf42;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 28px -14px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #16150f; --surface: #211f17; --surface-2: #2a271d;
+    --border: rgba(240,230,200,0.13); --ink: #f0e9d6; --ink-2: #c4bb9f; --ink-muted: #948b70;
+    --green: #7fae4d; --green-ink: #10160a; --tan: #d6b27a; --danger: #e2705e; --accent: #f0bf42;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 28px -14px rgba(0,0,0,.7);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page); color: var(--ink);
+    font: 15px/1.45 Rubik, system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 16px; max-width: 1400px; margin: 0 auto;
+  }
+  h1 { font-family: "Black Ops One", Rubik, sans-serif; font-weight: 400; font-size: 28px; margin: 0; letter-spacing: .5px; color: var(--green); }
+  h1 span { color: var(--tan); }
+  .tag { color: var(--ink-muted); font-size: 13px; }
+  .spacer { flex: 1; }
+  @media (max-width: 600px) { .tag { display: none; } h1 { font-size: 22px; } header button { padding: 7px 10px; } }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+    padding: 8px 14px; border-radius: 10px; box-shadow: var(--shadow);
+  }
+  button:hover { background: var(--surface-2); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--green); color: var(--green-ink); border-color: transparent; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.pulse { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 45%, transparent); } }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  main {
+    display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px;
+    padding: 0 16px 24px; max-width: 1400px; margin: 0 auto;
+  }
+  @media (max-width: 980px) { main { grid-template-columns: minmax(0,1fr); } }
+  .board {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 8px; box-shadow: var(--shadow);
+  }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; touch-action: manipulation; }
+  #tip {
+    position: absolute; pointer-events: none; z-index: 3; max-width: 240px;
+    background: rgba(25,22,12,.92); color: #f6efd9; font-size: 12.5px; line-height: 1.35;
+    padding: 7px 9px; border-radius: 8px; display: none;
+  }
+  #tip b { color: #ffd66b; }
+  aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px 14px; box-shadow: var(--shadow);
+  }
+  .card h2 { font-family: "Black Ops One", Rubik, sans-serif; font-weight: 400; font-size: 18px; margin: 0 0 4px; }
+  .card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-muted); margin: 0 0 6px; }
+  .muted { color: var(--ink-muted); font-size: 13px; }
+  .brief { font-size: 13.5px; color: var(--ink-2); margin: 6px 0 0; }
+  .objective { margin-top: 8px; padding: 7px 9px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
+  .objective b { color: var(--danger); }
+  .turnrow { display: flex; align-items: center; gap: 8px; }
+  .turnrow .who { font-weight: 700; }
+  .turnrow .who.player { color: var(--green); }
+  .turnrow .who.enemy { color: var(--tan); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .actions button { flex: 1 1 auto; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .stat { background: var(--surface-2); border-radius: 8px; padding: 5px 6px; text-align: center; }
+  .stat b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 11px; color: var(--ink-muted); }
+  .hp { display: flex; gap: 3px; margin-top: 4px; }
+  .hp i { width: 14px; height: 7px; border-radius: 3px; background: var(--green); }
+  .hp i.off { background: var(--border); }
+  .unitname { font-weight: 700; }
+  .roster { display: flex; gap: 10px; font-size: 13px; }
+  .roster b { font-variant-numeric: tabular-nums; }
+  #log { max-height: 320px; overflow-y: auto; font-size: 13px; display: flex; flex-direction: column; gap: 5px; }
+  #log p { margin: 0; }
+  #log .narr { font-style: italic; color: var(--ink); border-left: 3px solid var(--accent); padding: 2px 0 2px 8px; }
+  #log .sys { color: var(--ink-muted); }
+  #log .good { color: var(--green); }
+  #log .bad { color: var(--danger); }
+  #log .round { font-weight: 700; color: var(--ink-2); margin-top: 4px; }
+
+  dialog {
+    border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--ink);
+    padding: 0; width: min(520px, calc(100vw - 32px)); box-shadow: var(--shadow);
+  }
+  dialog::backdrop { background: rgba(20,16,6,.55); }
+  .dlg { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .dlg h2 { font-family: "Black Ops One", Rubik, sans-serif; font-weight: 400; margin: 0; font-size: 22px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  label.row { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; }
+  input[type=text], input[type=password], select, textarea {
+    font: inherit; font-weight: 400; color: var(--ink); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; width: 100%;
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { font-size: 12px; font-weight: 500; padding: 4px 9px; box-shadow: none; border-radius: 999px; }
+  .note { font-size: 12px; color: var(--ink-muted); margin: 0; }
+  .dlg .actions { justify-content: flex-end; }
+  .dlg .actions button { flex: 0 0 auto; }
+  #loading {
+    position: absolute; inset: 8px; border-radius: 8px; z-index: 4;
+    display: none; align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+    background: rgba(20,16,6,.72); color: #f6efd9; text-align: center; padding: 16px;
+  }
+  #loading .spin { width: 42px; height: 42px; border-radius: 50%; border: 4px solid rgba(255,255,255,.2); border-top-color: #ffd66b; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .endtitle { font-family: "Black Ops One", Rubik, sans-serif; font-size: 34px; margin: 0; }
+  .endtitle.win { color: var(--green); }
+  .endtitle.lose { color: var(--danger); }
+  .legend { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 12.5px; color: var(--ink-2); }
+  .legend b { color: var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>PLASTIC <span>FRONT</span></h1>
+  <span class="tag">Turn-based toy soldier battles · battlefields drawn up live by Claude</span>
+  <div class="spacer"></div>
+  <button id="btnNew" class="primary">New battle</button>
+  <button id="btnHelp">How to play</button>
+  <button id="btnSettings">Settings</button>
+</header>
+
+<main>
+  <section class="board">
+    <canvas id="cv" width="1024" height="680" aria-label="Battlefield"></canvas>
+    <div id="tip"></div>
+    <div id="loading"><div class="spin"></div><div id="loadingText">Setting up the battlefield…</div></div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h3 id="setting">—</h3>
+      <h2 id="title">—</h2>
+      <p class="brief" id="briefing"></p>
+      <div class="objective" id="objective"></div>
+    </div>
+
+    <div class="card">
+      <div class="turnrow">
+        <span>Round <b id="round">1</b>/<span id="limit">12</span></span>
+        <span class="spacer"></span>
+        <span class="who player" id="who">Your turn</span>
+      </div>
+      <div class="roster" style="margin-top:6px">
+        <span style="color:var(--green)">Green: <b id="cntP">0</b></span>
+        <span style="color:var(--tan)">Tan: <b id="cntE">0</b></span>
+      </div>
+      <div class="actions">
+        <button id="btnWait" disabled>Hold (W)</button>
+        <button id="btnUndo" disabled>Undo move</button>
+        <button id="btnEnd" class="primary">End turn (E)</button>
+      </div>
+    </div>
+
+    <div class="card" id="unitCard">
+      <h3>Selected</h3>
+      <div id="unitInfo" class="muted">Tap one of your green soldiers.</div>
+    </div>
+
+    <div class="card">
+      <h3>Battle log</h3>
+      <div id="log" aria-live="polite"></div>
+    </div>
+  </aside>
+</main>
+
+<dialog id="dlgNew">
+  <form method="dialog" class="dlg">
+    <h2>New battle</h2>
+    <label>Describe the battle you want (or leave blank for a surprise)
+      <textarea id="inPrompt" placeholder="e.g. Tan army has captured the cookie jar on the kitchen counter, green must storm the toaster pass"></textarea>
+    </label>
+    <div class="chips" id="ideas"></div>
+    <div class="two">
+      <label>Difficulty
+        <select id="inDiff">
+          <option value="easy">Recruit</option>
+          <option value="normal" selected>Sergeant</option>
+          <option value="hard">General</option>
+        </select>
+      </label>
+      <label>Army size
+        <select id="inSize">
+          <option value="small">Squad (5)</option>
+          <option value="medium" selected>Platoon (7)</option>
+          <option value="large">Company (9)</option>
+        </select>
+      </label>
+    </div>
+    <p class="note" id="aiNote"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button id="btnRandom" value="random">Quick random (offline)</button>
+      <button id="btnGen" value="ai" class="primary">Generate with Claude</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgSettings">
+  <form method="dialog" class="dlg">
+    <h2>Settings</h2>
+    <label>Anthropic API key
+      <input type="password" id="inKey" placeholder="sk-ant-…" autocomplete="off">
+    </label>
+    <p class="note">Used only to call the Claude API directly from this browser, and saved only in this browser's local storage. Anyone with access to this browser profile can read it — use a key with a spend limit. Without a key, battles are generated offline.</p>
+    <label>Model
+      <select id="inModel">
+        <option value="claude-opus-5">Claude Opus 5 (best battles)</option>
+        <option value="claude-sonnet-5">Claude Sonnet 5 (faster)</option>
+        <option value="claude-haiku-4-5">Claude Haiku 4.5 (fastest)</option>
+      </select>
+    </label>
+    <label class="row"><input type="checkbox" id="inNarr"> Live war-correspondent commentary each round</label>
+    <label class="row"><input type="checkbox" id="inSound"> Sound effects</label>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button value="save" class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgHelp">
+  <form method="dialog" class="dlg">
+    <h2>How to play</h2>
+    <p class="muted" style="margin:0">You command the <b style="color:var(--green)">green</b> army. Each round, every soldier may <b>move</b>, then <b>fire</b> (firing ends its turn). Then the <b style="color:var(--tan)">tan</b> army moves.</p>
+    <div class="legend">
+      <b>Rifleman</b><span>Reliable, two shots.</span>
+      <b>Machine gunner</b><span>Four shots, only two if it moved first.</span>
+      <b>Bazooka</b><span>Big single hit; wrecks tanks.</span>
+      <b>Sniper</b><span>Very long range, ignores half of cover. Fragile.</span>
+      <b>Grenadier</b><span>Lobs over walls, ignores cover, splashes neighbours (friends too!).</span>
+      <b>Officer</b><span>Allies within 2 tiles aim +10%.</span>
+      <b>Tank</b><span>Tough and armoured: small arms do 1 less damage.</span>
+    </div>
+    <div class="legend">
+      <b>Walls</b><span>Books, bricks, boxes: block movement and line of sight.</span>
+      <b>Low cover</b><span>Crayons, slippers, sandbags: −30% to hit, slow to cross. Standing next to cover also helps.</span>
+      <b>Pillows &amp; mounds</b><span>High ground: +10% aim, +1 range.</span>
+      <b>Spills</b><span>Impassable, but you can shoot across.</span>
+      <b>Clutter</b><span>LEGO pieces, crumbs: slow to cross.</span>
+    </div>
+    <p class="note">Keys: <b>E</b> end turn · <b>W</b> hold · <b>Esc</b> deselect. When the round limit hits, the kids get called for dinner and the battle is over.</p>
+    <div class="actions"><button value="ok" class="primary">Got it</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgEnd">
+  <form method="dialog" class="dlg">
+    <p class="endtitle" id="endTitle">Victory</p>
+    <p id="endText" style="margin:0"></p>
+    <p class="muted" id="endStats" style="margin:0"></p>
+    <div class="actions">
+      <button value="replay">Replay battle</button>
+      <button value="new">New battle</button>
+      <button value="next" class="primary" id="btnNext">Next battle in campaign</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module">
+// ===================================================================
+//  Constants
+// ===================================================================
+const COLS = 16, ROWS = 10, T = 64, TOP = 40;
+const W = COLS * T, H = ROWS * T + TOP;
+const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk/+esm';
+
+const UT = {
+  rifleman:      { name: 'Rifleman',       hp: 3, move: 4, range: 5, dmg: 1, shots: 2, acc: 65 },
+  machinegunner: { name: 'Machine gunner', hp: 3, move: 3, range: 6, dmg: 1, shots: 4, acc: 40 },
+  bazooka:       { name: 'Bazooka',        hp: 3, move: 3, range: 4, dmg: 3, shots: 1, acc: 60, antiArmor: true, boom: true },
+  sniper:        { name: 'Sniper',         hp: 2, move: 3, range: 9, dmg: 2, shots: 1, acc: 85, piercing: true },
+  grenadier:     { name: 'Grenadier',      hp: 3, move: 4, range: 4, dmg: 2, shots: 1, acc: 70, indirect: true, splash: 1, antiArmor: true, boom: true },
+  officer:       { name: 'Officer',        hp: 4, move: 4, range: 4, dmg: 1, shots: 2, acc: 60, aura: true },
+  tank:          { name: 'Tank',           hp: 7, move: 5, range: 6, dmg: 3, shots: 1, acc: 65, armor: true, boom: true },
+};
+const UNIT_KEYS = Object.keys(UT);
+
+const TER = {
+  open:  { cost: 1, cover: 0,  pass: true,  block: false, name: 'Open floor', eff: '' },
+  wall:  { cost: Infinity, cover: 0, pass: false, block: true, name: 'Wall', eff: 'Blocks movement and line of sight' },
+  cover: { cost: 2, cover: 30, pass: true,  block: false, name: 'Low cover', eff: '−30% to be hit · costs 2 to enter' },
+  water: { cost: Infinity, cover: 0, pass: false, block: false, name: 'Spill', eff: 'Impassable · can shoot across' },
+  hill:  { cost: 2, cover: 10, pass: true,  block: false, name: 'High ground', eff: '+10% aim, +1 range · costs 2 to enter' },
+  rough: { cost: 2, cover: 0,  pass: true,  block: false, name: 'Clutter', eff: 'Costs 2 to enter (tanks 3)' },
+};
+const TER_KINDS = ['wall', 'cover', 'water', 'hill', 'rough'];
+const THEMES = ['carpet', 'wood', 'grass', 'sand', 'snow', 'kitchen'];
+const OBJ_TYPES = ['annihilate', 'capture', 'defend', 'assassinate'];
+
+const PLASTIC = {
+  player: { main: '#5b8a2f', hi: '#8fbf55', lo: '#34561a', line: '#233a10' },
+  enemy:  { main: '#c9a466', hi: '#ecd29c', lo: '#977641', line: '#5e4724' },
+};
+
+// ===================================================================
+//  Small helpers
+// ===================================================================
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const key = (x, y) => y * COLS + x;
+const inb = (x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const now = () => performance.now();
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function hash(s) { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+
+// ===================================================================
+//  Settings (per-browser convenience only)
+// ===================================================================
+const settings = { apiKey: '', model: 'claude-opus-5', narrate: true, sound: true };
+try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront.settings') || '{}')); } catch {}
+function saveSettings() { try { localStorage.setItem('plasticfront.settings', JSON.stringify(settings)); } catch {} }
+
+// ===================================================================
+//  Game state
+// ===================================================================
+let G = null;
+let campaign = [];
+let lastScenario = null;
+let lastOpts = { prompt: '', difficulty: 'normal', size: 'medium' };
+
+function buildGame(scn, opts) {
+  const grid = [];
+  for (let y = 0; y < ROWS; y++) { grid.push([]); for (let x = 0; x < COLS; x++) grid[y].push({ kind: 'open', obj: -1 }); }
+  scn.terrain.forEach((o, i) => {
+    for (let y = o.y; y < o.y + o.h; y++) for (let x = o.x; x < o.x + o.w; x++) grid[y][x] = { kind: o.kind, obj: i };
+  });
+  let id = 0;
+  const mk = (u, side) => ({
+    id: id++, side, type: u.type, name: u.name, x: u.x, y: u.y,
+    hp: UT[u.type].hp, maxHp: UT[u.type].hp, moved: false, acted: false, dead: false,
+    facing: side === 'player' ? 1 : -1, rx: u.x, ry: u.y, flash: 0, topple: 0, bob: Math.random() * 6,
+  });
+  const units = [...scn.playerUnits.map(u => mk(u, 'player')), ...scn.enemyUnits.map(u => mk(u, 'enemy'))];
+  return {
+    scn, opts, grid, units, round: 1, phase: 'player', busy: false,
+    sel: null, reach: null, origin: null, hover: null,
+    fx: [], events: [], banner: null, over: false, kills: { player: 0, enemy: 0 },
+    floor: null,
+  };
+}
+
+const alive = side => G.units.filter(u => !u.dead && (!side || u.side === side));
+const unitAt = (x, y) => G.units.find(u => !u.dead && u.x === x && u.y === y);
+const kindAt = (x, y) => inb(x, y) ? G.grid[y][x].kind : 'wall';
+const objAt = (x, y) => { const i = G.grid[y][x].obj; return i >= 0 ? G.scn.terrain[i] : null; };
+
+// ===================================================================
+//  Rules
+// ===================================================================
+function moveCost(u, x, y) {
+  const k = kindAt(x, y);
+  if (!TER[k].pass) return Infinity;
+  if (u.type === 'tank' && k === 'rough') return 3;
+  if (u.type === 'tank' && k === 'cover') return 1; // tanks roll over crayons
+  return TER[k].cost;
+}
+
+function reachable(u) {
+  const mv = UT[u.type].move;
+  const best = new Map([[key(u.x, u.y), { c: 0, prev: -1 }]]);
+  const open = [[0, u.x, u.y]];
+  while (open.length) {
+    open.sort((a, b) => a[0] - b[0]);
+    const [c, x, y] = open.shift();
+    if (c > best.get(key(x, y)).c) continue;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (!inb(nx, ny)) continue;
+      const o = unitAt(nx, ny);
+      if (o && o.side !== u.side) continue;
+      const nc = c + moveCost(u, nx, ny);
+      if (nc > mv) continue;
+      const k = key(nx, ny);
+      if (!best.has(k) || best.get(k).c > nc) { best.set(k, { c: nc, prev: key(x, y) }); open.push([nc, nx, ny]); }
+    }
+  }
+  for (const k of [...best.keys()]) {
+    const x = k % COLS, y = Math.floor(k / COLS);
+    const o = unitAt(x, y);
+    if (o && o !== u) best.get(k).occupied = true;
+  }
+  return best;
+}
+function pathTo(reach, k) {
+  const out = [];
+  while (k !== -1) { out.unshift(k); k = reach.get(k).prev; }
+  return out.map(k => ({ x: k % COLS, y: Math.floor(k / COLS) }));
+}
+
+function los(x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const n = Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * 4);
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    const tx = Math.floor(x0 + dx * t + 0.5), ty = Math.floor(y0 + dy * t + 0.5);
+    if ((tx === x0 && ty === y0) || (tx === x1 && ty === y1)) continue;
+    if (TER[kindAt(tx, ty)].block) return false;
+  }
+  return true;
+}
+
+function coverFor(def, ax, ay) {
+  let c = TER[kindAt(def.x, def.y)].cover;
+  const vx = ax - def.x, vy = ay - def.y, vl = Math.hypot(vx, vy) || 1;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue;
+    const k = kindAt(def.x + dx, def.y + dy);
+    if (!inb(def.x + dx, def.y + dy) || (k !== 'wall' && k !== 'cover')) continue;
+    const dot = (dx * vx + dy * vy) / (Math.hypot(dx, dy) * vl);
+    if (dot > 0.6) c = Math.max(c, k === 'wall' ? 30 : 20);
+  }
+  return c;
+}
+
+function rangeOf(u, x, y) { return UT[u.type].range + (kindAt(x, y) === 'hill' ? 1 : 0); }
+function canTarget(att, ax, ay, def) {
+  if (def.dead || def.side === att.side) return false;
+  if (dist(ax, ay, def.x, def.y) > rangeOf(att, ax, ay) + 0.01) return false;
+  if (!UT[att.type].indirect && !los(ax, ay, def.x, def.y)) return false;
+  return true;
+}
+function auraAt(att, x, y) {
+  return G.units.some(o => !o.dead && o !== att && o.side === att.side && UT[o.type].aura && dist(o.x, o.y, x, y) <= 2.01);
+}
+function hitChance(att, ax, ay, def) {
+  const ut = UT[att.type];
+  let c = ut.acc - Math.max(0, dist(ax, ay, def.x, def.y) - 2) * 3;
+  if (!ut.indirect) { let cov = coverFor(def, ax, ay); if (ut.piercing) cov = Math.round(cov / 2); c -= cov; }
+  if (kindAt(ax, ay) === 'hill') c += 10;
+  if (auraAt(att, ax, ay)) c += 10;
+  return Math.round(clamp(c, 5, 95));
+}
+function dmgVs(att, def) {
+  const ut = UT[att.type];
+  let d = ut.dmg;
+  if (UT[def.type].armor) d = att.type === 'bazooka' ? d + 2 : ut.antiArmor ? d : d - 1;
+  return Math.max(0, d);
+}
+function shotsFor(att, willMove) { return att.type === 'machinegunner' && willMove ? 2 : UT[att.type].shots; }
+
+// ===================================================================
+//  Scenario sanitising (AI output is creative; the board must be legal)
+// ===================================================================
+function sanitize(raw, opts) {
+  const s = {
+    title: String(raw.title || 'Operation Nameless').slice(0, 60),
+    setting: String(raw.setting || 'Somewhere in the house').slice(0, 80),
+    theme: THEMES.includes(raw.theme) ? raw.theme : 'carpet',
+    briefing: String(raw.briefing || '').slice(0, 600),
+    victoryText: String(raw.victoryText || 'The green army stands triumphant among the toys.').slice(0, 300),
+    defeatText: String(raw.defeatText || 'The tan army holds the field. The green army will be back.').slice(0, 300),
+    turnLimit: clamp(Math.round(+raw.turnLimit || 12), 6, 20),
+    terrain: [], playerUnits: [], enemyUnits: [], objective: null,
+  };
+  const occ = new Set();
+  for (const o of (Array.isArray(raw.terrain) ? raw.terrain : []).slice(0, 40)) {
+    if (!TER_KINDS.includes(o.kind)) continue;
+    let x = clamp(Math.round(+o.x || 0), 0, COLS - 1), y = clamp(Math.round(+o.y || 0), 0, ROWS - 1);
+    let w = clamp(Math.round(+o.w || 1), 1, 5), h = clamp(Math.round(+o.h || 1), 1, 5);
+    w = Math.min(w, COLS - x); h = Math.min(h, ROWS - y);
+    let clash = false;
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (occ.has(key(xx, yy))) clash = true;
+    if (clash) continue;
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) occ.add(key(xx, yy));
+    s.terrain.push({ kind: o.kind, label: String(o.label || TER[o.kind].name).slice(0, 50), x, y, w, h });
+  }
+  const tkind = (x, y) => { for (const o of s.terrain) if (x >= o.x && x < o.x + o.w && y >= o.y && y < o.y + o.h) return o.kind; return 'open'; };
+  const clearTile = (x, y) => {
+    const i = s.terrain.findIndex(o => x >= o.x && x < o.x + o.w && y >= o.y && y < o.y + o.h);
+    if (i < 0) return;
+    const o = s.terrain[i];
+    if (TER[o.kind].pass) return;
+    s.terrain.splice(i, 1);
+    // split the object around the cleared tile so the rest remains
+    const parts = [
+      { x: o.x, y: o.y, w: o.w, h: y - o.y },
+      { x: o.x, y: y + 1, w: o.w, h: o.y + o.h - y - 1 },
+      { x: o.x, y, w: x - o.x, h: 1 },
+      { x: x + 1, y, w: o.x + o.w - x - 1, h: 1 },
+    ];
+    for (const p of parts) if (p.w > 0 && p.h > 0) s.terrain.push({ ...o, ...p });
+  };
+
+  const taken = new Set();
+  const place = (u, side) => {
+    if (!UT[u.type]) return null;
+    let x = clamp(Math.round(+u.x || 0), 0, COLS - 1), y = clamp(Math.round(+u.y || 0), 0, ROWS - 1);
+    const ok = (x, y) => inb(x, y) && TER[tkind(x, y)].pass && !taken.has(key(x, y));
+    if (!ok(x, y)) {
+      let found = null;
+      for (let r = 1; r < 16 && !found; r++)
+        for (let dy = -r; dy <= r && !found; dy++) for (let dx = -r; dx <= r && !found; dx++)
+          if (ok(x + dx, y + dy)) found = [x + dx, y + dy];
+      if (!found) return null;
+      [x, y] = found;
+    }
+    taken.add(key(x, y));
+    return { type: u.type, name: String(u.name || UT[u.type].name).slice(0, 24), x, y };
+  };
+  const pu = (Array.isArray(raw.playerUnits) ? raw.playerUnits : []).slice(0, 10);
+  const eu = (Array.isArray(raw.enemyUnits) ? raw.enemyUnits : []).slice(0, 13);
+  const ob = raw.objective || {};
+  const otype = OBJ_TYPES.includes(ob.type) ? ob.type : 'annihilate';
+  let ox = clamp(Math.round(+ob.x || 8), 0, COLS - 1), oy = clamp(Math.round(+ob.y || 5), 0, ROWS - 1);
+  if (otype === 'capture' || otype === 'defend') { clearTile(ox, oy); taken.add(key(ox, oy)); }
+  for (const u of pu) { const p = place(u, 'player'); if (p) s.playerUnits.push(p); }
+  for (const u of eu) { const p = place(u, 'enemy'); if (p) s.enemyUnits.push(p); }
+  taken.delete(key(ox, oy));
+  if (!s.playerUnits.length) s.playerUnits.push(place({ type: 'rifleman', name: 'Pvt. Lonely', x: 1, y: 5 }));
+  if (!s.enemyUnits.length) s.enemyUnits.push(place({ type: 'rifleman', name: 'Pvt. Lost', x: 14, y: 5 }));
+  if (otype === 'assassinate' && !s.enemyUnits.some(u => u.type === 'officer')) {
+    const c = s.enemyUnits.find(u => u.type !== 'tank') || s.enemyUnits[0];
+    c.type = 'officer'; if (!/gen|col|maj|lt|capt/i.test(c.name)) c.name = 'Gen. Beige';
+  }
+  s.objective = { type: otype, x: ox, y: oy, description: String(ob.description || '').slice(0, 200) };
+
+  // Guarantee the armies (and the flag) can actually reach each other: carve through blockers.
+  const carve = (ax, ay, bx, by) => {
+    const cost = (x, y) => TER[tkind(x, y)].pass ? 1 : 40;
+    const d = new Map([[key(ax, ay), 0]]), prev = new Map();
+    const q = [[0, ax, ay]];
+    while (q.length) {
+      q.sort((a, b) => a[0] - b[0]);
+      const [c, x, y] = q.shift();
+      if (x === bx && y === by) break;
+      if (c > d.get(key(x, y))) continue;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy; if (!inb(nx, ny)) continue;
+        const nc = c + cost(nx, ny), k = key(nx, ny);
+        if (!d.has(k) || d.get(k) > nc) { d.set(k, nc); prev.set(k, key(x, y)); q.push([nc, nx, ny]); }
+      }
+    }
+    let k = key(bx, by);
+    while (prev.has(k)) { const x = k % COLS, y = Math.floor(k / COLS); if (!TER[tkind(x, y)].pass) clearTile(x, y); k = prev.get(k); }
+  };
+  const a = s.playerUnits[0];
+  for (const e of s.enemyUnits) carve(a.x, a.y, e.x, e.y);
+  for (const p of s.playerUnits) carve(p.x, p.y, s.enemyUnits[0].x, s.enemyUnits[0].y);
+  if (otype === 'capture' || otype === 'defend') carve(a.x, a.y, ox, oy);
+  if (!s.briefing) s.briefing = objectiveText(s.objective);
+  return s;
+}
+
+function objectiveText(o) {
+  switch (o.type) {
+    case 'capture': return 'Capture the flag: start one of your turns with a green soldier on it and no tan soldier next to it.';
+    case 'defend': return 'Hold the flag: don’t let a tan soldier start their turn on it before dinner time.';
+    case 'assassinate': return 'Topple the tan officer.';
+    default: return 'Topple every tan soldier.';
+  }
+}
+
+// ===================================================================
+//  Offline battle generator
+// ===================================================================
+const LABELS = {
+  carpet: { setting: ['Bedroom floor', 'Playroom rug', 'Under the bunk bed'],
+    wall: ['Stack of comic books', 'LEGO brick wall', 'Toy chest', 'Shoebox fortress', 'Pile of picture books', 'Wooden alphabet blocks'],
+    cover: ['Crayon barricade', 'Fuzzy slipper', 'Sandbag line', 'Pencil pile', 'Rolled-up sock'],
+    water: ['Spilled juice', 'Ink puddle', 'Knocked-over milk'], hill: ['Throw pillow', 'Beanbag hill'], rough: ['Scattered LEGO pieces', 'Marble field'] },
+  wood: { setting: ['Living room floorboards', 'Hallway runner', 'Den by the fireplace'],
+    wall: ['Stack of magazines', 'Board game box', 'Coffee mug', 'Dictionary tower', 'Cardboard box'],
+    cover: ['TV remote', 'Coaster pile', 'Sandbag line', 'Slipper'], water: ['Spilled cola', 'Tea puddle'],
+    hill: ['Sofa cushion', 'Folded blanket'], rough: ['Popcorn crumbs', 'Puzzle pieces'] },
+  grass: { setting: ['Backyard lawn', 'Vegetable garden', 'Behind the shed'],
+    wall: ['Flower pot', 'Garden brick', 'Watering can', 'Garden gnome', 'Upturned bucket'],
+    cover: ['Tall grass tuft', 'Twig barricade', 'Pebble line', 'Sandbag line'], water: ['Rain puddle', 'Birdbath splash'],
+    hill: ['Mole hill', 'Dirt mound'], rough: ['Pine needles', 'Acorn field'] },
+  sand: { setting: ['Sandbox', 'Beach by the towel', 'Sandpit at the park'],
+    wall: ['Sandcastle tower', 'Plastic bucket', 'Spade wall', 'Sandcastle keep'],
+    cover: ['Seashell', 'Sand ridge', 'Sandbag line'], water: ['Castle moat', 'Tide pool'],
+    hill: ['Sand dune', 'Sand mound'], rough: ['Pebble field', 'Shell fragments'] },
+  snow: { setting: ['Snowy front yard', 'Frosty porch', 'Snowdrift alley'],
+    wall: ['Snowman base', 'Ice block wall', 'Snow fort', 'Frozen bucket'],
+    cover: ['Snowball pile', 'Mitten', 'Sandbag line'], water: ['Frozen puddle', 'Slush pool'],
+    hill: ['Snow mound', 'Snowdrift'], rough: ['Icy pebbles', 'Pine cones'] },
+  kitchen: { setting: ['Kitchen floor', 'Kitchen counter', 'Under the dinner table'],
+    wall: ['Cereal box', 'Stack of pots', 'Flour sack', 'Toaster', 'Cookie jar'],
+    cover: ['Spoon barricade', 'Sponge', 'Sandbag line', 'Oven mitt'], water: ['Spilled milk', 'Orange juice spill'],
+    hill: ['Folded dish towel', 'Bread loaf'], rough: ['Cereal crumbs', 'Spilled rice'] },
+};
+const SURN = ['Stubbs', 'Rivet', 'Boots', 'Dusty', 'Glue', 'Sprocket', 'Pinecone', 'Tater', 'Buckle', 'Mudd', 'Crumb', 'Tack', 'Bristle', 'Nibs', 'Cobb', 'Snap', 'Ridge', 'Moxie', 'Fudge', 'Pebble', 'Clay', 'Burr', 'Wick', 'Scuff'];
+const OPS = ['Crayon Storm', 'Juice Box', 'Dust Bunny', 'Sock Drawer', 'Couch Cushion', 'Cereal Dawn', 'Sandcastle', 'Muddy Boots', 'Bedtime', 'Rubber Duck', 'Lost Marble', 'Cookie Jar', 'Snow Day', 'Nap Time'];
+const rankFor = t => t === 'officer' ? 'Lt.' : t === 'tank' ? 'Tank' : t === 'sniper' ? 'Cpl.' : 'Pvt.';
+
+function randomScenario(opts) {
+  const rng = mulberry((Math.random() * 2 ** 32) >>> 0);
+  const theme = pick(rng, THEMES), L = LABELS[theme];
+  const terrain = [];
+  const nObj = 10 + Math.floor(rng() * 6);
+  const kinds = ['wall', 'wall', 'wall', 'cover', 'cover', 'cover', 'water', 'hill', 'rough'];
+  for (let i = 0; i < nObj; i++) {
+    const kind = pick(rng, kinds);
+    const w = 1 + Math.floor(rng() * (kind === 'cover' ? 3 : 2)), h = 1 + Math.floor(rng() * 2);
+    const x = 3 + Math.floor(rng() * (COLS - 6 - w + 1)), y = Math.floor(rng() * (ROWS - h + 1));
+    terrain.push({ kind, label: pick(rng, L[kind]), x, y, w, h });
+  }
+  // a little cover near each deployment zone
+  for (let i = 0; i < 2; i++) terrain.push({ kind: 'cover', label: pick(rng, L.cover), x: 2, y: 1 + Math.floor(rng() * 8), w: 1, h: 1 + Math.floor(rng() * 2) });
+  for (let i = 0; i < 2; i++) terrain.push({ kind: 'cover', label: pick(rng, L.cover), x: 13, y: 1 + Math.floor(rng() * 8), w: 1, h: 1 + Math.floor(rng() * 2) });
+
+  const n = { small: 5, medium: 7, large: 9 }[opts.size] || 7;
+  const ne = n + ({ easy: -1, normal: 0, hard: 2 }[opts.difficulty] || 0);
+  const pool = ['rifleman', 'rifleman', 'rifleman', 'machinegunner', 'bazooka', 'sniper', 'grenadier'];
+  const army = (count, big) => {
+    const out = ['officer'];
+    if (big) out.push('tank');
+    while (out.length < count) out.push(pick(rng, pool));
+    return out;
+  };
+  const used = new Set();
+  const name = t => { let s; do { s = pick(rng, SURN); } while (used.has(s) && used.size < SURN.length); used.add(s); return rankFor(t) + ' ' + s; };
+  const col = (side, i) => side === 'player' ? (i % 2) : COLS - 1 - (i % 2);
+  const rows = count => { const r = []; for (let i = 0; i < count; i++) r.push(Math.round((i + 0.5) * ROWS / count - 0.5 + (rng() - 0.5))); return r; };
+  const pa = army(n, n >= 7), ea = army(ne, ne >= 7);
+  const pr = rows(n), er = rows(ne);
+  const otype = pick(rng, OBJ_TYPES);
+  const ox = otype === 'defend' ? 3 + Math.floor(rng() * 3) : otype === 'capture' ? 11 + Math.floor(rng() * 3) : 8;
+  const oy = 2 + Math.floor(rng() * 6);
+  const opName = 'Operation ' + pick(rng, OPS);
+  const brief = {
+    annihilate: 'The tan army has dug in across the ' + pick(rng, L.setting).toLowerCase() + '. Push through and knock every last one of them over.',
+    capture: 'A tan flag flies over the far side of the ' + pick(rng, L.setting).toLowerCase() + '. Take it and hold it before the kids are called for dinner.',
+    defend: 'Our flag stands near the green line. The tan army is coming for it. Hold until dinner time.',
+    assassinate: 'Intel says a tan officer is directing the attack. Topple the officer and the rest will scatter.',
+  }[otype];
+  return {
+    title: opName, setting: pick(rng, L.setting), theme, briefing: brief,
+    terrain,
+    playerUnits: pa.map((t, i) => ({ type: t, name: name(t), x: col('player', i), y: clamp(pr[i], 0, ROWS - 1) })),
+    enemyUnits: ea.map((t, i) => ({ type: t, name: name(t), x: col('enemy', i), y: clamp(er[i], 0, ROWS - 1) })),
+    objective: { type: otype, x: ox, y: oy, description: '' },
+    turnLimit: otype === 'defend' ? 10 : 14,
+    victoryText: 'The green army stands tall. Somewhere a kid shouts "I WIN!"',
+    defeatText: 'Green soldiers lie scattered across the floor. They’ll be back after bath time.',
+  };
+}
+
+// ===================================================================
+//  Claude integration
+// ===================================================================
+let sdkPromise = null;
+function loadSDK() {
+  sdkPromise ||= import(SDK_URL).then(m => m.default || m.Anthropic).catch(e => { sdkPromise = null; throw e; });
+  return sdkPromise;
+}
+
+const unitSchema = {
+  type: 'object', additionalProperties: false, required: ['type', 'name', 'x', 'y'],
+  properties: { type: { type: 'string', enum: UNIT_KEYS }, name: { type: 'string' }, x: { type: 'integer' }, y: { type: 'integer' } },
+};
+const SCENARIO_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['title', 'setting', 'theme', 'briefing', 'terrain', 'playerUnits', 'enemyUnits', 'objective', 'turnLimit', 'victoryText', 'defeatText'],
+  properties: {
+    title: { type: 'string' }, setting: { type: 'string' },
+    theme: { type: 'string', enum: THEMES }, briefing: { type: 'string' },
+    terrain: { type: 'array', items: {
+      type: 'object', additionalProperties: false, required: ['kind', 'label', 'x', 'y', 'w', 'h'],
+      properties: { kind: { type: 'string', enum: TER_KINDS }, label: { type: 'string' }, x: { type: 'integer' }, y: { type: 'integer' }, w: { type: 'integer' }, h: { type: 'integer' } },
+    } },
+    playerUnits: { type: 'array', items: unitSchema },
+    enemyUnits: { type: 'array', items: unitSchema },
+    objective: { type: 'object', additionalProperties: false, required: ['type', 'x', 'y', 'description'],
+      properties: { type: { type: 'string', enum: OBJ_TYPES }, x: { type: 'integer' }, y: { type: 'integer' }, description: { type: 'string' } } },
+    turnLimit: { type: 'integer' }, victoryText: { type: 'string' }, defeatText: { type: 'string' },
+  },
+};
+
+const GEN_SYSTEM = `You design battles for "Plastic Front", a turn-based tactics game played with classic plastic army men (green army = the player, tan army = the computer) on a household battlefield seen from above.
+
+Board: ${COLS} columns (x 0-${COLS - 1}, left to right) by ${ROWS} rows (y 0-${ROWS - 1}, top to bottom). Units move in 4 directions.
+
+Terrain objects are rectangles (x, y, w, h; w and h 1-4) of one kind, with a playful household "label" that fits the setting:
+- wall: tall objects (books, LEGO bricks, boxes, mugs, sandcastle towers). Block movement and line of sight.
+- cover: low objects (crayons, slippers, sandbags, sponges). Protect soldiers standing in them.
+- water: spills and puddles (juice, milk, rain). Impassable, but shots pass over.
+- hill: soft high ground (pillows, cushions, mounds). Aim and range bonus.
+- rough: clutter (LEGO pieces, crumbs, marbles). Slow to cross.
+Terrain must not overlap. Use 10-18 objects, leave most of the board open, and create interesting lanes, flanks and chokepoints.
+
+Unit types: rifleman (all-rounder), machinegunner (suppressive, 4 shots), bazooka (anti-tank), sniper (long range, fragile), grenadier (lobs over walls, splash), officer (boosts nearby aim), tank (armoured, at most 1 per side). Give every soldier a short funny name with a rank, e.g. "Sgt. Rivet". No two units on one tile, none on walls or water.
+
+Objective types:
+- annihilate: topple every tan soldier (x,y unused).
+- capture: a flag at (x,y) held by tan; green wins by starting a turn on it with no tan soldier adjacent. Put it on the tan side.
+- defend: a flag at (x,y) near the green side; green must stop tan standing on it until the turn limit.
+- assassinate: topple the tan officer (tan must include exactly one officer).
+turnLimit 8-16 rounds (when it runs out, the kids get called for dinner).
+
+Keep it kid-friendly: toys topple, get lost under the couch, or get stepped on; nothing gory. Briefing: 2-3 vivid sentences in a war-movie voice from the toys' point of view.`;
+
+async function claudeCall({ system, user, schema, maxTokens, effort }) {
+  const Anthropic = await loadSDK();
+  const client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true });
+  const params = { model: settings.model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] };
+  const oc = {};
+  if (schema) oc.format = { type: 'json_schema', schema };
+  if (settings.model !== 'claude-haiku-4-5') oc.effort = effort;
+  if (Object.keys(oc).length) params.output_config = oc;
+  let msg;
+  try {
+    if (settings.model === 'claude-opus-5') {
+      // Server-side fallback: if Opus 5 declines, the API retries on another model instead of failing.
+      msg = await client.beta.messages.create({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
+    } else {
+      msg = await client.messages.create(params);
+    }
+  } catch (e) {
+    if (e instanceof Anthropic.BadRequestError && settings.model === 'claude-opus-5') msg = await client.messages.create(params);
+    else throw e;
+  }
+  if (msg.stop_reason === 'refusal') throw new Error('Claude declined to write this battle. Try a different description.');
+  if (msg.stop_reason === 'max_tokens') throw new Error('The response was cut off before it finished.');
+  return msg.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+}
+
+async function describeError(e) {
+  let A = null;
+  try { A = await loadSDK(); } catch {}
+  if (A) {
+    if (e instanceof A.AuthenticationError) return 'Your API key was rejected. Check it in Settings.';
+    if (e instanceof A.PermissionDeniedError) return 'This API key is not allowed to use that model.';
+    if (e instanceof A.NotFoundError) return 'That model is not available to this API key.';
+    if (e instanceof A.RateLimitError) return 'Rate limited by the API. Wait a moment and try again.';
+    if (e instanceof A.APIConnectionError) return 'Could not reach the Claude API (network blocked?).';
+    if (e instanceof A.APIError) return 'API error: ' + e.message;
+  }
+  return e && e.message ? e.message : String(e);
+}
+
+async function generateWithClaude(opts) {
+  const n = { small: 5, medium: 7, large: 9 }[opts.size] || 7;
+  const ne = n + ({ easy: -1, normal: 0, hard: 2 }[opts.difficulty] || 0);
+  const history = campaign.slice(-3).map((c, i) => `${i + 1}. "${c.title}" (${c.setting}) — ${c.result}. ${c.summary}`).join('\n');
+  const user = [
+    opts.prompt ? `The player asked for: ${opts.prompt}` : 'Surprise the player with a fresh, imaginative battle.',
+    `Green army: exactly ${n} units. Tan army: about ${ne} units (difficulty: ${opts.difficulty}).`,
+    history ? `This is the next battle of an ongoing campaign. Continue the story from these previous battles:\n${history}` : '',
+  ].filter(Boolean).join('\n\n');
+  const text = await claudeCall({ system: GEN_SYSTEM, user, schema: SCENARIO_SCHEMA, maxTokens: 16000, effort: 'medium' });
+  return JSON.parse(text);
+}
+
+let narrating = false;
+async function narrateRound(events, endNote) {
+  if (!settings.apiKey || !settings.narrate || !events.length) return;
+  if (narrating && !endNote) return;
+  narrating = true;
+  const g = G;
+  try {
+    const user = `Battle: "${g.scn.title}" in ${g.scn.setting}. Objective: ${objectiveText(g.scn.objective)}
+Round ${g.round} events:
+${events.map(e => '- ' + e).join('\n')}
+Standing: ${alive('player').length} green, ${alive('enemy').length} tan.${endNote ? '\nThe battle just ended: ' + endNote : ''}`;
+    const text = await claudeCall({
+      system: 'You are a breathless war correspondent embedded with the green plastic army men, reporting a toy battle in a house. Write 1-2 punchy sentences (under 45 words) about this round only. Kid-friendly: toys topple, get knocked over, get lost under the couch. Refer to soldiers by name. No preamble, no quotes around the text.',
+      user, maxTokens: 4000, effort: 'low',
+    });
+    if (G === g && text) log(text, 'narr');
+  } catch (e) {
+    if (G === g) log('Correspondent lost radio contact: ' + await describeError(e), 'sys');
+  } finally { narrating = false; }
+}
+
+// ===================================================================
+//  Sound (tiny WebAudio synth)
+// ===================================================================
+let actx = null;
+function sfx(kind) {
+  if (!settings.sound) return;
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime;
+    const noise = (dur, freq, q, vol) => {
+      const buf = actx.createBuffer(1, Math.ceil(actx.sampleRate * dur), actx.sampleRate);
+      const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 2;
+      const src = actx.createBufferSource(); src.buffer = buf;
+      const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+      const g = actx.createGain(); g.gain.value = vol;
+      src.connect(f).connect(g).connect(actx.destination); src.start(t);
+    };
+    const tone = (f0, f1, dur, vol, type = 'square') => {
+      const o = actx.createOscillator(), g = actx.createGain(); o.type = type;
+      o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur);
+    };
+    if (kind === 'shot') noise(0.12, 1800, 0.8, 0.5);
+    else if (kind === 'boom') { noise(0.5, 180, 0.6, 1.2); tone(120, 40, 0.4, 0.2, 'sine'); }
+    else if (kind === 'hit') tone(900, 500, 0.08, 0.08);
+    else if (kind === 'topple') tone(420, 90, 0.35, 0.1, 'triangle');
+    else if (kind === 'step') tone(260, 200, 0.04, 0.03, 'triangle');
+    else if (kind === 'win') { tone(523, 1046, 0.5, 0.08, 'triangle'); }
+  } catch {}
+}
+
+// ===================================================================
+//  Rendering
+// ===================================================================
+const cv = $('cv');
+const ctx = cv.getContext('2d');
+function fitCanvas() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (G) G.floor = null;
+}
+fitCanvas();
+const sx = x => x * T + T / 2;
+const sy = y => TOP + y * T + T / 2;
+
+const THEME_STYLE = {
+  carpet:  { base: '#6f8cb5', a: '#7f9cc4', b: '#5f7ca3' },
+  wood:    { base: '#b98a55', a: '#c7995f', b: '#a67a48' },
+  grass:   { base: '#6d9c45', a: '#83b456', b: '#58863a' },
+  sand:    { base: '#e2c88f', a: '#eed9a6', b: '#cdb277' },
+  snow:    { base: '#e8eef3', a: '#ffffff', b: '#cdd7e0' },
+  kitchen: { base: '#e6e1d4', a: '#f3efe4', b: '#c6bfae' },
+};
+const PAL = ['#d94b3d', '#e9a23b', '#e7cf3f', '#4f9a4a', '#3f7cc8', '#8a5cc2', '#e0679b', '#2aa5a0'];
+const colorFor = s => PAL[hash(s) % PAL.length];
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = n >> 16, g = n >> 8 & 255, b = n & 255;
+  if (f < 0) { r *= 1 + f; g *= 1 + f; b *= 1 + f; } else { r += (255 - r) * f; g += (255 - g) * f; b += (255 - b) * f; }
+  return `rgb(${r | 0},${g | 0},${b | 0})`;
+}
+function rrect(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+
+function paintFloor() {
+  const off = document.createElement('canvas');
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  off.width = W * dpr; off.height = H * dpr;
+  const c = off.getContext('2d'); c.scale(dpr, dpr);
+  const theme = G.scn.theme, st = THEME_STYLE[theme];
+  const rng = mulberry(hash(G.scn.title + theme));
+  c.fillStyle = st.base; c.fillRect(0, 0, W, H);
+  if (theme === 'wood') {
+    for (let y = 0; y < H; y += 32) {
+      c.fillStyle = (y / 32) % 2 ? st.a : st.base; c.fillRect(0, y, W, 32);
+      c.fillStyle = 'rgba(60,30,10,.35)'; c.fillRect(0, y, W, 1.5);
+      let x = -rng() * 300; while (x < W) { x += 180 + rng() * 220; c.fillRect(x, y, 1.5, 32); }
+      c.strokeStyle = 'rgba(90,50,20,.12)'; c.lineWidth = 1;
+      for (let i = 0; i < 3; i++) { c.beginPath(); const yy = y + 6 + rng() * 20; c.moveTo(0, yy); c.bezierCurveTo(W / 3, yy + rng() * 6 - 3, 2 * W / 3, yy + rng() * 6 - 3, W, yy); c.stroke(); }
+    }
+  } else if (theme === 'kitchen') {
+    for (let y = TOP; y < H; y += T) for (let x = 0; x < W; x += T) {
+      c.fillStyle = ((x + y - TOP) / T) % 2 ? st.a : st.b; c.fillRect(x, y, T, T);
+    }
+    c.fillStyle = st.b; c.fillRect(0, 0, W, TOP);
+  } else {
+    const n = theme === 'grass' ? 5000 : 7000;
+    for (let i = 0; i < n; i++) {
+      const x = rng() * W, y = rng() * H;
+      c.fillStyle = rng() < 0.5 ? st.a : st.b;
+      if (theme === 'grass') { c.strokeStyle = c.fillStyle; c.lineWidth = 1.2; c.beginPath(); c.moveTo(x, y); c.lineTo(x + rng() * 4 - 2, y - 3 - rng() * 4); c.stroke(); }
+      else c.fillRect(x, y, 1.6, 1.6);
+    }
+  }
+  // grid
+  c.strokeStyle = 'rgba(0,0,0,.10)'; c.lineWidth = 1;
+  for (let x = 0; x <= COLS; x++) { c.beginPath(); c.moveTo(x * T + .5, TOP); c.lineTo(x * T + .5, H); c.stroke(); }
+  for (let y = 0; y <= ROWS; y++) { c.beginPath(); c.moveTo(0, TOP + y * T + .5); c.lineTo(W, TOP + y * T + .5); c.stroke(); }
+  // flat terrain
+  for (const o of G.scn.terrain) if (o.kind === 'water' || o.kind === 'hill' || o.kind === 'rough') drawFlat(c, o, rng);
+  G.floor = off;
+}
+
+function drawFlat(c, o, rng) {
+  const x = o.x * T, y = TOP + o.y * T, w = o.w * T, h = o.h * T, l = o.label.toLowerCase();
+  if (o.kind === 'water') {
+    const col = /juice|orange/.test(l) ? '#f0a23a' : /milk|slush|frozen|ice/.test(l) ? '#eef3f6' : /cola|tea|coffee|soda|choc/.test(l) ? '#7a4a2a' : /ink/.test(l) ? '#2b3f8f' : /moat|tide|sea/.test(l) ? '#4aa3d6' : '#6fb6e8';
+    c.fillStyle = col; c.globalAlpha = 0.92;
+    for (let yy = 0; yy < o.h; yy++) for (let xx = 0; xx < o.w; xx++) {
+      c.beginPath(); c.ellipse(x + xx * T + T / 2, y + yy * T + T / 2, T * (0.55 + rng() * 0.15), T * (0.5 + rng() * 0.15), rng() * 3, 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+    c.fillStyle = 'rgba(255,255,255,.45)';
+    c.beginPath(); c.ellipse(x + w * 0.35, y + h * 0.35, Math.min(w, h) * 0.18, Math.min(w, h) * 0.07, -0.5, 0, Math.PI * 2); c.fill();
+  } else if (o.kind === 'hill') {
+    const earthy = /dune|mound|hill|drift|snow|sand|dirt/.test(l);
+    const col = earthy ? (/snow|drift/.test(l) ? '#f4f7fa' : /sand|dune/.test(l) ? '#e7cf95' : '#8a6a44') : colorFor(o.label);
+    const g = c.createRadialGradient(x + w * 0.4, y + h * 0.35, 4, x + w / 2, y + h / 2, Math.max(w, h) * 0.7);
+    g.addColorStop(0, shade(col, 0.35)); g.addColorStop(1, shade(col, -0.2));
+    c.fillStyle = g; rrect(c, x + 4, y + 4, w - 8, h - 8, earthy ? Math.min(w, h) / 2 : 18); c.fill();
+    if (!earthy) { c.setLineDash([4, 4]); c.strokeStyle = 'rgba(0,0,0,.25)'; c.lineWidth = 1.5; rrect(c, x + 10, y + 10, w - 20, h - 20, 12); c.stroke(); c.setLineDash([]); }
+  } else if (o.kind === 'rough') {
+    for (let i = 0; i < o.w * o.h * 14; i++) {
+      const px = x + 6 + rng() * (w - 12), py = y + 6 + rng() * (h - 12);
+      if (/lego|puzzle/.test(l)) { c.fillStyle = pick(rng, PAL); c.fillRect(px, py, 8, 5); c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(px + 1, py + 1, 2, 2); }
+      else if (/marble/.test(l)) { c.fillStyle = pick(rng, PAL); c.beginPath(); c.arc(px, py, 3.5, 0, 7); c.fill(); c.fillStyle = 'rgba(255,255,255,.7)'; c.fillRect(px - 1.5, py - 1.5, 1.5, 1.5); }
+      else if (/rice|crumb|popcorn|cereal|snow|ice/.test(l)) { c.fillStyle = /cereal|crumb/.test(l) ? '#d9a95a' : '#fbf6e8'; c.beginPath(); c.ellipse(px, py, 3, 1.8, rng() * 3, 0, 7); c.fill(); }
+      else { c.fillStyle = pick(rng, ['#6b4a2a', '#8a6038', '#5a3e22', '#9a8a70']); c.beginPath(); c.ellipse(px, py, 3.5, 2.2, rng() * 3, 0, 7); c.fill(); }
+    }
+  }
+}
+
+function wallStyle(l) {
+  l = l.toLowerCase();
+  if (/book|comic|novel|dictionary|magazine|encyclop/.test(l)) return 'books';
+  if (/lego|brick|duplo/.test(l)) return 'lego';
+  if (/block|cube|alphabet/.test(l)) return 'block';
+  if (/snow|ice|frozen/.test(l)) return 'ice';
+  if (/can|cup|mug|pot|bucket|jar|tower|castle|keep|gnome|snowman/.test(l)) return 'round';
+  return 'box';
+}
+function drawWall(c, o) {
+  const D = 16;
+  const x = o.x * T + 2, y = TOP + o.y * T - D + 2, w = o.w * T - 4, h = o.h * T - 4;
+  const st = wallStyle(o.label);
+  const col = st === 'box' ? '#b98d5a' : st === 'ice' ? '#bfe0f0' : colorFor(o.label);
+  c.fillStyle = 'rgba(0,0,0,.22)'; rrect(c, x + 6, y + D + 6, w, h, 6); c.fill();
+  if (st === 'round') {
+    for (let yy = 0; yy < o.h; yy++) for (let xx = 0; xx < o.w; xx++) {
+      const cx = o.x * T + xx * T + T / 2, cy = TOP + (o.y + yy) * T + T / 2 - D / 2, r = T * 0.42;
+      const cc = colorFor(o.label + xx + yy);
+      c.fillStyle = shade(cc, -0.3); rrect(c, cx - r, cy, 2 * r, D, 3); c.fill();
+      c.beginPath(); c.ellipse(cx, cy + D, r, r * 0.6, 0, 0, Math.PI); c.fill();
+      c.fillStyle = cc; c.beginPath(); c.ellipse(cx, cy, r, r * 0.8, 0, 0, 7); c.fill();
+      c.fillStyle = shade(cc, -0.15); c.beginPath(); c.ellipse(cx, cy, r * 0.72, r * 0.56, 0, 0, 7); c.fill();
+      c.fillStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.ellipse(cx - r * 0.45, cy - r * 0.35, r * 0.18, r * 0.08, -0.6, 0, 7); c.fill();
+    }
+    return;
+  }
+  // front face
+  if (st === 'books') {
+    const n = Math.max(3, Math.round(D / 4));
+    for (let i = 0; i < n; i++) { c.fillStyle = PAL[(hash(o.label) + i) % PAL.length]; c.fillRect(x, y + h + i * (D / n), w, D / n + .5); }
+    c.fillStyle = 'rgba(255,255,255,.6)'; for (let i = 0; i < n; i++) c.fillRect(x + w - 10, y + h + i * (D / n) + 1, 8, D / n - 2);
+  } else { c.fillStyle = shade(col, -0.28); c.fillRect(x, y + h, w, D); }
+  // top face
+  c.fillStyle = col; rrect(c, x, y, w, h + 1, 4); c.fill();
+  if (st === 'lego') {
+    for (let yy = 0; yy < o.h * 2; yy++) for (let xx = 0; xx < o.w * 2; xx++) {
+      const cx = x + (xx + 0.5) * w / (o.w * 2), cy = y + (yy + 0.5) * h / (o.h * 2);
+      c.fillStyle = shade(col, -0.2); c.beginPath(); c.arc(cx + 1, cy + 2, 9, 0, 7); c.fill();
+      c.fillStyle = shade(col, 0.12); c.beginPath(); c.arc(cx, cy, 9, 0, 7); c.fill();
+    }
+  } else if (st === 'books') {
+    c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(x + 8, y + 6, 6, h - 12);
+    c.fillStyle = 'rgba(255,255,255,.8)'; c.font = 'bold 11px Rubik, sans-serif'; c.textAlign = 'center';
+    c.fillText(o.label.toUpperCase().slice(0, Math.floor(w / 7)), x + w / 2, y + h / 2 + 4);
+  } else if (st === 'block') {
+    for (let yy = 0; yy < o.h; yy++) for (let xx = 0; xx < o.w; xx++) {
+      const bc = PAL[(hash(o.label) + xx * 3 + yy * 5) % PAL.length];
+      const bx = o.x * T + xx * T + 4, by = TOP + (o.y + yy) * T - D + 4;
+      c.fillStyle = '#e9cf9c'; rrect(c, bx, by, T - 8, T - 8, 5); c.fill();
+      c.fillStyle = bc; c.font = 'bold 30px "Black Ops One", Rubik, sans-serif'; c.textAlign = 'center';
+      c.fillText('ABCDEFGHJKMNPRSTWXYZ'[(hash(o.label) + xx + yy * 7) % 20], bx + (T - 8) / 2, by + (T - 8) / 2 + 11);
+    }
+  } else if (st === 'box') {
+    c.fillStyle = 'rgba(230,215,160,.75)'; c.fillRect(x, y + h / 2 - 6, w, 12);
+    c.strokeStyle = 'rgba(90,60,30,.35)'; c.lineWidth = 1; c.beginPath(); c.moveTo(x + w / 2, y + 4); c.lineTo(x + w / 2, y + h - 4); c.stroke();
+    if (/cereal/i.test(o.label)) { c.fillStyle = '#d94b3d'; rrect(c, x + 8, y + 8, w - 16, h / 2 - 16, 4); c.fill(); }
+  } else if (st === 'ice') {
+    c.strokeStyle = 'rgba(255,255,255,.8)'; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(x + 10, y + 12); c.lineTo(x + w * 0.4, y + h * 0.35); c.stroke();
+  }
+  c.strokeStyle = 'rgba(0,0,0,.25)'; c.lineWidth = 1; rrect(c, x, y, w, h + D, 4); c.stroke();
+}
+
+function drawCover(c, o) {
+  const l = o.label.toLowerCase();
+  const rng = mulberry(hash(o.label + o.x + o.y));
+  for (let yy = 0; yy < o.h; yy++) for (let xx = 0; xx < o.w; xx++) {
+    const cx = (o.x + xx) * T + T / 2, cy = TOP + (o.y + yy) * T + T / 2;
+    if (/crayon|pencil|marker|chalk|spoon|fork|remote|twig/.test(l)) {
+      for (let i = 0; i < 3; i++) {
+        const yy2 = cy + 4 + i * 8, col = /twig/.test(l) ? '#7a5431' : /spoon|fork/.test(l) ? '#c8ccd2' : PAL[(i + xx * 2 + yy) % PAL.length];
+        c.fillStyle = 'rgba(0,0,0,.2)'; rrect(c, cx - 26, yy2 + 3, 52, 7, 3); c.fill();
+        c.fillStyle = col; rrect(c, cx - 24, yy2, 44, 7, 3); c.fill();
+        c.beginPath(); c.moveTo(cx + 20, yy2); c.lineTo(cx + 28, yy2 + 3.5); c.lineTo(cx + 20, yy2 + 7); c.fill();
+        c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(cx - 22, yy2 + 1, 38, 1.5);
+      }
+    } else if (/slipper|shoe|sock|boot|mitten|mitt/.test(l)) {
+      const col = colorFor(o.label);
+      c.fillStyle = 'rgba(0,0,0,.2)'; c.beginPath(); c.ellipse(cx + 3, cy + 16, 27, 12, 0, 0, 7); c.fill();
+      c.fillStyle = col; c.beginPath(); c.ellipse(cx, cy + 12, 27, 13, 0, 0, 7); c.fill();
+      c.fillStyle = shade(col, 0.3); c.beginPath(); c.ellipse(cx - 6, cy + 9, 12, 6, 0, 0, 7); c.fill();
+    } else if (/grass|tuft/.test(l)) {
+      c.strokeStyle = '#3f7a2a'; c.lineWidth = 2.5;
+      for (let i = 0; i < 16; i++) { const bx = cx - 24 + rng() * 48; c.beginPath(); c.moveTo(bx, cy + 24); c.quadraticCurveTo(bx + rng() * 6 - 3, cy + 6, bx + rng() * 12 - 6, cy - 2 + rng() * 10); c.stroke(); }
+    } else if (/sponge/.test(l)) {
+      c.fillStyle = '#e8c93a'; rrect(c, cx - 26, cy - 2, 52, 26, 5); c.fill();
+      c.fillStyle = '#3f9a4a'; rrect(c, cx - 26, cy - 8, 52, 8, 3); c.fill();
+      c.fillStyle = 'rgba(160,120,20,.5)'; for (let i = 0; i < 6; i++) { c.beginPath(); c.arc(cx - 18 + rng() * 36, cy + 5 + rng() * 14, 2, 0, 7); c.fill(); }
+    } else if (/shell|pebble|stone|rock|snowball|coaster|ridge/.test(l)) {
+      for (let i = 0; i < 4; i++) {
+        const col = /snow/.test(l) ? '#ffffff' : /shell/.test(l) ? '#f1d9c6' : /coaster/.test(l) ? colorFor(l + i) : '#9a9489';
+        const px = cx - 18 + i * 12, py = cy + 8 + (i % 2) * 6;
+        c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(px + 2, py + 4, 10, 7, 0, 0, 7); c.fill();
+        c.fillStyle = col; c.beginPath(); c.ellipse(px, py, 10, 7, 0, 0, 7); c.fill();
+      }
+    } else { // sandbags
+      for (let r = 0; r < 2; r++) for (let i = 0; i < 3 - r; i++) {
+        const px = cx - 18 + i * 18 + r * 9, py = cy + 16 - r * 9;
+        c.fillStyle = 'rgba(0,0,0,.2)'; c.beginPath(); c.ellipse(px + 2, py + 3, 10, 6, 0, 0, 7); c.fill();
+        c.fillStyle = '#c8b27e'; c.beginPath(); c.ellipse(px, py, 10, 6, 0, 0, 7); c.fill();
+        c.fillStyle = 'rgba(255,255,255,.25)'; c.beginPath(); c.ellipse(px - 3, py - 2, 4, 2, 0, 0, 7); c.fill();
+      }
+    }
+  }
+}
+
+// ---- plastic army men -------------------------------------------------
+// Figures are defined facing right, feet at (0,0), as stroke primitives.
+function figure(type) {
+  const L = (x1, y1, x2, y2, w) => ({ t: 'l', x1, y1, x2, y2, w });
+  const C = (x, y, r) => ({ t: 'c', x, y, r });
+  const helmet = (x, y) => ({ t: 'h', x, y });
+  const legs = [L(-5, -2, -3, -20, 5.5), L(6, -2, 2, -20, 5.5)];
+  const torso = [L(-1, -20, 0, -34, 10)];
+  switch (type) {
+    case 'rifleman': return [...legs, ...torso, C(1, -39, 5.5), helmet(1, -41), L(-1, -31, 10, -31, 4.5), L(-6, -30, 22, -33, 3.2)];
+    case 'bazooka': return [...legs, ...torso, C(1, -39, 5.5), helmet(1, -41), L(0, -31, 7, -35, 4.5), L(-15, -36, 20, -39, 7)];
+    case 'grenadier': return [...legs, ...torso, C(1, -39, 5.5), helmet(1, -41), L(-1, -32, -9, -45, 4.5), C(-10, -48, 4), L(1, -30, 11, -27, 4.5)];
+    case 'officer': return [...legs, ...torso, C(1, -39, 5.5), helmet(1, -41), L(0, -32, 16, -38, 4.5), L(-1, -30, -6, -24, 4.5), L(-6, -24, -2, -21, 4)];
+    case 'sniper': return [L(-7, -2, -2, -12, 5.5), L(-2, -12, 7, -12, 5.5), L(7, -12, 7, -2, 5.5), L(-2, -12, 0, -26, 10), C(2, -31, 5.5), helmet(2, -33), L(1, -24, 10, -26, 4.5), L(-8, -24, 28, -27, 2.8)];
+    case 'machinegunner': return [L(-20, -4, -8, -6, 5.5), L(-9, -6, 6, -8, 10), C(11, -11, 5.5), helmet(11, -13), L(8, -10, 26, -11, 3.6), L(21, -10, 23, -2, 1.8), L(21, -10, 19, -2, 1.8)];
+  }
+  return [];
+}
+function drawFigurePrims(c, prims, col, pass) {
+  for (const p of prims) {
+    if (p.t === 'l') {
+      c.lineCap = 'round';
+      c.strokeStyle = pass === 0 ? col.line : pass === 1 ? col.main : col.hi;
+      c.lineWidth = pass === 0 ? p.w + 3 : pass === 1 ? p.w : Math.max(1, p.w * 0.3);
+      c.beginPath();
+      if (pass === 2) { c.moveTo(p.x1 - .5, p.y1 - 1.2); c.lineTo(p.x2 - .5, p.y2 - 1.2); }
+      else { c.moveTo(p.x1, p.y1); c.lineTo(p.x2, p.y2); }
+      c.stroke();
+    } else if (p.t === 'c') {
+      if (pass === 2) { c.fillStyle = col.hi; c.beginPath(); c.arc(p.x - p.r * .35, p.y - p.r * .35, p.r * .35, 0, 7); c.fill(); continue; }
+      c.fillStyle = pass === 0 ? col.line : col.main;
+      c.beginPath(); c.arc(p.x, p.y, p.r + (pass === 0 ? 1.5 : 0), 0, 7); c.fill();
+    } else if (p.t === 'h') {
+      if (pass === 2) continue;
+      c.fillStyle = pass === 0 ? col.line : col.lo;
+      const e = pass === 0 ? 1.5 : 0;
+      c.beginPath(); c.ellipse(p.x, p.y, 8 + e, 4.5 + e, 0, Math.PI, 0); c.fill();
+      c.fillRect(p.x - 9 - e, p.y - e / 2, 18 + 2 * e, 2 + e);
+    }
+  }
+}
+function drawSoldier(c, u, px, py, t) {
+  const col = u.flash > t ? { main: '#ffffff', hi: '#ffffff', lo: '#dddddd', line: '#777' } : PLASTIC[u.side];
+  c.save();
+  c.translate(px, py);
+  if (u.shake > t) c.translate(Math.sin(t / 18) * 3, 0);
+  // topple animation: rotate around the base
+  let ang = 0;
+  if (u.dead) { const k = u.topple ? clamp((t - u.topple) / 450, 0, 1) : 1; ang = -Math.PI / 2 * (1 - (1 - k) ** 3) * u.facing; c.globalAlpha = 1 - 0.4 * k; }
+  // base plate + shadow
+  c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(3, 4, u.type === 'tank' ? 30 : 17, 6, 0, 0, 7); c.fill();
+  if (u.type !== 'tank') {
+    c.fillStyle = col.line; c.beginPath(); c.ellipse(0, 1, 16, 6, 0, 0, 7); c.fill();
+    c.fillStyle = col.lo; c.beginPath(); c.ellipse(0, 0, 14.5, 5, 0, 0, 7); c.fill();
+  }
+  c.rotate(ang);
+  c.scale(u.facing, 1);
+  if (u.type === 'tank') drawTank(c, col);
+  else { const f = figure(u.type); for (let p = 0; p < 3; p++) drawFigurePrims(c, f, col, p); }
+  c.restore();
+}
+function drawTank(c, col) {
+  c.fillStyle = col.line; rrect(c, -29, -16, 58, 18, 7); c.fill();
+  c.fillStyle = '#3a3a33'; rrect(c, -27, -6, 54, 9, 4); c.fill();
+  c.fillStyle = '#555549'; for (let i = -22; i <= 22; i += 9) { c.beginPath(); c.arc(i, -1.5, 3, 0, 7); c.fill(); }
+  c.fillStyle = col.main; rrect(c, -26, -20, 52, 14, 5); c.fill();
+  c.fillStyle = col.hi; c.fillRect(-22, -19, 40, 2);
+  c.lineCap = 'round'; c.strokeStyle = col.line; c.lineWidth = 7; c.beginPath(); c.moveTo(4, -28); c.lineTo(32, -30); c.stroke();
+  c.strokeStyle = col.main; c.lineWidth = 4.5; c.beginPath(); c.moveTo(4, -28); c.lineTo(32, -30); c.stroke();
+  c.fillStyle = col.line; rrect(c, -14, -36, 24, 16, 6); c.fill();
+  c.fillStyle = col.main; rrect(c, -12.5, -34.5, 21, 13, 5); c.fill();
+  c.fillStyle = col.hi; c.fillRect(-9, -33, 12, 2);
+  c.fillStyle = col.lo; c.beginPath(); c.arc(-3, -36, 3.5, 0, 7); c.fill();
+}
+
+function drawFlag(c, x, y, t) {
+  const px = sx(x) + 10, py = sy(y) + 18;
+  c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(px, py + 2, 8, 3, 0, 0, 7); c.fill();
+  c.strokeStyle = '#6b5a3a'; c.lineWidth = 3; c.beginPath(); c.moveTo(px, py); c.lineTo(px, py - 58); c.stroke();
+  const wave = Math.sin(t / 300) * 3;
+  const col = G.scn.objective.type === 'defend' ? PLASTIC.player.main : PLASTIC.enemy.main;
+  c.fillStyle = col; c.beginPath(); c.moveTo(px, py - 58); c.quadraticCurveTo(px + 16, py - 54 + wave, px + 30, py - 56); c.lineTo(px + 30, py - 38); c.quadraticCurveTo(px + 16, py - 36 + wave, px, py - 40); c.fill();
+  c.fillStyle = '#fff'; c.font = '12px sans-serif'; c.textAlign = 'center'; c.fillText('★', px + 15, py - 43 + wave / 2);
+  c.strokeStyle = 'rgba(255,214,107,.8)'; c.setLineDash([5, 4]); c.lineWidth = 2;
+  c.strokeRect(x * T + 4, TOP + y * T + 4, T - 8, T - 8); c.setLineDash([]);
+}
+
+function render() {
+  const t = now();
+  requestAnimationFrame(render);
+  ctx.clearRect(0, 0, W, H);
+  if (!G) return;
+  if (!G.floor) paintFloor();
+  ctx.drawImage(G.floor, 0, 0, W, H);
+
+  // overlays
+  const sel = G.sel;
+  if (sel && G.phase === 'player' && !G.busy) {
+    if (G.reach && !sel.moved) for (const [k, v] of G.reach) {
+      if (v.occupied) continue;
+      const x = k % COLS, y = Math.floor(k / COLS);
+      ctx.fillStyle = 'rgba(90,170,255,.30)'; ctx.fillRect(x * T + 1, TOP + y * T + 1, T - 2, T - 2);
+    }
+    if (!sel.acted) {
+      const r = rangeOf(sel, sel.x, sel.y);
+      ctx.strokeStyle = 'rgba(220,60,40,.35)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.arc(sx(sel.x), sy(sel.y), r * T + T / 2, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (G.hover && G.reach && !sel.moved) {
+      const k = key(G.hover.x, G.hover.y);
+      const v = G.reach.get(k);
+      if (v && !v.occupied) {
+        const p = pathTo(G.reach, k);
+        ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); p.forEach((q, i) => i ? ctx.lineTo(sx(q.x), sy(q.y)) : ctx.moveTo(sx(q.x), sy(q.y))); ctx.stroke();
+      }
+    }
+  }
+  if (G.hover && inb(G.hover.x, G.hover.y)) {
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.strokeRect(G.hover.x * T + 2, TOP + G.hover.y * T + 2, T - 4, T - 4);
+  }
+
+  const o = G.scn.objective;
+  if (o.type === 'capture' || o.type === 'defend') drawFlag(ctx, o.x, o.y, t);
+
+  // depth-sorted draw list
+  const list = [];
+  for (const ob of G.scn.terrain) {
+    if (ob.kind === 'wall') list.push({ z: ob.y * 10, f: () => drawWall(ctx, ob) });
+    else if (ob.kind === 'cover') list.push({ z: (ob.y + ob.h - 1) * 10 + 8, f: () => drawCover(ctx, ob) });
+  }
+  for (const u of G.units) {
+    const z = Math.round(u.ry) * 10 + (u.dead ? 1 : 5);
+    list.push({ z, f: () => drawUnit(u, t) });
+  }
+  list.sort((a, b) => a.z - b.z);
+  for (const it of list) it.f();
+
+  // targets
+  if (sel && !sel.acted && G.phase === 'player' && !G.busy) {
+    for (const e of alive('enemy')) if (canTarget(sel, sel.x, sel.y, e)) {
+      const px = sx(e.x), py = sy(e.y) - 14, r = 20 + Math.sin(t / 150) * 2;
+      ctx.strokeStyle = '#ff4a3a'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px - r - 5, py); ctx.lineTo(px - r + 6, py); ctx.moveTo(px + r - 6, py); ctx.lineTo(px + r + 5, py);
+      ctx.moveTo(px, py - r - 5); ctx.lineTo(px, py - r + 6); ctx.moveTo(px, py + r - 6); ctx.lineTo(px, py + r + 5); ctx.stroke();
+    }
+  }
+
+  // fx
+  G.fx = G.fx.filter(f => t < f.t0 + f.dur);
+  for (const f of G.fx) {
+    const k = (t - f.t0) / f.dur;
+    if (k < 0) continue;
+    if (f.type === 'tracer') {
+      const a = clamp(k * 1.6, 0, 1), b = clamp(k * 1.6 - 0.35, 0, 1);
+      ctx.strokeStyle = '#fff3a0'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(f.x1 + (f.x2 - f.x1) * b, f.y1 + (f.y2 - f.y1) * b); ctx.lineTo(f.x1 + (f.x2 - f.x1) * a, f.y1 + (f.y2 - f.y1) * a); ctx.stroke();
+      if (k < 0.2) { ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.arc(f.x1, f.y1, 7 * (1 - k * 5), 0, 7); ctx.fill(); }
+    } else if (f.type === 'lob') {
+      const x = f.x1 + (f.x2 - f.x1) * k, y = f.y1 + (f.y2 - f.y1) * k - Math.sin(k * Math.PI) * 90;
+      ctx.fillStyle = '#3c4a2a'; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill();
+    } else if (f.type === 'boom') {
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = '#ffb02e'; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.4 + k), 0, 7); ctx.fill();
+      ctx.fillStyle = '#fff1a8'; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * 0.5 * (1 - k), 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (f.type === 'text') {
+      ctx.globalAlpha = 1 - k * k;
+      ctx.font = `${f.size || 20}px "Black Ops One", Rubik, sans-serif`; ctx.textAlign = 'center';
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.strokeText(f.text, f.x, f.y - k * 26);
+      ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y - k * 26);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  if (G.banner && t < G.banner.t0 + 1100) {
+    const k = (t - G.banner.t0) / 1100;
+    ctx.globalAlpha = k < .15 ? k / .15 : k > .75 ? (1 - k) / .25 : 1;
+    ctx.fillStyle = 'rgba(20,16,6,.55)'; ctx.fillRect(0, H / 2 - 40, W, 80);
+    ctx.font = '44px "Black Ops One", Rubik, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = G.banner.color; ctx.fillText(G.banner.text, W / 2, H / 2 + 15);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawUnit(u, t) {
+  const px = sx(u.rx), py = sy(u.ry) + 18;
+  const mine = u.side === 'player' && G.phase === 'player';
+  const spent = mine && !u.dead && u.acted;
+  if (G.sel === u && !u.dead) {
+    ctx.strokeStyle = '#ffd66b'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(px, py + 1, 22 + Math.sin(t / 200) * 2, 9, 0, 0, 7); ctx.stroke();
+  }
+  ctx.save();
+  if (spent) ctx.globalAlpha = 0.6;
+  drawSoldier(ctx, u, px, py, t);
+  ctx.restore();
+  if (!u.dead) {
+    const n = u.maxHp, w = 5, gap = 2, tw = n * w + (n - 1) * gap;
+    const top = u.type === 'machinegunner' ? py - 26 : u.type === 'tank' ? py - 48 : u.type === 'sniper' ? py - 44 : py - 56;
+    for (let i = 0; i < n; i++) {
+      ctx.fillStyle = i < u.hp ? (u.side === 'player' ? '#9fe06a' : '#ffcf7a') : 'rgba(0,0,0,.35)';
+      ctx.fillRect(px - tw / 2 + i * (w + gap), top, w, 4);
+    }
+    if (mine && !u.acted && !u.moved) { ctx.fillStyle = '#ffd66b'; ctx.beginPath(); ctx.arc(px + tw / 2 + 6, top + 2, 2.5, 0, 7); ctx.fill(); }
+  }
+}
+requestAnimationFrame(render);
+
+// ===================================================================
+//  Actions & animation
+// ===================================================================
+function fxText(x, y, text, color, size, delay = 0) { G.fx.push({ type: 'text', x, y, text, color, size, t0: now() + delay, dur: 900 }); }
+
+async function animateMove(u, path) {
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    if (b.x !== a.x) u.facing = b.x > a.x ? 1 : -1;
+    const t0 = now(), dur = u.type === 'tank' ? 90 : 120;
+    sfx('step');
+    while (true) {
+      const k = Math.min(1, (now() - t0) / dur);
+      u.rx = a.x + (b.x - a.x) * k; u.ry = a.y + (b.y - a.y) * k;
+      if (k >= 1) break;
+      await new Promise(r => requestAnimationFrame(r));
+    }
+  }
+  const e = path[path.length - 1];
+  u.x = u.rx = e.x; u.y = u.ry = e.y;
+}
+
+async function attack(att, def) {
+  const ut = UT[att.type];
+  const chance = hitChance(att, att.x, att.y, def);
+  const shots = shotsFor(att, att.moved);
+  const dmg = dmgVs(att, def);
+  if (def.x !== att.x) att.facing = def.x > att.x ? 1 : -1;
+  const mx = sx(att.x) + 16 * att.facing, my = sy(att.y) + (att.type === 'machinegunner' ? 8 : -12);
+  let hits = 0, total = 0;
+  for (let i = 0; i < shots; i++) {
+    const tx = sx(def.x) + (Math.random() - .5) * 18, ty = sy(def.y) - 4 + (Math.random() - .5) * 18;
+    if (ut.indirect) { G.fx.push({ type: 'lob', x1: mx, y1: my, x2: tx, y2: ty, t0: now(), dur: 520 }); await sleep(520); }
+    else { G.fx.push({ type: 'tracer', x1: mx, y1: my, x2: tx, y2: ty, t0: now(), dur: 260 }); sfx('shot'); await sleep(150); }
+    const hit = Math.random() * 100 < chance;
+    if (ut.boom) { G.fx.push({ type: 'boom', x: tx, y: ty, r: hit ? 30 : 18, t0: now(), dur: 450 }); sfx('boom'); }
+    if (hit && !def.dead) {
+      hits++; total += dmg;
+      def.hp = Math.max(0, def.hp - dmg);
+      def.flash = now() + 110; def.shake = now() + 250;
+      fxText(sx(def.x), sy(def.y) - 50, dmg ? '-' + dmg : 'PLINK', dmg ? '#ff6b5a' : '#cfd6dd', 22);
+      if (dmg) sfx('hit');
+      if (def.hp <= 0) topple(def);
+    } else if (!hit) fxText(tx, ty - 30, 'MISS', '#e8e2cc', 16);
+    await sleep(ut.indirect ? 150 : 110);
+  }
+  // grenade splash hits everyone adjacent to the target (friends included)
+  if (ut.splash && hits) {
+    for (const o of G.units) {
+      if (o.dead || o === def || Math.max(Math.abs(o.x - def.x), Math.abs(o.y - def.y)) !== 1) continue;
+      const d = UT[o.type].armor ? 0 : ut.splash;
+      if (!d) continue;
+      o.hp = Math.max(0, o.hp - d); o.flash = now() + 110;
+      fxText(sx(o.x), sy(o.y) - 50, '-' + d, '#ffa25a', 18);
+      G.events.push(`${o.name} was caught in the blast`);
+      if (o.hp <= 0) topple(o);
+    }
+  }
+  att.moved = true; att.acted = true;
+  const who = `${att.name} (${UT[att.type].name.toLowerCase()})`;
+  let line;
+  if (!hits) line = `${who} fired at ${def.name} and missed`;
+  else if (def.dead) line = `${who} toppled ${def.name}!`;
+  else line = `${who} hit ${def.name}${total ? ` for ${total}` : ', but it bounced off the armour'}`;
+  G.events.push(line);
+  log(line, def.dead ? (att.side === 'player' ? 'good' : 'bad') : '');
+  await sleep(250);
+  refreshUI();
+  return checkEnd();
+}
+
+function topple(u) {
+  u.dead = true; u.topple = now();
+  G.kills[u.side === 'player' ? 'enemy' : 'player']++;
+  sfx('topple');
+  fxText(sx(u.x), sy(u.y) - 70, u.type === 'tank' ? 'KA-BOOM!' : pick(Math.random, ['TOPPLED!', 'DOWN!', 'CLATTER!', 'BONK!']), '#ffd66b', 22, 150);
+}
+
+// ===================================================================
+//  Win / loss
+// ===================================================================
+function checkEnd(phaseEnd) {
+  if (G.over) return true;
+  const o = G.scn.objective;
+  if (!alive('player').length) return finish(false, 'Every green soldier has been knocked over.');
+  if (!alive('enemy').length) return finish(true, 'Not a single tan soldier left standing.');
+  if (o.type === 'assassinate' && !alive('enemy').some(u => u.type === 'officer')) return finish(true, 'The tan officer is down and their army scatters!');
+  if (phaseEnd === 'enemy' && o.type === 'capture' && alive('player').some(u => u.x === o.x && u.y === o.y)
+      && !alive('enemy').some(u => Math.max(Math.abs(u.x - o.x), Math.abs(u.y - o.y)) <= 1)) return finish(true, 'The flag is ours!');
+  if (phaseEnd === 'player' && o.type === 'defend' && alive('enemy').some(u => u.x === o.x && u.y === o.y)) return finish(false, 'The tan army has taken our flag.');
+  if (phaseEnd === 'enemy' && G.round >= G.scn.turnLimit) {
+    if (o.type === 'defend') return finish(true, '"DINNER TIME!" — the flag held until the very end.');
+    return finish(false, '"DINNER TIME!" — the kids were called away before the mission was done.');
+  }
+  return false;
+}
+function finish(win, reason) {
+  G.over = true; G.phase = 'over'; G.sel = null;
+  G.banner = { text: win ? 'VICTORY' : 'DEFEAT', color: win ? '#9fe06a' : '#ff8a7a', t0: now() };
+  if (win) sfx('win');
+  log(reason, win ? 'good' : 'bad');
+  const summary = `${reason} Green lost ${G.kills.enemy}, tan lost ${G.kills.player}.`;
+  campaign.push({ title: G.scn.title, setting: G.scn.setting, result: win ? 'green victory' : 'green defeat', summary });
+  narrateRound([...G.events, reason], win ? 'green victory' : 'green defeat');
+  refreshUI();
+  setTimeout(() => {
+    $('endTitle').textContent = win ? 'Victory!' : 'Defeat';
+    $('endTitle').className = 'endtitle ' + (win ? 'win' : 'lose');
+    $('endText').textContent = reason + ' ' + (win ? G.scn.victoryText : G.scn.defeatText);
+    $('endStats').textContent = `Round ${G.round} · Tan toppled: ${G.kills.player} · Green toppled: ${G.kills.enemy}`;
+    $('dlgEnd').showModal();
+  }, 1400);
+  return true;
+}
+
+// ===================================================================
+//  Player input
+// ===================================================================
+function tileFromEvent(e) {
+  const r = cv.getBoundingClientRect();
+  const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height - TOP;
+  return { x: Math.floor(x / T), y: Math.floor(y / T), px: e.clientX - r.left, py: e.clientY - r.top };
+}
+function select(u) {
+  G.sel = u;
+  G.reach = u && !u.moved ? reachable(u) : null;
+  G.origin = u && !u.moved ? { x: u.x, y: u.y } : G.origin;
+  refreshUI();
+}
+
+cv.addEventListener('click', async e => {
+  if (!G || G.busy || G.phase !== 'player') return;
+  const { x, y } = tileFromEvent(e);
+  if (!inb(x, y)) return;
+  const u = unitAt(x, y);
+  const sel = G.sel;
+  if (u && u.side === 'player') {
+    if (u === sel) { select(null); return; }
+    if (!u.acted) select(u);
+    return;
+  }
+  if (!sel) return;
+  if (u && u.side === 'enemy') {
+    if (!sel.acted && canTarget(sel, sel.x, sel.y, u)) {
+      G.busy = true; G.origin = null;
+      const ended = await attack(sel, u);
+      G.busy = false;
+      if (!ended) select(null);
+      refreshUI();
+    }
+    return;
+  }
+  if (!sel.moved && G.reach) {
+    const v = G.reach.get(key(x, y));
+    if (v && !v.occupied) {
+      G.busy = true;
+      G.origin = { x: sel.x, y: sel.y };
+      await animateMove(sel, pathTo(G.reach, key(x, y)));
+      sel.moved = true; G.reach = null; G.busy = false;
+      G.undo = sel;
+      const hasTarget = alive('enemy').some(en => canTarget(sel, sel.x, sel.y, en));
+      if (!hasTarget) { /* keep selected so the player can undo */ }
+      refreshUI();
+      return;
+    }
+  }
+  select(null);
+});
+
+cv.addEventListener('mousemove', e => {
+  if (!G) return;
+  const p = tileFromEvent(e);
+  G.hover = inb(p.x, p.y) ? { x: p.x, y: p.y } : null;
+  showTip(p);
+});
+cv.addEventListener('mouseleave', () => { if (G) G.hover = null; $('tip').style.display = 'none'; });
+
+function showTip(p) {
+  const tip = $('tip');
+  if (!G.hover) { tip.style.display = 'none'; return; }
+  const { x, y } = G.hover;
+  const parts = [];
+  const u = unitAt(x, y);
+  if (u) {
+    parts.push(`<b>${esc(u.name)}</b> · ${UT[u.type].name} · ${u.hp}/${u.maxHp} HP`);
+    const s = G.sel;
+    if (s && u.side === 'enemy' && !s.acted && G.phase === 'player') {
+      if (canTarget(s, s.x, s.y, u)) parts.push(`Hit chance <b>${hitChance(s, s.x, s.y, u)}%</b> × ${shotsFor(s, s.moved)} shot${shotsFor(s, s.moved) > 1 ? 's' : ''} · ${dmgVs(s, u)} dmg each`);
+      else parts.push('Out of range or no line of sight');
+    }
+  }
+  const ob = objAt(x, y);
+  if (ob) parts.push(`${esc(ob.label)} — ${TER[ob.kind].eff}`);
+  const o = G.scn.objective;
+  if ((o.type === 'capture' || o.type === 'defend') && o.x === x && o.y === y) parts.push('<b>The flag</b>');
+  if (!parts.length) { tip.style.display = 'none'; return; }
+  tip.innerHTML = parts.join('<br>');
+  tip.style.display = 'block';
+  const bw = cv.parentElement.clientWidth;
+  tip.style.left = Math.min(p.px + 18, bw - 250) + 'px';
+  tip.style.top = (p.py + 18) + 'px';
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function holdSelected() {
+  if (!G || G.busy || G.phase !== 'player' || !G.sel) return;
+  G.sel.moved = true; G.sel.acted = true; G.events.push(`${G.sel.name} held position`);
+  select(null);
+}
+function undoMove() {
+  const u = G && G.sel;
+  if (!u || G.busy || !u.moved || u.acted || !G.origin || G.undo !== u) return;
+  u.x = u.rx = G.origin.x; u.y = u.ry = G.origin.y; u.moved = false; G.undo = null;
+  select(u);
+}
+$('btnWait').onclick = holdSelected;
+$('btnUndo').onclick = undoMove;
+$('btnEnd').onclick = () => endTurn();
+document.addEventListener('keydown', e => {
+  if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  if (e.key === 'Escape') { if (G && !G.busy) select(null); }
+  else if (e.key === 'e' || e.key === 'E') endTurn();
+  else if (e.key === 'w' || e.key === 'W') holdSelected();
+});
+
+// ===================================================================
+//  Turn flow & enemy AI
+// ===================================================================
+async function endTurn() {
+  if (!G || G.busy || G.phase !== 'player') return;
+  G.sel = null; G.reach = null; G.undo = null;
+  if (checkEnd('player')) return;
+  G.phase = 'enemy'; G.busy = true; refreshUI();
+  G.banner = { text: 'TAN ARMY MOVES', color: '#ecd29c', t0: now() };
+  await sleep(900);
+  const g = G;
+  const order = alive('enemy').sort((a, b) => aiPriority(a) - aiPriority(b));
+  for (const u of order) {
+    if (G !== g || G.over) return;
+    if (u.dead) continue;
+    const ended = await aiAct(u);
+    if (ended || G !== g) return;
+  }
+  if (G !== g) return;
+  for (const u of G.units) { u.moved = false; u.acted = false; }
+  const events = G.events; G.events = [];
+  if (checkEnd('enemy')) return;
+  narrateRound(events);
+  G.round++;
+  G.phase = 'player'; G.busy = false;
+  log(`Round ${G.round}`, 'round');
+  G.banner = { text: 'YOUR TURN', color: '#9fe06a', t0: now() };
+  refreshUI();
+}
+function aiPriority(u) { return { sniper: 0, machinegunner: 1, tank: 2, bazooka: 3, grenadier: 4, rifleman: 5, officer: 6 }[u.type]; }
+
+function aiAct(u) {
+  const diff = G.opts.difficulty;
+  const safetyW = { easy: 0.15, normal: 0.6, hard: 1 }[diff] ?? 0.6;
+  const noise = { easy: 6, normal: 1.5, hard: 0.3 }[diff] ?? 1.5;
+  const reach = reachable(u);
+  const players = alive('player');
+  const o = G.scn.objective;
+  let best = null;
+  for (const [k, v] of reach) {
+    if (v.occupied) continue;
+    const x = k % COLS, y = Math.floor(k / COLS);
+    const moving = x !== u.x || y !== u.y;
+    const ox = u.x, oy = u.y;
+    u.x = x; u.y = y; // evaluate as if standing here
+    let bestAtk = 0, target = null;
+    for (const p of players) {
+      if (!canTarget(u, x, y, p)) continue;
+      const ch = hitChance(u, x, y, p) / 100, d = dmgVs(u, p), n = shotsFor(u, moving);
+      let s = ch * d * n;
+      if (d >= p.hp) s += ch * 2.5;
+      if (p.type === 'officer' || p.type === 'tank' || p.type === 'sniper') s += 0.4;
+      if (o.type === 'capture') s += Math.max(0, 3 - (Math.abs(p.x - o.x) + Math.abs(p.y - o.y))) * 0.8; // intruders near our flag
+      if (UT[u.type].splash) for (const f of G.units) if (!f.dead && f !== p && Math.max(Math.abs(f.x - p.x), Math.abs(f.y - p.y)) === 1) s += (f.side === u.side ? -1.2 : 0.6) * ch;
+      if (s > bestAtk) { bestAtk = s; target = p; }
+    }
+    let threat = 0;
+    for (const p of players) {
+      const md = Math.abs(p.x - x) + Math.abs(p.y - y);
+      if (md <= UT[p.type].move + UT[p.type].range) threat += UT[p.type].dmg * UT[p.type].shots * Math.max(5, UT[p.type].acc - coverFor(u, p.x, p.y)) / 100;
+    }
+    let score = bestAtk * 10 - threat * safetyW * (u.type === 'sniper' ? 5 : 3);
+    if (!target) {
+      let nd = Infinity; for (const p of players) nd = Math.min(nd, Math.abs(p.x - x) + Math.abs(p.y - y));
+      score -= nd * 1.4;
+    }
+    if (o.type === 'defend') { const fd = Math.abs(o.x - x) + Math.abs(o.y - y); score -= fd * 2.2; if (!fd) score += 30; }
+    if (o.type === 'capture') {
+      const fd = Math.abs(o.x - x) + Math.abs(o.y - y);
+      if (fd > 3) score -= (fd - 3) * 1.5;
+      if (u.type === 'officer') score -= fd;
+      // step in next to the flag when a green soldier is threatening it
+      if (Math.max(Math.abs(o.x - x), Math.abs(o.y - y)) === 1 && players.some(p => Math.abs(p.x - o.x) + Math.abs(p.y - o.y) <= 4)) score += 6;
+    }
+    if (o.type === 'assassinate' && u.type === 'officer') score -= threat * 3;
+    if (u.type === 'officer') { for (const f of alive('enemy')) if (f !== u && dist(f.x, f.y, x, y) <= 2) score += 1; }
+    score += TER[kindAt(x, y)].cover / 10 + (Math.random() - 0.5) * noise;
+    u.x = ox; u.y = oy;
+    if (!best || score > best.score) best = { score, k, target };
+  }
+  return (async () => {
+    if (!best) return false;
+    if (best.k !== key(u.x, u.y)) {
+      await animateMove(u, pathTo(reach, best.k));
+      u.moved = true;
+    }
+    if (best.target && canTarget(u, u.x, u.y, best.target)) {
+      await sleep(150);
+      return attack(u, best.target);
+    }
+    u.acted = true;
+    await sleep(80);
+    return false;
+  })();
+}
+
+// ===================================================================
+//  UI
+// ===================================================================
+function log(text, cls = '') {
+  const p = document.createElement('p');
+  p.textContent = text; if (cls) p.className = cls;
+  const box = $('log'); box.appendChild(p); box.scrollTop = box.scrollHeight;
+}
+function refreshUI() {
+  if (!G) return;
+  const s = G.scn;
+  $('setting').textContent = s.setting;
+  $('title').textContent = s.title;
+  $('briefing').textContent = s.briefing;
+  $('objective').innerHTML = `<b>Objective:</b> ${esc(s.objective.description || objectiveText(s.objective))}` +
+    (s.objective.description ? `<br><span class="muted">${esc(objectiveText(s.objective))}</span>` : '');
+  $('round').textContent = G.round; $('limit').textContent = s.turnLimit;
+  const who = $('who');
+  who.textContent = G.over ? 'Battle over' : G.phase === 'player' ? 'Your turn' : 'Tan army moving…';
+  who.className = 'who ' + (G.phase === 'enemy' ? 'enemy' : 'player');
+  $('cntP').textContent = alive('player').length; $('cntE').textContent = alive('enemy').length;
+  const u = G.sel;
+  const idle = G.phase === 'player' && !G.busy && !G.over;
+  $('btnWait').disabled = !(idle && u && !u.acted);
+  $('btnUndo').disabled = !(idle && u && u.moved && !u.acted && G.undo === u);
+  $('btnEnd').disabled = !idle;
+  $('btnEnd').classList.toggle('pulse', idle && alive('player').every(p => p.acted));
+  const info = $('unitInfo');
+  if (!u) { info.className = 'muted'; info.textContent = idle ? 'Tap one of your green soldiers.' : ''; return; }
+  const ut = UT[u.type];
+  const traits = [ut.indirect && 'Lobs over walls', ut.splash && 'Splash', ut.piercing && 'Ignores half cover', ut.antiArmor && 'Anti-armour', ut.armor && 'Armoured', ut.aura && '+10% aim aura', u.type === 'machinegunner' && '2 shots after moving'].filter(Boolean);
+  info.className = '';
+  info.innerHTML = `<div class="unitname">${esc(u.name)}</div><div class="muted">${ut.name}${traits.length ? ' · ' + traits.join(' · ') : ''}</div>
+    <div class="hp">${Array.from({ length: u.maxHp }, (_, i) => `<i class="${i < u.hp ? '' : 'off'}"></i>`).join('')}</div>
+    <div class="stats"><div class="stat"><b>${ut.move}</b><span>Move</span></div><div class="stat"><b>${rangeOf(u, u.x, u.y)}</b><span>Range</span></div>
+    <div class="stat"><b>${ut.dmg}×${shotsFor(u, u.moved)}</b><span>Dmg×shots</span></div><div class="stat"><b>${ut.acc}%</b><span>Aim</span></div></div>
+    <div class="muted" style="margin-top:6px">${u.acted ? 'Done for this round.' : u.moved ? 'Moved — pick a target, hold, or undo.' : 'Tap a blue tile to move, or a red target to fire.'}</div>`;
+}
+
+// ===================================================================
+//  Battle setup
+// ===================================================================
+function startBattle(scn, opts) {
+  lastScenario = scn; lastOpts = opts;
+  G = buildGame(scn, opts);
+  $('log').innerHTML = '';
+  log(`${scn.title} — ${scn.setting}`, 'round');
+  log(scn.briefing, 'narr');
+  log('Round 1', 'round');
+  G.banner = { text: 'YOUR TURN', color: '#9fe06a', t0: now() + 300 };
+  refreshUI();
+}
+
+function setLoading(on, text) {
+  $('loading').style.display = on ? 'flex' : 'none';
+  if (text) $('loadingText').textContent = text;
+}
+
+async function newBattle(mode, opts) {
+  if (mode === 'ai' && settings.apiKey) {
+    const lines = ['A kid is emptying the toy bucket onto the floor…', 'Claude is drawing up the battle plans…', 'Stacking books into fortresses…', 'Spilling juice for tactical reasons…'];
+    let i = 0; setLoading(true, lines[0]);
+    const timer = setInterval(() => $('loadingText').textContent = lines[++i % lines.length], 2200);
+    try {
+      const raw = await generateWithClaude(opts);
+      startBattle(sanitize(raw, opts), opts);
+      log('Battlefield generated by Claude.', 'sys');
+    } catch (e) {
+      const msg = await describeError(e);
+      startBattle(sanitize(randomScenario(opts), opts), opts);
+      log('Claude could not generate this battle (' + msg + ') — using an offline battlefield instead.', 'bad');
+    } finally { clearInterval(timer); setLoading(false); }
+  } else {
+    startBattle(sanitize(randomScenario(opts), opts), opts);
+    if (mode === 'ai') log('No API key set — generated offline. Add a key in Settings for Claude-designed battles.', 'sys');
+  }
+}
+
+// ---- dialogs ------------------------------------------------------------
+const IDEAS = [
+  'Tan army holds the cookie jar on the kitchen floor',
+  'Night raid across the bedroom rug past a sleeping cat',
+  'Beach landing at the sandbox moat',
+  'Last stand behind the sofa cushions',
+  'Snow fort showdown in the front yard',
+  'Sniper duel across the LEGO city',
+];
+$('ideas').innerHTML = IDEAS.map(s => `<button type="button">${esc(s)}</button>`).join('');
+$('ideas').onclick = e => { if (e.target.tagName === 'BUTTON') $('inPrompt').value = e.target.textContent; };
+
+function openNew() {
+  $('aiNote').textContent = settings.apiKey
+    ? `Battles are generated by ${$('inModel').querySelector(`option[value="${settings.model}"]`)?.textContent || settings.model}. Takes about 10–40 seconds.`
+    : 'No API key set, so "Generate" builds an offline battle. Add an Anthropic API key in Settings to let Claude design battles from your description.';
+  $('inDiff').value = lastOpts.difficulty; $('inSize').value = lastOpts.size;
+  $('dlgNew').showModal();
+}
+$('btnNew').onclick = openNew;
+$('dlgNew').addEventListener('close', () => {
+  const v = $('dlgNew').returnValue;
+  if (v !== 'ai' && v !== 'random') return;
+  const opts = { prompt: $('inPrompt').value.trim().slice(0, 500), difficulty: $('inDiff').value, size: $('inSize').value };
+  if (v === 'random') campaign = [];
+  newBattle(v, opts);
+});
+
+$('btnSettings').onclick = () => {
+  $('inKey').value = settings.apiKey; $('inModel').value = settings.model;
+  $('inNarr').checked = settings.narrate; $('inSound').checked = settings.sound;
+  $('dlgSettings').showModal();
+};
+$('dlgSettings').addEventListener('close', () => {
+  if ($('dlgSettings').returnValue !== 'save') return;
+  settings.apiKey = $('inKey').value.trim(); settings.model = $('inModel').value;
+  settings.narrate = $('inNarr').checked; settings.sound = $('inSound').checked;
+  saveSettings();
+});
+$('btnHelp').onclick = () => $('dlgHelp').showModal();
+
+$('dlgEnd').addEventListener('close', () => {
+  const v = $('dlgEnd').returnValue;
+  if (v === 'replay') { campaign.pop(); startBattle(lastScenario, lastOpts); }
+  else if (v === 'new') { campaign = []; openNew(); }
+  else if (v === 'next') newBattle('ai', { ...lastOpts, prompt: '' });
+});
+
+// first battle: offline, instantly playable
+startBattle(sanitize(randomScenario(lastOpts), lastOpts), lastOpts);
+if (!settings.apiKey) log('Tip: add an Anthropic API key in Settings and Claude will design battles live from your descriptions.', 'sys');
+
+// test hook
+window.__pf = { get G() { return G; }, sanitize, randomScenario, startBattle, endTurn, attack, reachable, canTarget, hitChance };
+</script>
+</body>
+</html>

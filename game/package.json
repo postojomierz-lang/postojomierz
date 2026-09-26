@@ -1,0 +1,22 @@
+{
+  "name": "plastic-front",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/sim.test.mjs",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.4.3",
+    "vite-plugin-singlefile": "^2.3.3"
+  },
+  "type": "module"
+}
