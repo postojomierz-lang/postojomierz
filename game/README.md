@@ -62,5 +62,8 @@ AA gun, watchtower with a lookout) and fortifications (sandbags, brick walls, ba
 by `tools/blender/structures.py`; all of them are packed into `src/data/vehicles.js`.
 The parachute is in `vehicles.py` too. For "Living soldiers" mode `army_men.py` builds a second set
 of figures without stands (including rifleman, officer and sniper poses), with the legs of standing
-figures as separate parts that the game swings from the hips while they walk. Every model has a detailed
+figures as separate parts that the game swings from the hips while they walk.
+Those figures live in `public/living-figures.js` (copied next to the game as
+`plastic-front/living-figures.js`) and are downloaded only when the option is switched on, so the
+main file stays smaller; opened straight from disk the game falls back to toy style. Every model has a detailed
 close-up version and a light one for distant units; the data is meshopt-compressed.

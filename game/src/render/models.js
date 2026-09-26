@@ -22,6 +22,17 @@ const LIVING_FOR = {
 };
 // figure data is meshopt-compressed: wait for the (tiny, built-in) decoder before building models
 export const modelsReady = MeshoptDecoder.ready;
+
+// "Living soldiers" figures are a separate file next to the game, downloaded only when that
+// option is switched on (needs the game to be served over http, e.g. GitHub Pages).
+let LIVING = null;
+export async function loadLiving() {
+  if (LIVING) return true;
+  try {
+    LIVING = (await import(/* @vite-ignore */ new URL('living-figures.js', document.baseURI).href)).LIVING_FIGURES;
+    return true;
+  } catch (e) { console.warn('Living soldiers not available:', e); return false; }
+}
 function b64(s) { const bin = atob(s), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return u8; }
 function figureGeometry(part, colour = null, scale = FIGURE_SCALE, crease = false) {
   const vb = new Uint8Array(part.v * 8), ib = new Uint8Array(part.n * 4);
@@ -70,7 +81,7 @@ function figure(key) { if (!figs.has(key)) figs.set(key, buildFigure(key)); retu
 
 // near: full detail; far: a light version drawn for figures far from the camera
 function buildFigure(key) {
-  const f = FIGURES[key], out = { main: figureGeometry(f.near), far: { main: figureGeometry(f.far) } };
+  const f = FIGURES[key] || LIVING[key], out = { main: figureGeometry(f.near), far: { main: figureGeometry(f.far) } };
   if (f.a) out.accent = mergeGeometries(f.a.map(a => figureGeometry(a, a.c)));   // painted parts (medic's white bag, red crosses)
   if (f.legs) out.legs = f.legs.map(l => ({ geo: figureGeometry(l), hip: l.hip }));    // swung from the hip while walking
   return out;
@@ -85,7 +96,7 @@ export function model(type, seed = 0) {
   let m;
   if (type.startsWith('living:')) {
     const t = type.slice(7);
-    m = LIVING_FOR[t] ? buildFigure('living-' + LIVING_FOR[t]) : buildFigure(FIGURE_FOR[t] || 'rifle');
+    m = LIVING && LIVING_FOR[t] ? buildFigure('living-' + LIVING_FOR[t]) : buildFigure(FIGURE_FOR[t] || 'rifle');
     cache.set(k, m);
     return m;
   }
