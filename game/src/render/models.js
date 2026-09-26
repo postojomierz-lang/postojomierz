@@ -120,16 +120,33 @@ function buildSoldier(type, living = false) {
 }
 
 // Classic army-men figures ("Miniature Army Men" by alo89, CC BY 4.0), see tools/figures.mjs.
-const FIGURE_FOR = { rifleman: 'rifle', para: 'rifle', officer: 'pointer', mg: 'mg50', sniper: 'sniper', 'pose-kneel': 'kneel', 'pose-prone': 'crawl' };
+// The bazooka, AA missile, grenadier, medic and drag poses were modelled for the game in Blender
+// (tools/blender/army_men.py).
+const FIGURE_FOR = {
+  rifleman: 'rifle', para: 'rifle', officer: 'pointer', mg: 'mg50', sniper: 'sniper', 'pose-kneel': 'kneel', 'pose-prone': 'crawl',
+  bazooka: 'bazooka', 'pose-bazooka-stand': 'bazooka-stand', manpads: 'manpads', 'pose-manpads-kneel': 'manpads-kneel',
+  grenadier: 'grenadier', 'pose-grenadier-idle': 'grenadier-idle', medic: 'medic', 'pose-medic-heal': 'medic-heal', 'pose-drag': 'drag',
+};
 function b64(s, T) { const bin = atob(s), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new T(u8.buffer); }
-function buildFigure(key) {
-  const f = FIGURES[key], q = b64(f.p, Int16Array), pos = new Float32Array(q.length);
+function figureGeometry(part, colour = null) {
+  const q = b64(part.p, Int16Array), pos = new Float32Array(q.length);
   for (let i = 0; i < q.length; i++) pos[i] = q[i] / FIGURE_SCALE;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setIndex(new THREE.BufferAttribute(b64(f.i, Uint16Array), 1));
-  geo.computeVertexNormals(); geo.computeBoundingSphere(); geo.computeBoundingBox();
-  return { main: geo };
+  geo.setIndex(new THREE.BufferAttribute(b64(part.i, Uint16Array), 1));
+  geo.computeVertexNormals();
+  if (colour) {
+    const c = new THREE.Color(colour), col = new Float32Array(pos.length);
+    for (let i = 0; i < pos.length; i += 3) { col[i] = c.r; col[i + 1] = c.g; col[i + 2] = c.b; }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  }
+  return geo;
+}
+function buildFigure(key) {
+  const f = FIGURES[key], out = { main: figureGeometry(f) };
+  if (f.a) out.accent = mergeGeometries(f.a.map(a => figureGeometry(a, a.c)));   // painted parts (medic's white bag, red crosses)
+  for (const k in out) { out[k].computeBoundingSphere(); out[k].computeBoundingBox(); }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------

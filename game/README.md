@@ -51,3 +51,7 @@ The rifleman, officer, sniper, machine-gunner, kneeling and crawling figures are
 [2](https://www.printables.com/model/744788) by **alo89**, licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). They were re-oriented, scaled and
 simplified for the game by `tools/figures.mjs` (`npm run figures`), which writes `src/data/figures.js`.
+
+The bazooka, AA missile, grenadier, medic and "dragging a wounded comrade" figures were modelled
+for the game in the free Blender by `tools/blender/army_men.py` (run it with `pip install bpy`,
+then `python tools/blender/army_men.py`, then `npm run figures`).
