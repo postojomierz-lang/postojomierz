@@ -17,6 +17,11 @@ import innerImgUrl from './data/inner.jpg?url';
 import outerImgUrl from './data/outer.jpg?url';
 import landUrl from './data/landcover.png?url';
 
+// Poly Haven textures (CC0), 1K: layer order matters for the terrain shader
+const TEX_NAMES = ['rock_04', 'mossy_rock', 'gray_rocks', 'rocky_trail', 'rocky_terrain_02', 'forrest_ground_01'];
+const TEX_SCALE = [11, 6, 4.5, 2.6, 4, 3.5]; // metres per tile
+const texUrls = import.meta.glob('./textures/*.jpg', { query: '?url', import: 'default', eager: true });
+
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('loading-text').textContent = t; };
 const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -101,6 +106,8 @@ async function main() {
   status('Pobieranie danych terenu…');
   const [innerU, outerU, innerBmp, outerBmp, landBmp] = await Promise.all([
     bin(innerHUrl), bin(outerHUrl), bitmap(innerImgUrl), bitmap(outerImgUrl), bitmap(landUrl)]);
+  status('Wczytywanie tekstur…');
+  const textures = await loadTextures();
   const inner = new Grid(innerU, meta.inner.n, meta.inner.bounds);
   const outer = new Grid(outerU, meta.outer.n, meta.outer.bounds);
   const IB = meta.inner.bounds, OB = meta.outer.bounds;
@@ -181,7 +188,7 @@ async function main() {
   const step = QUALITY === 'low' ? 12 : 7;
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
-  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade });
+  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures });
   const innerMesh = new THREE.Mesh(innerGeo, innerMat);
   innerMesh.receiveShadow = true;
   scene.add(innerMesh);
@@ -192,7 +199,7 @@ async function main() {
     const h = terrain.base(x, z);
     return inner.inside(x, z, shrink) ? h - 60 : h;
   });
-  const outerMesh = new THREE.Mesh(outerGeo, terrainMaterial({ map: outerTex, trailMap: blank, bounds: OB, detail: false, env: shade, aoStrength: 0.6 }));
+  const outerMesh = new THREE.Mesh(outerGeo, terrainMaterial({ map: outerTex, trailMap: blank, bounds: OB, detail: false, env: shade, aoStrength: 0.6, textures }));
   scene.add(outerMesh);
 
   // ---------- lakes
@@ -252,7 +259,11 @@ async function main() {
     }
     geo.computeVertexNormals();
     const count = QUALITY === 'low' ? 5000 : 16000;
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const rockTex = new THREE.Texture(textures.rock.d); rockTex.colorSpace = THREE.SRGBColorSpace;
+    rockTex.wrapS = rockTex.wrapT = THREE.RepeatWrapping; rockTex.repeat.set(2, 1); rockTex.flipY = false; rockTex.needsUpdate = true;
+    const rockNor = new THREE.Texture(textures.rock.nm); rockNor.wrapS = rockNor.wrapT = THREE.RepeatWrapping;
+    rockNor.repeat.set(2, 1); rockNor.flipY = false; rockNor.needsUpdate = true;
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: rockTex, normalMap: rockNor });
     patchShading(rockMat, shade);
     const mesh = new THREE.InstancedMesh(geo, rockMat, count);
     mesh.castShadow = mesh.receiveShadow = true;
@@ -273,7 +284,7 @@ async function main() {
       dummy.rotation.set(r() * 6.28, r() * 6.28, r() * 6.28);
       dummy.scale.set(s * (0.7 + r() * 0.6), s * (0.5 + r() * 0.5), s * (0.7 + r() * 0.6));
       dummy.updateMatrix(); mesh.setMatrixAt(k, dummy.matrix);
-      const g = 0.22 + r() * 0.16;
+      const g = 0.8 + r() * 0.35;
       mesh.setColorAt(k, col.setRGB(g, g * 0.98, g * 0.94));
       k++;
     }
@@ -467,7 +478,7 @@ async function main() {
   $('hour').oninput = (e) => { env.hour = +e.target.value; applyEnv(); };
   $('weather').onchange = (e) => { env.weather = e.target.value; applyEnv(); };
   $('btn-help').onclick = () => $('help').classList.toggle('hidden');
-  $('sources').textContent = meta.sources;
+  $('sources').textContent = meta.sources + '; textures: Poly Haven (CC0)';
   updateButtons();
 
   const fmtTime = (sec) => { const m = Math.floor(sec / 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`; };
@@ -583,6 +594,34 @@ async function main() {
   }
   window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
+}
+
+async function loadTextures() {
+  const S = 1024;
+  const layers = await Promise.all(TEX_NAMES.map(async (n) => {
+    const [d, nm] = await Promise.all([bitmap(texUrls[`./textures/${n}_diff.jpg`]), bitmap(texUrls[`./textures/${n}_nor.jpg`])]);
+    return { d, nm };
+  }));
+  const D = new Uint8Array(S * S * 4 * layers.length), Nm = new Uint8Array(S * S * 4 * layers.length);
+  const mean = [];
+  const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  layers.forEach(({ d, nm }, i) => {
+    const pd = pixels(d), pn = pixels(nm);
+    D.set(pd, i * S * S * 4); Nm.set(pn, i * S * S * 4);
+    let r = 0, g = 0, b = 0, c = 0;
+    for (let k = 0; k < pd.length; k += 4 * 97) { r += lin(pd[k]); g += lin(pd[k + 1]); b += lin(pd[k + 2]); c++; }
+    mean.push(new THREE.Vector3(r / c, g / c, b / c));
+  });
+  const arr = (data, srgb) => {
+    const t = new THREE.DataArrayTexture(data, S, S, layers.length);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = true; t.anisotropy = 8;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.needsUpdate = true;
+    return t;
+  };
+  return { diff: arr(D, true), nor: arr(Nm, false), mean, scale: TEX_SCALE, rock: layers[1] };
 }
 
 function mergeGeos(geos) {

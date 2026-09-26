@@ -118,9 +118,11 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
 
 // Satellite-textured terrain with close-range procedural detail (rock grain, grass, trail),
 // lit by the scene lights (so it receives tree and rock shadows) plus terrain shadow and AO.
-export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1 }) {
+export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1, textures }) {
   const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const u = {
+    texD: { value: textures.diff }, texN: { value: textures.nor },
+    texMean: { value: textures.mean }, texScale: { value: textures.scale },
     satMap: { value: map }, trailMap: { value: trailMap },
     bounds: { value: new THREE.Vector4(...bounds) }, detail: { value: detail ? 1 : 0 },
   };
@@ -133,9 +135,22 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
       .replace('#include <common>', `#include <common>
         varying vec3 vWorld; varying vec3 vWN;
         uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail;
+        uniform sampler2DArray texD; uniform sampler2DArray texN; uniform vec3 texMean[6]; uniform float texScale[6];
         ${NOISE}
+        // one texture layer at two scales, blended by noise to hide tiling; returns colour and tangent normal
+        vec3 texLayer(vec2 p, float l, float scale, out vec3 n) {
+          const mat2 R = mat2(0.8, -0.6, 0.6, 0.8);
+          vec2 a = p / scale, b = R * p / (scale * 2.7) + 0.37;
+          float m = smoothstep(0.3, 0.7, vnoise(p / (scale * 5.0)));
+          vec3 ca = texture(texD, vec3(a, l)).rgb, cb = texture(texD, vec3(b, l)).rgb;
+          vec3 na = texture(texN, vec3(a, l)).xyz * 2.0 - 1.0, nb = texture(texN, vec3(b, l)).xyz * 2.0 - 1.0;
+          nb.xy = transpose(R) * nb.xy;
+          n = normalize(mix(na, nb, m));
+          return mix(ca, cb, m);
+        }
         ${HEIGHTS}`)
-      .replace('#include <map_fragment>', `{
+      .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0;
+      {
         vec2 uv = (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy);
         vec3 sat = texture2D(satMap, uv).rgb;
         // lift the baked-in satellite shadows a bit, real-time light adds relief back
@@ -145,52 +160,80 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         float dist = length(cameraPosition - vWorld);
         vec3 col = sat;
         if (detail > 0.5) {
-          float near = 1.0 - smoothstep(60.0, 700.0, dist);
           float mid = 1.0 - smoothstep(1500.0, 6000.0, dist);
           vec3 satBlur = textureLod(satMap, uv, 1.5).rgb * 1.55 + 0.01;
           float green = clamp((satBlur.g - max(satBlur.r, satBlur.b)) * 14.0, 0.0, 1.0);
-          // triplanar noise so cliffs are not smeared by the top-down photo
-          vec3 an = pow(abs(N), vec3(3.0)); an /= (an.x + an.y + an.z);
           vec3 w = vWorld;
+          // far/mid range: procedural granite on steep ground so cliffs are not smeared by the top-down photo
+          vec3 an = pow(abs(N), vec3(3.0)); an /= (an.x + an.y + an.z);
           float t1 = fbm2(w.zy * 0.22) * an.x + fbm2(w.xz * 0.22) * an.y + fbm2(w.xy * 0.22) * an.z;
           float t2 = vnoise(w.zy * 1.6) * an.x + vnoise(w.xz * 1.6) * an.y + vnoise(w.xy * 1.6) * an.z;
-          float t3 = vnoise(w.zy * 6.0) * an.x + vnoise(w.xz * 6.0) * an.y + vnoise(w.xy * 6.0) * an.z;
           float strata = 0.88 + 0.12 * sin(w.y * 0.7 + t1 * 9.0);
           float glum = dot(satBlur, vec3(0.3, 0.45, 0.25));
-          // granite: satellite brightness, grey hue, cracks and lichen
           vec3 rock = vec3(glum) * vec3(1.02, 1.0, 0.95) * (0.55 + 0.9 * t1) * (0.82 + 0.36 * t2) * strata;
-          rock = mix(rock, rock * vec3(0.85, 0.95, 0.7), smoothstep(0.6, 0.72, t2) * 0.6);
-          rock *= 1.0 - 0.35 * smoothstep(0.52, 0.56, t3) * near;
           float steep = smoothstep(0.32, 0.7, slope) * (1.0 - green * 0.6);
           col = mix(sat, rock, steep * mid);
-          // close range: stones and gravel on rocky ground, grass texture on green ground
-          float n1 = fbm2(w.xz * 0.9), n3 = vnoise(w.xz * 5.0);
-          float close = 1.0 - smoothstep(15.0, 220.0, dist);
-          // planar coordinates that follow the slope, so stones are not stretched on steep ground
-          vec2 hz = normalize(vec2(N.z, -N.x) + 1e-4);
-          vec2 sp = mix(vec2(dot(w.xz, hz), w.y), w.xz, smoothstep(0.55, 0.85, N.y));
-          vec2 st = vor(sp * 0.7 + vec2(t1, t2) * 1.4);
-          vec2 gr = vor(sp * 4.0 + t1);
-          float stones = (0.84 + 0.3 * st.y) * mix(0.93, 1.0, smoothstep(0.0, 0.1, st.x + 0.08 * n3));
-          float gravel = (0.86 + 0.28 * gr.y) * mix(0.82, 1.0, smoothstep(0.0, 0.15, gr.x));
-          vec3 rockyGround = mix(col, vec3(dot(col, vec3(0.33))), 0.45 * close) * mix(1.0, stones * gravel, close) * (0.85 + 0.3 * n1);
-          float blades = vnoise(w.xz * vec2(11.0, 3.0) + n1 * 4.0) * 0.5 + vnoise(w.xz * vec2(3.0, 13.0)) * 0.5;
-          vec3 grass = satBlur * vec3(0.8, 1.08, 0.75) * (0.55 + 0.8 * n1) * mix(1.0, 0.7 + 0.6 * blades, close);
-          vec3 closeCol = mix(rockyGround, grass, green * (1.0 - steep));
-          col = mix(col, closeCol, near * 0.9);
-          col *= mix(1.0, 0.92 + 0.16 * t1, (1.0 - near) * mid);
-        }
-        // trail
-        float tr = texture2D(trailMap, uv).r;
-        if (tr > 0.01) {
-          float n = vnoise(vWorld.xz * 2.3);
-          vec2 sl = vor(vWorld.xz * 1.1 + n * 0.8);
-          vec3 path = mix(vec3(0.3,0.28,0.25), vec3(0.5,0.48,0.44), 0.5 * n + 0.5 * sl.y) * mix(0.7, 1.0, smoothstep(0.0, 0.12, sl.x));
-          path = mix(path, col, 0.3);
-          col = mix(col, path, 0.8 * smoothstep(0.25, 0.8, tr) * (1.0 - smoothstep(900.0, 2500.0, dist) * 0.7));
+
+          // close range: photo textures (Poly Haven), coloured by the satellite image
+          float near = 1.0 - smoothstep(180.0, 1100.0, dist);
+          if (near > 0.0) {
+            vec2 hz = normalize(vec2(N.z, -N.x) + 1e-4);
+            float flatG = smoothstep(0.5, 0.8, N.y);
+            // top-down coordinates on gentle ground, slope-following ones on steep ground
+            vec2 sp = mix(vec2(dot(w.xz, hz), w.y), w.xz, flatG);
+            vec3 T = mix(vec3(hz.x, 0.0, hz.y), vec3(1.0, 0.0, 0.0), flatG);
+            vec3 B = mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), flatG);
+            float nBig = vnoise(w.xz / 38.0);
+            float forest = 1.0 - smoothstep(1500.0, 1620.0, w.y);
+            float wCliff = steep;
+            float wGreen = green * (1.0 - steep);
+            float wRocky = (1.0 - green) * (1.0 - steep);
+            float wT[6];
+            float nC = smoothstep(0.3, 0.7, vnoise(sp / 9.0));
+            wT[0] = wCliff * (1.0 - nC);                        // granite
+            wT[1] = wCliff * nC + wRocky * (1.0 - nBig);        // lichen slabs
+            wT[2] = wRocky * nBig;                                // scree
+            wT[3] = 0.0;                                          // trail (below)
+            wT[4] = wGreen * (1.0 - forest);                      // alpine grass
+            wT[5] = wGreen * forest;                              // forest floor
+            float tr = texture2D(trailMap, uv).r;
+            float wTrail = smoothstep(0.2, 0.75, tr);
+            for (int i = 0; i < 6; i++) wT[i] *= 1.0 - wTrail;
+            wT[3] = wTrail;
+            vec3 tc = vec3(0.0), tm = vec3(0.0), tn = vec3(0.0);
+            float wsum = 0.0;
+            for (int i = 0; i < 6; i++) {
+              if (wT[i] < 0.02) continue;
+              vec3 n;
+              vec3 c = texLayer(sp, float(i), texScale[i], n);
+              tc += c * wT[i]; tm += texMean[i] * wT[i]; tn += n * wT[i]; wsum += wT[i];
+            }
+            if (wsum > 0.0) {
+              tc /= wsum; tm /= wsum; tn = normalize(tn);
+              float lt = dot(tm, vec3(0.3, 0.55, 0.15)), ls = dot(sat, vec3(0.3, 0.55, 0.15));
+              vec3 byRatio = col * (tc / max(tm, vec3(0.02)));
+              vec3 photo = tc * (ls / max(lt, 0.02));
+              vec3 nearCol = mix(byRatio, photo, 0.45 + 0.35 * wTrail);
+              // tame the lime tint of sunlit grass in the satellite image
+              nearCol = mix(nearCol, vec3(dot(nearCol, vec3(0.3, 0.55, 0.15))), 0.22 * wGreen);
+              col = mix(col, nearCol, near);
+              vec3 Ng = normalize(vWN);
+              tn.xy *= 1.0 + 0.8 * wCliff; // deeper relief on rock faces
+              detN = normalize(T * tn.x + B * tn.y + Ng * tn.z);
+              detW = near * 0.9;
+            }
+          }
+        } else {
+          float tr = texture2D(trailMap, uv).r;
+          col = mix(col, vec3(0.4, 0.38, 0.35), smoothstep(0.2, 0.75, tr) * 0.6);
         }
         diffuseColor.rgb = col;
       }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        if (detW > 0.0) {
+          vec3 nw = normalize(mix(normalize(vWN), detN, detW));
+          normal = normalize((viewMatrix * vec4(nw, 0.0)).xyz);
+        }`)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         {
           float tsh = terrainShadow(vWorld);
