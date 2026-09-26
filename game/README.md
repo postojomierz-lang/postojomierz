@@ -11,10 +11,16 @@ helicopters), defences and fortifications. Soldiers are often wounded rather tha
 comrades drag them to cover and field ambulances carry them home, and everyone saved fights
 again next round. Explosions cause friendly fire.
 
-Claude-designed battlefields: in the setup screen choose "Describe it" or "From a photo", enter an
-Anthropic API key (kept only in the browser) and Claude lays out the household obstacles, floor
-theme and colour, title and briefing (`src/claude.js`, structured JSON output). A photo of a real
-floor or table is recreated as a map with the same objects in the same places.
+Battlefields (all free and offline):
+- random, per floor theme;
+- the built-in map library (`src/data/maps.js`);
+- map files (`*.pfmap.json`): "Save map" in the top bar, "Load a map file" in setup (`src/mapfile.js`);
+- a hand-drawn map: draw with markers on paper (black = walls/books, red = LEGO, blue = spills,
+  green = low cover), photograph it, and it is read on the device by colour (`src/drawn.js`);
+- the map editor (setup → Map editor; `src/editor.js`).
+
+Advanced (hidden in setup): Claude can design a map from a description or a photo using the
+player's own Anthropic API key (`src/claude.js`).
 
 - `src/sim/` — deterministic battle simulation (no DOM, no `Math.random`): the same map,
   seed and placement orders always produce the same battle, which is what online play

@@ -170,7 +170,7 @@ export class View {
   wx(x) { return x - this.map.W / 2; }
   wz(z) { return z - this.map.H / 2; }
 
-  load(sim, human) {
+  load(sim, human, { keepCamera = false } = {}) {
     this.sim = sim; this.map = sim.map; this.human = human;
     if (this.ghost) { this.world.remove(this.ghost.g); this.world.remove(this.ghost.pad); this.ghost = null; }
     this.ents.clear();
@@ -211,7 +211,21 @@ export class View {
     this.fx = new Fx(this.scene, map, this.world);
     for (const e of sim.ents) this.addEnt(e);
     this.buildMinimapBase();
-    this.focusZone(human);
+    this.box = null;
+    if (!keepCamera) this.focusZone(human);
+  }
+
+  // translucent rectangle used by the map editor to preview what will be drawn
+  setBox(r, color = 0x9fe06a) {
+    if (!r) { if (this.box) this.box.visible = false; return; }
+    if (!this.box) {
+      this.box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, depthWrite: false }));
+      this.world.add(this.box);
+    }
+    this.box.material.color.setHex(color);
+    this.box.visible = true;
+    this.box.scale.set(r.w, 0.6, r.h);
+    this.box.position.set(this.wx(r.x + r.w / 2), 0.3, this.wz(r.y + r.h / 2));
   }
 
   // Sun and shadow camera follow what the player is looking at, so shadows stay crisp on big maps.

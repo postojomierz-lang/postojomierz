@@ -87,11 +87,16 @@ export function makeMap({ teams, theme, seed, layout = null }) {
     // Claude's layout: keep each object where it was asked for, nudging it out of army zones if needed
     const kinds = { tall: T_SOLID, low: T_LOW, water: T_WATER };
     const clampI = (v, a, b) => Math.max(a, Math.min(b, Math.round(+v || 0)));
-    for (const o of (layout.objects || []).slice(0, 80)) {
+    // a map saved for another number of armies is stretched to this grid
+    const sx = layout.W > 0 ? W / layout.W : 1, sy = layout.H > 0 ? H / layout.H : 1;
+    for (let o of (layout.objects || []).slice(0, 200)) {
       const kind = kinds[o.kind]; if (kind === undefined) continue;
       const list = STYLES[o.kind];
       const style = list.includes(o.style) ? o.style : list[0];
-      let w = clampI(o.w, 1, kind === T_WATER ? 12 : 8), h = clampI(o.h, 1, kind === T_WATER ? 12 : 8);
+      const lim = kind === T_WATER ? 14 : 8;
+      const thin = kind === T_LOW;
+      let w = clampI((+o.w || 1) * (thin && +o.w <= 1 ? 1 : sx), 1, lim), h = clampI((+o.h || 1) * (thin && +o.h <= 1 ? 1 : sy), 1, lim);
+      o = { ...o, x: (+o.x || 0) * sx, y: (+o.y || 0) * sy };
       if (kind === T_LOW && w > 1 && h > 1) { if (w >= h) h = 1; else w = 1; }
       let x = clampI(o.x, 1, W - w - 1), y = clampI(o.y, 1, H - h - 1);
       let ok = false;
@@ -106,8 +111,8 @@ export function makeMap({ teams, theme, seed, layout = null }) {
         objects.push({ kind, style, x, y, w, h, seed: Math.floor(rng() * 1e9) });
       }
     }
-    for (const d of (layout.decor || []).slice(0, 40)) {
-      const x = Math.max(1, Math.min(W - 1, +d.x || 0)) + 0.5, y = Math.max(1, Math.min(H - 1, +d.y || 0)) + 0.5;
+    for (const d of (layout.decor || []).slice(0, 80)) {
+      const x = Math.max(1, Math.min(W - 2, Math.floor((+d.x || 0) * sx))) + 0.5, y = Math.max(1, Math.min(H - 2, Math.floor((+d.y || 0) * sy))) + 0.5;
       if (grid[Math.floor(y) * W + Math.floor(x)] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
       decor.push({ x, y, kind: ['palm', 'pine', 'bush'].includes(d.kind) ? d.kind : 'bush', seed: Math.floor(rng() * 1e9) });
     }
