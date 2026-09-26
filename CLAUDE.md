@@ -6,3 +6,5 @@
   Then share the PR link.
 - The game lives in `game/` (Vite + three.js); `npm run build` writes the single-file build to
   `plastic-front/index.html`, which is committed and served by GitHub Pages from `main`.
+- `tatry/` (Vite + three.js) is the Rysy 3D hiking prototype; `npm run build` writes `rysy/index.html`.
+  Terrain data is prepared by `tatry/tools/prepare.py` into `tatry/src/data/` (committed).
