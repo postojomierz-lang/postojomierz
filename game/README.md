@@ -57,5 +57,7 @@ for the game in the free Blender by `tools/blender/army_men.py` (run it with `pi
 then `python tools/blender/army_men.py`, then `npm run figures`).
 The vehicles and aircraft (jeep, ambulance, armored car, amphibian, tank, rocket truck, helicopter,
 fighter, ground-attack plane, bomber, transport) are modelled the same way by
-`tools/blender/vehicles.py` and packed into `src/data/vehicles.js`. Every model has a detailed
+`tools/blender/vehicles.py`, and the headquarters, emplacements (MG nest with its gunner, field gun,
+AA gun, watchtower with a lookout) and fortifications (sandbags, brick walls, barbed wire, oil drums)
+by `tools/blender/structures.py`; all of them are packed into `src/data/vehicles.js`. Every model has a detailed
 close-up version and a light one for distant units; the data is meshopt-compressed.
