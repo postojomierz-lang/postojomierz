@@ -3,7 +3,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Grid, Terrain, gridGeometry, meshHeight } from './terrain.js';
 import { terrainMaterial, waterMaterial, light } from './materials.js';
-import { rng } from './noise.js';
+import { rng, simplex } from './noise.js';
 import meta from './data/meta.json';
 import innerHUrl from './data/inner.u16?url';
 import outerHUrl from './data/outer.u16?url';
@@ -253,9 +253,14 @@ async function main() {
   }
   {
     // boulders and scree near the trail
-    const geo = new THREE.DodecahedronGeometry(1, 0);
+    // lumpy rock: displacement depends on the vertex position only, so shared corners stay welded
+    const geo = new THREE.IcosahedronGeometry(1, 1);
     const p = geo.attributes.position;
-    for (let k = 0; k < p.count; k++) p.setXYZ(k, p.getX(k) * (0.8 + 0.4 * Math.sin(k * 7.1)), p.getY(k) * (0.6 + 0.3 * Math.cos(k * 3.3)), p.getZ(k));
+    for (let k = 0; k < p.count; k++) {
+      const x = p.getX(k), y = p.getY(k), z = p.getZ(k);
+      const f = 1 + 0.28 * simplex(x * 1.3 + z * 0.7, y * 1.3 - z * 0.9);
+      p.setXYZ(k, x * f, Math.max(y * f * 0.7, -0.35), z * f);
+    }
     geo.computeVertexNormals();
     const count = QUALITY === 'low' ? 5000 : 16000;
     const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), count);

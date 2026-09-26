@@ -96,9 +96,9 @@ export function terrainMaterial({ map, trailMap, bounds, detail }) {
           vec2 sp = mix(vec2(dot(w.xz, hz), w.y), w.xz, smoothstep(0.55, 0.85, N.y));
           vec2 st = vor(sp * 0.7 + vec2(t1, t2) * 1.4);
           vec2 gr = vor(sp * 4.0 + t1);
-          float stones = (0.72 + 0.5 * st.y) * mix(0.72, 1.0, smoothstep(0.0, 0.12, st.x + 0.08 * n3));
-          float gravel = (0.82 + 0.36 * gr.y) * mix(0.75, 1.0, smoothstep(0.0, 0.15, gr.x));
-          vec3 rockyGround = col * mix(1.0, stones * gravel, close) * (0.85 + 0.3 * n1);
+          float stones = (0.82 + 0.3 * st.y) * mix(0.82, 1.0, smoothstep(0.0, 0.12, st.x + 0.08 * n3));
+          float gravel = (0.86 + 0.28 * gr.y) * mix(0.82, 1.0, smoothstep(0.0, 0.15, gr.x));
+          vec3 rockyGround = mix(col, vec3(dot(col, vec3(0.33))), 0.45 * close) * mix(1.0, stones * gravel, close) * (0.85 + 0.3 * n1);
           float blades = vnoise(w.xz * vec2(11.0, 3.0) + n1 * 4.0) * 0.5 + vnoise(w.xz * vec2(3.0, 13.0)) * 0.5;
           vec3 grass = satBlur * vec3(0.8, 1.08, 0.75) * (0.55 + 0.8 * n1) * mix(1.0, 0.7 + 0.6 * blades, close);
           vec3 closeCol = mix(rockyGround, grass, green * (1.0 - steep));
