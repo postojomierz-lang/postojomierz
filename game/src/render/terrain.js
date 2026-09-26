@@ -26,8 +26,13 @@ function canvasTexture(size, draw, repeat = 1) {
   return t;
 }
 
-export function floorTexture(theme, seed) {
-  const st = FLOOR[theme], rng = mulberry(seed);
+export function floorTexture(theme, seed, tint = null) {
+  let st = FLOOR[theme]; const rng = mulberry(seed);
+  if (tint) {
+    // recolour the pattern towards the floor colour Claude saw in the photo
+    const mix = (c, k) => '#' + new THREE.Color(c).lerp(new THREE.Color(tint), k).getHexString();
+    st = { ...st, base: mix(st.base, 0.75), a: mix(st.a, 0.65), b: mix(st.b, 0.65) };
+  }
   return canvasTexture(1024, (c, S) => {
     c.fillStyle = st.base; c.fillRect(0, 0, S, S);
     if (theme === 'wood') {
@@ -140,6 +145,15 @@ export function buildTerrain(map) {
         const m2 = mat('#cfd3d8', { roughness: 0.2, metalness: 0.9 });
         const handle = mesh(new THREE.CapsuleGeometry(0.12, long - 1.6, 4, 10), m2); handle.rotation.z = Math.PI / 2; handle.position.set(-0.5, 0.12, 0); inner.add(handle);
         const bowl = mesh(new THREE.SphereGeometry(0.5, 16, 10), m2); bowl.scale.set(1.2, 0.28, 0.85); bowl.position.set(long / 2 - 0.7, 0.14, 0); inner.add(bowl);
+      } else if (o.style === 'shoe') {
+        const col = PAL[Math.floor(rng() * 8)];
+        const sole = mesh(new RoundedBoxGeometry(long - 0.3, 0.25, 1.1, 3, 0.12), mat('#f2efe6', { roughness: 0.8 })); sole.position.y = 0.12; inner.add(sole);
+        const upper = mesh(new THREE.SphereGeometry(0.5, 18, 12), mat(col, { roughness: 0.85 })); upper.scale.set((long - 0.6) / 1.0, 0.75, 1.0); upper.position.set(-0.15, 0.35, 0); inner.add(upper);
+      } else if (o.style === 'cable') {
+        const pts = [];
+        for (let i = 0; i <= 12; i++) pts.push(new THREE.Vector3(-long / 2 + long * i / 12, 0.12, Math.sin(i * 1.3 + rng() * 2) * 0.3));
+        const tube = mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, 0.11, 8), mat('#1f1f22', { roughness: 0.45 })); inner.add(tube);
+        const plug = mesh(new RoundedBoxGeometry(0.6, 0.35, 0.45, 2, 0.08), mat('#e8e6df', { roughness: 0.5 })); plug.position.set(long / 2 - 0.2, 0.18, pts[12].z); inner.add(plug);
       } else { // shells, twigs, stones
         for (let i = 0; i < long * 2; i++) {
           const s = o.style === 'twigs'
@@ -161,6 +175,20 @@ export function buildTerrain(map) {
             const book = mesh(new THREE.BoxGeometry(bw, th, bd), [pages, cover, cover, cover, pages, pages]);
             book.position.y = y + th / 2; book.rotation.y = (rng() - 0.5) * 0.2; obj.add(book); y += th;
           }
+          break;
+        }
+        case 'box': {
+          const H = 1.9, box = mesh(new THREE.BoxGeometry(w - 0.15, H, d - 0.15), mat('#b98d5a', { roughness: 0.9 })); box.position.y = H / 2; obj.add(box);
+          const tape = mesh(new THREE.BoxGeometry(w - 0.1, 0.02, 0.35), mat('#e3d4a0', { roughness: 0.4 })); tape.position.y = H + 0.01; obj.add(tape);
+          break;
+        }
+        case 'bottle': {
+          const r = Math.min(m / 2 - 0.15, 0.9), col = PAL[Math.floor(rng() * 8)];
+          const glass = mat(col, { roughness: 0.1, transparent: true, opacity: 0.75 });
+          const b1 = mesh(new THREE.CylinderGeometry(r, r, 2.8, 24), glass); b1.position.y = 1.4; obj.add(b1);
+          const b2 = mesh(new THREE.CylinderGeometry(r * 0.35, r, 0.8, 24), glass); b2.position.y = 3.2; obj.add(b2);
+          const cap = mesh(new THREE.CylinderGeometry(r * 0.38, r * 0.38, 0.35, 16), mat('#f2efe6', { roughness: 0.5 })); cap.position.y = 3.75; obj.add(cap);
+          const label = mesh(new THREE.CylinderGeometry(r + 0.01, r + 0.01, 0.9, 24, 1, true), mat('#f4f0e2', { roughness: 0.8 })); label.position.y = 1.3; obj.add(label);
           break;
         }
         case 'shoebox': case 'toybox': case 'cereal': {

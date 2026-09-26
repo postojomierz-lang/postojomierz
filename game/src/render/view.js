@@ -190,7 +190,7 @@ export class View {
     this.sunDir.set(...st.sun).normalize();
     this.span = span; this.shadowHalf = 0;
 
-    const tex = floorTexture(map.theme, map.seed);
+    const tex = floorTexture(map.theme, map.seed, map.tint);
     const FS = map.W + 160, FD = map.H + 160;
     tex.repeat.set(FS / 8, FD / 8);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(FS, FD), new THREE.MeshStandardMaterial({ map: tex, roughness: map.theme === 'kitchen' ? 0.35 : 0.85 }));

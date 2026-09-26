@@ -32,9 +32,18 @@ function zoneRects(n, W, H, zw, zh) {
   return spots.slice(0, n).map(([x, y]) => [x, y, zw, zh]);
 }
 
-export function makeMap({ teams, theme, seed }) {
+// Every visual style a household obstacle can have, by grid kind (used by Claude-made layouts too).
+export const STYLES = {
+  tall: ['books', 'shoebox', 'toybox', 'cereal', 'box', 'mug', 'pot', 'bucket', 'bottle', 'flowerpot', 'lego', 'blocks', 'castle', 'snowman', 'rock'],
+  low: ['pencils', 'crayons', 'remote', 'spoons', 'shells', 'twigs', 'shoe', 'cable'],
+  water: ['juice', 'cola', 'ink', 'milk', 'moat', 'puddle', 'ice'],
+};
+
+// layout (optional): { theme, objects: [{ kind: 'tall'|'low'|'water', style, x, y, w, h }], decor: [{ kind, x, y }] }
+export function makeMap({ teams, theme, seed, layout = null }) {
   const rng = mulberry(seed);
   const { W, H, zw, zh } = mapSize(teams);
+  if (layout && THEMES.includes(layout.theme)) theme = layout.theme;
   theme = THEMES.includes(theme) ? theme : THEMES[Math.floor(rng() * THEMES.length)];
   const grid = new Uint8Array(W * H);
   const zones = zoneRects(teams, W, H, zw, zh).map(([x, y, w, h]) => ({ x, y, w, h }));
@@ -58,7 +67,51 @@ export function makeMap({ teams, theme, seed }) {
     return false;
   };
 
+  const free = (x, y, w, h) => {
+    if (x < 1 || y < 1 || x + w > W - 1 || y + h > H - 1) return false;
+    for (let yy = y - 1; yy < y + h + 1; yy++) for (let xx = x - 1; xx < x + w + 1; xx++) if (inZone(xx, yy) || grid[yy * W + xx] !== T_OPEN) return false;
+    return true;
+  };
+  const putWater = (style, x, y, w, h) => {
+    const cells = [];
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
+      const dx = (xx + 0.5 - x - w / 2) / (w / 2), dy = (yy + 0.5 - y - h / 2) / (h / 2);
+      if (dx * dx + dy * dy <= 1.05 + (rng() - 0.5) * 0.3) { grid[yy * W + xx] = T_WATER; cells.push(yy * W + xx); }
+    }
+    if (cells.length) objects.push({ kind: T_WATER, style, x, y, w, h, cells, seed: Math.floor(rng() * 1e9) });
+  };
   const area = W * H / 2000;
+  const decor = [];
+
+  if (layout) {
+    // Claude's layout: keep each object where it was asked for, nudging it out of army zones if needed
+    const kinds = { tall: T_SOLID, low: T_LOW, water: T_WATER };
+    const clampI = (v, a, b) => Math.max(a, Math.min(b, Math.round(+v || 0)));
+    for (const o of (layout.objects || []).slice(0, 80)) {
+      const kind = kinds[o.kind]; if (kind === undefined) continue;
+      const list = STYLES[o.kind];
+      const style = list.includes(o.style) ? o.style : list[0];
+      let w = clampI(o.w, 1, kind === T_WATER ? 12 : 8), h = clampI(o.h, 1, kind === T_WATER ? 12 : 8);
+      if (kind === T_LOW && w > 1 && h > 1) { if (w >= h) h = 1; else w = 1; }
+      let x = clampI(o.x, 1, W - w - 1), y = clampI(o.y, 1, H - h - 1);
+      let ok = false;
+      for (let r = 0; r <= 12 && !ok; r++) for (let dy = -r; dy <= r && !ok; dy++) for (let dx = -r; dx <= r && !ok; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        if (free(x + dx, y + dy, w, h)) { x += dx; y += dy; ok = true; }
+      }
+      if (!ok) continue;
+      if (kind === T_WATER) putWater(style, x, y, w, h);
+      else {
+        for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) grid[yy * W + xx] = kind;
+        objects.push({ kind, style, x, y, w, h, seed: Math.floor(rng() * 1e9) });
+      }
+    }
+    for (const d of (layout.decor || []).slice(0, 40)) {
+      const x = Math.max(1, Math.min(W - 1, +d.x || 0)) + 0.5, y = Math.max(1, Math.min(H - 1, +d.y || 0)) + 0.5;
+      if (grid[Math.floor(y) * W + Math.floor(x)] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
+      decor.push({ x, y, kind: ['palm', 'pine', 'bush'].includes(d.kind) ? d.kind : 'bush', seed: Math.floor(rng() * 1e9) });
+    }
+  } else {
   for (let i = 0; i < Math.round(7 * area); i++) {
     const style = pick(pal.tall);
     const big = style === 'books' || style === 'shoebox' || style === 'toybox' || style === 'cereal' || style === 'castle';
@@ -88,12 +141,12 @@ export function makeMap({ teams, theme, seed }) {
     }
   }
   // a few harmless palm trees / decorations
-  const decor = [];
   for (let i = 0; i < Math.round(6 * area); i++) {
     const x = 1 + rng() * (W - 2), y = 1 + rng() * (H - 2);
     const c = Math.floor(y) * W + Math.floor(x);
     if (grid[c] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
     decor.push({ x, y, kind: theme === 'snow' ? 'pine' : theme === 'grass' ? 'bush' : 'palm', seed: Math.floor(rng() * 1e9) });
+  }
   }
 
   // Make sure every zone can reach every other zone on foot; carve through obstacles if not.
@@ -127,5 +180,5 @@ export function makeMap({ teams, theme, seed }) {
     for (let k = objects.length - 1; k >= 0; k--) if (objects[k].removed) objects.splice(k, 1);
   }
 
-  return { W, H, theme, grid, zones, objects, decor, seed };
+  return { W, H, theme, grid, zones, objects, decor, seed, title: layout && layout.title || '', briefing: layout && layout.briefing || '', tint: layout && /^#[0-9a-f]{6}$/i.test(layout.floorColor || '') ? layout.floorColor : null };
 }

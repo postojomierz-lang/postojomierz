@@ -1,6 +1,7 @@
 import './style.css';
 import { CATALOG, GROUPS, TEAM_COLORS, RULES } from './data/catalog.js';
 import { makeMap } from './sim/map.js';
+import { designBattlefield, explainError } from './claude.js';
 import { Sim } from './sim/sim.js';
 import { aiDeploy } from './sim/ai.js';
 import { View, renderThumbnails } from './render/view.js';
@@ -10,7 +11,7 @@ const $ = id => document.getElementById(id);
 const DT = 1 / RULES.tickRate;
 
 // ---------------------------------------------------------------- settings (per-browser convenience)
-const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal' };
+const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal', apiKey: '', model: 'claude-opus-5', prompt: '' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
 const save = () => { try { localStorage.setItem('plasticfront3d', JSON.stringify(settings)); } catch {} };
 
@@ -26,10 +27,26 @@ const sounds = new Sounds();
 const game = { sim: null, human: 0, seed: 0, diff: 'normal', tool: null, rot: 0, speed: 1, acc: 0, undo: [], thumbs: null, group: 'infantry' };
 
 // ---------------------------------------------------------------- new game
-function newGame() {
+async function newGame(photo) {
   const n = +settings.teams;
   const seed = game.seed = (Math.random() * 2 ** 31) >>> 0;
-  const map = makeMap({ teams: n, theme: settings.theme || null, seed });
+  let map, layout = null;
+  if (settings.theme.startsWith('claude')) {
+    const blank = makeMap({ teams: n, seed });
+    if (!settings.apiKey) toast('Add an Anthropic API key to let Claude design the battlefield — using a random one.', false, true);
+    else if (settings.theme === 'claude-photo' && !photo) toast('Pick a photo first — using a random battlefield.', false, true);
+    else {
+      const lines = ['Claude is surveying the battlefield…', 'Measuring the coffee mugs…', 'Counting LEGO studs…', 'Checking where the juice spilled…'];
+      let i = 0; $('loadingText').textContent = lines[0]; $('loading').hidden = false;
+      const timer = setInterval(() => { $('loadingText').textContent = lines[++i % lines.length]; }, 2500);
+      try {
+        layout = await designBattlefield({ apiKey: settings.apiKey, model: settings.model, map: blank, prompt: settings.prompt, photo: settings.theme === 'claude-photo' ? photo : null });
+      } catch (e) {
+        toast('Claude could not design the map (' + await explainError(e) + ') — using a random one.', false, true);
+      } finally { clearInterval(timer); $('loading').hidden = true; }
+    }
+  }
+  map = makeMap({ teams: n, theme: settings.theme.startsWith('claude') ? null : settings.theme || null, seed, layout });
   const humanColor = TEAM_COLORS.findIndex(c => c.id === settings.color);
   const colors = [humanColor, ...TEAM_COLORS.map((_, i) => i).filter(i => i !== humanColor)].slice(0, n);
   const specs = colors.map((c, i) => ({ name: i === 0 ? 'You' : TEAM_COLORS[c].name + ' army', color: c, human: i === 0 }));
@@ -43,7 +60,8 @@ function newGame() {
   buildPalette();
   setTool(null);
   refresh();
-  toast(`Round 1 — build your base`, true);
+  if (map.title) { toast(map.title, true); if (map.briefing) toast(map.briefing, false, true); }
+  else toast(`Round 1 — build your base`, true);
 }
 
 function deployAI() {
@@ -180,9 +198,9 @@ function setTool(type) {
   if (!type) view.hideGhost();
 }
 
-function toast(text, big = false) {
-  const d = document.createElement('div'); d.textContent = text; if (big) d.className = 'big';
-  $('toast').appendChild(d); setTimeout(() => d.remove(), 3300);
+function toast(text, big = false, long = false) {
+  const d = document.createElement('div'); d.textContent = text; d.className = (big ? 'big' : '') + (long ? ' long' : '');
+  $('toast').appendChild(d); setTimeout(() => d.remove(), long ? 7200 : 3300);
 }
 
 // ---------------------------------------------------------------- placing pieces
@@ -305,16 +323,26 @@ colorSel.innerHTML = TEAM_COLORS.map(c => `<option value="${c.id}">${c.name}</op
 function openSetup() {
   $('optTeams').value = settings.teams; colorSel.value = settings.color; $('optTheme').value = settings.theme;
   $('optDiff').value = settings.diff; $('optQuality').value = settings.quality; $('optSound').checked = settings.sound;
+  $('optKey').value = settings.apiKey; $('optModel').value = settings.model; $('optPrompt').value = settings.prompt;
+  syncClaudeBox();
   $('dlgSetup').showModal();
 }
 $('dlgSetup').addEventListener('close', () => {
   settings.teams = +$('optTeams').value; settings.color = colorSel.value; settings.theme = $('optTheme').value;
   settings.diff = $('optDiff').value; settings.quality = $('optQuality').value; settings.sound = $('optSound').checked;
+  settings.apiKey = $('optKey').value.trim(); settings.model = $('optModel').value; settings.prompt = $('optPrompt').value.trim().slice(0, 600);
   save();
   sounds.unlock();
-  newGame();
+  newGame($('optPhoto').files[0] || null);
 });
 $('dlgSetup').addEventListener('cancel', e => { if (!game.sim) e.preventDefault(); });
+function syncClaudeBox() {
+  const v = $('optTheme').value;
+  $('claudeBox').hidden = !v.startsWith('claude');
+  $('photoRow').hidden = v !== 'claude-photo';
+  $('promptHint').hidden = v !== 'claude-photo';
+}
+$('optTheme').addEventListener('change', syncClaudeBox);
 $('btnMenu').onclick = openSetup;
 $('btnHelp').onclick = () => $('dlgHelp').showModal();
 

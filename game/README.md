@@ -11,6 +11,11 @@ helicopters), defences and fortifications. Soldiers are often wounded rather tha
 comrades drag them to cover and field ambulances carry them home, and everyone saved fights
 again next round. Explosions cause friendly fire.
 
+Claude-designed battlefields: in the setup screen choose "Describe it" or "From a photo", enter an
+Anthropic API key (kept only in the browser) and Claude lays out the household obstacles, floor
+theme and colour, title and briefing (`src/claude.js`, structured JSON output). A photo of a real
+floor or table is recreated as a map with the same objects in the same places.
+
 - `src/sim/` — deterministic battle simulation (no DOM, no `Math.random`): the same map,
   seed and placement orders always produce the same battle, which is what online play
   will build on.
