@@ -20,7 +20,7 @@ from shapely.geometry import shape, Point, LineString
 from shapely.ops import unary_union
 import pyarrow.dataset as ds, pyarrow.fs as pfs, pyarrow.compute as pc
 
-OUT = os.path.join(os.path.dirname(__file__), '..', 'src', 'data')
+OUT = os.path.join(os.path.dirname(__file__), '..', 'public', 'data')
 # Outer area: panorama of the High Tatras. Inner area: detailed corridor around the trail.
 OUTER = (19.86, 49.07, 20.34, 49.33)          # lon0, lat0, lon1, lat1
 INNER = (20.040, 49.168, 20.112, 49.214)
@@ -136,7 +136,7 @@ def main():
         im = im.filter(ImageFilter.UnsharpMask(radius=1.2, percent=60, threshold=2))
         im.save(os.path.join(OUT, name), quality=q, optimize=True, progressive=True)
     img(OUTER, 2048, 2048, 'outer.jpg', 82)
-    img(INNER, 1024, 1024, 'inner.jpg', 88)
+    img(INNER, 1024, 1024, 'inner.sentinel.jpg', 88)  # fallback for Slovakia; prepare_gugik.py writes inner.jpg
 
     # ---------- land cover (inner only) ----------
     wc = ['https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N48E018_Map.tif']

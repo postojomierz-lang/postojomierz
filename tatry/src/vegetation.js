@@ -218,13 +218,13 @@ export function buildForest({ renderer, scene, env, spruce, pine, quality }) {
   patchShading(impMat, env, { wind: 0.5, perVertexShadow: true });
 
   // per-tree transform, computed once
-  const n = spruce.length / 3;
+  const n = spruce.length / 4; // x, y, z, 1 if the ground height includes the canopy
   const mats = new Float32Array(n * 16), cols = new Float32Array(n * 3);
   const dummy = new THREE.Object3D(), col = new THREE.Color();
   for (let k = 0; k < n; k++) {
     const s = 15 + r() * 16;
-    // the elevation model already contains the forest canopy, so sink trees into it
-    dummy.position.set(spruce[k * 3], spruce[k * 3 + 1] - s * 0.4, spruce[k * 3 + 2]);
+    // where the elevation model contains the forest canopy, sink trees into it
+    dummy.position.set(spruce[k * 4], spruce[k * 4 + 1] - (spruce[k * 4 + 3] ? s * 0.4 : 0.3), spruce[k * 4 + 2]);
     dummy.rotation.set((r() - 0.5) * 0.05, r() * 6.28, (r() - 0.5) * 0.05);
     const wdt = s * (0.8 + r() * 0.35);
     dummy.scale.set(wdt, s, wdt);
