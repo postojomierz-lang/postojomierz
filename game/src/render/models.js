@@ -1,5 +1,6 @@
 // Procedural plastic toy models. Every model is merged into at most two geometries
 // ("main" in the army colour and "dark" for recesses), so each piece is one or two draw calls.
+import { FIGURES, FIGURE_SCALE } from '../data/figures.js';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -116,6 +117,19 @@ function buildSoldier(type, living = false) {
   const out = b.done();
   if (legs.length) out.legs = legs;
   return out;
+}
+
+// Classic army-men figures ("Miniature Army Men" by alo89, CC BY 4.0), see tools/figures.mjs.
+const FIGURE_FOR = { rifleman: 'rifle', para: 'rifle', officer: 'pointer', mg: 'mg50', sniper: 'sniper', 'pose-kneel': 'kneel', 'pose-prone': 'crawl' };
+function b64(s, T) { const bin = atob(s), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new T(u8.buffer); }
+function buildFigure(key) {
+  const f = FIGURES[key], q = b64(f.p, Int16Array), pos = new Float32Array(q.length);
+  for (let i = 0; i < q.length; i++) pos[i] = q[i] / FIGURE_SCALE;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setIndex(new THREE.BufferAttribute(b64(f.i, Uint16Array), 1));
+  geo.computeVertexNormals(); geo.computeBoundingSphere(); geo.computeBoundingBox();
+  return { main: geo };
 }
 
 // ---------------------------------------------------------------------------------
@@ -488,6 +502,7 @@ export function model(type, seed = 0) {
     cache.set(k, m);
     return m;
   }
+  if (FIGURE_FOR[type]) { m = buildFigure(FIGURE_FOR[type]); cache.set(k, m); return m; }
   switch (type) {
     case 'rifleman': case 'mg': case 'bazooka': case 'sniper': case 'grenadier': case 'officer': case 'manpads': case 'medic': m = buildSoldier(type); break;
     case 'para': m = buildSoldier('rifleman'); break;
