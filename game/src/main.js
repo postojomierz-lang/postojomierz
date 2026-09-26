@@ -111,12 +111,15 @@ function onEvent(ev) {
   if (ev.t === 'eliminated') {
     const t = sim.teams[ev.team];
     toast(t.human ? 'Your headquarters has fallen!' : `${t.name} is out!`, true);
+    if (t.human && sim.phase !== 'over') toast('You can keep watching — the remaining armies fight on', false, true);
   } else if (ev.t === 'deploy') {
     game.undo = [];
     deployAI();
     toast(`Round ${sim.round} — reinforcements arrived`, true);
     setTool(null);
     refresh();
+    // spectating after defeat: nobody presses Start, so the next round begins by itself
+    if (!sim.teams[game.human].alive) setTimeout(() => { if (game.sim === sim && game.mode === 'play') startBattle(); }, 1500);
   } else if (ev.t === 'returned' && ev.team === game.human) {
     toast(`${ev.n} rescued soldier${ev.n > 1 ? 's are' : ' is'} back in the fight`);
   } else if (ev.t === 'drop') {
@@ -412,6 +415,6 @@ $('btnHelp').onclick = () => $('dlgHelp').showModal();
 // a first battlefield behind the setup screen
 openSetup();
 
-window.__game = game;
+window.__game = game; window.__flush = flushEvents;
 window.__onEv = onEvent;
 window.__view = view;
