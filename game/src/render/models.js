@@ -9,14 +9,19 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
 
 class Builder {
-  constructor() { this.main = []; this.dark = []; }
-  add(geo, { p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1], q = null, dark = false } = {}) {
+  constructor() { this.main = []; this.dark = []; this.accent = []; }
+  add(geo, { p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1], q = null, dark = false, accent = null } = {}) {
     let g = geo.index ? geo.toNonIndexed() : geo;
     if (g.attributes.uv) g.deleteAttribute('uv');
     if (g.attributes.uv1) g.deleteAttribute('uv1');
     const m = new THREE.Matrix4().compose(V(...p), q || new THREE.Quaternion().setFromEuler(new THREE.Euler(...r)), V(...s));
     g.applyMatrix4(m);
-    (dark ? this.dark : this.main).push(g);
+    if (accent) {
+      const c = new THREE.Color(accent), n = g.attributes.position.count, col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      this.accent.push(g);
+    } else (dark ? this.dark : this.main).push(g);
     return this;
   }
   box(w, h, d, o = {}, radius = 0) { return this.add(radius ? new RoundedBoxGeometry(w, h, d, 2, radius) : new THREE.BoxGeometry(w, h, d), o); }
@@ -36,7 +41,8 @@ class Builder {
     const out = {};
     if (this.main.length) out.main = mergeGeometries(this.main);
     if (this.dark.length) out.dark = mergeGeometries(this.dark);
-    for (const g of [...this.main, ...this.dark]) g.dispose();
+    if (this.accent.length) out.accent = mergeGeometries(this.accent);
+    for (const g of [...this.main, ...this.dark, ...this.accent]) g.dispose();
     for (const k in out) { out[k].computeBoundingSphere(); out[k].computeBoundingBox(); }
     return out;
   }
@@ -57,6 +63,7 @@ function pose(type) {
     case 'rifleman': return [...legs, ...body, L(-1, -31, 10, -31, 4.6, 6, 3), L(-1, -31, 6, -29, 4.6, -6, 2), ...rifle(-4, -31, 24, -33, 3)];
     case 'officer': return [...legs, ...body, L(0, -32, 16, -39, 4.6, 6, 7), C(17, -40, 2.6, 7), L(-1, -30, -6, -24, 4.6, -6), L(-6, -24, -2, -21, 4, -6, -5), Bx(3, -26, 4, 3, 5, -6)];
     case 'grenadier': return [...legs, ...body, L(-1, -32, -9, -45, 4.6, 6), C(-10, -48, 3.8, 6), L(1, -30, 11, -27, 4.6, -6, -3), ...rifle(4, -27, 16, -12, -4)];
+    case 'manpads': return [...legs, ...body, L(0, -31, 6, -36, 4.6, 6, 5), L(0, -31, 8, -37, 4.6, -6, 3), L(-14, -30, 20, -46, 6.2, 5), Bx(19, -46, 5, 5, 6, 5), Bx(4, -38, 4, 5, 3, 5)];
     case 'bazooka': return [L(-7, -2, -2, -12, 5.8, -3.5), L(-7, -2, -16, -2, 5.2, -3.5), L(-2, -12, 7, -12, 5.8, 3.5), L(7, -12, 7, -2, 5.8, 3.5),
       L(-2, -12, 0, -26, 11.5), C(2, -31, 5.6), Hm(2, -33), Bx(-8, -22, 5, 8, 9),
       L(1, -24, 7, -29, 4.6, 6, 4), L(1, -24, 9, -28, 4.6, -6, 2), L(-16, -30, 22, -33, 7.4, 5), C(22, -33, 4.6, 5)];
@@ -359,14 +366,100 @@ function buildHQ() {
   return b.done();
 }
 
+function buildAmbulance() {
+  const b = new Builder();
+  b.box(1.85, 0.2, 0.95, { p: [0, 0.4, 0] }, 0.04);
+  b.box(0.55, 0.55, 0.95, { p: [0.62, 0.78, 0] }, 0.08);
+  b.box(0.05, 0.24, 0.8, { p: [0.9, 0.9, 0], dark: true });
+  b.box(1.2, 0.85, 1.0, { p: [-0.3, 0.92, 0] }, 0.06);
+  for (const z of [-0.505, 0.505]) {
+    b.box(0.56, 0.56, 0.01, { p: [-0.3, 0.95, z], accent: '#f4f1e8' });
+    b.box(0.36, 0.1, 0.02, { p: [-0.3, 0.95, z], accent: '#d63a2f' });
+    b.box(0.1, 0.36, 0.02, { p: [-0.3, 0.95, z], accent: '#d63a2f' });
+  }
+  b.box(0.5, 0.02, 0.5, { p: [-0.3, 1.355, 0], accent: '#f4f1e8' });
+  b.box(0.34, 0.03, 0.1, { p: [-0.3, 1.37, 0], accent: '#d63a2f' });
+  b.box(0.1, 0.03, 0.34, { p: [-0.3, 1.37, 0], accent: '#d63a2f' });
+  b.box(0.12, 0.08, 0.3, { p: [0.62, 1.1, 0], accent: '#3b8fe0' });
+  for (const [x, z] of [[0.58, 0.5], [0.58, -0.5], [-0.58, 0.5], [-0.58, -0.5]]) b.wheel(x, 0.26, z, 0.26, 0.18);
+  return b.done();
+}
+
+// toy jets: fuselage along +x, wings flat, tail fins at the back
+function jetBody(b, { len, r, wing, sweep, tail, canopy = true }) {
+  b.add(new THREE.CapsuleGeometry(r, len, 6, 14), { r: [0, 0, Math.PI / 2], s: [1, 1, 0.9] });
+  b.add(new THREE.ConeGeometry(r * 0.95, r * 2.6, 14), { p: [len / 2 + r * 1.4, 0, 0], r: [0, 0, -Math.PI / 2] });
+  if (canopy) b.add(new THREE.SphereGeometry(r * 0.8, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), { p: [len * 0.28, r * 0.55, 0], s: [2.0, 0.9, 0.85], dark: true });
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0.25, 0); wingShape.lineTo(-0.35, 0); wingShape.lineTo(-0.35 - sweep, wing); wingShape.lineTo(-0.1 - sweep, wing); wingShape.lineTo(0.25, 0);
+  for (const side of [1, -1]) {
+    const g = new THREE.ExtrudeGeometry(wingShape, { depth: 0.05, bevelEnabled: false });
+    b.add(g, { p: [0, -r * 0.2, 0], r: [side * Math.PI / 2, 0, 0], s: [1, 1, 1] });
+    const tl = new THREE.Shape(); tl.moveTo(0, 0); tl.lineTo(-0.3, 0); tl.lineTo(-0.45, tail * 0.6); tl.lineTo(-0.3, tail * 0.6); tl.lineTo(0, 0);
+    b.add(new THREE.ExtrudeGeometry(tl, { depth: 0.04, bevelEnabled: false }), { p: [-len / 2 - r * 0.2, 0, 0], r: [side * Math.PI / 2, 0, 0] });
+  }
+  const fin = new THREE.Shape(); fin.moveTo(0, 0); fin.lineTo(-0.45, 0); fin.lineTo(-0.6, tail); fin.lineTo(-0.4, tail); fin.lineTo(0, 0);
+  b.add(new THREE.ExtrudeGeometry(fin, { depth: 0.05, bevelEnabled: false }), { p: [-len / 2 + 0.05, r * 0.5, -0.025] });
+}
+function buildFighter() {
+  const b = new Builder();
+  jetBody(b, { len: 1.6, r: 0.17, wing: 0.95, sweep: 0.55, tail: 0.5 });
+  for (const z of [-0.3, 0.3]) b.cyl(0.035, 0.035, 0.5, { p: [0.35, -0.12, z], r: [0, 0, Math.PI / 2], dark: true }, 8);
+  return b.done();
+}
+function buildAttacker() {
+  const b = new Builder();
+  jetBody(b, { len: 1.8, r: 0.2, wing: 1.15, sweep: 0.15, tail: 0.5 });
+  for (const z of [-0.2, 0.2]) b.cyl(0.13, 0.13, 0.55, { p: [-0.55, 0.28, z], r: [0, 0, Math.PI / 2] }, 12);
+  for (const z of [-0.55, -0.8, 0.55, 0.8]) b.cyl(0.05, 0.05, 0.45, { p: [0.05, -0.18, z], r: [0, 0, Math.PI / 2], dark: true }, 8);
+  return b.done();
+}
+function buildBomber() {
+  const b = new Builder();
+  jetBody(b, { len: 2.6, r: 0.3, wing: 1.8, sweep: 0.25, tail: 0.75 });
+  for (const z of [-0.8, -1.3, 0.8, 1.3]) {
+    b.cyl(0.11, 0.12, 0.6, { p: [0.15, -0.12, z], r: [0, 0, Math.PI / 2] }, 12);
+    b.cyl(0.07, 0.07, 0.02, { p: [0.46, -0.12, z], r: [0, 0, Math.PI / 2], dark: true }, 10);
+  }
+  b.box(0.8, 0.04, 0.3, { p: [0.1, -0.3, 0], dark: true });
+  return b.done();
+}
+function buildTransport() {
+  const b = new Builder();
+  jetBody(b, { len: 2.4, r: 0.36, wing: 1.9, sweep: 0.05, tail: 0.85 });
+  for (const z of [-0.9, 0.9]) {
+    b.cyl(0.13, 0.14, 0.5, { p: [0.25, 0.08, z], r: [0, 0, Math.PI / 2] }, 12);
+    b.box(0.03, 0.55, 0.06, { p: [0.52, 0.08, z], dark: true });
+  }
+  b.box(0.5, 0.03, 0.5, { p: [-1.1, -0.28, 0], dark: true });
+  return b.done();
+}
+function buildChute() {
+  const b = new Builder();
+  b.add(new THREE.SphereGeometry(0.75, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2.4), { p: [0, 1.4, 0], s: [1, 0.55, 1] });
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2;
+    b.limb([Math.cos(a) * 0.62, 1.48, Math.sin(a) * 0.62], [0, 0.75, 0], 0.01, { dark: true });
+  }
+  return b.done();
+}
+
 // ---------------------------------------------------------------------------------
 const cache = new Map();
+export function modelKey(type, seed = 0) { return type === 'wall' || type === 'sandbags' ? type + (seed % 4) : type; }
 export function model(type, seed = 0) {
-  const k = type === 'wall' || type === 'sandbags' ? type + (seed % 4) : type;
+  const k = modelKey(type, seed);
   if (cache.has(k)) return cache.get(k);
   let m;
   switch (type) {
-    case 'rifleman': case 'mg': case 'bazooka': case 'sniper': case 'grenadier': case 'officer': m = buildSoldier(type); break;
+    case 'rifleman': case 'mg': case 'bazooka': case 'sniper': case 'grenadier': case 'officer': case 'manpads': m = buildSoldier(type); break;
+    case 'para': m = buildSoldier('rifleman'); break;
+    case 'ambulance': m = buildAmbulance(); break;
+    case 'fighter': m = buildFighter(); break;
+    case 'attacker': m = buildAttacker(); break;
+    case 'bomber': m = buildBomber(); break;
+    case 'transport': m = buildTransport(); break;
+    case 'chute': m = buildChute(); break;
     case 'jeep': m = buildJeep(); break;
     case 'apc': m = buildApc(); break;
     case 'amphib': m = buildAmphib(); break;

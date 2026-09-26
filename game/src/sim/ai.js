@@ -18,7 +18,7 @@ export function aiDeploy(sim, teamId, seed) {
   let enemyArmor = 0, enemyAir = 0, enemyInf = 0;
   for (const e of sim.ents) {
     if (e.team === teamId || e.dead || e.placedRound === sim.round) continue;
-    if (e.def.cls === 'air') enemyAir += e.def.cost;
+    if (e.def.aircraft) enemyAir += e.def.cost;
     else if (e.def.armor) enemyArmor += e.def.cost;
     else if (e.def.cls === 'infantry') enemyInf += e.def.cost;
   }
@@ -62,17 +62,30 @@ export function aiDeploy(sim, teamId, seed) {
   const m = budget();
   if (m > 700) vehiclePlan.push('tank');
   if (m > 500 && (enemyInf > 200 || rng() < 0.4)) vehiclePlan.push(rng() < 0.5 ? 'apc' : 'jeep');
-  if (sim.round >= 2 && m > 800 && rng() < 0.5) vehiclePlan.push(rng() < 0.5 ? 'rockets' : 'heli');
+  if (sim.round >= 2 && m > 800 && rng() < 0.4) vehiclePlan.push('rockets');
   if (m > 450 && rng() < 0.35) vehiclePlan.push(rng() < 0.5 ? 'amphib' : 'jeep');
+  let myInf = 0, myMedic = 0;
+  for (const e of sim.ents) if (e.team === teamId && !e.dead) { if (e.def.cls === 'infantry') myInf++; if (e.def.medic) myMedic++; }
+  if (!myMedic && (sim.round >= 2 || m > 900) && rng() < 0.6) vehiclePlan.push('ambulance');
   for (const v of vehiclePlan.slice(0, RULES.vehiclesPerRound)) {
     if (CATALOG[v].cost > budget() * 0.5) continue;
     const back = v === 'rockets';
     tryPlace(v, back ? -1 : -0.2, back ? -0.3 : 0.7);
   }
 
+  // --- aircraft (from round 2, or when the enemy has them) ---
+  const airPlan = [];
+  if (enemyAir > 0 && budget() > 600) airPlan.push('fighter');
+  if (sim.round >= 2 && budget() > 700 && rng() < 0.45) airPlan.push(enemyArmor > 250 ? 'attacker' : rng() < 0.5 ? 'heli' : 'attacker');
+  if (sim.round >= 3 && budget() > 900 && rng() < 0.35) airPlan.push(rng() < 0.5 ? 'bomber' : 'transport');
+  for (const a of airPlan.slice(0, RULES.aircraftPerRound)) {
+    if (CATALOG[a].cost > budget() * 0.45) continue;
+    tryPlace(a, -1, 0.1);
+  }
+
   // --- infantry with whatever is left ---
   const weights = {
-    rifleman: 40, mg: 14, grenadier: 13, sniper: 7,
+    rifleman: 40, mg: 14, grenadier: 13, sniper: 7, manpads: enemyAir > 0 ? 10 + Math.min(20, enemyAir / 25) : 0,
     bazooka: 10 + Math.min(30, enemyArmor / 20),
   };
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
