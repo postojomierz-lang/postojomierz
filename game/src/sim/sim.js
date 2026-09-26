@@ -2,7 +2,7 @@
 // given the same map, seed and placement orders, every machine produces the same battle.
 import { CATALOG, RULES } from '../data/catalog.js';
 import { mulberry } from './rng.js';
-import { T_OPEN, T_SOLID, T_WATER, T_LOW } from './map.js';
+import { T_OPEN, T_SOLID, T_WATER, T_LOW, T_EDGE } from './map.js';
 
 const DT = 1 / RULES.tickRate;
 const INF = 1e9;
@@ -33,6 +33,7 @@ export class Sim {
       id: i, name: t.name, color: t.color, human: !!t.human, zone: map.zones[i],
       money: RULES.startBudget, bounty: 0, vehicles: 0, aircraft: 0, alive: true, hq: 0,
       kills: 0, losses: 0, spent: 0, saved: 0, healed: 0, recovered: [],
+      focus: -1, stance: 'attack', hurtBy: teamSpecs.map(() => 0),   // orders: main target (-1 = nearest) and attack/defend
     }));
     this.fields = new Map();
     this.fieldQueue = [];
@@ -41,8 +42,8 @@ export class Sim {
       // HQ at the back of the zone (the side facing the map edge)
       const [w, h] = CATALOG.hq.size;
       let x = z.x + ((z.w - w) >> 1), y = z.y + ((z.h - h) >> 1);
-      const cx = z.x + z.w / 2, cy = z.y + z.h / 2;
-      const ex = cx < this.W / 3 ? -1 : cx > this.W * 2 / 3 ? 1 : 0, ey = cy < this.H / 3 ? -1 : cy > this.H * 2 / 3 ? 1 : 0;
+      const cx = z.x + z.w / 2 - this.W / 2, cy = z.y + z.h / 2 - this.H / 2, cl = Math.sqrt(cx * cx + cy * cy) || 1;
+      const ex = cx / cl > 0.38 ? 1 : cx / cl < -0.38 ? -1 : 0, ey = cy / cl > 0.38 ? 1 : cy / cl < -0.38 ? -1 : 0;
       x += ex * ((z.w - w) >> 1) - ex; y += ey * ((z.h - h) >> 1) - ey;
       if (this.map.grid[y * this.W + x] !== T_OPEN) { x = z.x + 1; y = z.y + 1; }
       const e = this.spawn(t.id, 'hq', x, y, 0);
@@ -60,6 +61,26 @@ export class Sim {
   inZone(teamId, x, z) {
     const r = this.teams[teamId].zone;
     return x >= r.x && z >= r.y && x < r.x + r.w && z < r.y + r.h;
+  }
+  // The army this team marches on this round (-1 = whoever is nearest).
+  focusOf(teamId) {
+    const f = this.teams[teamId].focus;
+    return f >= 0 && f !== teamId && this.teams[f] && this.teams[f].alive ? f : -1;
+  }
+  defending(teamId) { return this.teams[teamId].stance === 'defend'; }
+  // Stays home this round: everyone when defending; when attacking, every fourth foot soldier guards the HQ.
+  holds(e) { return this.defending(e.team) || (e.def.cls === 'infantry' && !e.free && e.id % 4 === 0); }
+  // Round orders for a whole army: main target and stance. Recorded with the placements for replays / online.
+  setOrders(teamId, { focus, stance } = {}) {
+    const t = this.teams[teamId];
+    if (this.phase !== 'deploy' || !t || !t.alive) return false;
+    if (focus !== undefined) t.focus = Number.isInteger(focus) && focus >= 0 && focus < this.teams.length && focus !== teamId ? focus : -1;
+    if (stance !== undefined) t.stance = stance === 'defend' ? 'defend' : 'attack';
+    const i = this.orders.findIndex(o => o.kind === 'orders' && o.round === this.round && o.team === teamId);
+    const o = { kind: 'orders', round: this.round, team: teamId, focus: t.focus, stance: t.stance };
+    if (i >= 0) this.orders[i] = o; else this.orders.push(o);
+    this.events.push({ t: 'orders', team: teamId });
+    return true;
   }
   // "active" = on the field and able to fight or be shot at
   active(o) { return !o.dead && !o.down && !o.falling && !o.loaded; }
@@ -190,6 +211,7 @@ export class Sim {
       if (!t.alive) continue;
       for (const cls of this.neededClasses(t.id)) this.enemyField(t.id, cls);
       this.homeField(t.id, 'wheel');
+      for (const cls of this.neededClasses(t.id)) if (cls !== 'wheel') this.homeField(t.id, cls);
     }
     for (const e of this.ents) {
       if (e.def.cls !== 'plane') continue;
@@ -216,6 +238,7 @@ export class Sim {
       }
     }
     for (const e of [...this.ents]) if (e.def.cls === 'plane' && e.def.sortie && !e.dead) this.remove(e);
+    for (const t of this.teams) t.hurtBy = t.hurtBy.map(v => v * 0.5);
 
     const alive = this.teams.filter(t => t.alive);
     if (alive.length <= 1 || this.round >= RULES.maxRounds) {
@@ -276,7 +299,7 @@ export class Sim {
   // "passable at a cost" so armies will break through walls when there is no way around.
   cellCost(c, cls, team) {
     const g = this.map.grid[c];
-    if (g === T_SOLID || g === T_LOW) return INF;
+    if (g === T_SOLID || g === T_LOW || g === T_EDGE) return INF;
     if (g === T_WATER) return cls === 'amphib' ? 1.4 : INF;
     const s = this.occ[c];
     if (!s) return 1;
@@ -295,7 +318,7 @@ export class Sim {
     const cls = this.moveClass(e);
     if (cls === 'air') return true;
     const g = this.map.grid[c];
-    if (g === T_SOLID || g === T_LOW) return false;
+    if (g === T_SOLID || g === T_LOW || g === T_EDGE) return false;
     if (g === T_WATER && cls !== 'amphib') return false;
     const s = this.occ[c];
     if (!s) return true;
@@ -331,10 +354,14 @@ export class Sim {
     return dist;
   }
   // distance to the nearest enemy worth attacking (ground units, guns, HQs)
+  // (only the army picked as the main target, if there is one)
   enemyField(teamId, cls) {
-    const W = this.W, goals = [];
-    for (const o of this.ents) {
+    // our own base is being overrun: forget the main target and deal with the intruders first
+    const W = this.W, focus = this.homeThreat(teamId) ? -1 : this.focusOf(teamId);
+    let goals = [];
+    for (let pass = 0; pass < 2 && !goals.length; pass++) for (const o of this.ents) {
       if (o.team === teamId || !this.active(o) || isAir(o) || o.def.cls === 'fort') continue;
+      if (pass === 0 && focus >= 0 && o.team !== focus) continue;
       if (o.def.static) { for (let y = o.cy; y < o.cy + o.h; y++) for (let x = o.cx; x < o.cx + o.w; x++) goals.push(y * W + x); }
       else goals.push(this.cellOf(o.x, o.z));
     }
@@ -440,6 +467,7 @@ export class Sim {
     if (o.dead || amount <= 0) return;
     if (o.down) { if (amount >= 2) this.die(o, attacker); return; }   // explosions finish off the wounded
     o.hp -= amount;
+    if (attacker && attacker.team >= 0 && attacker.team !== o.team) this.teams[o.team].hurtBy[attacker.team] += amount * (o.def.cls === 'hq' ? 2 : 1);
     this.events.push({ t: 'hit', id: o.id, amount });
     if (o.hp <= 0) this.kill(o, attacker);
   }
@@ -780,6 +808,7 @@ export class Sim {
       if (--e.retarget <= 0) { e.retarget = 10 + (e.id % 5); e.target = this.chooseTarget(e); }
       tgt = e.target ? this.byId.get(e.target) : null;
       if (tgt && !this.canHit(e, tgt)) { tgt = null; e.target = 0; }
+      if (tgt && this.defending(e.team) && !this.nearHome(e.team, tgt, 14)) tgt = null;
       if (tgt) {
         gx = tgt.x; gz = tgt.z;
         const dx = tgt.x - e.x, dz = tgt.z - e.z, l = Math.sqrt(dx * dx + dz * dz) || 1;
@@ -812,10 +841,11 @@ export class Sim {
     e.moving = true;
   }
   planSortie(e) {
-    // head for the nearest enemy headquarters
+    // head for the main target's headquarters, or the nearest one
     let hq = null, bd = INF;
+    const focus = this.focusOf(e.team);
     for (const t of this.teams) {
-      if (t.id === e.team || !t.alive) continue;
+      if (t.id === e.team || !t.alive || (focus >= 0 && t.id !== focus)) continue;
       const h = this.byId.get(t.hq); if (!h) continue;
       const dx = h.x - e.x, dz = h.z - e.z, d = dx * dx + dz * dz;
       if (d < bd) { bd = d; hq = h; }
@@ -856,6 +886,7 @@ export class Sim {
     const plane = e.def.cls === 'plane';
     const sight = plane ? 70 : w.range + 6;
     const splashy = (w.splash || 0) >= 0.9 || w.kind === 'grenade' || w.kind === 'arty';
+    const focus = this.focusOf(e.team), defend = !e.def.static && !isAir(e) && this.holds(e);
     const cands = [];
     for (const o of this.ents) {
       if (!this.isThreat(o) || !this.canHit(e, o)) continue;
@@ -870,6 +901,8 @@ export class Sim {
       if (w.kind === 'arty' && o.def.static) s -= 4;
       if (o.def.cls === 'hq') s += 4;
       if (o.def.medic) s += 3; // shoot the soldiers first, but ambulances are fair game
+      if (o.team === focus) s -= 5;
+      if (defend && !plane && !this.inZone(e.team, o.x, o.z) && d > w.range) continue;   // defenders do not chase
       cands.push([s, o.id, o, d]);
     }
     cands.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -979,9 +1012,21 @@ export class Sim {
     const spd = e.def.speed * SPEED * DT;
     let gx, gz;
     if (cls === 'air') {
-      const o = tgt || this.nearestEnemy(e);
-      if (!o) return;
-      gx = o.x; gz = o.z;
+      let o = tgt || this.nearestEnemy(e);
+      if (o && this.defending(e.team) && !this.nearHome(e.team, o, 12)) o = null;
+      if (!o) {
+        // helicopters with nothing to do hover over home
+        const z = this.teams[e.team].zone;
+        gx = z.x + z.w / 2; gz = z.y + z.h / 2;
+        if ((gx - e.x) * (gx - e.x) + (gz - e.z) * (gz - e.z) < 4) return;
+      } else { gx = o.x; gz = o.z; }
+    } else if (this.holds(e)) {
+      // defensive stance: hold inside our zone, walk back if we are outside it
+      if (!this.inZone(e.team, e.x, e.z)) { this.followField(e, this.fields.get(e.team + ':home:' + cls), 1); return; }
+      if (!tgt) return;
+      gx = tgt.x; gz = tgt.z;
+      const dx = gx - e.x, dz = gz - e.z, l = Math.sqrt(dx * dx + dz * dz) || 1, k = Math.min(spd, l) / l;
+      if (!this.inZone(e.team, e.x + dx * k, e.z + dz * k)) return;
     } else {
       const field = this.fields.get(e.team + ':' + cls);
       const c = this.cellOf(e.x, e.z);
@@ -1044,12 +1089,24 @@ export class Sim {
 
   nearestEnemy(e) {
     let best = null, bd = INF;
+    const focus = this.focusOf(e.team);
     for (const o of this.ents) {
       if (o.team === e.team || !this.isThreat(o) || !this.canHit(e, o)) continue;
-      const dx = o.x - e.x, dz = o.z - e.z, d = dx * dx + dz * dz;
+      const dx = o.x - e.x, dz = o.z - e.z, d = (dx * dx + dz * dz) * (o.team === focus ? 0.25 : 1);
       if (d < bd) { bd = d; best = o; }
     }
     return best;
+  }
+
+  homeThreat(teamId) {
+    for (const o of this.ents) if (o.team !== teamId && this.active(o) && !isAir(o) && !o.def.static && this.nearHome(teamId, o, 4)) return true;
+    return false;
+  }
+  // is o within r cells of this team's zone?
+  nearHome(teamId, o, r) {
+    const z = this.teams[teamId].zone;
+    const dx = Math.max(z.x - o.x, 0, o.x - (z.x + z.w)), dz = Math.max(z.y - o.z, 0, o.z - (z.y + z.h));
+    return dx * dx + dz * dz <= r * r;
   }
 
   // push overlapping ground units apart

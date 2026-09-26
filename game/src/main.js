@@ -7,7 +7,7 @@ import { exportLayout, downloadLayout, readLayoutFile } from './mapfile.js';
 import { recognizeDrawing, blankSheet } from './drawn.js';
 import { Editor } from './editor.js';
 import { Sim } from './sim/sim.js';
-import { aiDeploy } from './sim/ai.js';
+import { aiDeploy, aiOrders } from './sim/ai.js';
 import { View, renderThumbnails } from './render/view.js';
 import { Sounds } from './audio.js';
 
@@ -95,6 +95,7 @@ function deployAI() {
     t.money = Math.max(0, Math.round(t.money * (1 + bonus)));
     aiDeploy(sim, t.id, game.seed);
   }
+  for (let pass = 0; pass < 2; pass++) for (const t of sim.teams) if (!t.human && t.alive) aiOrders(sim, t.id, game.seed);
   flushEvents();
 }
 
@@ -137,7 +138,9 @@ const miniCanvas = $('minimap'), miniCtx = miniCanvas.getContext('2d');
 function miniJump(e) {
   if (!game.sim) return;
   const r = miniCanvas.getBoundingClientRect(), map = game.sim.map;
-  view.lookAt((e.clientX - r.left) / r.width * map.W, (e.clientY - r.top) / r.height * map.H);
+  const f = view.miniFit || { sc: miniCanvas.width / map.W, ox: 0, oy: 0 };
+  const cx = (e.clientX - r.left) * miniCanvas.width / r.width, cy = (e.clientY - r.top) * miniCanvas.height / r.height;
+  view.lookAt((cx - f.ox) / f.sc, (cy - f.oy) / f.sc);
 }
 miniCanvas.addEventListener('pointerdown', e => { miniJump(e); miniCanvas.setPointerCapture(e.pointerId); });
 miniCanvas.addEventListener('pointermove', e => { if (e.buttons & 1) miniJump(e); });
@@ -180,20 +183,64 @@ function refresh() {
   $('btnUndo').disabled = !game.undo.length;
   for (const b of $('speed').children) b.classList.toggle('on', +b.dataset.speed === game.speed);
   // army list
+  const pickable = sim.phase === 'deploy' && me.alive;
   const rows = sim.teams.map(t => {
     const hq = sim.byId.get(t.hq), f = hq && !hq.dead ? hq.hp / hq.maxHp : 0;
     const units = sim.ents.filter(e => !e.dead && !e.down && e.team === t.id && !e.def.static).length;
-    return `<div class="army ${t.alive ? '' : 'out'}"><span class="sw" style="background:${TEAM_COLORS[t.color].main}"></span>
+    const foc = sim.focusOf(t.id);
+    const order = !t.alive ? '' : t.stance === 'defend' ? '🛡 defending' : foc === game.human && t.id !== game.human ? '⚔ attacking <b>you</b>' : `⚔ → ${foc >= 0 ? sim.teams[foc].name : 'nearest'}`;
+    const cls = [t.alive ? '' : 'out', pickable && t.alive && t.id !== game.human ? 'pick' : '', me.focus === t.id ? 'focus' : ''].join(' ');
+    return `<div class="army ${cls}" data-team="${t.id}" ${pickable && t.id !== game.human && t.alive ? 'title="Make this army your main target"' : ''}><span class="sw" style="background:${TEAM_COLORS[t.color].main}"></span>
       <span class="nm">${t.name}</span><span class="v">${t.alive ? units + ' units' : 'defeated'}</span>
-      <span class="bar"><i style="width:${Math.round(f * 100)}%"></i></span></div>`;
+      <span class="bar"><i style="width:${Math.round(f * 100)}%"></i></span>${order ? `<span class="tg ${foc === game.human && t.id !== game.human && t.stance !== 'defend' ? 'me' : ''}">${order}</span>` : ''}</div>`;
   }).join('');
   if ($('armies').dataset.last !== rows) { $('armies').innerHTML = rows; $('armies').dataset.last = rows; }
+  refreshOrders();
   // palette affordability
   for (const c of $('cards').children) {
     const def = CATALOG[c.dataset.type];
     c.classList.toggle('off', def.cost > me.money || (def.vehicle && me.vehicles >= RULES.vehiclesPerRound) || (def.aircraft && me.aircraft >= RULES.aircraftPerRound));
   }
 }
+
+// ---------------------------------------------------------------- round orders
+function refreshOrders() {
+  const sim = game.sim, me = sim.teams[game.human];
+  const opts = '<option value="-1">Nearest enemy</option>' + sim.teams.filter(t => t.alive && t.id !== game.human).map(t => `<option value="${t.id}">Target: ${t.name}</option>`).join('');
+  const sel = $('optFocus');
+  if (sel.dataset.last !== opts) { sel.innerHTML = opts; sel.dataset.last = opts; }
+  sel.value = String(sim.focusOf(game.human));
+  sel.disabled = me.stance === 'defend';
+  for (const b of $('stance').children) b.classList.toggle('on', b.dataset.stance === me.stance);
+  // arrow on the floor: from our HQ towards the army we march on
+  let arrow = null;
+  const hq = sim.byId.get(me.hq);
+  if (me.alive && hq && sim.phase !== 'over' && me.stance === 'attack') {
+    let f = sim.focusOf(game.human), bd = Infinity;
+    if (f < 0) for (const t of sim.teams) {
+      if (!t.alive || t.id === game.human) continue;
+      const h = sim.byId.get(t.hq); if (!h) continue;
+      const d = (h.x - hq.x) ** 2 + (h.z - hq.z) ** 2;
+      if (d < bd) { bd = d; f = t.id; }
+    }
+    const th = f >= 0 ? sim.byId.get(sim.teams[f].hq) : null;
+    if (th) arrow = { x1: hq.x + (th.x - hq.x) * 0.18, z1: hq.z + (th.z - hq.z) * 0.18, x2: hq.x + (th.x - hq.x) * 0.8, z2: hq.z + (th.z - hq.z) * 0.8,
+      color: '#e2462f', faint: sim.focusOf(game.human) < 0 };
+  }
+  view.setArrow(arrow);
+}
+function setOrders(o) {
+  const sim = game.sim;
+  if (!sim || sim.phase !== 'deploy') return;
+  sim.setOrders(game.human, o); flushEvents(); sounds.play('place'); refresh();
+}
+$('stance').onclick = e => { const st = e.target.closest('[data-stance]'); if (st) setOrders({ stance: st.dataset.stance }); };
+$('optFocus').onchange = () => setOrders({ focus: +$('optFocus').value });
+$('armies').onclick = e => {
+  const row = e.target.closest('.army.pick'); if (!row) return;
+  const id = +row.dataset.team, sim = game.sim;
+  setOrders({ focus: sim.teams[game.human].focus === id ? -1 : id, stance: 'attack' });
+};
 
 function buildPalette() {
   $('tabs').innerHTML = GROUPS.map(g => `<button type="button" data-group="${g.id}" class="${g.id === game.group ? 'on' : ''}">${g.name}</button>`).join('');

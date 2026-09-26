@@ -159,7 +159,7 @@ export const CATALOG = {
 
   // ---- headquarters (one per army, free) -----------------------------------
   hq: {
-    name: 'Headquarters', group: 'hq', cls: 'hq', static: true, cost: 0, hp: 500, size: [4, 4], radius: 2, blocksLos: true,
+    name: 'Headquarters', group: 'hq', cls: 'hq', static: true, cost: 0, hp: 900, size: [4, 4], radius: 2, blocksLos: true,
     weapon: { kind: 'bullet', range: 10, dmg: 1, cd: 0.25, acc: 0.5, air: true },
     blurb: 'Lose it and your army is out.',
   },

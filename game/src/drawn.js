@@ -109,6 +109,12 @@ export function blankSheet(map) {
   g.strokeStyle = '#e4e4e4'; g.lineWidth = 1;
   for (let x = 0; x <= map.W; x += 4) { g.beginPath(); g.moveTo(x * S, 0); g.lineTo(x * S, c.height); g.stroke(); }
   for (let y = 0; y <= map.H; y += 4) { g.beginPath(); g.moveTo(0, y * S); g.lineTo(c.width, y * S); g.stroke(); }
+  if (map.round) {
+    // the round table: hatch everything off the edge so nobody draws there
+    g.save(); g.beginPath(); g.rect(0, 0, c.width, c.height); g.arc(c.width / 2, c.height / 2, map.R * S, 0, Math.PI * 2, true); g.clip('evenodd');
+    g.fillStyle = '#ececec'; g.fillRect(0, 0, c.width, c.height); g.restore();
+    g.strokeStyle = '#cfcfcf'; g.lineWidth = 3; g.beginPath(); g.arc(c.width / 2, c.height / 2, map.R * S, 0, Math.PI * 2); g.stroke();
+  }
   g.fillStyle = '#f1f1f1';
   for (const z of map.zones) g.fillRect(z.x * S, z.y * S, z.w * S, z.h * S);
   g.fillStyle = '#d8d8d8'; g.font = `${S * 1.2}px sans-serif`; g.textAlign = 'center';

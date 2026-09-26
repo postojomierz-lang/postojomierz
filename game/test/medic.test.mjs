@@ -2,7 +2,7 @@
 // and ambulances keep out of the line of fire.
 import { makeMap } from '../src/sim/map.js';
 import { Sim } from '../src/sim/sim.js';
-import { aiDeploy } from '../src/sim/ai.js';
+import { aiDeploy, aiOrders } from '../src/sim/ai.js';
 
 let fail = 0;
 const tot = { down: 0, healed: 0, stabilized: 0, pickup: 0, load: 0, rescued: 0, ambLost: 0, ambBuilt: 0, maxDrag: 0 };
@@ -12,7 +12,7 @@ for (const [seed, teams] of [[3, 2], [11, 4], [21, 4]]) {
   const picked = new Map();
   while (sim.phase !== 'over') {
     for (const t of sim.teams) if (t.alive) {
-      aiDeploy(sim, t.id, seed);
+      aiDeploy(sim, t.id, seed); aiOrders(sim, t.id, seed);
       // every army gets a medic squad and an ambulance so the behaviour is exercised
       for (let i = 0; i < 3; i++) { const z = map.zones[t.id]; for (let k = 0; k < 40; k++) { const r = sim.place(t.id, 'medic', z.x + ((k * 7 + i * 3) % z.w), z.y + ((k * 5 + i) % z.h), 0); if (!r.error) break; } }
       const z = map.zones[t.id];

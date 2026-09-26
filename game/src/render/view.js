@@ -191,6 +191,27 @@ export class View {
   }
 
   // ---------------------------------------------------------------- scene setup
+  // Big flat arrow on the floor showing where an army marches this round (a = null hides it).
+  setArrow(a) {
+    const key = a ? [a.x1, a.z1, a.x2, a.z2, a.color, a.faint].map(v => (typeof v === 'number' ? v.toFixed(1) : v)).join() : '';
+    if (key === this.arrowKey && this.arrow && this.arrow.parent) return;
+    this.arrowKey = key;
+    if (this.arrow) { this.world.remove(this.arrow); this.arrow.geometry.dispose(); this.arrow.material.dispose(); this.arrow = null; }
+    if (!a) return;
+    const x1 = this.wx(a.x1), z1 = this.wz(a.z1), x2 = this.wx(a.x2), z2 = this.wz(a.z2);
+    const len = Math.hypot(x2 - x1, z2 - z1); if (len < 2) return;
+    const w = Math.min(1.6, 0.5 + len * 0.03), head = Math.min(len * 0.35, w * 3.2);
+    const sh = new THREE.Shape();
+    sh.moveTo(0, -w / 2); sh.lineTo(len - head, -w / 2); sh.lineTo(len - head, -w * 1.3); sh.lineTo(len, 0);
+    sh.lineTo(len - head, w * 1.3); sh.lineTo(len - head, w / 2); sh.lineTo(0, w / 2); sh.closePath();
+    const geo = new THREE.ShapeGeometry(sh);
+    geo.rotateX(Math.PI / 2);   // shape x -> world x, shape y -> world z
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: a.color, transparent: true, opacity: a.faint ? 0.3 : 0.55, depthWrite: false, side: THREE.DoubleSide }));
+    m.position.set(x1, 0.06, z1);
+    m.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+    m.renderOrder = 2;
+    this.world.add(m); this.arrow = m;
+  }
   wx(x) { return x - this.map.W / 2; }
   wz(z) { return z - this.map.H / 2; }
 
@@ -201,7 +222,7 @@ export class View {
     this.batches.clear();
     this.palettes = sim.teams.map(t => teamPalette(TEAM_COLORS[t.color]));
     this.world.traverse(o => { if (o.geometry && !o.userData.shared) o.geometry.dispose(); });
-    this.world.clear();
+    this.world.clear(); this.arrow = null; this.arrowKey = '';
     if (this.fx) { this.fx.clear(); this.scene.remove(this.fx.group); this.fx.decalTex.dispose(); }
     const map = this.map, st = FLOOR[map.theme];
     this.scene.background = new THREE.Color(st.bg);
@@ -632,16 +653,20 @@ export class View {
     for (let y = 0; y < map.H; y++) for (let x = 0; x < map.W; x++) {
       const t = map.grid[y * map.W + x];
       if (!t) continue;
-      g.fillStyle = t === 2 ? '#4f8fc0' : t === 1 ? 'rgba(60,45,30,.75)' : 'rgba(60,45,30,.45)';
+      g.fillStyle = t === 4 ? 'rgba(0,0,0,.55)' : t === 2 ? '#4f8fc0' : t === 1 ? 'rgba(60,45,30,.75)' : 'rgba(60,45,30,.45)';
       g.fillRect(x * S, y * S, S, S);
     }
     this.miniBase = c;
   }
   drawMinimap(ctx, w, h) {
     if (!this.sim || !this.miniBase) return;
-    const map = this.map, sx = w / map.W, sz = h / map.H;
+    // keep the map's proportions (a round table stays round), centred in the panel
+    const map = this.map, sc = Math.min(w / map.W, h / map.H), sx = sc, sz = sc;
+    const ox = (w - map.W * sc) / 2, oy = (h - map.H * sc) / 2;
+    this.miniFit = { sc, ox, oy };
     ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(this.miniBase, 0, 0, w, h);
+    ctx.save(); ctx.translate(ox, oy);
+    ctx.drawImage(this.miniBase, 0, 0, map.W * sc, map.H * sc);
     if (this.sim.phase === 'deploy') for (const t of this.sim.teams) {
       ctx.strokeStyle = TEAM_COLORS[t.color].main; ctx.lineWidth = 1;
       ctx.strokeRect(t.zone.x * sx + 0.5, t.zone.y * sz + 0.5, t.zone.w * sx - 1, t.zone.h * sz - 1);
@@ -668,6 +693,7 @@ export class View {
       ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.5; ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.stroke();
     }
+    ctx.restore();
   }
 
   keyboardPan(dt) {
