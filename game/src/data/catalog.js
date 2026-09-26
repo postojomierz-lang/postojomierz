@@ -48,6 +48,11 @@ export const CATALOG = {
     weapon: { kind: 'missile', range: 17, dmg: 40, cd: 6, acc: 0.85, airOnly: true, projSpeed: 18 },
     blurb: 'Shoulder-fired homing missile. Only shoots at aircraft.',
   },
+  medic: {
+    name: 'Medic', group: 'infantry', cls: 'infantry', cost: 20, hp: 10, speed: 1.9, size: [1, 1], radius: 0.32, healer: true, healTime: 3,
+    weapon: { kind: 'bullet', range: 6, dmg: 1, cd: 1.4, acc: 0.6 },
+    blurb: 'Runs to wounded soldiers and patches them up on the spot, so they fight on.',
+  },
   para: {
     name: 'Paratrooper', group: 'hidden', cls: 'infantry', cost: 10, hp: 10, speed: 1.7, size: [1, 1], radius: 0.32,
     weapon: { kind: 'bullet', range: 9, dmg: 2, cd: 1.1, acc: 0.72, air: true },
