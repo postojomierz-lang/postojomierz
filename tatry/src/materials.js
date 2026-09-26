@@ -26,53 +26,128 @@ vec2 vor(vec2 p){
 }
 `;
 
-// Satellite-textured terrain with close-range procedural detail (rock grain, grass, trail).
-export function terrainMaterial({ map, trailMap, bounds, detail }) {
-  const m = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      map: { value: map },
-      trailMap: { value: trailMap },
-      bounds: { value: new THREE.Vector4(...bounds) },
-      detail: { value: detail ? 1 : 0 },
-      exposure: { value: 1 },
-    }]),
-    fog: true,
-    side: THREE.DoubleSide,
-    vertexShader: /* glsl */`
-      #include <common>
-      #include <fog_pars_vertex>
-      #include <logdepthbuf_pars_vertex>
-      varying vec3 vWorld; varying vec3 vN;
-      void main(){
-        vec4 wp = modelMatrix * vec4(position,1.0);
-        vWorld = wp.xyz; vN = normal;
-        vec4 mvPosition = viewMatrix * wp;
-        gl_Position = projectionMatrix * mvPosition;
-        #include <logdepthbuf_vertex>
-        #include <fog_vertex>
-      }`,
-    fragmentShader: /* glsl */`
-      #include <common>
-      #include <fog_pars_fragment>
-      #include <logdepthbuf_pars_fragment>
-      uniform sampler2D map; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail; uniform float exposure;
-      uniform vec3 sunDir; uniform vec3 sunCol; uniform vec3 ambCol;
-      varying vec3 vWorld; varying vec3 vN;
-      ${NOISE}
-      void main(){
-        #include <logdepthbuf_fragment>
+// ---------------------------------------------------------------- terrain lighting helpers
+// Heights of the whole area as textures, so shaders can ray-march mountain shadows toward the sun
+// and darken hollows (cheap ambient occlusion). `env` holds the shared uniforms.
+export function makeEnv({ inner, outer, quality }) {
+  const tex = (g) => {
+    const d = new Uint16Array(g.w * g.h);
+    for (let i = 0; i < d.length; i++) d[i] = THREE.DataUtils.toHalfFloat(g.data[i] - 1000);
+    const t = new THREE.DataTexture(d, g.w, g.h, THREE.RedFormat, THREE.HalfFloatType);
+    t.magFilter = t.minFilter = THREE.LinearFilter; t.needsUpdate = true;
+    return t;
+  };
+  return {
+    hInner: { value: tex(inner) }, hOuter: { value: tex(outer) },
+    bInner: { value: new THREE.Vector4(inner.x0, inner.z0, inner.x1, inner.z1) },
+    bOuter: { value: new THREE.Vector4(outer.x0, outer.z0, outer.x1, outer.z1) },
+    nInner: { value: new THREE.Vector2(inner.w, inner.h) },
+    nOuter: { value: new THREE.Vector2(outer.w, outer.h) },
+    sunDir: light.sunDir, time: light.time,
+    shSteps: { value: quality === 'low' ? 14 : 28 },
+  };
+}
+
+const HEIGHTS = /* glsl */`
+uniform sampler2D hInner; uniform sampler2D hOuter;
+uniform vec4 bInner; uniform vec4 bOuter; uniform vec2 nInner; uniform vec2 nOuter;
+uniform vec3 sunDir; uniform float time; uniform int shSteps;
+vec2 gridUV(vec2 p, vec4 b, vec2 n){ vec2 f=(p-b.xy)/(b.zw-b.xy); return (f*(n-1.0)+0.5)/n; }
+float hAt(vec2 p){
+  vec2 f=(p-bInner.xy)/(bInner.zw-bInner.xy);
+  if (f.x>0.01 && f.y>0.01 && f.x<0.99 && f.y<0.99) return texture(hInner, gridUV(p,bInner,nInner)).r+1000.0;
+  return texture(hOuter, gridUV(p,bOuter,nOuter)).r+1000.0;
+}
+// soft shadow cast by the terrain itself (ridges, peaks), up to ~12 km away
+float terrainShadow(vec3 wp){
+  vec3 L = sunDir;
+  if (L.y <= -0.02) return 0.0;
+  float t = 25.0, sh = 1.0;
+  float grow = shSteps > 20 ? 1.28 : 1.62;
+  for (int i=0; i<40; i++){
+    if (i >= shSteps) break;
+    vec3 q = wp + L*t;
+    float h = hAt(q.xz);
+    sh = min(sh, clamp((q.y + 10.0 - h) / (t*0.035) + 0.5, 0.0, 1.0));
+    if (sh <= 0.0 || t > 12000.0) break;
+    t *= grow;
+  }
+  return sh;
+}
+float terrainAO(vec3 wp){
+  vec2 p = wp.xz;
+  float s1 = (hAt(p+vec2(45,0))+hAt(p-vec2(45,0))+hAt(p+vec2(0,45))+hAt(p-vec2(0,45)))*0.25;
+  float s2 = (hAt(p+vec2(160,160))+hAt(p-vec2(160,160))+hAt(p+vec2(160,-160))+hAt(p-vec2(160,-160)))*0.25;
+  float c = (s1 - wp.y)*0.012 + (s2 - wp.y)*0.0018;
+  return clamp(1.0 - c, 0.72, 1.1);
+}
+`;
+
+// Adds terrain shadow (and optionally wind sway) to a built-in material, e.g. trees and rocks.
+export function patchShading(material, env, { wind = 0, perVertexShadow = true } = {}) {
+  material.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, env);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + HEIGHTS + '\nvarying float vTerrSh;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        {
+          vec4 ip = vec4(0.0, 0.0, 0.0, 1.0);
+          #ifdef USE_INSTANCING
+            ip = instanceMatrix * ip;
+          #endif
+          float phase = time * 1.3 + ip.x * 0.05 + ip.z * 0.07;
+          float amt = ${wind.toFixed(3)} * position.y * position.y * 0.02;
+          transformed.x += sin(phase) * amt + sin(phase * 2.7) * amt * 0.3;
+          transformed.z += cos(phase * 0.8) * amt;
+        }`)
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        {
+          vec4 wpS = vec4(transformed, 1.0);
+          #ifdef USE_INSTANCING
+            wpS = instanceMatrix * wpS;
+          #endif
+          wpS = modelMatrix * wpS;
+          vTerrSh = ${perVertexShadow ? 'terrainShadow(wpS.xyz)' : '1.0'};
+        }`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vTerrSh;')
+      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh;');
+  };
+  material.customProgramCacheKey = () => 'patched' + wind + perVertexShadow;
+}
+
+// Satellite-textured terrain with close-range procedural detail (rock grain, grass, trail),
+// lit by the scene lights (so it receives tree and rock shadows) plus terrain shadow and AO.
+export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1 }) {
+  const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+  const u = {
+    satMap: { value: map }, trailMap: { value: trailMap },
+    bounds: { value: new THREE.Vector4(...bounds) }, detail: { value: detail ? 1 : 0 },
+  };
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, env, u);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWorld; varying vec3 vWN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normal;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vWorld; varying vec3 vWN;
+        uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail;
+        ${NOISE}
+        ${HEIGHTS}`)
+      .replace('#include <map_fragment>', `{
         vec2 uv = (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy);
-        vec3 sat = texture2D(map, uv).rgb;
+        vec3 sat = texture2D(satMap, uv).rgb;
         // lift the baked-in satellite shadows a bit, real-time light adds relief back
         sat = sat * 1.55 + 0.01;
-        vec3 N = normalize(vN);
+        vec3 N = normalize(vWN);
         float slope = 1.0 - N.y;
         float dist = length(cameraPosition - vWorld);
         vec3 col = sat;
         if (detail > 0.5) {
           float near = 1.0 - smoothstep(60.0, 700.0, dist);
           float mid = 1.0 - smoothstep(1500.0, 6000.0, dist);
-          vec3 satBlur = textureLod(map, uv, 1.5).rgb * 1.55 + 0.01;
+          vec3 satBlur = textureLod(satMap, uv, 1.5).rgb * 1.55 + 0.01;
           float green = clamp((satBlur.g - max(satBlur.r, satBlur.b)) * 14.0, 0.0, 1.0);
           // triplanar noise so cliffs are not smeared by the top-down photo
           vec3 an = pow(abs(N), vec3(3.0)); an /= (an.x + an.y + an.z);
@@ -96,7 +171,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail }) {
           vec2 sp = mix(vec2(dot(w.xz, hz), w.y), w.xz, smoothstep(0.55, 0.85, N.y));
           vec2 st = vor(sp * 0.7 + vec2(t1, t2) * 1.4);
           vec2 gr = vor(sp * 4.0 + t1);
-          float stones = (0.82 + 0.3 * st.y) * mix(0.82, 1.0, smoothstep(0.0, 0.12, st.x + 0.08 * n3));
+          float stones = (0.84 + 0.3 * st.y) * mix(0.93, 1.0, smoothstep(0.0, 0.1, st.x + 0.08 * n3));
           float gravel = (0.86 + 0.28 * gr.y) * mix(0.82, 1.0, smoothstep(0.0, 0.15, gr.x));
           vec3 rockyGround = mix(col, vec3(dot(col, vec3(0.33))), 0.45 * close) * mix(1.0, stones * gravel, close) * (0.85 + 0.3 * n1);
           float blades = vnoise(w.xz * vec2(11.0, 3.0) + n1 * 4.0) * 0.5 + vnoise(w.xz * vec2(3.0, 13.0)) * 0.5;
@@ -114,15 +189,17 @@ export function terrainMaterial({ map, trailMap, bounds, detail }) {
           path = mix(path, col, 0.3);
           col = mix(col, path, 0.8 * smoothstep(0.25, 0.8, tr) * (1.0 - smoothstep(900.0, 2500.0, dist) * 0.7));
         }
-        float diff = max(dot(N, sunDir), 0.0);
-        vec3 lit = col * (ambCol + sunCol * diff * 1.15) * exposure;
-        gl_FragColor = vec4(lit, 1.0);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-        #include <fog_fragment>
-      }`,
-  });
-  Object.assign(m.uniforms, { sunDir: light.sunDir, sunCol: light.sunCol, ambCol: light.ambCol });
+        diffuseColor.rgb = col;
+      }`)
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        {
+          float tsh = terrainShadow(vWorld);
+          float ao = mix(1.0, terrainAO(vWorld), ${aoStrength.toFixed(2)});
+          reflectedLight.directDiffuse *= tsh * mix(1.0, ao, 0.35);
+          reflectedLight.indirectDiffuse *= ao;
+        }`);
+  };
+  m.customProgramCacheKey = () => 'terrain' + (detail ? 1 : 0);
   return m;
 }
 

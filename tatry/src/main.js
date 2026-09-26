@@ -2,7 +2,13 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Grid, Terrain, gridGeometry, meshHeight } from './terrain.js';
-import { terrainMaterial, waterMaterial, light } from './materials.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { terrainMaterial, waterMaterial, light, makeEnv, patchShading } from './materials.js';
+import { buildForest } from './vegetation.js';
 import { rng, simplex } from './noise.js';
 import meta from './data/meta.json';
 import innerHUrl from './data/inner.u16?url';
@@ -126,6 +132,11 @@ async function main() {
     g.strokeStyle = 'rgb(255,0,0)'; g.lineWidth = 3.5;
     g.beginPath(); trailPts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
   });
+  // vegetation keeps its branches off the footpath
+  const clearing = drawMask(2048, IB, (g) => {
+    g.strokeStyle = 'rgb(255,0,0)'; g.lineWidth = 22;
+    g.beginPath(); trailPts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
+  });
   const terrain = new Terrain(inner, outer, trailWide, lakeMask);
 
   // ---------- renderer / scene
@@ -134,6 +145,8 @@ async function main() {
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.55;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   $('app').appendChild(renderer.domElement);
   const aniso = renderer.capabilities.getMaxAnisotropy();
 
@@ -146,9 +159,16 @@ async function main() {
   sky.material.fog = false;
   scene.add(sky);
 
-  const sunLight = new THREE.DirectionalLight(0xffffff, 2.2);
-  const hemi = new THREE.HemisphereLight(0xbcd4ff, 0x3a3a2a, 1.1);
-  scene.add(sunLight, hemi);
+  const sunLight = new THREE.DirectionalLight(0xffffff, 3.6);
+  const hemi = new THREE.HemisphereLight(0xbcd4ff, 0x3a3a2a, 1);
+  // shadow box follows the camera: crisp shadows of trees and rocks nearby
+  const SH = QUALITY === 'low' ? 120 : 200;
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(QUALITY === 'low' ? 2048 : 4096, QUALITY === 'low' ? 2048 : 4096);
+  Object.assign(sunLight.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH, near: 10, far: 6000 });
+  sunLight.shadow.bias = -0.0004; sunLight.shadow.normalBias = 0.6;
+  scene.add(sunLight, sunLight.target, hemi);
+  const shade = makeEnv({ inner, outer, quality: QUALITY });
 
   // ---------- terrain meshes
   status('Budowanie terenu (to chwilę trwa)…'); await frame();
@@ -161,8 +181,9 @@ async function main() {
   const step = QUALITY === 'low' ? 12 : 7;
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
-  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true });
+  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade });
   const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+  innerMesh.receiveShadow = true;
   scene.add(innerMesh);
 
   status('Budowanie panoramy Tatr…'); await frame();
@@ -171,7 +192,7 @@ async function main() {
     const h = terrain.base(x, z);
     return inner.inside(x, z, shrink) ? h - 60 : h;
   });
-  const outerMesh = new THREE.Mesh(outerGeo, terrainMaterial({ map: outerTex, trailMap: blank, bounds: OB, detail: false }));
+  const outerMesh = new THREE.Mesh(outerGeo, terrainMaterial({ map: outerTex, trailMap: blank, bounds: OB, detail: false, env: shade, aoStrength: 0.6 }));
   scene.add(outerMesh);
 
   // ---------- lakes
@@ -203,54 +224,22 @@ async function main() {
   const density = QUALITY === 'low' ? 0.35 : 0.9;
   for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) {
     const c = land[(j * LW + i) * 4];
-    if (c !== 10 && c !== 20) continue;
-    const tries = c === 10 ? 1 : 2;
+    if (c !== 10 && c !== 20 && c !== 30) continue;
+    const tries = c === 30 ? 1 : c === 10 ? 1 : 2;
     for (let t = 0; t < tries; t++) {
-      if (r() > density) continue;
+      if (r() > (c === 30 ? density * 0.3 : density)) continue;
       const x = IB[0] + (i + r()) * px, z = IB[1] + (j + r()) * pz;
       if (terrain.maskAt(trailWide, x, z) > 0.05 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
+      if (c === 10 && terrain.maskAt(clearing, x, z) > 0) continue;
       const h = terrain.height(x, z);
       if (c === 10 && h < 1560) spruce.push(x, h, z);
+      else if (c === 30 && (h < 1530 || h > 1820)) continue;
       else if (h < 1950 && terrain.normal(x, z, 4).y > 0.8) pine.push(x, h, z);
     }
   }
+  const forest = buildForest({ renderer, scene, env: shade, spruce, pine, quality: QUALITY });
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
-  {
-    const parts = [];
-    for (const [rad, hgt, y] of [[1, 0.45, 0.2], [0.78, 0.4, 0.42], [0.55, 0.36, 0.62], [0.32, 0.3, 0.8]]) {
-      const c = new THREE.ConeGeometry(rad * 0.42, hgt, 7); c.translate(0, y, 0); parts.push(c);
-    }
-    const trunk = new THREE.CylinderGeometry(0.03, 0.04, 0.25, 5); trunk.translate(0, 0.02, 0);
-    const geo = mergeGeos([...parts, trunk]);
-    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff }), spruce.length / 3);
-    for (let k = 0; k < spruce.length / 3; k++) {
-      const s = 14 + r() * 14;
-      // the elevation model already contains the forest canopy, so sink trees into it
-      dummy.position.set(spruce[k * 3], spruce[k * 3 + 1] - s * 0.45, spruce[k * 3 + 2]);
-      dummy.rotation.set(0, r() * 6.28, 0);
-      dummy.scale.set(s * (0.85 + r() * 0.3), s, s * (0.85 + r() * 0.3));
-      dummy.updateMatrix(); mesh.setMatrixAt(k, dummy.matrix);
-      mesh.setColorAt(k, col.setHSL(0.3 + r() * 0.05, 0.4, 0.1 + r() * 0.07));
-    }
-    scene.add(mesh);
-  }
-  {
-    const geo = new THREE.IcosahedronGeometry(1, 1);
-    const p = geo.attributes.position;
-    for (let k = 0; k < p.count; k++) p.setY(k, Math.max(p.getY(k), -0.2));
-    geo.computeVertexNormals();
-    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff }), pine.length / 3);
-    for (let k = 0; k < pine.length / 3; k++) {
-      const s = 2.2 + r() * 3.2;
-      dummy.position.set(pine[k * 3], pine[k * 3 + 1] - s * 0.25, pine[k * 3 + 2]);
-      dummy.rotation.set(0, r() * 6.28, 0);
-      dummy.scale.set(s * (0.8 + r() * 0.7), s * 0.6, s * (0.8 + r() * 0.7));
-      dummy.updateMatrix(); mesh.setMatrixAt(k, dummy.matrix);
-      mesh.setColorAt(k, col.setHSL(0.25 + r() * 0.06, 0.45, 0.12 + r() * 0.07));
-    }
-    scene.add(mesh);
-  }
   {
     // boulders and scree near the trail
     // lumpy rock: displacement depends on the vertex position only, so shared corners stay welded
@@ -263,7 +252,10 @@ async function main() {
     }
     geo.computeVertexNormals();
     const count = QUALITY === 'low' ? 5000 : 16000;
-    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), count);
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    patchShading(rockMat, shade);
+    const mesh = new THREE.InstancedMesh(geo, rockMat, count);
+    mesh.castShadow = mesh.receiveShadow = true;
     const ip = pixels(innerBmp), IW = innerBmp.width;
     let k = 0, guard = 0;
     while (k < count && guard++ < count * 20) {
@@ -325,9 +317,11 @@ async function main() {
     light.sunCol.value.copy(sc).multiplyScalar(w.sun * THREE.MathUtils.smoothstep(e, -0.03, 0.1));
     const amb = new THREE.Color(0.32, 0.38, 0.5).lerp(new THREE.Color(0.4, 0.3, 0.35), low * 0.6);
     light.ambCol.value.copy(amb).multiplyScalar(w.amb * (0.08 + 0.92 * day));
-    sunLight.position.copy(dir).multiplyScalar(1000);
-    sunLight.color.copy(light.sunCol.value); sunLight.intensity = 2.4;
-    hemi.intensity = 1.2 * w.amb * (0.1 + 0.9 * day);
+    // scene lights reproduce the tuned sun/ambient colours (Lambert divides by PI)
+    sunLight.color.copy(light.sunCol.value); sunLight.intensity = 1.15 * Math.PI;
+    hemi.color.copy(light.ambCol.value).multiplyScalar(1.1);
+    hemi.groundColor.copy(light.ambCol.value).multiplyScalar(0.45);
+    hemi.intensity = Math.PI;
     const fogDay = new THREE.Color(0.66, 0.74, 0.84).lerp(new THREE.Color(0.9, 0.7, 0.55), low * 0.7);
     const fogGrey = new THREE.Color(0.7, 0.72, 0.74);
     const fc = fogDay.lerp(fogGrey, w.fogMix).multiplyScalar(0.12 + 0.88 * day);
@@ -482,8 +476,32 @@ async function main() {
   // ---------------------------------------------------------------- loop
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight); drawProfile();
+    renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); drawProfile();
   });
+  // ---------- post-processing: bloom on sun glints, filmic grade, vignette
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 0 : 4 }));
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(innerWidth, innerHeight);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.22, 0.5, 1.1);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+  const grade = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, contrast: { value: 1.08 }, saturation: { value: 1.03 }, vignette: { value: 0.28 }, warmth: { value: 0.02 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float contrast, saturation, vignette, warmth; varying vec2 vUv;
+      void main(){
+        vec3 c = texture2D(tDiffuse, vUv).rgb;
+        float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        c = mix(vec3(l), c, saturation);
+        c = (c - 0.5) * contrast + 0.5;
+        c += vec3(warmth, warmth * 0.3, -warmth);
+        vec2 d = vUv - 0.5; c *= 1.0 - vignette * dot(d, d) * 2.2;
+        gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+      }`,
+  });
+  composer.addPass(grade);
+  const shadowSnap = (SH * 2) / sunLight.shadow.mapSize.x;
   const clock = new THREE.Clock();
   let hudT = 0;
   $('loading').classList.add('done');
@@ -552,10 +570,18 @@ async function main() {
       $('place').classList.toggle('show', !!place);
       drawProfile();
     }
-    renderer.render(scene, camera);
+    // shadow box around the camera, snapped to texels to avoid shimmering
+    {
+      const c = camera.position, sn = shadowSnap;
+      const tx = Math.round(c.x / sn) * sn, tz = Math.round(c.z / sn) * sn;
+      sunLight.target.position.set(tx, c.y, tz);
+      sunLight.position.copy(light.sunDir.value).multiplyScalar(3000).add(sunLight.target.position);
+    }
+    forest.update(camera);
+    composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
