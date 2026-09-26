@@ -158,6 +158,9 @@ export class View {
       const ao = new GTAOPass(this.scene, this.camera, w, h);
       ao.updateGtaoMaterial({ radius: 0.8, distanceExponent: 1, thickness: 1.5, scale: 1.2, samples: 16 });
       ao.blendIntensity = 0.9;
+      // the AO normal pass ignores sprite alpha, so smoke would shade the scene as solid squares
+      const hide = ao.overrideVisibility.bind(ao);
+      ao.overrideVisibility = () => { hide(); if (this.fx) this.fx.group.visible = false; };
       comp.addPass(ao);
     }
     this.tiltH = new ShaderPass(HorizontalTiltShiftShader);
