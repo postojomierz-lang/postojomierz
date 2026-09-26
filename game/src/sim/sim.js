@@ -383,7 +383,7 @@ export class Sim {
     if (air) return !!w.air && (o.y > 0.5 || w.kind !== 'bullet' || true);
     return true;
   }
-  isThreat(o) { return o.def.cls !== 'fort' && this.active(o) && !o.def.medic; }
+  isThreat(o) { return o.def.cls !== 'fort' && this.active(o); }
 
   los(e, o) {
     const w = e.def.weapon;
@@ -762,6 +762,7 @@ export class Sim {
       if (w.prefer === 'air' && isAir(o)) s -= 40;
       if (w.kind === 'arty' && o.def.static) s -= 4;
       if (o.def.cls === 'hq') s += 4;
+      if (o.def.medic) s += 3; // shoot the soldiers first, but ambulances are fair game
       cands.push([s, o.id, o, d]);
     }
     cands.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
