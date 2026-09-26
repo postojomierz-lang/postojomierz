@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rysy 3D</title>
+<style>
+  :root {
+    --glass: rgba(14, 20, 24, 0.62);
+    --line: rgba(255, 255, 255, 0.14);
+    --ink: #f3f5f4;
+    --muted: #a9b4b8;
+    --accent: #ff5a3c;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b1013; color: var(--ink); overflow: hidden; }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; touch-action: none; }
+  .panel { position: fixed; background: var(--glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--line); border-radius: 12px; }
+  #hud { top: 12px; left: 12px; padding: 12px 14px; min-width: 240px; }
+  #hud h1 { margin: 0 0 8px; font-size: 15px; font-weight: 650; letter-spacing: .01em; }
+  #hud h1 span { color: var(--muted); font-weight: 450; }
+  .stats { display: grid; grid-template-columns: auto auto; gap: 3px 16px; font-size: 13px; }
+  .stats dt { color: var(--muted); }
+  .stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .stats .tread { color: #ffc9a8; }
+  #controls { top: 12px; right: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; width: 210px; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  button, select { font: inherit; font-size: 13px; color: var(--ink); background: rgba(255,255,255,0.08); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+  button:hover, select:hover { background: rgba(255,255,255,0.16); }
+  button.on { background: var(--accent); border-color: var(--accent); }
+  select { width: 100%; }
+  select option { color: #111; }
+  .grow { flex: 1; }
+  label { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  #speed { min-width: 36px; text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; }
+  #bottom { left: 12px; right: 12px; bottom: 12px; padding: 8px 12px 6px; }
+  #profile { width: 100%; height: 64px; display: block; cursor: pointer; }
+  #sources { font-size: 10px; color: var(--muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #place { position: fixed; left: 50%; top: 18%; transform: translate(-50%, -8px); font-size: 22px; font-weight: 650;
+    text-shadow: 0 2px 12px rgba(0,0,0,.6); opacity: 0; transition: opacity .6s, transform .6s; pointer-events: none; text-align: center; }
+  #place.show { opacity: 1; transform: translate(-50%, 0); }
+  #help { left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 18px 22px; max-width: 460px; width: calc(100% - 32px); font-size: 14px; line-height: 1.5; z-index: 5; }
+  #help h2 { margin: 0 0 8px; font-size: 17px; }
+  #help kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px;
+    background: rgba(255,255,255,.08); font-family: inherit; font-size: 12px; text-align: center; }
+  #help table { border-collapse: collapse; width: 100%; }
+  #help td { padding: 3px 0; vertical-align: top; }
+  #help td:first-child { white-space: nowrap; padding-right: 12px; }
+  #help .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .hidden { display: none !important; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0b1013; z-index: 10; transition: opacity .8s; }
+  #loading.done { opacity: 0; pointer-events: none; }
+  #loading .box { text-align: center; }
+  #loading .t { font-size: 22px; font-weight: 650; margin-bottom: 8px; }
+  #loading-text { color: var(--muted); font-size: 14px; }
+  @media (max-width: 700px) {
+    #hud { min-width: 0; padding: 8px 10px; }
+    #hud h1 { font-size: 13px; }
+    .stats { font-size: 12px; }
+    #controls { width: 160px; }
+    #profile { height: 44px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud" class="panel">
+  <h1>Morskie Oko → Rysy <span>prototyp</span></h1>
+  <dl class="stats">
+    <dt>Dystans</dt><dd id="h-dist">–</dd>
+    <dt>Wysokość</dt><dd id="h-elev">–</dd>
+    <dt>Nachylenie szlaku</dt><dd id="h-grade">–</dd>
+    <dt class="tread">Bieżnia (max 15%)</dt><dd id="h-tread" class="tread">–</dd>
+    <dt>Tempo (Tobler)</dt><dd id="h-pace">–</dd>
+    <dt>Czas marszu</dt><dd id="h-time">0:00</dd>
+  </dl>
+</div>
+
+<div id="controls" class="panel">
+  <div class="row">
+    <button id="btn-auto" class="grow">▶ Idź sam</button>
+    <button id="btn-help" title="Sterowanie">?</button>
+  </div>
+  <div class="row">
+    <button id="btn-slower" title="Wolniej (−)">−</button>
+    <span id="speed">×1</span>
+    <button id="btn-faster" title="Szybciej (+)">+</button>
+    <button id="btn-mode" class="grow">🚁 Dron</button>
+  </div>
+  <label>Pora dnia <span id="hour-label">10:30</span></label>
+  <input id="hour" type="range" min="4.5" max="21.5" step="0.25" value="10.5">
+  <select id="weather">
+    <option value="clear">☀️ Słonecznie</option>
+    <option value="haze">🌤 Lekka mgiełka</option>
+    <option value="cloudy">☁️ Pochmurno</option>
+    <option value="mist">🌫 Mgła</option>
+  </select>
+</div>
+
+<div id="place"></div>
+
+<div id="bottom" class="panel">
+  <canvas id="profile" title="Kliknij, żeby przeskoczyć w to miejsce szlaku"></canvas>
+  <div id="sources"></div>
+</div>
+
+<div id="help" class="panel">
+  <h2>Sterowanie</h2>
+  <table>
+    <tr><td><kbd>W</kbd> <kbd>↑</kbd> / <kbd>S</kbd> <kbd>↓</kbd></td><td>idź szlakiem do przodu / do tyłu</td></tr>
+    <tr><td><kbd>Spacja</kbd></td><td>idź sam (jak na bieżni)</td></tr>
+    <tr><td><kbd>Shift</kbd></td><td>szybciej, dopóki trzymasz</td></tr>
+    <tr><td><kbd>+</kbd> / <kbd>−</kbd></td><td>przyspieszenie czasu ×1, ×3, ×10, ×30</td></tr>
+    <tr><td><kbd>A</kbd> <kbd>D</kbd> <kbd>←</kbd> <kbd>→</kbd>, mysz</td><td>rozglądanie się (<kbd>R</kbd> patrz przed siebie)</td></tr>
+    <tr><td><kbd>F</kbd></td><td>widok z drona (mysz: obrót, kółko: zoom)</td></tr>
+    <tr><td><kbd>T</kbd> / <kbd>M</kbd></td><td>pora dnia / pogoda</td></tr>
+    <tr><td>profil na dole</td><td>kliknij, żeby przeskoczyć</td></tr>
+  </table>
+  <p class="note">Teren: model wysokości 30 m i zdjęcie satelitarne 10 m (dane otwarte). Drobne skały i trawa z bliska
+    są generowane. Tempo marszu liczone wzorem Toblera, jak na prawdziwym szlaku. „Bieżnia” pokazuje, jakie nachylenie
+    ustawiłaby domowa bieżnia (max 15%).</p>
+  <div class="row" style="margin-top:10px"><button class="grow" onclick="document.getElementById('help').classList.add('hidden')">Ruszamy</button></div>
+</div>
+
+<div id="loading"><div class="box"><div class="t">Rysy 3D</div><div id="loading-text">Ładowanie…</div></div></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
