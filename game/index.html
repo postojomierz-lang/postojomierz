@@ -181,7 +181,28 @@
       <p class="note">Your description or photo is sent to Anthropic's Claude API and billed to your key. The key is saved only in this browser; use one with a spending limit. If anything fails you get a random battlefield instead.</p>
     </details>
     <p class="note">Online battles against other players come in a later stage. Right now the other armies are commanded by the computer.</p>
-    <div class="actions"><button value="editor" class="ghost">🛠 Map editor</button><button value="go" class="go">Tip out the toy box ▶</button></div>
+    <div class="actions"><button value="editor" class="ghost">🛠 Map editor</button><button value="online" class="ghost">🌐 Play online</button><button value="go" class="go">Tip out the toy box ▶</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgOnline" class="panel">
+  <form method="dialog">
+    <h1>PLAY <span>ONLINE</span></h1>
+    <p class="lead">Battle your friends over the internet. One player hosts and shares the room code or invite link, the others join. Armies nobody plays are commanded by the computer. The host's setup screen decides the map, the number of armies and the difficulty.</p>
+    <label>Your name <input type="text" id="netName" maxlength="16" placeholder="Sergeant Plastic"></label>
+    <div class="netrow">
+      <button type="button" id="btnHost" class="go">Host a game</button>
+      <span class="muted">or</span>
+      <input type="text" id="netCode" maxlength="5" placeholder="CODE" class="netcode" aria-label="Room code">
+      <button type="button" id="btnJoin">Join</button>
+    </div>
+    <div id="lobby" class="claude" hidden>
+      <div class="netrow"><span>Room code: <b id="netRoom" class="netroom"></b></span><button type="button" id="btnCopyLink" class="ghost">Copy invite link</button></div>
+      <div id="netPlayers" class="netplayers"></div>
+      <p class="note" id="netInfo"></p>
+    </div>
+    <p class="note" id="netStatus">Games connect browser to browser; a free public service only introduces the players.</p>
+    <div class="actions"><button type="button" id="btnNetBack" class="ghost">Back</button><button type="button" id="btnNetStart" class="go" hidden>Start online game ▶</button></div>
   </form>
 </dialog>
 
@@ -205,6 +226,7 @@
       <b>Aircraft</b><span>Fighters hunt aircraft, attack planes hit tanks and guns, bombers make one bombing run near the nearest enemy HQ, transports drop 6 paratroopers. Counter them with anti-air guns, AA missile soldiers and your own fighters.</span>
       <b>Orders</b><span>Each round pick a main target (the drop-down, or click an army in the list on the right): your vehicles, bombers and most of your infantry march on that army (every fourth soldier stays home to guard the HQ), but still shoot anyone who comes in range, and turn back if your base is invaded. <b>Defend</b> keeps everyone inside your zone to guard the HQ. The list also shows who every army is going for.</span>
       <b>Credits</b><span>Rifleman, officer, sniper, machine-gunner, kneeling and crawling figures: “Miniature Army Men” 1 &amp; 2 by <a href="https://www.printables.com/model/449280" target="_blank" rel="noopener">alo89</a>, CC BY 4.0 (simplified for the game). Bazooka, AA missile, grenadier, medic and rescue figures, and all vehicles, aircraft, buildings, emplacements and fortifications, modelled for the game in Blender.</span>
+      <b>Online</b><span>“Play online” on the setup screen: host a room and send the code or invite link, or join a friend's room. Everyone deploys at the same time and presses <b>Ready</b>; the battle starts when all players are ready. If someone leaves, the computer takes over their army.</span>
       <b>Wounded</b><span>Soldiers often go down wounded instead of dying (red cross). A nearby comrade drags them behind the closest cover (a book, a mug, sandbags), medics patch them up on the spot so they fight on, and field ambulances pick up to 4 from safe spots and drive them back to base — they steer clear of enemy fire. Anyone saved fights again next round for free. Wounded left out in the open bleed out.</span>
       <b>Friendly fire</b><span>Explosions hurt everyone nearby, including your own soldiers. Troops avoid lobbing grenades or shells at enemies standing next to friends, but misses happen.</span>
       <b>Maps</b><span>Play a random battlefield, pick one from the map library, load a map file a friend sent you, or draw one on paper and photograph it. "Save map" (top bar) saves the current battlefield; the Map editor lets you build your own.</span>
