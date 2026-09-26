@@ -9,6 +9,7 @@ import { Editor } from './editor.js';
 import { Sim } from './sim/sim.js';
 import { aiDeploy, aiOrders } from './sim/ai.js';
 import { View, renderThumbnails } from './render/view.js';
+import { modelsReady } from './render/models.js';
 import { Sounds } from './audio.js';
 
 const $ = id => document.getElementById(id);
@@ -34,6 +35,7 @@ const game = { sim: null, human: 0, seed: 0, diff: 'normal', tool: null, rot: 0,
 // ---------------------------------------------------------------- new game
 // files: { photo, mapFile, drawing } picked in the setup screen; layout: a map to play directly
 async function newGame(files = {}, layout = null) {
+  await modelsReady;
   const n = +settings.teams;
   const seed = game.seed = (Math.random() * 2 ** 31) >>> 0;
   const blank = makeMap({ teams: n, seed });

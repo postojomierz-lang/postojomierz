@@ -55,3 +55,7 @@ simplified for the game by `tools/figures.mjs` (`npm run figures`), which writes
 The bazooka, AA missile, grenadier, medic and "dragging a wounded comrade" figures were modelled
 for the game in the free Blender by `tools/blender/army_men.py` (run it with `pip install bpy`,
 then `python tools/blender/army_men.py`, then `npm run figures`).
+The vehicles and aircraft (jeep, ambulance, armored car, amphibian, tank, rocket truck, helicopter,
+fighter, ground-attack plane, bomber, transport) are modelled the same way by
+`tools/blender/vehicles.py` and packed into `src/data/vehicles.js`. Every model has a detailed
+close-up version and a light one for distant units; the data is meshopt-compressed.

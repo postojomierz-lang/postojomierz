@@ -9,11 +9,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { unzipSync, strFromU8 } from 'three/examples/jsm/libs/fflate.module.js';
-import { MeshoptSimplifier } from 'meshoptimizer';
+import { MeshoptSimplifier, MeshoptEncoder } from 'meshoptimizer';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const CACHE = path.join(HERE, '..', '.cache', 'figures');
 const OUT = path.join(HERE, '..', 'src', 'data', 'figures.js');
+const OUT_VEH = path.join(HERE, '..', 'src', 'data', 'vehicles.js');
 // yaw: degrees to turn the figure so that where it aims ends up along +X (after +Z -> +X)
 const SOURCES = [
   { key: 'rifle',   print: 449280, file: 1953262, name: 'min2rifle.stl',      yaw: 0 },
@@ -26,7 +27,7 @@ const SOURCES = [
   ...['bazooka', 'bazooka-stand', 'manpads', 'manpads-kneel', 'grenadier', 'grenadier-idle', 'medic', 'medic-heal', 'drag']
     .map(key => ({ key, name: `blender/${key}.stl`, yaw: 0, keepCentre: true })),
 ];
-const TARGET_TRIS = 1500, HEIGHT_MM = 37, HEIGHT = 1.08, Q = 16000;
+const NEAR_TRIS = 5000, FAR_TRIS = 1200, HEIGHT_MM = 37, HEIGHT = 1.08, Q = 16000;
 
 async function fetchFile(src) {
   const dst = path.join(CACHE, src.name);
@@ -86,43 +87,84 @@ function placement(pos, keepCentre) {
 }
 function shift(pos, off) { for (let i = 0; i < pos.length; i += 3) { pos[i] -= off[0]; pos[i + 1] -= off[1]; pos[i + 2] -= off[2]; } return pos; }
 
-// simplify, drop unused vertices, quantise to int16 -> { p, i } base64
-function pack(idx, pos, tris) {
-  const [sidx] = MeshoptSimplifier.simplify(idx, pos, 3, tris * 3, 0.02, []);
-  const used = new Map(), q = [], ind = new Uint16Array(sidx.length);
+// simplify, drop unused vertices, quantise to int16 (x, y, z, pad), reorder for the GPU cache and
+// meshopt-compress -> { v: vertex count, n: index count, p, i: base64 }
+function pack(idx, pos, tris, scale = Q) {
+  const [sidx] = tris && tris * 3 < idx.length ? MeshoptSimplifier.simplify(idx, pos, 3, tris * 3, 0.02, []) : [idx];
+  const used = new Map(), q = [], ind = new Uint32Array(sidx.length);
   for (let i = 0; i < sidx.length; i++) {
     let v = used.get(sidx[i]);
-    if (v === undefined) { v = used.size; used.set(sidx[i], v); for (let k = 0; k < 3; k++) q.push(Math.round(pos[sidx[i] * 3 + k] * Q)); }
+    if (v === undefined) { v = used.size; used.set(sidx[i], v); for (let k = 0; k < 3; k++) q.push(Math.round(pos[sidx[i] * 3 + k] * scale)); q.push(0); }
     ind[i] = v;
   }
-  return { p: Buffer.from(Int16Array.from(q).buffer).toString('base64'), i: Buffer.from(ind.buffer).toString('base64'), tris: sidx.length / 3, verts: used.size };
+  const src16 = new Int16Array(q), n = ind.length, ib = new Uint32Array(ind);
+  const [remap, v] = MeshoptEncoder.reorderMesh(ib, true, false);   // vertex-cache order; indices now point at remapped vertices
+  const verts = new Int16Array(v * 4);
+  for (let old = 0; old < used.size; old++) if (remap[old] !== 0xffffffff) verts.set(src16.subarray(old * 4, old * 4 + 4), remap[old] * 4);
+  const vb = new Uint8Array(verts.buffer);
+  const p = MeshoptEncoder.encodeVertexBuffer(vb, v, 8), i = MeshoptEncoder.encodeIndexBuffer(new Uint8Array(ib.buffer), n, 4);
+  return { v, n, p: Buffer.from(p).toString('base64'), i: Buffer.from(i).toString('base64'), tris: n / 3 };
 }
+const lit = pk => `{ v: ${pk.v}, n: ${pk.n}, p: '${pk.p}', i: '${pk.i}' }`;
 
-await MeshoptSimplifier.ready;
+await MeshoptSimplifier.ready; await MeshoptEncoder.ready;
 const lines = [];
 for (const src of SOURCES) {
   const mesh = parse(src.name, await fetchFile(src));
   const pos = transform(mesh.pos, src.yaw), off = placement(pos, src.keepCentre);
-  const body = pack(mesh.idx, shift(pos, off), TARGET_TRIS);
+  shift(pos, off);
+  const near = pack(mesh.idx, pos, NEAR_TRIS), far = pack(mesh.idx, pos, FAR_TRIS);
   // painted parts next to a local figure: <name>__<rrggbb>.stl
   const paint = [];
   const dir = path.join(CACHE, path.dirname(src.name)), base = path.basename(src.name, '.stl');
   if (src.keepCentre) for (const f of fs.readdirSync(dir).filter(f => f.startsWith(base + '__') && f.endsWith('.stl')).sort()) {
     const m = parse(f, fs.readFileSync(path.join(dir, f)));
-    const pk = pack(m.idx, shift(transform(m.pos, src.yaw), off), 300);
-    paint.push(`{ c: '#${f.slice(base.length + 2, -4)}', p: '${pk.p}', i: '${pk.i}' }`);
+    const pk = pack(m.idx, shift(transform(m.pos, src.yaw), off), 900);
+    paint.push(`{ c: '#${f.slice(base.length + 2, -4)}', ...${lit(pk)} }`);
   }
-  lines.push(`  '${src.key}': { p: '${body.p}', i: '${body.i}'${paint.length ? `, a: [${paint.join(', ')}]` : ''} },`);
-  console.log(`${src.key.padEnd(15)} ${mesh.idx.length / 3} -> ${body.tris} tris, ${body.verts} verts${paint.length ? `, ${paint.length} painted parts` : ''}`);
+  lines.push(`  '${src.key}': { near: ${lit(near)}, far: ${lit(far)}${paint.length ? `, a: [${paint.join(', ')}]` : ''} },`);
+  console.log(`${src.key.padEnd(15)} ${mesh.idx.length / 3} -> ${near.tris} / ${far.tris} tris${paint.length ? `, ${paint.length} painted parts` : ''}`);
 }
 fs.writeFileSync(OUT, `// Generated by tools/figures.mjs - do not edit.
 // rifle, sniper, crawl, pointer, kneel, mg50: "Miniature Army Men" 1 & 2 by alo89
 // (https://www.printables.com/model/449280, https://www.printables.com/model/744788), CC BY 4.0,
 // simplified and re-oriented for the game. The other poses were modelled for the game in Blender.
-// Positions: int16 (units x ${Q}), Y-up, facing +X, feet at y = 0. Indices: uint16.
+// Each mesh: meshopt-compressed int16 positions (x, y, z, pad; units x ${Q}), Y-up, facing +X, feet at y = 0,
+// and uint32 indices. near = close-up detail, far = light version for distant figures.
 export const FIGURE_SCALE = ${Q};
 export const FIGURES = {
 ${lines.join('\n')}
 };
 `);
 console.log('wrote', OUT, fs.statSync(OUT).size, 'bytes');
+
+// ---- vehicles and aircraft (tools/blender/vehicles.py): already in game units, Z-up -> Y-up
+const VQ = 8000;
+const VEHICLES = ['jeep', 'ambulance', 'apc', 'amphib', 'tank', 'rockets', 'heli', 'fighter', 'attacker', 'bomber', 'transport'];
+const BUDGET = { main: [7000, 1800], dark: [4500, 1000] };
+const vdir = path.join(CACHE, 'vehicles');
+const vlines = [];
+for (const key of VEHICLES) {
+  const parts = [], paint = [];
+  for (const f of fs.readdirSync(vdir).filter(f => f.startsWith(key + '__')).sort()) {
+    const part = f.slice(key.length + 2, -4), m = parse(f, fs.readFileSync(path.join(vdir, f)));
+    const pos = new Float32Array(m.pos.length);
+    for (let i = 0; i < pos.length; i += 3) { pos[i] = m.pos[i]; pos[i + 1] = m.pos[i + 2]; pos[i + 2] = -m.pos[i + 1]; }
+    if (BUDGET[part]) {
+      const [n, fa] = BUDGET[part];
+      parts.push(`${part}: { near: ${lit(pack(m.idx, pos, Math.min(n, m.idx.length / 3), VQ))}, far: ${lit(pack(m.idx, pos, fa, VQ))} }`);
+    } else if (part === 'rotor' || part === 'tail') parts.push(`${part}: ${lit(pack(m.idx, pos, 0, VQ))}`);
+    else paint.push(`{ c: '#${part}', ...${lit(pack(m.idx, pos, 0, VQ))} }`);
+  }
+  vlines.push(`  ${key}: { ${parts.join(', ')}${paint.length ? `, a: [${paint.join(', ')}]` : ''} },`);
+  console.log(`${key.padEnd(10)} ${parts.length} parts, ${paint.length} painted`);
+}
+fs.writeFileSync(OUT_VEH, `// Generated by tools/figures.mjs from tools/blender/vehicles.py - do not edit.
+// Toy vehicles and aircraft modelled for the game in Blender. Same encoding as figures.js,
+// positions in game units x ${VQ}; main/dark come as near + far versions, painted parts keep their colour.
+export const VEHICLE_SCALE = ${VQ};
+export const VEHICLES = {
+${vlines.join('\n')}
+};
+`);
+console.log('wrote', OUT_VEH, fs.statSync(OUT_VEH).size, 'bytes');

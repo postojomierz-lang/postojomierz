@@ -17,7 +17,7 @@ import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
   rifleman: [0.47, 0.81], para: [0.47, 0.81], officer: [0.53, 0.76], grenadier: [-0.16, 1.1], bazooka: [0.47, 0.79], manpads: [0.32, 1.17], medic: [0.26, 0.82],
-  sniper: [0.66, 0.76], mg: [0.9, 0.5], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.12, 1.6], tank: [2.05, 1.05], rockets: [0.2, 1.8],
+  sniper: [0.66, 0.76], mg: [0.9, 0.5], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.14, 1.47], tank: [2.05, 1.05], rockets: [0.2, 1.8],
   heli: [0.8, -0.25], fighter: [1.0, -0.1], attacker: [0.4, -0.2], bomber: [0, -0.35], transport: [-1, -0.35],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
@@ -582,8 +582,10 @@ export class View {
     const darkC = variant === 'flash' ? p.flash : variant === 'dead' ? p.deadDark : variant === 'burnt' ? p.burntDark : p.dark;
     const accC = variant === 'dead' ? p.deadAccent : variant === 'burnt' ? p.burntAccent : WHITE;
     const id = v.e.id;
-    this.batches.push(this.batches.get(v.key + ':m', m.main, this.plasticMat), pm, mainC, id);
-    if (m.dark) this.batches.push(this.batches.get(v.key + ':d', m.dark, this.plasticMat), pm, darkC, id);
+    // distant (or low-quality) figures use their light version
+    const far = m.far && (this.quality === 'low' || this.camera.position.distanceToSquared(v.g.position) > 30 * 30);
+    this.batches.push(far ? this.batches.get(v.key + ':fm', m.far.main, this.plasticMat) : this.batches.get(v.key + ':m', m.main, this.plasticMat), pm, mainC, id);
+    if (m.dark) this.batches.push(far && m.far.dark ? this.batches.get(v.key + ':fd', m.far.dark, this.plasticMat) : this.batches.get(v.key + ':d', m.dark, this.plasticMat), pm, darkC, id);
     if (m.accent) this.batches.push(this.batches.get(v.key + ':a', m.accent, this.accentMat), pm, accC, id);
     if (m.legs) {
       for (let i = 0; i < m.legs.length; i++) {
