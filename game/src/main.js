@@ -9,7 +9,7 @@ import { Editor } from './editor.js';
 import { Sim } from './sim/sim.js';
 import { aiDeploy, aiOrders } from './sim/ai.js';
 import { View, renderThumbnails } from './render/view.js';
-import { modelsReady } from './render/models.js';
+import { modelsReady, loadLiving } from './render/models.js';
 import { Sounds } from './audio.js';
 
 const $ = id => document.getElementById(id);
@@ -77,7 +77,13 @@ async function newGame(files = {}, layout = null) {
   game.sim = new Sim(map, specs, seed);
   game.human = 0; game.diff = settings.diff; game.acc = 0; game.undo = []; game.speed = 1;
   view.setQuality(settings.quality);
-  view.setLiving(settings.living === 'living');
+  let living = settings.living === 'living';
+  if (living) {
+    const done = busy(['Unpacking the living soldiers…']);
+    living = await loadLiving(); done();
+    if (!living) toast('Could not load Living soldiers (they need the online version) — using toy style.', false, true);
+  }
+  view.setLiving(living);
   view.load(game.sim, 0);
   sounds.enabled = settings.sound;
   game.thumbs = renderThumbnails(Object.keys(CATALOG).filter(k => k !== 'hq' && CATALOG[k].group !== 'hidden'), TEAM_COLORS[humanColor].id);
