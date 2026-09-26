@@ -9,7 +9,8 @@ Writes into ../public/data/:
   tiles/h_i_j.bin deflate: u16 heights (dm), 257x257 samples, 1 m, per 256 m tile near the trail
   tiles/o_i_j.jpg 512x512 orthophoto, 0.5 m, per tile
 and adds the grid/tile description to meta.json.
-Poland only: the Slovak side keeps Copernicus DEM / Sentinel-2, blended at the border.
+Slovak side: terrain from DMR 5.0 (ÚGKK SR, 1 m) placed in ../zbgis/*.tif; imagery stays Sentinel-2.
+Copernicus DEM only fills what neither lidar covers, blended at the border.
 """
 import io, json, math, os, zlib, urllib.request, concurrent.futures as cf
 import numpy as np, rasterio
@@ -87,8 +88,21 @@ def dtm_mosaic(ib):
     print('dtm mosaic', mos.shape, 'coverage', round(float((mos > 100).mean()), 3))
     return mos, from_origin(x0, y1, 1, 1)
 
-def to_local_grid(src, src_t, bounds_ll, w, h, resampling, pixel_is_point=True):
-    """Resample an EPSG:2180 array onto a lon/lat grid of w x h samples (samples on the bounds)."""
+def zbgis_mosaic():
+    """Slovak DMR 5.0 (ÚGKK SR, 1 m, S-JTSK [JTSK03]) from tatry/zbgis/*.tif, or None."""
+    import glob
+    from rasterio.merge import merge
+    files = sorted(glob.glob(os.path.join(ROOT, 'zbgis', '*.tif')))
+    if not files: return None
+    srcs = [rasterio.open(f) for f in files]
+    mos, t = merge(srcs, nodata=0)
+    a = mos[0].astype(np.float32)
+    a[(a > 10000) | (a < 100)] = 0
+    print('zbgis mosaic', a.shape, 'coverage', round(float((a > 0).mean()), 3))
+    return a, t
+
+def to_local_grid(src, src_t, bounds_ll, w, h, resampling, pixel_is_point=True, crs='EPSG:2180', nodata=0):
+    """Resample a projected array onto a lon/lat grid of w x h samples (samples on the bounds)."""
     lon0, lat0, lon1, lat1 = bounds_ll
     if pixel_is_point:
         dlon, dlat = (lon1 - lon0) / (w - 1), (lat1 - lat0) / (h - 1)
@@ -96,8 +110,8 @@ def to_local_grid(src, src_t, bounds_ll, w, h, resampling, pixel_is_point=True):
     else:
         t = from_bounds(lon0, lat0, lon1, lat1, w, h)
     dst = np.zeros((h, w), dtype=np.float32)
-    reproject(src, dst, src_transform=src_t, src_crs='EPSG:2180', dst_transform=t, dst_crs='EPSG:4326',
-              resampling=resampling, src_nodata=0, dst_nodata=0)
+    reproject(src, dst, src_transform=src_t, src_crs=crs, dst_transform=t, dst_crs='EPSG:4326',
+              resampling=resampling, src_nodata=nodata, dst_nodata=nodata)
     return dst
 
 def copernicus(bounds_ll, w, h):
@@ -171,13 +185,48 @@ def main():
     ll = (*lonlat(ib[0], ib[3]), *lonlat(ib[2], ib[1]))   # lon0 lat0 lon1 lat1
 
     mos, mos_t = dtm_mosaic(ib)
+    zb = zbgis_mosaic()
+    SK = 'EPSG:8353'  # S-JTSK [JTSK03] / Krovak East North
+    zb_off = [0.0]
+    def lidar(bounds, w, h, resampling):
+        """GUGiK where present, Slovak DMR 5.0 elsewhere (0 = neither), without spikes."""
+        from scipy.ndimage import median_filter, distance_transform_edt as edt
+        def one(src, t, crs):
+            v = to_local_grid(src, t, bounds, w, h, resampling, crs=crs)
+            # only samples whose whole neighbourhood is valid: interpolating against "no data"
+            # (zeros) would dig pits along the edge of each survey
+            m = to_local_grid((src > 100).astype(np.float32), t, bounds, w, h, Resampling.bilinear, crs=crs, nodata=None)
+            return np.where(m > 0.999, v, 0)
+        a = one(mos, mos_t, 'EPSG:2180')
+        if zb is not None:
+            b = one(zb[0], zb[1], SK)
+            a = np.where(a > 100, a, np.where(b > 100, b + zb_off[0], 0))
+        ok = a > 100
+        if ok.any() and not ok.all():
+            # close the thin seams between the two surveys with the nearest valid height
+            d, (ri, ci) = edt(~ok, return_indices=True)
+            seam = ~ok & (d < 6)
+            a = np.where(seam, a[ri, ci], a)
+        # lidar on vertical walls has isolated spikes of tens of metres: replace outliers by the local median
+        med = median_filter(a, 5)
+        a = np.where((np.abs(a - med) > 4) & (a > 100), med, a)
+        return a
+    if zb is not None:
+        # the two height systems (PL-KRON86-NH, Bpv) differ by under a metre: measure it on the overlap
+        bw_ = int(round((ib[2] - ib[0]) / 8)) + 1; bh_ = int(round((ib[3] - ib[1]) / 8)) + 1
+        a8 = to_local_grid(mos, mos_t, ll, bw_, bh_, Resampling.average)
+        b8 = to_local_grid(zb[0], zb[1], ll, bw_, bh_, Resampling.average, crs=SK)
+        both = (a8 > 100) & (b8 > 100)
+        zb_off[0] = float(np.median(a8[both] - b8[both])) if both.sum() > 50 else 0.0
+        print('ZBGIS height offset', round(zb_off[0], 2), 'm on', int(both.sum()), 'samples')
 
     # ---- base grid, 4 m
     bw = int(round((ib[2] - ib[0]) / BASE_STEP)) + 1
     bh = int(round((ib[3] - ib[1]) / BASE_STEP)) + 1
-    dtm4 = to_local_grid(mos, mos_t, ll, bw, bh, Resampling.average)
+    dtm4 = lidar(ll, bw, bh, Resampling.average)
     cop4 = copernicus(ll, bw, bh)
     base, have = fuse(dtm4, cop4, BASE_STEP)
+    print('lidar coverage of the detailed area', round(float(have.mean()), 3))
     # lakes: flat water surface a bit below the shore
     tb = from_bounds(*ll, bw, bh)
     from shapely.geometry import Polygon
@@ -240,7 +289,7 @@ def main():
             x1, z1 = x0 + TILE, z0 + TILE
             if x1 > ib[2] or z1 > ib[3]: continue
             tll = (*lonlat(x0, z1), *lonlat(x1, z0))
-            h = to_local_grid(mos, mos_t, tll, TILE + 1, TILE + 1, Resampling.bilinear)
+            h = lidar(tll, TILE + 1, TILE + 1, Resampling.bilinear)
             ok = h > 100
             if ok.mean() < 0.02: continue
             # fill the Slovak part of a border tile from the base grid
@@ -270,6 +319,7 @@ def main():
     meta['base'] = {'bounds': ib, 'n': [bw, bh], 'step': BASE_STEP}
     meta['tiles'] = {'size': TILE, 'origin': ib[:2], 'list': tiles, 'samples': TILE + 1, 'orthoPx': 512}
     if 'GUGiK' not in meta['sources']: meta['sources'] += '; GUGiK: NMT 1 m, ortofotomapa (geoportal.gov.pl)'
+    if zb is not None and 'ÚGKK' not in meta['sources']: meta['sources'] += '; Zdroj produktov LLS: ÚGKK SR (DMR 5.0, CC BY 4.0)'
     json.dump(meta, open(os.path.join(DATA, 'meta.json'), 'w'), separators=(',', ':'), ensure_ascii=False)
     print('done')
 

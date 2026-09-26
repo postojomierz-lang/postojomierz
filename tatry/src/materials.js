@@ -156,6 +156,24 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           n = normalize(mix(na, nb, m));
           return mix(ca, cb, m);
         }
+        // triplanar: three axis-aligned projections blended by the normal, so steep and broken
+        // lidar terrain is not smeared; returns colour and a world-space normal
+        vec3 texTri(vec3 w, vec3 N, float l, float scale, out vec3 nw) {
+          vec3 bw = pow(abs(N), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
+          vec3 c = vec3(0.0), nx, ny, nz;
+          nx = ny = nz = vec3(0.0, 0.0, 1.0);
+          if (bw.x > 0.02) c += texLayer(w.zy, l, scale, nx) * bw.x;
+          if (bw.y > 0.02) c += texLayer(w.xz, l, scale, ny) * bw.y;
+          if (bw.z > 0.02) c += texLayer(w.xy, l, scale, nz) * bw.z;
+          c /= max(bw.x * step(0.02, bw.x) + bw.y * step(0.02, bw.y) + bw.z * step(0.02, bw.z), 1e-3);
+          // UDN blend of the tangent-space normals into world space
+          vec3 s = sign(N);
+          vec3 wx = vec3(0.0, nx.y, nx.x * s.x);
+          vec3 wy = vec3(ny.x, 0.0, ny.y);
+          vec3 wz = vec3(nz.x * s.z, nz.y, 0.0);
+          nw = normalize(N + wx * bw.x + wy * bw.y + wz * bw.z);
+          return c;
+        }
         ${HEIGHTS}`)
       .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0;
       {
@@ -193,12 +211,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           // close range: photo textures (Poly Haven), coloured by the satellite image
           float near = 1.0 - smoothstep(180.0, 1100.0, dist);
           if (near > 0.0) {
-            vec2 hz = normalize(vec2(N.z, -N.x) + 1e-4);
-            float flatG = smoothstep(0.5, 0.8, N.y);
-            // top-down coordinates on gentle ground, slope-following ones on steep ground
-            vec2 sp = mix(vec2(dot(w.xz, hz), w.y), w.xz, flatG);
-            vec3 T = mix(vec3(hz.x, 0.0, hz.y), vec3(1.0, 0.0, 0.0), flatG);
-            vec3 B = mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), flatG);
+            vec2 sp = w.xz;
             float nBig = vnoise(w.xz / 38.0);
             float forest = 1.0 - smoothstep(1500.0, 1620.0, w.y);
             float wCliff = steep;
@@ -221,21 +234,24 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
             for (int i = 0; i < 6; i++) {
               if (wT[i] < 0.02) continue;
               vec3 n;
-              vec3 c = texLayer(sp, float(i), texScale[i], n);
+              vec3 c = texTri(w, N, float(i), texScale[i], n);
               tc += c * wT[i]; tm += texMean[i] * wT[i]; tn += n * wT[i]; wsum += wT[i];
             }
             if (wsum > 0.0) {
               tc /= wsum; tm /= wsum; tn = normalize(tn);
-              float lt = dot(tm, vec3(0.3, 0.55, 0.15)), ls = dot(sat, vec3(0.3, 0.55, 0.15));
-              vec3 byRatio = col * (tc / max(tm, vec3(0.02)));
+              // top-down photos smear on walls: there, take their colour from a blurred level
+              vec3 satLow = textureLod(satMap, uv, 3.0).rgb * 1.55 + 0.01;
+              vec3 baseC = mix(col, satLow * (0.8 + 0.4 * nBig), wCliff * 0.85);
+              float lt = dot(tm, vec3(0.3, 0.55, 0.15)), ls = dot(baseC, vec3(0.3, 0.55, 0.15));
+              vec3 byRatio = baseC * (tc / max(tm, vec3(0.02)));
               vec3 photo = tc * (ls / max(lt, 0.02));
               vec3 nearCol = mix(byRatio, photo, 0.45 + 0.35 * wTrail);
               // tame the lime tint of sunlit grass in the satellite image
               nearCol = mix(nearCol, vec3(dot(nearCol, vec3(0.3, 0.55, 0.15))), 0.22 * wGreen);
               col = mix(col, nearCol, near);
               vec3 Ng = normalize(vWN);
-              tn.xy *= 1.0 + 0.8 * wCliff; // deeper relief on rock faces
-              detN = normalize(T * tn.x + B * tn.y + Ng * tn.z);
+              // tn is already a world normal here; exaggerate its tilt on rock faces
+              detN = normalize(mix(Ng, tn, 1.0 + 0.8 * wCliff));
               detW = near * 0.9;
             }
           }
