@@ -24,7 +24,7 @@ const SOURCES = [
   { key: 'kneel',   print: 744788, file: 3154787, name: 'Mini5Sitting.3mf',   yaw: 0 },
   { key: 'mg50',    print: 744788, file: 3154790, name: 'Mini6MaDeuce.3mf',   yaw: 21 },
   // made in Blender (built facing -Y around the hips, so they keep their own centre)
-  ...['bazooka', 'bazooka-stand', 'manpads', 'manpads-kneel', 'grenadier', 'grenadier-idle', 'medic', 'medic-heal', 'drag']
+  ...['bazooka', 'bazooka-stand', 'manpads', 'manpads-kneel', 'grenadier', 'grenadier-idle', 'medic', 'medic-heal', 'drag', 'gunner', 'lookout']
     .map(key => ({ key, name: `blender/${key}.stl`, yaw: 0, keepCentre: true })),
 ];
 const NEAR_TRIS = 5000, FAR_TRIS = 1200, HEIGHT_MM = 37, HEIGHT = 1.08, Q = 16000;
@@ -140,8 +140,14 @@ console.log('wrote', OUT, fs.statSync(OUT).size, 'bytes');
 
 // ---- vehicles and aircraft (tools/blender/vehicles.py): already in game units, Z-up -> Y-up
 const VQ = 8000;
-const VEHICLES = ['jeep', 'ambulance', 'apc', 'amphib', 'tank', 'rockets', 'heli', 'fighter', 'attacker', 'bomber', 'transport'];
-const BUDGET = { main: [7000, 1800], dark: [4500, 1000] };
+const VEHICLES = ['jeep', 'ambulance', 'apc', 'amphib', 'tank', 'rockets', 'heli', 'fighter', 'attacker', 'bomber', 'transport',
+  // headquarters, emplacements and fortifications (tools/blender/structures.py)
+  'hq', 'mgnest', 'fieldgun', 'aa', 'tower', 'sandbags0', 'sandbags1', 'wall0', 'wall1', 'wire', 'barrel'];
+const BUDGET = { main: [7000, 1800], dark: [4500, 1000], turret_main: [2500, 1000], turret_dark: [1200, 600] };
+// structures are made of many small pieces (bricks, sacks): smaller budgets keep the download light
+const OVERRIDE = { hq: { main: [6000, 1800] }, mgnest: { main: [3000, 900] }, tower: { main: [4000, 1200] }, aa: { main: [3000, 900] },
+  sandbags0: { main: [1800, 600] }, sandbags1: { main: [1800, 600] }, wall0: { main: [3500, 1000] }, wall1: { main: [3500, 1000] },
+  wire: { dark: [1800, 700] }, barrel: { main: [1500, 500] } };
 const vdir = path.join(CACHE, 'vehicles');
 const vlines = [];
 for (const key of VEHICLES) {
@@ -151,7 +157,7 @@ for (const key of VEHICLES) {
     const pos = new Float32Array(m.pos.length);
     for (let i = 0; i < pos.length; i += 3) { pos[i] = m.pos[i]; pos[i + 1] = m.pos[i + 2]; pos[i + 2] = -m.pos[i + 1]; }
     if (BUDGET[part]) {
-      const [n, fa] = BUDGET[part];
+      const [n, fa] = (OVERRIDE[key] && OVERRIDE[key][part]) || BUDGET[part];
       parts.push(`${part}: { near: ${lit(pack(m.idx, pos, Math.min(n, m.idx.length / 3), VQ))}, far: ${lit(pack(m.idx, pos, fa, VQ))} }`);
     } else if (part === 'rotor' || part === 'tail') parts.push(`${part}: ${lit(pack(m.idx, pos, 0, VQ))}`);
     else paint.push(`{ c: '#${part}', ...${lit(pack(m.idx, pos, 0, VQ))} }`);

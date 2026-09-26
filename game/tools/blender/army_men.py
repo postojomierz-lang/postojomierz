@@ -360,9 +360,37 @@ def drag():
     fig.rifle(hip + P(-4, -4.6, -4), hip + P(-2.5, -4.6, 13))             # rifle slung on the back
     fig.finish()
 
+def gunner():
+    """kneels behind the MG in a nest, both hands forward on the spade grips (the gun is part of the nest)."""
+    fig = Fig('gunner')
+    hip = kneeling_legs(fig)
+    chest = torso(fig, hip, 2.0)
+    head = chest + P(1.6, 0, 5.4)
+    fig.helmet(head, tilt=0.25)
+    for l in (4.3, -4.3):
+        arm(fig, chest + P(0, l, 0), chest + P(4.0, l * 0.9, -4.2), chest + P(8.5, l * 0.35, -3.2))
+    fig.finish()
+
+def lookout():
+    """stands on the watchtower scanning the horizon through binoculars."""
+    fig = Fig('lookout')
+    hip = standing_legs(fig, 1.8)
+    chest = torso(fig, hip, 0.2)
+    head = chest + P(0.6, 0, 5.4)
+    fig.helmet(head, tilt=-0.05)
+    eyes = head + P(3.6, 0, 0.3)
+    for l in (1.1, -1.1):                                                   # binoculars
+        fig.cyl(eyes + P(0.2, l, 0), eyes + P(3.4, l, 0.2), 0.95)
+        fig.cyl(eyes + P(2.6, l, 0.15), eyes + P(3.5, l, 0.2), 1.1)
+    fig.box(eyes + P(1.6, 0, 0.1), (0.8, 1.4, 0.8))
+    for l in (4.3, -4.3):
+        arm(fig, chest + P(0, l, 0), chest + P(3.0, l * 1.05, -3.5), eyes + P(2.2, l * 0.42, -1.0))
+    fig.rifle(hip + P(-4, -4.6, -4), hip + P(-2.5, -4.6, 13))                 # rifle slung on the back
+    fig.finish()
+
 POSES = {'bazooka': lambda: bazooka(False), 'bazooka-stand': lambda: bazooka(True), 'manpads': lambda: manpads(False),
          'manpads-kneel': lambda: manpads(True), 'grenadier': lambda: grenadier(True), 'grenadier-idle': lambda: grenadier(False),
-         'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag}
+         'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag, 'gunner': gunner, 'lookout': lookout}
 
 if __name__ == '__main__':
     only = sys.argv[1:]

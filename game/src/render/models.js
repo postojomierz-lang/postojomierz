@@ -7,7 +7,6 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { mulberry } from '../sim/rng.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -165,8 +164,18 @@ function buildVehicle(key) {
   if (v.dark) { out.dark = g(v.dark.near); out.far.dark = g(v.dark.far); }
   if (v.a) out.accent = mergeGeometries(v.a.map(a => g(a, a.c)));
   if (v.rotor) { out.rotor = g(v.rotor); out.tailRotor = g(v.tail); }
+  if (v.turret_main) out.turret = { main: g(v.turret_main.near), dark: v.turret_dark ? g(v.turret_dark.near) : undefined };
+  // crews: army-men figures placed into the model (the MG gunner turns with his gun)
+  const crew = (geo, x, y, z) => geo.clone().toNonIndexed().translate(x, y, z);
+  if (key === 'mgnest') out.turret.main = mergeGeometries([out.turret.main, crew(figure('gunner').main, -0.12, 0.04, 0)]);
+  if (key === 'tower') {
+    out.main = mergeGeometries([out.main, crew(figure('lookout').main, -0.15, 2.62, 0.25)]);
+    out.far.main = mergeGeometries([out.far.main, crew(figure('lookout').far.main, -0.15, 2.62, 0.25)]);
+  }
   return out;
 }
+const figs = new Map();
+function figure(key) { if (!figs.has(key)) figs.set(key, buildFigure(key)); return figs.get(key); }
 
 // near: full detail; far: a light version drawn for figures far from the camera
 function buildFigure(key) {
@@ -176,352 +185,7 @@ function buildFigure(key) {
 }
 
 // ---------------------------------------------------------------------------------
-function buildJeep() {
-  const b = new Builder();
-  b.box(1.8, 0.28, 1.0, { p: [0, 0.42, 0] }, 0.05);
-  b.box(0.62, 0.18, 0.92, { p: [0.55, 0.62, 0] }, 0.05);
-  b.box(0.06, 0.16, 0.8, { p: [0.88, 0.5, 0], dark: true });
-  b.box(0.05, 0.36, 0.96, { p: [0.2, 0.78, 0], r: [0, 0, -0.25] }, 0.02);
-  b.box(0.04, 0.26, 0.86, { p: [0.21, 0.76, 0], r: [0, 0, -0.25], dark: true });
-  for (const z of [-0.24, 0.24]) b.box(0.32, 0.1, 0.34, { p: [-0.05, 0.62, z], dark: true }, 0.03);
-  b.box(0.42, 0.1, 0.8, { p: [-0.55, 0.62, 0], dark: true }, 0.03);
-  for (const [x, z] of [[0.58, 0.5], [0.58, -0.5], [-0.58, 0.5], [-0.58, -0.5]]) {
-    b.wheel(x, 0.26, z, 0.26, 0.18);
-    b.box(0.6, 0.06, 0.24, { p: [x, 0.56, z * 1.02] }, 0.02);
-  }
-  b.wheel(-0.96, 0.52, 0, 0.22, 0.14, { r: [0, 0, Math.PI / 2] });
-  b.cyl(0.04, 0.05, 0.45, { p: [-0.4, 0.85, 0] });
-  b.limb([-0.48, 1.08, 0], [0.25, 1.1, 0], 0.045);
-  b.box(0.2, 0.12, 0.1, { p: [-0.4, 1.08, 0], dark: true });
-  return b.done();
-}
-
-function sideProfile(points, width) {
-  const sh = new THREE.Shape();
-  sh.moveTo(points[0][0], points[0][1]);
-  for (const [x, y] of points.slice(1)) sh.lineTo(x, y);
-  const g = new THREE.ExtrudeGeometry(sh, { depth: width, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 1 });
-  g.translate(0, 0, -width / 2);
-  return g;
-}
-
-function buildApc() {
-  const b = new Builder();
-  b.add(sideProfile([[-0.95, 0.3], [0.7, 0.3], [1.0, 0.55], [0.75, 0.95], [-0.95, 0.95]], 1.0));
-  for (let i = 0; i < 3; i++) for (const z of [-0.52, 0.52]) b.wheel(-0.6 + i * 0.6, 0.26, z, 0.26, 0.2);
-  b.cyl(0.26, 0.3, 0.2, { p: [-0.1, 1.05, 0] }, 16);
-  b.limb([0.1, 1.08, 0], [0.75, 1.08, 0], 0.05);
-  for (const z of [-0.3, 0.3]) b.box(0.3, 0.05, 0.2, { p: [0.55, 0.98, z], r: [0, 0, 0.6], dark: true });
-  b.box(0.05, 0.3, 0.4, { p: [-0.98, 0.6, 0], dark: true });
-  return b.done();
-}
-
-function buildAmphib() {
-  const b = new Builder();
-  const top = new THREE.Shape();
-  top.moveTo(-1.0, -0.5); top.lineTo(0.55, -0.5); top.quadraticCurveTo(1.05, -0.35, 1.1, 0); top.quadraticCurveTo(1.05, 0.35, 0.55, 0.5); top.lineTo(-1.0, 0.5); top.lineTo(-1.0, -0.5);
-  const hull = new THREE.ExtrudeGeometry(top, { depth: 0.5, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 2 });
-  b.add(hull, { r: [Math.PI / 2, 0, 0], p: [0, 0.82, 0] });
-  b.box(0.7, 0.4, 0.8, { p: [-0.2, 1.05, 0] }, 0.06);
-  b.box(0.05, 0.22, 0.7, { p: [0.16, 1.1, 0], dark: true });
-  for (const [x, z] of [[0.55, 0.5], [0.55, -0.5], [-0.55, 0.5], [-0.55, -0.5]]) b.wheel(x, 0.24, z, 0.24, 0.16);
-  b.cyl(0.03, 0.03, 0.3, { p: [-1.1, 0.35, 0], r: [0, 0, Math.PI / 2] });
-  b.box(0.04, 0.26, 0.08, { p: [-1.24, 0.35, 0], dark: true });
-  b.cyl(0.04, 0.05, 0.3, { p: [-0.5, 1.4, 0] });
-  b.limb([-0.55, 1.58, 0], [0.1, 1.6, 0], 0.045);
-  return b.done();
-}
-
-function buildTank() {
-  const b = new Builder();
-  for (const z of [-0.62, 0.62]) {
-    b.box(2.6, 0.46, 0.34, { p: [0, 0.26, z], dark: true }, 0.16);
-    for (let i = 0; i < 6; i++) b.cyl(0.15, 0.15, 0.36, { p: [-1.0 + i * 0.4, 0.2, z], r: [Math.PI / 2, 0, 0] }, 12);
-    b.box(2.5, 0.05, 0.4, { p: [0, 0.52, z] }, 0.02);
-  }
-  b.add(sideProfile([[-1.25, 0.34], [1.05, 0.34], [1.3, 0.62], [1.0, 0.85], [-1.2, 0.85], [-1.3, 0.6]], 0.95));
-  const tur = new THREE.CylinderGeometry(0.5, 0.6, 0.38, 20);
-  b.add(tur, { p: [-0.15, 1.05, 0], s: [1.15, 1, 0.95] });
-  b.box(0.3, 0.26, 0.42, { p: [0.45, 1.03, 0] }, 0.06);
-  b.cyl(0.075, 0.085, 1.45, { p: [1.3, 1.05, 0], r: [0, 0, Math.PI / 2] }, 12);
-  b.cyl(0.11, 0.11, 0.18, { p: [2.0, 1.05, 0], r: [0, 0, Math.PI / 2] }, 12);
-  b.cyl(0.14, 0.15, 0.12, { p: [-0.35, 1.3, 0.18] }, 14);
-  b.box(0.3, 0.14, 0.5, { p: [-0.95, 0.98, 0], dark: true }, 0.03);
-  b.limb([-0.25, 1.42, -0.2], [0.2, 1.44, -0.2], 0.03);
-  return b.done();
-}
-
-function buildRockets() {
-  const b = new Builder();
-  b.box(2.5, 0.2, 0.9, { p: [0, 0.48, 0] }, 0.04);
-  b.box(0.7, 0.62, 1.0, { p: [0.9, 0.86, 0] }, 0.08);
-  b.box(0.05, 0.26, 0.86, { p: [1.26, 0.98, 0], dark: true });
-  for (const x of [0.9, -0.3, -0.9]) for (const z of [-0.5, 0.5]) b.wheel(x, 0.28, z, 0.28, 0.2);
-  b.box(0.2, 0.4, 0.3, { p: [-0.35, 0.72, 0] });
-  const tilt = 0.42, ct = Math.cos(tilt), st = Math.sin(tilt);
-  const px = -0.45, py = 1.0; // pivot of the tube pack
-  const at = (x, y) => [px + x * ct - y * st, py + x * st + y * ct];
-  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) {
-    const [x, y] = at(0, 0.12 + r * 0.19);
-    b.cyl(0.085, 0.085, 1.5, { p: [x, y, -0.3 + c * 0.2], r: [0, 0, -(Math.PI / 2 - tilt)] }, 10);
-    const [ex, ey] = at(0.76, 0.12 + r * 0.19);
-    b.cyl(0.055, 0.055, 0.02, { p: [ex, ey, -0.3 + c * 0.2], r: [0, 0, -(Math.PI / 2 - tilt)], dark: true }, 8);
-  }
-  const [bx, by] = at(0, 0);
-  b.box(1.5, 0.06, 0.9, { p: [bx, by, 0], r: [0, 0, tilt] });
-  b.box(0.12, 0.5, 0.5, { p: [-0.45, 0.78, 0] });
-  return b.done();
-}
-
-function buildHeli() {
-  const b = new Builder();
-  b.sphere(0.5, { p: [0.35, 0, 0], s: [1.9, 1, 0.95] }, 20, 14);
-  b.sphere(0.3, { p: [0.95, 0.03, 0], s: [1, 0.9, 0.9], dark: true }, 16, 10);
-  b.cyl(0.08, 0.2, 1.7, { p: [-1.0, 0.12, 0], r: [0, 0, Math.PI / 2 + 0.06] }, 12);
-  b.box(0.36, 0.55, 0.05, { p: [-1.8, 0.4, 0], r: [0, 0, -0.35] }, 0.02);
-  b.box(0.3, 0.05, 0.6, { p: [-1.6, 0.14, 0] }, 0.02);
-  for (const z of [-0.42, 0.42]) {
-    b.limb([-0.4, -0.55, z], [0.95, -0.55, z], 0.035);
-    b.limb([-0.15, -0.55, z], [-0.05, -0.28, z * 0.6], 0.03);
-    b.limb([0.55, -0.55, z], [0.55, -0.28, z * 0.6], 0.03);
-  }
-  for (const z of [-0.5, 0.5]) { b.cyl(0.08, 0.08, 0.5, { p: [0.35, -0.15, z], r: [0, 0, Math.PI / 2] }, 10); b.box(0.2, 0.06, 0.3, { p: [0.35, -0.02, z * 0.8] }); }
-  b.cyl(0.06, 0.08, 0.28, { p: [0.3, 0.55, 0] }, 10);
-  const body = b.done();
-  const r = new Builder();
-  r.box(3.0, 0.03, 0.16, { p: [0, 0, 0] }, 0.01);
-  r.box(0.16, 0.03, 3.0, { p: [0, 0, 0] }, 0.01);
-  r.cyl(0.12, 0.12, 0.08, { p: [0, 0, 0] });
-  body.rotor = r.done().main;
-  const t = new Builder();
-  t.box(0.04, 0.5, 0.06, {}, 0.01); t.box(0.04, 0.06, 0.5, {}, 0.01);
-  body.tailRotor = t.done().main;
-  return body;
-}
-
-function sandbagRing(b, cx, cz, radius, from, to, layers = 2, n = 10) {
-  for (let l = 0; l < layers; l++) for (let i = 0; i <= n; i++) {
-    const a = from + (to - from) * (i + (l % 2) * 0.5) / n;
-    if (l % 2 && i === n) continue;
-    const x = cx + Math.cos(a) * radius, z = cz + Math.sin(a) * radius;
-    b.add(new THREE.CapsuleGeometry(0.13, 0.22, 3, 8), { p: [x, 0.13 + l * 0.2, z], r: [0, Math.PI / 2 - a, Math.PI / 2], s: [1, 1, 0.8] });
-  }
-}
-
-// Emplacements come in two parts: a fixed base and a "turret" that turns to aim.
-function buildMgNest() {
-  const b = new Builder(), t = new Builder();
-  sandbagRing(b, 0, 0, 0.8, -Math.PI * 0.62, Math.PI * 0.62, 3, 9);
-  b.cyl(0.95, 1.0, 0.04, { p: [0, 0.02, 0], dark: true }, 24);
-  t.cyl(0.05, 0.05, 0.4, { p: [0.35, 0.35, 0] });
-  t.limb([0.1, 0.6, 0], [1.0, 0.62, 0], 0.055);
-  t.box(0.3, 0.14, 0.12, { p: [0.25, 0.6, 0], dark: true });
-  for (const p of pose('rifleman')) {
-    if (p.t === 'l' && p.w > 10) t.limb([p.x1 * S - 0.3, -p.y1 * S - 0.1, 0], [p.x2 * S - 0.3, -p.y2 * S - 0.1, 0], p.w / 2 * S);
-    if (p.t === 'c' && p.r > 5) t.sphere(p.r * S, { p: [p.x * S - 0.3, -p.y * S - 0.1, 0] });
-    if (p.t === 'h') t.add(new THREE.SphereGeometry(7.4 * S, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), { p: [p.x * S - 0.3, -p.y * S - 0.1, 0], s: [1, 0.82, 1] });
-  }
-  t.limb([-0.3, 0.6, 0.12], [0.2, 0.6, 0.05], 0.05);
-  const out = b.done(); out.turret = t.done();
-  return out;
-}
-
-function buildFieldGun() {
-  const b = new Builder();
-  b.box(0.08, 0.7, 1.1, { p: [0.25, 0.65, 0], r: [0, 0, -0.15] }, 0.02);
-  b.cyl(0.07, 0.09, 1.8, { p: [0.95, 0.85, 0], r: [0, 0, -(Math.PI / 2 - 0.25)] }, 12);
-  b.cyl(0.1, 0.1, 0.2, { p: [0.95 + Math.cos(0.25) * 0.9, 0.85 + Math.sin(0.25) * 0.9, 0], r: [0, 0, -(Math.PI / 2 - 0.25)] }, 12);
-  b.box(0.6, 0.22, 0.28, { p: [0.05, 0.62, 0] }, 0.05);
-  for (const z of [-0.5, 0.5]) b.wheel(0.05, 0.4, z, 0.4, 0.12);
-  b.limb([-0.05, 0.45, 0.12], [-1.2, 0.08, 0.55], 0.06);
-  b.limb([-0.05, 0.45, -0.12], [-1.2, 0.08, -0.55], 0.06);
-  b.box(0.2, 0.04, 0.25, { p: [-1.2, 0.04, 0.55] }); b.box(0.2, 0.04, 0.25, { p: [-1.2, 0.04, -0.55] });
-  return b.done();
-}
-
-function buildAA() {
-  const b = new Builder(), t = new Builder();
-  b.cyl(0.85, 0.95, 0.18, { p: [0, 0.09, 0] }, 24);
-  sandbagRing(b, 0, 0, 1.0, 0, Math.PI * 2, 1, 16);
-  t.cyl(0.45, 0.5, 0.25, { p: [0, 0.3, 0] }, 18);
-  t.box(0.5, 0.5, 0.6, { p: [0, 0.65, 0] }, 0.06);
-  for (const z of [-0.18, 0.18]) {
-    t.cyl(0.045, 0.055, 1.4, { p: [0.45, 1.25, z], r: [0, 0, -Math.PI / 4] }, 10);
-    t.cyl(0.07, 0.07, 0.3, { p: [0.18, 0.95, z], r: [0, 0, -Math.PI / 4] }, 10);
-  }
-  t.box(0.25, 0.08, 0.3, { p: [-0.35, 0.72, 0], dark: true });
-  const out = b.done(); out.turret = t.done();
-  return out;
-}
-
-function buildTower() {
-  const b = new Builder();
-  b.cyl(0.78, 0.9, 2.5, { p: [0, 1.25, 0] }, 24);
-  for (let i = 0; i < 5; i++) b.cyl(0.8 + 0.1 * (1 - i / 5), 0.82 + 0.1 * (1 - i / 5), 0.03, { p: [0, 0.25 + i * 0.5, 0], dark: true }, 24);
-  b.cyl(0.95, 0.95, 0.18, { p: [0, 2.58, 0] }, 24);
-  for (let i = 0; i < 8; i++) {
-    const a = i / 8 * Math.PI * 2;
-    b.box(0.32, 0.3, 0.2, { p: [Math.cos(a) * 0.85, 2.82, Math.sin(a) * 0.85], r: [0, -a, 0] }, 0.02);
-  }
-  b.box(0.1, 0.8, 0.5, { p: [0.86, 0.4, 0], dark: true }, 0.03);
-  b.box(0.1, 0.35, 0.25, { p: [0.8, 1.7, 0], dark: true });
-  b.box(0.25, 0.35, 0.1, { p: [0, 1.7, 0.8], dark: true });
-  // lookout soldier
-  b.cyl(0.09, 0.09, 0.26, { p: [0.1, 2.8, 0] }); b.sphere(0.12, { p: [0.1, 3.02, 0] });
-  b.add(new THREE.SphereGeometry(0.16, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), { p: [0.1, 3.05, 0], s: [1, 0.8, 1] });
-  b.limb([0.1, 2.9, 0.08], [0.6, 2.95, 0.05], 0.035);
-  return b.done();
-}
-
-function buildWall(seed) {
-  const b = new Builder(), rng = mulberry(seed);
-  const L = 2.9, H = 1.5, T = 0.36;
-  // ruined brick wall with a window hole and a broken top
-  const cols = 7;
-  for (let i = 0; i < cols; i++) {
-    const x0 = -L / 2 + i * L / cols, w = L / cols;
-    const hTop = H * (0.7 + rng() * 0.35) * (i === 0 || i === cols - 1 ? 1.05 : 1);
-    const window = i === 2 || i === 3;
-    if (window) {
-      b.box(w, 0.45, T, { p: [x0 + w / 2, 0.225, 0] });
-      b.box(w, Math.max(0.05, hTop - 1.1), T, { p: [x0 + w / 2, 1.1 + (hTop - 1.1) / 2, 0] });
-    } else b.box(w + 0.001, hTop, T, { p: [x0 + w / 2, hTop / 2, 0] });
-  }
-  // brick courses and loose bricks
-  for (let r = 1; r < 6; r++) b.box(L + 0.02, 0.018, T + 0.02, { p: [0, r * 0.26, 0], dark: true });
-  for (let i = 0; i < 7; i++) b.box(0.24, 0.1, 0.12, { p: [-L / 2 + rng() * L, 0.05, (rng() < 0.5 ? -1 : 1) * (0.3 + rng() * 0.2)], r: [0, rng() * 3, 0] }, 0.015);
-  b.box(L + 0.2, 0.1, T + 0.2, { p: [0, 0.05, 0] }, 0.03);
-  return b.done();
-}
-
-function buildSandbags(seed) {
-  const b = new Builder(), rng = mulberry(seed);
-  for (let l = 0; l < 3; l++) {
-    const n = 5 - (l === 2 ? 1 : 0);
-    for (let i = 0; i < n; i++) {
-      const x = -0.8 + (i + (l % 2) * 0.5) * 0.4;
-      if (x > 0.85) continue;
-      b.add(new THREE.CapsuleGeometry(0.13, 0.2, 3, 8), { p: [x, 0.12 + l * 0.2, (rng() - 0.5) * 0.04], r: [(rng() - 0.5) * 0.2, (rng() - 0.5) * 0.3, Math.PI / 2], s: [1, 1, 0.78] });
-    }
-  }
-  return b.done();
-}
-
-function buildWire() {
-  const b = new Builder();
-  for (const x of [-0.8, 0, 0.8]) {
-    b.box(0.05, 0.75, 0.05, { p: [x, 0.33, 0], r: [0.6, 0, 0] });
-    b.box(0.05, 0.75, 0.05, { p: [x, 0.33, 0], r: [-0.6, 0, 0] });
-  }
-  b.limb([-0.95, 0.52, 0], [0.95, 0.52, 0], 0.012);
-  for (let i = 0; i < 14; i++) b.add(new THREE.TorusGeometry(0.24, 0.013, 4, 16), { p: [-0.9 + i * 0.138, 0.3, 0], r: [0, Math.PI / 2 + 0.35, 0] });
-  for (let i = 0; i < 26; i++) b.box(0.01, 0.06, 0.01, { p: [-0.9 + i * 0.07, 0.52, 0], r: [0.7 * (i % 2 ? 1 : -1), 0, 0] });
-  return b.done();
-}
-
-function buildBarrel() {
-  const b = new Builder();
-  b.cyl(0.33, 0.33, 0.9, { p: [0, 0.45, 0] }, 20);
-  for (const y of [0.05, 0.3, 0.6, 0.86]) b.add(new THREE.TorusGeometry(0.335, 0.025, 6, 20), { p: [0, y, 0], r: [Math.PI / 2, 0, 0] });
-  b.cyl(0.29, 0.29, 0.02, { p: [0, 0.905, 0], dark: true }, 20);
-  b.cyl(0.05, 0.05, 0.04, { p: [0.15, 0.92, 0.1] }, 8);
-  return b.done();
-}
-
-function buildHQ() {
-  const b = new Builder();
-  // ground floor + upper floor, like the "MILITARY" building in toy sets
-  b.box(3.6, 1.5, 3.4, { p: [0, 0.75, 0] }, 0.04);
-  b.box(3.7, 0.12, 3.5, { p: [0, 1.52, 0] }, 0.03);
-  b.box(2.0, 1.25, 3.2, { p: [-0.75, 2.2, 0] }, 0.04);
-  b.box(2.1, 0.1, 3.3, { p: [-0.75, 2.86, 0] }, 0.03);
-  for (const z of [-1.62, 1.62]) b.box(1.6, 0.25, 0.08, { p: [0.95, 1.7, z * 1.0] });
-  b.box(0.08, 0.25, 3.3, { p: [1.8, 1.7, 0] });
-  // windows / door (dark recesses)
-  for (const z of [-1.1, 1.1]) {
-    b.box(0.05, 0.55, 0.6, { p: [1.81, 0.85, z], dark: true });
-    b.box(0.05, 0.5, 0.55, { p: [0.26, 2.2, z * 0.9], dark: true });
-  }
-  b.box(0.05, 0.9, 0.7, { p: [1.81, 0.45, 0], dark: true });
-  b.box(0.35, 0.1, 1.0, { p: [1.98, 0.05, 0] }, 0.02);
-  for (const x of [-1.2, 0, 1.2]) for (const z of [-1.72, 1.72]) b.box(0.55, 0.55, 0.05, { p: [x, 0.85, z], dark: true });
-  for (const x of [-1.4, -0.4]) for (const z of [-1.62, 1.62]) b.box(0.5, 0.45, 0.05, { p: [x, 2.2, z], dark: true });
-  b.box(0.08, 0.35, 1.2, { p: [1.83, 1.3, 0], dark: true }, 0.02);  // sign board
-  // flag pole
-  b.cyl(0.03, 0.03, 1.6, { p: [-1.4, 3.7, -1.2] }, 8);
-  b.box(0.7, 0.42, 0.03, { p: [-1.05, 4.25, -1.2] }, 0.01);
-  b.cyl(0.12, 0.14, 0.1, { p: [-1.4, 2.95, -1.2] }, 10);
-  return b.done();
-}
-
-function buildAmbulance() {
-  const b = new Builder();
-  b.box(1.85, 0.2, 0.95, { p: [0, 0.4, 0] }, 0.04);
-  b.box(0.55, 0.55, 0.95, { p: [0.62, 0.78, 0] }, 0.08);
-  b.box(0.05, 0.24, 0.8, { p: [0.9, 0.9, 0], dark: true });
-  b.box(1.2, 0.85, 1.0, { p: [-0.3, 0.92, 0] }, 0.06);
-  for (const z of [-0.505, 0.505]) {
-    b.box(0.56, 0.56, 0.01, { p: [-0.3, 0.95, z], accent: '#f4f1e8' });
-    b.box(0.36, 0.1, 0.02, { p: [-0.3, 0.95, z], accent: '#d63a2f' });
-    b.box(0.1, 0.36, 0.02, { p: [-0.3, 0.95, z], accent: '#d63a2f' });
-  }
-  b.box(0.5, 0.02, 0.5, { p: [-0.3, 1.355, 0], accent: '#f4f1e8' });
-  b.box(0.34, 0.03, 0.1, { p: [-0.3, 1.37, 0], accent: '#d63a2f' });
-  b.box(0.1, 0.03, 0.34, { p: [-0.3, 1.37, 0], accent: '#d63a2f' });
-  b.box(0.12, 0.08, 0.3, { p: [0.62, 1.1, 0], accent: '#3b8fe0' });
-  for (const [x, z] of [[0.58, 0.5], [0.58, -0.5], [-0.58, 0.5], [-0.58, -0.5]]) b.wheel(x, 0.26, z, 0.26, 0.18);
-  return b.done();
-}
-
-// toy jets: fuselage along +x, wings flat, tail fins at the back
-function jetBody(b, { len, r, wing, sweep, tail, canopy = true }) {
-  b.add(new THREE.CapsuleGeometry(r, len, 6, 14), { r: [0, 0, Math.PI / 2], s: [1, 1, 0.9] });
-  b.add(new THREE.ConeGeometry(r * 0.95, r * 2.6, 14), { p: [len / 2 + r * 1.4, 0, 0], r: [0, 0, -Math.PI / 2] });
-  if (canopy) b.add(new THREE.SphereGeometry(r * 0.8, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), { p: [len * 0.28, r * 0.55, 0], s: [2.0, 0.9, 0.85], dark: true });
-  const wingShape = new THREE.Shape();
-  wingShape.moveTo(0.25, 0); wingShape.lineTo(-0.35, 0); wingShape.lineTo(-0.35 - sweep, wing); wingShape.lineTo(-0.1 - sweep, wing); wingShape.lineTo(0.25, 0);
-  for (const side of [1, -1]) {
-    const g = new THREE.ExtrudeGeometry(wingShape, { depth: 0.05, bevelEnabled: false });
-    b.add(g, { p: [0, -r * 0.2, 0], r: [side * Math.PI / 2, 0, 0], s: [1, 1, 1] });
-    const tl = new THREE.Shape(); tl.moveTo(0, 0); tl.lineTo(-0.3, 0); tl.lineTo(-0.45, tail * 0.6); tl.lineTo(-0.3, tail * 0.6); tl.lineTo(0, 0);
-    b.add(new THREE.ExtrudeGeometry(tl, { depth: 0.04, bevelEnabled: false }), { p: [-len / 2 - r * 0.2, 0, 0], r: [side * Math.PI / 2, 0, 0] });
-  }
-  const fin = new THREE.Shape(); fin.moveTo(0, 0); fin.lineTo(-0.45, 0); fin.lineTo(-0.6, tail); fin.lineTo(-0.4, tail); fin.lineTo(0, 0);
-  b.add(new THREE.ExtrudeGeometry(fin, { depth: 0.05, bevelEnabled: false }), { p: [-len / 2 + 0.05, r * 0.5, -0.025] });
-}
-function buildFighter() {
-  const b = new Builder();
-  jetBody(b, { len: 1.6, r: 0.17, wing: 0.95, sweep: 0.55, tail: 0.5 });
-  for (const z of [-0.3, 0.3]) b.cyl(0.035, 0.035, 0.5, { p: [0.35, -0.12, z], r: [0, 0, Math.PI / 2], dark: true }, 8);
-  return b.done();
-}
-function buildAttacker() {
-  const b = new Builder();
-  jetBody(b, { len: 1.8, r: 0.2, wing: 1.15, sweep: 0.15, tail: 0.5 });
-  for (const z of [-0.2, 0.2]) b.cyl(0.13, 0.13, 0.55, { p: [-0.55, 0.28, z], r: [0, 0, Math.PI / 2] }, 12);
-  for (const z of [-0.55, -0.8, 0.55, 0.8]) b.cyl(0.05, 0.05, 0.45, { p: [0.05, -0.18, z], r: [0, 0, Math.PI / 2], dark: true }, 8);
-  return b.done();
-}
-function buildBomber() {
-  const b = new Builder();
-  jetBody(b, { len: 2.6, r: 0.3, wing: 1.8, sweep: 0.25, tail: 0.75 });
-  for (const z of [-0.8, -1.3, 0.8, 1.3]) {
-    b.cyl(0.11, 0.12, 0.6, { p: [0.15, -0.12, z], r: [0, 0, Math.PI / 2] }, 12);
-    b.cyl(0.07, 0.07, 0.02, { p: [0.46, -0.12, z], r: [0, 0, Math.PI / 2], dark: true }, 10);
-  }
-  b.box(0.8, 0.04, 0.3, { p: [0.1, -0.3, 0], dark: true });
-  return b.done();
-}
-function buildTransport() {
-  const b = new Builder();
-  jetBody(b, { len: 2.4, r: 0.36, wing: 1.9, sweep: 0.05, tail: 0.85 });
-  for (const z of [-0.9, 0.9]) {
-    b.cyl(0.13, 0.14, 0.5, { p: [0.25, 0.08, z], r: [0, 0, Math.PI / 2] }, 12);
-    b.box(0.03, 0.55, 0.06, { p: [0.52, 0.08, z], dark: true });
-  }
-  b.box(0.5, 0.03, 0.5, { p: [-1.1, -0.28, 0], dark: true });
-  return b.done();
-}
+// parachute for dropping paratroopers
 function buildChute() {
   const b = new Builder();
   b.add(new THREE.SphereGeometry(0.75, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2.4), { p: [0, 1.4, 0], s: [1, 0.55, 1] });
@@ -546,34 +210,9 @@ export function model(type, seed = 0) {
     return m;
   }
   if (FIGURE_FOR[type]) { m = buildFigure(FIGURE_FOR[type]); cache.set(k, m); return m; }
-  if (VEHICLES[type]) { m = buildVehicle(type); cache.set(k, m); return m; }
-  switch (type) {
-    case 'rifleman': case 'mg': case 'bazooka': case 'sniper': case 'grenadier': case 'officer': case 'manpads': case 'medic': m = buildSoldier(type); break;
-    case 'para': m = buildSoldier('rifleman'); break;
-    case 'pose-kneel': case 'pose-prone': case 'pose-drag': case 'pose-bazooka-stand': case 'pose-manpads-kneel': case 'pose-grenadier-idle': case 'pose-medic-heal': m = buildSoldier(type); break;
-    case 'ambulance': m = buildAmbulance(); break;
-    case 'fighter': m = buildFighter(); break;
-    case 'attacker': m = buildAttacker(); break;
-    case 'bomber': m = buildBomber(); break;
-    case 'transport': m = buildTransport(); break;
-    case 'chute': m = buildChute(); break;
-    case 'jeep': m = buildJeep(); break;
-    case 'apc': m = buildApc(); break;
-    case 'amphib': m = buildAmphib(); break;
-    case 'tank': m = buildTank(); break;
-    case 'rockets': m = buildRockets(); break;
-    case 'heli': m = buildHeli(); break;
-    case 'mgnest': m = buildMgNest(); break;
-    case 'fieldgun': m = buildFieldGun(); break;
-    case 'aa': m = buildAA(); break;
-    case 'tower': m = buildTower(); break;
-    case 'wall': m = buildWall(1000 + (seed % 4)); break;
-    case 'sandbags': m = buildSandbags(2000 + (seed % 4)); break;
-    case 'wire': m = buildWire(); break;
-    case 'barrel': m = buildBarrel(); break;
-    case 'hq': m = buildHQ(); break;
-    default: m = buildBarrel();
-  }
+  // walls and sandbags come in two shapes, picked by the placement seed
+  const vk = type === 'wall' || type === 'sandbags' ? type + (seed % 2) : type;
+  m = VEHICLES[vk] ? buildVehicle(vk) : type === 'chute' ? buildChute() : buildVehicle('barrel');
   cache.set(k, m);
   return m;
 }
