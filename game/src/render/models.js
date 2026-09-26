@@ -56,6 +56,10 @@ function pose(type) {
   const C = (x, y, r, z = 0) => ({ t: 'c', x, y, z, r });
   const Hm = (x, y) => ({ t: 'h', x, y });
   const Bx = (x, y, w, h, d, z = 0) => ({ t: 'b', x, y, w, h, d, z });
+  const Ax = (x, y, w, h, d, z, c) => ({ t: 'b', x, y, w, h, d, z, c });          // painted part (keeps its own colour)
+  const W = '#f4f1e8', R = '#d63a2f';
+  // white satchel with a red cross on the side facing -z
+  const kit = (x, y, z) => [Ax(x, y, 6, 5, 3, z, W), Ax(x, y, 1.4, 3.8, 0.5, z - 1.6, R), Ax(x, y, 3.8, 1.4, 0.5, z - 1.6, R)];
   const legs = [Object.assign(L(-5, -2, -3, -20, 5.8, -3.5), { leg: 0 }), Object.assign(L(6, -2, 2, -20, 5.8, 3.5), { leg: 1 })];
   const kneelLegs = [L(-7, -2, -2, -12, 5.8, -3.5), L(-7, -2, -16, -2, 5.2, -3.5), L(-2, -12, 7, -12, 5.8, 3.5), L(7, -12, 7, -2, 5.8, 3.5)];
   const body = [L(-1, -20, 0, -34, 11.5), C(1, -39, 5.6), Hm(1, -41), Bx(-7, -30, 5, 9, 9)];   // torso, head, helmet, backpack
@@ -63,6 +67,10 @@ function pose(type) {
   switch (type) {
     case 'rifleman': return [...legs, ...body, L(-1, -31, 10, -31, 4.6, 6, 3), L(-1, -31, 6, -29, 4.6, -6, 2), ...rifle(-4, -31, 24, -33, 3)];
     case 'officer': return [...legs, ...body, L(0, -32, 16, -39, 4.6, 6, 7), C(17, -40, 2.6, 7), L(-1, -30, -6, -24, 4.6, -6), L(-6, -24, -2, -21, 4, -6, -5), Bx(3, -26, 4, 3, 5, -6)];
+    case 'medic': return [...legs, L(-1, -20, 0, -34, 11.5), C(1, -39, 5.6), Hm(1, -41), Ax(-7, -30, 5, 9, 9, 0, W), Ax(-9.8, -30, 0.6, 6, 2, 0, R), Ax(-9.8, -30, 0.6, 2, 6, 0, R),
+      L(-1, -31, 9, -30, 4.6, 6, 4), Ax(0, -30.5, 3.2, 2.4, 2.6, 6.2, W), L(-1, -31, 0, -21, 4.6, -6, -7), ...kit(0, -17, -7.5)];
+    case 'pose-medic-heal': return [...kneelLegs, L(-2, -12, 5, -24, 11.5), C(8, -28, 5.6), Hm(8, -30), Ax(-3, -20, 5, 8, 9, 0, W), Ax(-5.8, -20, 0.6, 5, 2, 0, R), Ax(-5.8, -20, 0.6, 2, 5, 0, R),
+      L(5, -22, 15, -8, 4.6, 6, 3), L(5, -22, 15, -9, 4.6, -6, -3), Ax(6, -21, 3.2, 2.4, 2.6, 6.2, W), ...kit(14, -3, -9)];
     case 'grenadier': return [...legs, ...body, L(-1, -32, -9, -45, 4.6, 6), C(-10, -48, 3.8, 6), L(1, -30, 11, -27, 4.6, -6, -3), ...rifle(4, -27, 16, -12, -4)];
     // extra poses used by the toy-style animation (the figure is swapped, like a kid repositioning it)
     case 'pose-kneel': return [...kneelLegs, L(-2, -12, 0, -26, 11.5), C(2, -31, 5.6), Hm(2, -33), Bx(-8, -22, 5, 8, 9),
@@ -98,7 +106,7 @@ function buildSoldier(type, living = false) {
     }
     if (p.t === 'l') b.limb([p.x1 * S, -p.y1 * S + lift, p.z1 * S], [p.x2 * S, -p.y2 * S + lift, p.z2 * S], p.w / 2 * S);
     else if (p.t === 'c') b.sphere(p.r * S, { p: [p.x * S, -p.y * S + lift, p.z * S] });
-    else if (p.t === 'b') b.box(p.w * S, p.h * S, p.d * S, { p: [p.x * S, -p.y * S + lift, p.z * S] }, 0.01);
+    else if (p.t === 'b') b.box(p.w * S, p.h * S, p.d * S, { p: [p.x * S, -p.y * S + lift, p.z * S], accent: p.c || null }, p.c ? 0 : 0.01);
     else {
       b.add(new THREE.SphereGeometry(7.4 * S, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), { p: [p.x * S, -p.y * S + lift, 0], s: [1, 0.82, 1] });
       b.cyl(9.2 * S, 9.4 * S, 0.02, { p: [p.x * S, -p.y * S + lift, 0] }, 18);
@@ -481,9 +489,9 @@ export function model(type, seed = 0) {
     return m;
   }
   switch (type) {
-    case 'rifleman': case 'mg': case 'bazooka': case 'sniper': case 'grenadier': case 'officer': case 'manpads': m = buildSoldier(type); break;
+    case 'rifleman': case 'mg': case 'bazooka': case 'sniper': case 'grenadier': case 'officer': case 'manpads': case 'medic': m = buildSoldier(type); break;
     case 'para': m = buildSoldier('rifleman'); break;
-    case 'pose-kneel': case 'pose-prone': case 'pose-drag': case 'pose-bazooka-stand': case 'pose-manpads-kneel': case 'pose-grenadier-idle': m = buildSoldier(type); break;
+    case 'pose-kneel': case 'pose-prone': case 'pose-drag': case 'pose-bazooka-stand': case 'pose-manpads-kneel': case 'pose-grenadier-idle': case 'pose-medic-heal': m = buildSoldier(type); break;
     case 'ambulance': m = buildAmbulance(); break;
     case 'fighter': m = buildFighter(); break;
     case 'attacker': m = buildAttacker(); break;

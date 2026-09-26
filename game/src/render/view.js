@@ -16,7 +16,7 @@ import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
-  rifleman: [0.55, 0.78], para: [0.55, 0.78], officer: [0.4, 0.9], grenadier: [-0.2, 1.1], bazooka: [0.5, 0.78], manpads: [0.45, 1.05],
+  rifleman: [0.55, 0.78], para: [0.55, 0.78], officer: [0.4, 0.9], grenadier: [-0.2, 1.1], bazooka: [0.5, 0.78], manpads: [0.45, 1.05], medic: [0.22, 0.71],
   sniper: [0.8, 0.27], mg: [0.62, 0.3], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.12, 1.6], tank: [2.05, 1.05], rockets: [0.2, 1.8],
   heli: [0.8, -0.25], fighter: [1.0, -0.1], attacker: [0.4, -0.2], bomber: [0, -0.35], transport: [-1, -0.35],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
@@ -32,6 +32,7 @@ function basePose(type) { return type === 'grenadier' ? 'pose-grenadier-idle' : 
 function poseFor(v, now, battle) {
   const e = v.e, t = e.type;
   if (e.carrying) return 'pose-drag';
+  if (e.healing) return 'pose-medic-heal';
   if (t === 'grenadier' && now < v.throwUntil) return 'grenadier';
   if (!battle) return basePose(t);
   if (e.moving) return t === 'bazooka' ? 'pose-bazooka-stand' : basePose(t);
@@ -354,6 +355,13 @@ export class View {
         case 'deploy': this.fx.fadeDecals(0.45); break;
         case 'hit': { const v = this.ents.get(ev.id); if (v) { v.flashUntil = this.now + 70; v.lastHit = v.wobbleAt = this.now; } break; }
         case 'over': for (const v of this.ents.values()) if (v.e.team === ev.winner && !v.e.dead && !v.e.down && v.e.def.cls === 'infantry') v.celebrate = true; break;
+        case 'healed': {
+          // patched up: the soldier gets back on his feet
+          const v = this.ents.get(ev.id); if (!v) break;
+          v.downAt = 0; v.pivot.rotation.set(0, 0, 0); v.pivot.position.y = 0; v.poseAt = this.now;
+          sounds && sounds.play('place', v.g.position);
+          break;
+        }
         case 'down': {
           const v = this.ents.get(ev.id); if (!v) break;
           v.downAt = this.now;
@@ -590,7 +598,8 @@ export class View {
         // wounded marker: red cross with a bleeding-out ring (green once safe)
         p.set(v.g.position.x, 0.8, v.g.position.z).project(this.camera);
         if (p.z > 1 || Math.abs(p.x) > 1.1 || Math.abs(p.y) > 1.1) continue;
-        const sx = (p.x + 1) / 2 * w, sy = (1 - p.y) / 2 * h, safe = e.stable || e.carrier;
+        const medic = e.medicBy ? this.sim.byId.get(e.medicBy) : null;
+        const sx = (p.x + 1) / 2 * w, sy = (1 - p.y) / 2 * h, safe = e.stable || e.carrier || (medic && medic.healing);
         c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(sx, sy, 7, 0, 7); c.fill();
         c.fillStyle = safe ? '#3a9a4a' : '#d63a2f'; c.fillRect(sx - 4.5, sy - 1.5, 9, 3); c.fillRect(sx - 1.5, sy - 4.5, 3, 9);
         if (!safe) { c.strokeStyle = '#d63a2f'; c.lineWidth = 2; c.beginPath(); c.arc(sx, sy, 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, e.bleed) / 18); c.stroke(); }

@@ -8,6 +8,7 @@ const DT = 1 / RULES.tickRate;
 const INF = 1e9;
 const SPEED = 1.35;   // global pace of ground movement
 const RESCUERS = new Set(['rifleman', 'officer', 'grenadier', 'bazooka', 'manpads', 'para']);
+const COVER_SEARCH = 7;   // how far (cells) comrades look for cover to drag a wounded soldier behind
 
 export const isAir = e => e.def.cls === 'air' || e.def.cls === 'plane';
 
@@ -31,7 +32,7 @@ export class Sim {
     this.teams = teamSpecs.map((t, i) => ({
       id: i, name: t.name, color: t.color, human: !!t.human, zone: map.zones[i],
       money: RULES.startBudget, bounty: 0, vehicles: 0, aircraft: 0, alive: true, hq: 0,
-      kills: 0, losses: 0, spent: 0, saved: 0, recovered: [],
+      kills: 0, losses: 0, spent: 0, saved: 0, healed: 0, recovered: [],
     }));
     this.fields = new Map();
     this.fieldQueue = [];
@@ -122,6 +123,7 @@ export class Sim {
       cd: 0, target: 0, retarget: 0, dead: false, deadTick: 0, placedRound: this.round,
       salvo: 0, salvoCd: 0, moving: false, aimX: 0, aimZ: 0,
       down: false, bleed: 0, stable: false, carrier: 0, carrying: 0, rescue: 0, rescuer: 0, loaded: false, cargo: [],
+      heal: 0, healT: 0, healing: false, medicBy: 0, noCover: 0, goalX: 0, goalZ: 0, stuck: 0, retreat: false,
       falling: false, bombs: def.bombs || 0, bombCd: 0, done: false, wp: 0,
     };
     if (def.static) {
@@ -187,7 +189,7 @@ export class Sim {
     for (const t of this.teams) {
       if (!t.alive) continue;
       for (const cls of this.neededClasses(t.id)) this.enemyField(t.id, cls);
-      this.homeField(t.id, 'foot'); this.homeField(t.id, 'wheel');
+      this.homeField(t.id, 'wheel');
     }
     for (const e of this.ents) {
       if (e.def.cls !== 'plane') continue;
@@ -204,7 +206,7 @@ export class Sim {
       else this.die(e, this.attackerOf(e));
     }
     for (const e of this.ents) {
-      e.carrying = 0; e.rescue = 0; e.cargo = [];
+      e.carrying = 0; e.rescue = 0; e.cargo = []; e.heal = 0; e.healT = 0; e.healing = false; e.medicBy = 0; e.retreat = false;
       if (e.def.cls === 'plane' && !e.dead) {
         if (e.def.sortie) { e.done = true; continue; }
         // planes land back where they were parked
@@ -411,6 +413,8 @@ export class Sim {
     const d = Math.sqrt(dx * dx + dz * dz) || 1;
     for (const s of [0.8, 1.4]) {
       const c = this.cellOf(o.x + dx / d * s, o.z + dz / d * s);
+      const g = this.map.grid[c];
+      if (g === T_SOLID || g === T_LOW) return 0.5;   // hiding behind a book, a mug, a pencil...
       const id = this.occ[c];
       if (id) { const b = this.byId.get(id); if (b && b.def.cover && b.team === o.team) return 0.5; }
     }
@@ -457,6 +461,7 @@ export class Sim {
   releaseDuties(o) {
     if (o.carrying) { const d = this.byId.get(o.carrying); if (d) d.carrier = 0; o.carrying = 0; }
     if (o.rescue) { const d = this.byId.get(o.rescue); if (d && d.rescuer === o.id) d.rescuer = 0; o.rescue = 0; }
+    if (o.heal) { const d = this.byId.get(o.heal); if (d && d.medicBy === o.id) d.medicBy = 0; o.heal = 0; o.healing = false; }
   }
 
   die(o, attacker) {
@@ -517,7 +522,8 @@ export class Sim {
       if (e.salvoCd <= 0) { e.salvo--; e.salvoCd = 0.16; this.launch(e, e.aimX, e.aimZ, true); }
     }
     if (!w && def.static) return;
-    if (e.carrying) return this.carryHome(e);
+    if (e.carrying) return this.carryToCover(e);
+    if (def.healer && this.medicWork(e)) return;
 
     // pick a target a couple of times per second (staggered by id)
     let scan = false;
@@ -547,15 +553,18 @@ export class Sim {
   }
 
   // ---- wounded soldiers -----------------------------------------------------------
+  // A wounded soldier bleeds out unless a comrade drags him behind the nearest cover,
+  // a medic patches him up, or an ambulance takes him away.
   thinkDown(e) {
     if (e.carrier || e.loaded || e.stable) return;
+    if (e.medicBy) { const m = this.byId.get(e.medicBy); if (m && m.healing) return; }
     e.bleed -= DT;
     if (e.bleed <= 0) this.die(e, this.attackerOf(e));
   }
   findWounded(e) {
     let best = null, bd = 49;
     for (const d of this.ents) {
-      if (!d.down || d.dead || d.team !== e.team || d.stable || d.carrier || d.loaded || d.rescuer) continue;
+      if (!d.down || d.dead || d.team !== e.team || d.stable || d.carrier || d.loaded || d.rescuer || d.medicBy || d.noCover > this.tick) continue;
       const dx = d.x - e.x, dz = d.z - e.z, dd = dx * dx + dz * dz;
       if (dd < bd) { bd = dd; best = d; }
     }
@@ -563,10 +572,14 @@ export class Sim {
   }
   goRescue(e) {
     const d = this.byId.get(e.rescue);
-    if (!d || !d.down || d.carrier || d.loaded || d.rescuer !== e.id) { e.rescue = 0; return; }
+    if (!d || !d.down || d.carrier || d.loaded || d.medicBy || d.rescuer !== e.id) { e.rescue = 0; return; }
     const dx = d.x - e.x, dz = d.z - e.z, l = Math.sqrt(dx * dx + dz * dz);
     if (l < 0.7) {
-      e.carrying = d.id; e.rescue = 0; d.carrier = e.id; d.rescuer = 0;
+      e.rescue = 0; d.rescuer = 0;
+      const spot = this.coverSpot(e, d);
+      if (!spot) { d.noCover = this.tick + 60; return; }          // nothing to hide behind: leave him to the medics
+      if (spot.d < 0.6) { this.stabilize(d, e); return; }          // already in cover: bandage him where he lies
+      e.carrying = d.id; d.carrier = e.id; e.goalX = spot.x; e.goalZ = spot.z; e.stuck = 0;
       this.events.push({ t: 'pickup', id: e.id, wounded: d.id });
       return;
     }
@@ -574,61 +587,155 @@ export class Sim {
     this.tryMove(e, dx * k, dz * k);
     e.dirX = dx / l; e.dirZ = dz / l; e.moving = true;
   }
-  safeSpot(e) {
-    if (this.inZone(e.team, e.x, e.z)) return true;
-    const cx = Math.floor(e.x), cz = Math.floor(e.z);
-    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
-      if (!this.inside(cx + dx, cz + dz)) continue;
-      const o = this.byId.get(this.occ[(cz + dz) * this.W + cx + dx]);
-      if (o && o.team === e.team && (o.def.cover || o.def.blocksLos)) return true;
-    }
-    return false;
+  isCoverCell(c, team) {
+    const g = this.map.grid[c];
+    if (g === T_SOLID || g === T_LOW) return true;
+    const o = this.occ[c] ? this.byId.get(this.occ[c]) : null;
+    return !!(o && !o.dead && o.team === team && (o.def.cover || o.def.blocksLos || o.def.cls === 'hq'));
   }
-  carryHome(e) {
+  // Nearest free cell right next to cover, preferring cover that faces the enemy.
+  coverSpot(e, d) {
+    let ex = 0, ez = 0, en = 26 * 26;
+    for (const o of this.ents) {
+      if (o.team === e.team || !this.active(o) || !o.def.weapon || o.def.static || isAir(o)) continue;
+      const dx = o.x - d.x, dz = o.z - d.z, dd = dx * dx + dz * dz;
+      if (dd < en) { en = dd; ex = dx; ez = dz; }
+    }
+    const el = Math.sqrt(ex * ex + ez * ez);
+    const ux = el ? ex / el : 0, uz = el ? ez / el : 0;
+    const cx = Math.floor(d.x), cz = Math.floor(d.z), R = COVER_SEARCH;
+    let best = null, bs = INF;
+    for (let z = cz - R; z <= cz + R; z++) for (let x = cx - R; x <= cx + R; x++) {
+      if (!this.inside(x, z)) continue;
+      const c = z * this.W + x;
+      if (!this.canEnter(e, c)) continue;
+      let near = false;
+      for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (this.inside(x + ox, z + oz) && this.isCoverCell((z + oz) * this.W + x + ox, e.team)) { near = true; break; }
+      if (!near) continue;
+      const px = x + 0.5, pz = z + 0.5, dx = px - d.x, dz = pz - d.z, dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist > R) continue;
+      let score = dist;
+      if (el) {
+        const fx = Math.floor(px + ux * 0.9), fz = Math.floor(pz + uz * 0.9);
+        if (this.inside(fx, fz) && this.isCoverCell(fz * this.W + fx, e.team)) score -= 3;   // cover between him and the enemy
+        else score += 2;
+        score -= (dx * -ux + dz * -uz) * 0.3;                                                  // and a little further from them
+      }
+      if (score < bs) { bs = score; best = { x: px, z: pz, d: dist }; }
+    }
+    return best;
+  }
+  stabilize(d, by) {
+    d.stable = true; d.carrier = 0;
+    this.events.push({ t: 'stabilized', id: d.id, by: by.id });
+  }
+  carryToCover(e) {
     const d = this.byId.get(e.carrying);
     if (!d || !d.down) { e.carrying = 0; return; }
-    if (this.safeSpot(e)) {
-      d.stable = true; d.carrier = 0; e.carrying = 0;
-      this.events.push({ t: 'stabilized', id: d.id, by: e.id });
+    const dx = e.goalX - e.x, dz = e.goalZ - e.z, l = Math.sqrt(dx * dx + dz * dz);
+    if (l < 0.3 || e.stuck > 30) {
+      e.carrying = 0;
+      if (l < 1.2) this.stabilize(d, e); else { d.carrier = 0; d.noCover = this.tick + 60; }
       return;
     }
-    this.followField(e, this.fields.get(e.team + ':home:foot'), 0.55);
+    const s = e.def.speed * SPEED * DT * 0.6, k = Math.min(s, l) / l;
+    if (this.tryMove(e, dx * k, dz * k)) { e.dirX = dx / l; e.dirZ = dz / l; e.stuck = 0; } else e.stuck++;
+    e.moving = true;
     d.x = e.x - e.dirX * 0.55; d.z = e.z - e.dirZ * 0.55;
     d.dirX = e.dirX; d.dirZ = e.dirZ;
   }
 
-  thinkAmbulance(e) {
-    const cap = e.def.capacity;
-    let goal = null;
-    if (e.cargo.length < cap) {
-      let bd = 60 * 60;
+  // ---- medics ----------------------------------------------------------------------
+  // Returns true while the medic is busy with a patient (otherwise he fights like a rifleman).
+  medicWork(e) {
+    if (!e.heal && (this.tick + e.id) % 8 === 0) {
+      let best = null, bd = 14 * 14;
       for (const d of this.ents) {
-        if (!d.down || d.dead || d.team !== e.team || d.loaded || d.carrier) continue;
+        if (!d.down || d.dead || d.team !== e.team || d.loaded || d.carrier || d.medicBy) continue;
         const dx = d.x - e.x, dz = d.z - e.z, dd = dx * dx + dz * dz;
-        if (dd < bd) { bd = dd; goal = d; }
+        if (dd < bd) { bd = dd; best = d; }
+      }
+      if (best) {
+        if (best.rescuer) { const r = this.byId.get(best.rescuer); if (r && r.rescue === best.id) r.rescue = 0; best.rescuer = 0; }
+        best.medicBy = e.id; e.heal = best.id; e.healT = 0; e.stuck = 0;
       }
     }
+    if (!e.heal) return false;
+    const d = this.byId.get(e.heal);
+    if (!d || d.dead || !d.down || d.loaded || d.medicBy !== e.id) { e.heal = 0; e.healing = false; return false; }
+    if (d.carrier) return false;
+    const dx = d.x - e.x, dz = d.z - e.z, l = Math.sqrt(dx * dx + dz * dz);
+    if (l > 0.75) {
+      e.healing = false; e.healT = 0;
+      const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
+      if (this.tryMove(e, dx * k, dz * k)) e.stuck = 0; else if (++e.stuck > 30) { d.medicBy = 0; e.heal = 0; return false; }
+      e.dirX = dx / l; e.dirZ = dz / l; e.moving = true;
+      return true;
+    }
+    e.moving = false; e.dirX = dx / (l || 1); e.dirZ = dz / (l || 1);
+    if (!e.healing) { e.healing = true; this.events.push({ t: 'treat', id: e.id, wounded: d.id }); }
+    e.healT += DT;
+    if (e.healT >= e.def.healTime) {
+      d.down = false; d.stable = false; d.bleed = 0; d.medicBy = 0; d.rescuer = 0; d.noCover = 0;
+      d.hp = Math.max(1, Math.round(d.maxHp * 0.6)); d.target = 0; d.retarget = 0;
+      this.teams[d.team].healed++;
+      this.events.push({ t: 'healed', id: d.id, by: e.id });
+      e.heal = 0; e.healing = false; e.healT = 0;
+    }
+    return true;
+  }
+
+  // ---- field ambulance -------------------------------------------------------------
+  // Is any armed enemy ground unit (or helicopter) within r cells?
+  danger(team, x, z, r) {
+    for (const o of this.ents) {
+      if (o.team === team || !this.active(o) || !o.def.weapon || o.def.weapon.airOnly || o.def.cls === 'plane') continue;
+      const rr = r + (o.def.static ? 2 : 0), dx = o.x - x, dz = o.z - z;
+      if (dx * dx + dz * dz < rr * rr) return true;
+    }
+    return false;
+  }
+  pickWounded(e) {
+    const cands = [];
+    for (const d of this.ents) {
+      if (!d.down || d.dead || d.team !== e.team || d.loaded || d.carrier || d.medicBy) continue;
+      const dx = d.x - e.x, dz = d.z - e.z, dd = dx * dx + dz * dz;
+      if (dd < 60 * 60) cands.push([Math.sqrt(dd) - (d.stable ? 6 : 0), d.id, d]);
+    }
+    cands.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    for (let i = 0; i < cands.length && i < 5; i++) if (!this.danger(e.team, cands[i][2].x, cands[i][2].z, 6.5)) return cands[i][1];
+    return 0;
+  }
+  thinkAmbulance(e) {
+    const cap = e.def.capacity, home = this.fields.get(e.team + ':home:wheel');
+    if (--e.retarget <= 0) {
+      e.retarget = 10;
+      e.retreat = e.hp < e.maxHp * 0.45 || this.danger(e.team, e.x, e.z, 6);
+      e.target = !e.retreat && e.cargo.length < cap ? this.pickWounded(e) : 0;
+    }
     e.moving = false;
+    let goal = e.target ? this.byId.get(e.target) : null;
+    if (goal && (!goal.down || goal.dead || goal.loaded || goal.carrier || goal.medicBy)) { goal = null; e.target = 0; }
     if (goal) {
       const dx = goal.x - e.x, dz = goal.z - e.z, l = Math.sqrt(dx * dx + dz * dz);
       if (l < 1.4) {
-        goal.loaded = true; goal.rescuer = 0; e.cargo.push(goal.id);
+        goal.loaded = true; goal.rescuer = 0; e.cargo.push(goal.id); e.target = 0; e.retarget = 0;
         this.events.push({ t: 'load', id: e.id, wounded: goal.id });
       } else {
         const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
-        if (!this.tryMove(e, dx * k, dz * k)) this.followField(e, this.fields.get(e.team + ':home:wheel'), 0.6);
+        if (!this.tryMove(e, dx * k, dz * k)) this.followField(e, home, 0.6);
         else { e.dirX = dx / l; e.dirZ = dz / l; e.moving = true; }
       }
-    } else if (e.cargo.length) {
-      if (this.inZone(e.team, e.x, e.z)) {
+    } else if (this.inZone(e.team, e.x, e.z)) {
+      if (e.cargo.length) {
         const t = this.teams[e.team];
         for (const id of e.cargo) {
           const d = this.byId.get(id);
           if (d && !d.dead) { t.recovered.push(d.type); t.saved++; this.events.push({ t: 'rescued', id, team: e.team }); this.remove(d); }
         }
         e.cargo = [];
-      } else this.followField(e, this.fields.get(e.team + ':home:wheel'), 1);
-    } else if (!this.inZone(e.team, e.x, e.z)) this.followField(e, this.fields.get(e.team + ':home:wheel'), 0.8);
+      }
+    } else if (e.cargo.length || e.retreat) this.followField(e, home, 1);   // drive the wounded home, or get out of the line of fire
     for (const id of e.cargo) { const d = this.byId.get(id); if (d) { d.x = e.x; d.z = e.z; } }
   }
 

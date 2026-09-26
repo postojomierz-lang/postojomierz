@@ -8,7 +8,8 @@ last headquarters standing wins.
 Features: 2–8 armies on maps that grow with the number of armies, infantry (incl. AA missile
 soldiers), vehicles, aircraft (fighters, ground-attack planes, bombers, paratroop transports,
 helicopters), defences and fortifications. Soldiers are often wounded rather than killed:
-comrades drag them to cover and field ambulances carry them home, and everyone saved fights
+comrades drag them behind the nearest cover, medics heal them on the spot, and cautious
+field ambulances carry them home, and everyone saved fights
 again next round. Explosions cause friendly fire.
 
 Battlefields (all free and offline):
@@ -33,5 +34,6 @@ npm install
 npm run dev     # local dev server
 npm test        # AI-vs-AI games, checks the simulation is deterministic
 node test/air.test.mjs   # scripted aircraft / paratrooper / ambulance battle
+node test/medic.test.mjs # wounded dragged to cover, medics heal, ambulances avoid fire
 npm run build   # writes a single self-contained ../plastic-front/index.html
 ```
