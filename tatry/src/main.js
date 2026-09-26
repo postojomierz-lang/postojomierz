@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { Grid, Terrain, gridGeometry, meshHeight } from './terrain.js';
+import { Grid, Terrain, gridGeometry } from './terrain.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -10,17 +10,13 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { terrainMaterial, waterMaterial, light, makeEnv, patchShading } from './materials.js';
 import { buildForest } from './vegetation.js';
 import { rng, simplex } from './noise.js';
-import meta from './data/meta.json';
-import innerHUrl from './data/inner.u16?url';
-import outerHUrl from './data/outer.u16?url';
-import innerImgUrl from './data/inner.jpg?url';
-import outerImgUrl from './data/outer.jpg?url';
-import landUrl from './data/landcover.png?url';
+
+// data and textures are served next to index.html (tatry/public -> rysy/)
+const DATA = 'data/';
 
 // Poly Haven textures (CC0), 1K: layer order matters for the terrain shader
 const TEX_NAMES = ['rock_04', 'mossy_rock', 'gray_rocks', 'rocky_trail', 'rocky_terrain_02', 'forrest_ground_01'];
 const TEX_SCALE = [11, 6, 4.5, 2.6, 4, 3.5]; // metres per tile
-const texUrls = import.meta.glob('./textures/*.jpg', { query: '?url', import: 'default', eager: true });
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('loading-text').textContent = t; };
@@ -31,6 +27,22 @@ const QUALITY = P.get('q') === 'low' ? 'low' : 'high';
 
 // ---------------------------------------------------------------- loading
 async function bin(url) { return new Uint16Array(await (await fetch(url)).arrayBuffer()); }
+// zlib-compressed heights (decimetres, stored as differences along each row) -> metres
+async function heights(url, w, h) {
+  const res = await fetch(url);
+  const raw = new Uint8Array(await new Response(res.body.pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+  const d = new Uint16Array(raw.buffer, 0, w * h);
+  const out = new Float32Array(w * h);
+  for (let j = 0; j < h; j++) {
+    let acc = 0;
+    for (let i = 0; i < w; i++) {
+      const v = d[j * w + i];
+      acc = i === 0 ? v : acc + (v > 32767 ? v - 65536 : v);
+      out[j * w + i] = acc / 10;
+    }
+  }
+  return { h: out, mask: raw.length >= w * h * 3 ? raw.slice(w * h * 2, w * h * 3) : null };
+}
 async function bitmap(url) {
   const b = await (await fetch(url)).blob();
   return createImageBitmap(b, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
@@ -104,11 +116,25 @@ function sunAt(hour) {
 // ---------------------------------------------------------------- main
 async function main() {
   status('Pobieranie danych terenu…');
-  const [innerU, outerU, innerBmp, outerBmp, landBmp] = await Promise.all([
-    bin(innerHUrl), bin(outerHUrl), bitmap(innerImgUrl), bitmap(outerImgUrl), bitmap(landUrl)]);
+  const meta = await (await fetch(DATA + 'meta.json')).json();
+  const [base, outerU, innerBmp, outerBmp, landBmp] = await Promise.all([
+    heights(DATA + 'inner4.bin', ...meta.base.n), bin(DATA + 'outer.u16'),
+    bitmap(DATA + 'inner.jpg'), bitmap(DATA + 'outer.jpg'), bitmap(DATA + 'landcover.png')]);
+  // 1 m terrain and 0.5 m orthophoto tiles along the trail (GUGiK)
+  const TS = meta.tiles.size, TO = meta.tiles.origin;
+  const tileGrids = new Map(), tileImgs = new Map();
+  let loaded = 0;
+  await Promise.all(meta.tiles.list.map(async ([i, j]) => {
+    const n = meta.tiles.samples;
+    const [t, img] = await Promise.all([heights(`${DATA}tiles/h_${i}_${j}.bin`, n, n), bitmap(`${DATA}tiles/o_${i}_${j}.jpg`)]);
+    const x0 = TO[0] + i * TS, z0 = TO[1] + j * TS;
+    tileGrids.set(i + ',' + j, new Grid(t.h, [n, n], [x0, z0, x0 + TS, z0 + TS]));
+    tileImgs.set(i + ',' + j, img);
+    status(`Pobieranie terenu 1 m… ${++loaded}/${meta.tiles.list.length}`);
+  }));
   status('Wczytywanie tekstur…');
   const textures = await loadTextures();
-  const inner = new Grid(innerU, meta.inner.n, meta.inner.bounds);
+  const inner = new Grid(base.h, meta.base.n, meta.base.bounds);
   const outer = new Grid(outerU, meta.outer.n, meta.outer.bounds);
   const IB = meta.inner.bounds, OB = meta.outer.bounds;
 
@@ -144,7 +170,7 @@ async function main() {
     g.strokeStyle = 'rgb(255,0,0)'; g.lineWidth = 22;
     g.beginPath(); trailPts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
   });
-  const terrain = new Terrain(inner, outer, trailWide, lakeMask);
+  const terrain = new Terrain(inner, outer, trailWide, lakeMask, { size: TS, origin: TO, grids: tileGrids }, base.mask);
 
   // ---------- renderer / scene
   const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
@@ -185,12 +211,60 @@ async function main() {
   trailTex.generateMipmaps = true; trailTex.needsUpdate = true;
   const blank = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat); blank.needsUpdate = true;
 
-  const step = QUALITY === 'low' ? 12 : 7;
+  // sharp orthophoto window (canvas composed from tiles) and the 1 m patch rectangle
+  const NEAR_M = 1024, NEAR_PX = QUALITY === 'low' ? 1024 : 2048;
+  const nearCanvas = document.createElement('canvas'); nearCanvas.width = nearCanvas.height = NEAR_PX;
+  const nearTex = new THREE.CanvasTexture(nearCanvas);
+  nearTex.colorSpace = THREE.SRGBColorSpace; nearTex.flipY = false; nearTex.anisotropy = aniso;
+  nearTex.minFilter = THREE.LinearMipmapLinearFilter;
+  const near = {
+    map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: { value: new THREE.Vector4(0, 0, 0, 0) },
+  };
+  const noNear = { map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: near.patch };
+  const step = QUALITY === 'low' ? 12 : 6;
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
-  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures });
+  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, lowerUnderPatch: true });
+  const patchMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near });
   const innerMesh = new THREE.Mesh(innerGeo, innerMat);
   innerMesh.receiveShadow = true;
+
+  // 1 m patch mesh around the camera (laser-scanned detail), rebuilt as the camera moves;
+  // the coarse mesh is pushed down underneath it by its shader
+  const PATCH = 420, PSTEP = QUALITY === 'low' ? 2.5 : 1.25;
+  let patchMesh = null, patchC = { x: Infinity, z: Infinity };
+  function updatePatch(cx, cz) {
+    if (Math.hypot(cx - patchC.x, cz - patchC.z) < 90) return;
+    if (!inner.inside(cx, cz, 60)) { near.patch.value.set(0, 0, 0, 0); if (patchMesh) patchMesh.visible = false; patchC = { x: cx, z: cz }; return; }
+    const x0 = Math.max(IB[0], Math.min(IB[2] - PATCH, Math.round(cx / 10) * 10 - PATCH / 2));
+    const z0 = Math.max(IB[1], Math.min(IB[3] - PATCH, Math.round(cz / 10) * 10 - PATCH / 2));
+    const n = Math.round(PATCH / PSTEP);
+    const g = gridGeometry(x0, z0, x0 + PATCH, z0 + PATCH, n, n, (x, z) => terrain.height(x, z), 6);
+    if (patchMesh) { patchMesh.geometry.dispose(); patchMesh.geometry = g; patchMesh.visible = true; }
+    else { patchMesh = new THREE.Mesh(g, patchMat); patchMesh.receiveShadow = true; scene.add(patchMesh); }
+    near.patch.value.set(x0, z0, x0 + PATCH, z0 + PATCH);
+    patchC = { x: cx, z: cz };
+  }
+  // sharp orthophoto window, composed from the 0.5 m tiles over the 2 m base image
+  let nearC = { x: Infinity, z: Infinity };
+  const nearCtx = nearCanvas.getContext('2d');
+  function updateNear(cx, cz) {
+    if (Math.hypot(cx - nearC.x, cz - nearC.z) < 250) return;
+    nearC = { x: cx, z: cz };
+    const x0 = Math.round(cx / 64) * 64 - NEAR_M / 2, z0 = Math.round(cz / 64) * 64 - NEAR_M / 2;
+    const k = NEAR_PX / NEAR_M;
+    const su = innerBmp.width / (IB[2] - IB[0]), sv = innerBmp.height / (IB[3] - IB[1]);
+    nearCtx.fillStyle = '#556655'; nearCtx.fillRect(0, 0, NEAR_PX, NEAR_PX);
+    nearCtx.drawImage(innerBmp, (x0 - IB[0]) * su, (z0 - IB[1]) * sv, NEAR_M * su, NEAR_M * sv, 0, 0, NEAR_PX, NEAR_PX);
+    for (const [key, img] of tileImgs) {
+      const [i, j] = key.split(',').map(Number);
+      const tx = TO[0] + i * TS, tz = TO[1] + j * TS;
+      if (tx + TS < x0 || tz + TS < z0 || tx > x0 + NEAR_M || tz > z0 + NEAR_M) continue;
+      nearCtx.drawImage(img, (tx - x0) * k, (tz - z0) * k, TS * k, TS * k);
+    }
+    nearTex.needsUpdate = true;
+    near.rect.value.set(x0, z0, x0 + NEAR_M, z0 + NEAR_M);
+  }
   scene.add(innerMesh);
 
   status('Budowanie panoramy Tatr…'); await frame();
@@ -199,7 +273,7 @@ async function main() {
     const h = terrain.base(x, z);
     return inner.inside(x, z, shrink) ? h - 60 : h;
   });
-  const outerMesh = new THREE.Mesh(outerGeo, terrainMaterial({ map: outerTex, trailMap: blank, bounds: OB, detail: false, env: shade, aoStrength: 0.6, textures }));
+  const outerMesh = new THREE.Mesh(outerGeo, terrainMaterial({ map: outerTex, trailMap: blank, bounds: OB, detail: false, env: shade, aoStrength: 0.6, textures, near: noNear }));
   scene.add(outerMesh);
 
   // ---------- lakes
@@ -217,7 +291,7 @@ async function main() {
   const TH = new Float32Array(N);
   for (let i = 0; i < N; i++) TH[i] = terrain.height(trail.X[i], trail.Z[i]);
   const THs = smoothArr(TH, 6);
-  const ground = (x, z) => inner.inside(x, z) ? meshHeight(innerGeo, x, z) : terrain.base(x, z);
+  const ground = (x, z) => terrain.height(x, z);
   const EYE = new Float32Array(N);
   for (let i = 0; i < N; i++) EYE[i] = Math.max(THs[i], ground(trail.X[i], trail.Z[i]) + 0.05);
   const profile = smoothArr(TH, 30);
@@ -239,7 +313,8 @@ async function main() {
       if (terrain.maskAt(trailWide, x, z) > 0.05 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
       if (c === 10 && terrain.maskAt(clearing, x, z) > 0) continue;
       const h = terrain.height(x, z);
-      if (c === 10 && h < 1560) spruce.push(x, h, z);
+      // Copernicus is a surface model (includes the canopy), GUGiK is bare ground
+      if (c === 10 && h < 1560) spruce.push(x, h, z, terrain.hasDTM(x, z) ? 0 : 1);
       else if (c === 30 && (h < 1530 || h > 1820)) continue;
       else if (h < 1950 && terrain.normal(x, z, 4).y > 0.8) pine.push(x, h, z);
     }
@@ -330,8 +405,8 @@ async function main() {
     light.ambCol.value.copy(amb).multiplyScalar(w.amb * (0.08 + 0.92 * day));
     // scene lights reproduce the tuned sun/ambient colours (Lambert divides by PI)
     sunLight.color.copy(light.sunCol.value); sunLight.intensity = 1.15 * Math.PI;
-    hemi.color.copy(light.ambCol.value).multiplyScalar(1.1);
-    hemi.groundColor.copy(light.ambCol.value).multiplyScalar(0.45);
+    hemi.color.copy(light.ambCol.value).multiplyScalar(1.55);
+    hemi.groundColor.copy(light.ambCol.value).multiplyScalar(0.8);
     hemi.intensity = Math.PI;
     const fogDay = new THREE.Color(0.66, 0.74, 0.84).lerp(new THREE.Color(0.9, 0.7, 0.55), low * 0.7);
     const fogGrey = new THREE.Color(0.7, 0.72, 0.74);
@@ -589,6 +664,11 @@ async function main() {
       sunLight.position.copy(light.sunDir.value).multiplyScalar(3000).add(sunLight.target.position);
     }
     forest.update(camera);
+    {
+      const fx = state.mode === 'walk' ? camera.position.x : hiker.position.x;
+      const fz = state.mode === 'walk' ? camera.position.z : hiker.position.z;
+      updatePatch(fx, fz); updateNear(fx, fz);
+    }
     composer.render();
     requestAnimationFrame(tick);
   }
@@ -599,7 +679,7 @@ async function main() {
 async function loadTextures() {
   const S = 1024;
   const layers = await Promise.all(TEX_NAMES.map(async (n) => {
-    const [d, nm] = await Promise.all([bitmap(texUrls[`./textures/${n}_diff.jpg`]), bitmap(texUrls[`./textures/${n}_nor.jpg`])]);
+    const [d, nm] = await Promise.all([bitmap(`textures/${n}_diff.jpg`), bitmap(`textures/${n}_nor.jpg`)]);
     return { d, nm };
   }));
   const D = new Uint8Array(S * S * 4 * layers.length), Nm = new Uint8Array(S * S * 4 * layers.length);

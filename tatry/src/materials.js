@@ -118,9 +118,12 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
 
 // Satellite-textured terrain with close-range procedural detail (rock grain, grass, trail),
 // lit by the scene lights (so it receives tree and rock shadows) plus terrain shadow and AO.
-export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1, textures }) {
+// `near` (shared object) holds the sharp orthophoto window around the camera and the rectangle
+// covered by the 1 m patch mesh; `lowerUnderPatch` hides this mesh where the patch replaces it.
+export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1, textures, near, lowerUnderPatch = false }) {
   const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const u = {
+    nearMap: near.map, nearRect: near.rect, patchRect: near.patch, lowerInside: { value: lowerUnderPatch ? 1 : 0 },
     texD: { value: textures.diff }, texN: { value: textures.nor },
     texMean: { value: textures.mean }, texScale: { value: textures.scale },
     satMap: { value: map }, trailMap: { value: trailMap },
@@ -129,12 +132,17 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, env, u);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWorld; varying vec3 vWN;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normal;');
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWorld; varying vec3 vWN; uniform vec4 patchRect; uniform float lowerInside;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normal;
+        if (lowerInside > 0.5 && vWorld.x > patchRect.x + 6.0 && vWorld.x < patchRect.z - 6.0 && vWorld.z > patchRect.y + 6.0 && vWorld.z < patchRect.w - 6.0) {
+          transformed.y -= 30.0; vWorld.y -= 30.0;
+        }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         varying vec3 vWorld; varying vec3 vWN;
         uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail;
+        uniform sampler2D nearMap; uniform vec4 nearRect;
         uniform sampler2DArray texD; uniform sampler2DArray texN; uniform vec3 texMean[6]; uniform float texScale[6];
         ${NOISE}
         // one texture layer at two scales, blended by noise to hide tiling; returns colour and tangent normal
@@ -153,6 +161,14 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
       {
         vec2 uv = (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy);
         vec3 sat = texture2D(satMap, uv).rgb;
+        {
+          // sharper orthophoto (0.5 m) in a window around the camera, faded in at its edges
+          vec2 nuv = (vWorld.xz - nearRect.xy) / (nearRect.zw - nearRect.xy);
+          if (nuv.x > 0.0 && nuv.y > 0.0 && nuv.x < 1.0 && nuv.y < 1.0) {
+            float e = min(min(nuv.x, 1.0 - nuv.x), min(nuv.y, 1.0 - nuv.y));
+            sat = mix(sat, texture2D(nearMap, nuv).rgb, smoothstep(0.0, 0.06, e));
+          }
+        }
         // lift the baked-in satellite shadows a bit, real-time light adds relief back
         sat = sat * 1.55 + 0.01;
         vec3 N = normalize(vWN);

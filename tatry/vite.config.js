@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 
-// `npm run build` produces one self-contained HTML file (data included) in ../rysy/
+// `npm run build` produces one HTML file (code inlined) in ../rysy/, plus the data and textures
+// copied from public/ next to it
 export default defineConfig({
   base: './',
-  assetsInclude: ['**/*.u16'],
   plugins: [viteSingleFile()],
   build: { outDir: '../rysy', emptyOutDir: true, target: 'es2022', chunkSizeWarningLimit: 4000 },
 });

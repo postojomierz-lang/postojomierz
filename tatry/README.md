@@ -4,8 +4,8 @@ Wirtualny spacer szlakiem **Morskie Oko → Rysy** w przeglądarce (three.js). T
 satelitarne i przebieg szlaku pochodzą z otwartych danych; to, czego w danych nie ma
 (skały i trawa z bliska, drzewa, niebo, pogoda), silnik generuje sam.
 
-Build: `npm install && npm run build` → jeden plik `../rysy/index.html` (z danymi, ok. 3,4 MB),
-serwowany przez GitHub Pages z `main`. `?q=low` włącza lżejszą wersję dla słabszych urządzeń.
+Build: `npm install && npm run build` → `../rysy/index.html` (kod) oraz `../rysy/data` i `../rysy/textures`
+(kopiowane z `public/`), serwowane przez GitHub Pages z `main`. `?q=low` włącza lżejszą wersję.
 
 ## Sterowanie
 W/↑ i S/↓: idź szlakiem, Spacja: idź sam (jak na bieżni), Shift: szybciej, +/−: przyspieszenie
@@ -15,16 +15,20 @@ Kliknięcie w profil wysokości przenosi w to miejsce szlaku.
 HUD pokazuje nachylenie szlaku i to, jakie nachylenie ustawiłaby domowa bieżnia (max 15%).
 Tempo marszu liczone jest wzorem Toblera.
 
-## Dane (`tools/prepare.py` → `src/data/`)
+## Dane
 | Warstwa | Źródło | Rozdzielczość |
 |---|---|---|
-| wysokości | Copernicus DEM GLO-30 | 30 m (panorama: ~58 m) |
-| zdjęcie | Sentinel-2 L2A, 2 lipca 2025 | 10 m |
+| wysokości przy szlaku | GUGiK NMT (lidar) | 1 m, kafelki 256 m w pasie ±420 m od szlaku |
+| wysokości w okolicy | GUGiK NMT; Słowacja: Copernicus DEM GLO-30 | 4 m |
+| panorama | Copernicus DEM GLO-30 | ~58 m |
+| zdjęcie przy szlaku | ortofotomapa GUGiK (rocznik ~2012: wysokie słońce, mało cieni) | 0,5 m |
+| zdjęcie w okolicy | ortofotomapa GUGiK; Słowacja: Sentinel-2 (2.07.2025) | 2 m / 10 m |
 | las / kosodrzewina | ESA WorldCover 2021 | 10 m |
 | szlak, jeziora | OpenStreetMap przez Overture Maps | wektor |
+| tekstury z bliska | Poly Haven (CC0) | 1K |
 
-Wszystko jest czytane bezpośrednio z publicznych zasobów na AWS. Szlak to najkrótsza ścieżka
-w sieci ścieżek OSM od schroniska do szczytu.
+Przygotowanie: `python3 tools/prepare.py` (panorama, las, szlak), potem `python3 tools/prepare_gugik.py`
+(pobiera z geoportal.gov.pl, pamięć podręczna w `tools/.cache/`). Wyniki trafiają do `public/data/`.
 
-Kolejny krok jakościowy: LiDAR GUGiK (1 m) i ortofotomapa (25 cm). Z tego środowiska serwery
-GUGiK nie były dostępne, ale `prepare.py` da się łatwo przestawić na te pliki.
+W silniku: siatka 1,25 m wokół kamery (przebudowywana w ruchu) na siatce 6 m, okno ostrej ortofotomapy
+1×1 km wokół kamery, cienie gór liczone z modelu wysokości.
