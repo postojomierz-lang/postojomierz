@@ -2,6 +2,7 @@
 import { mulberry } from './rng.js';
 
 export const T_OPEN = 0, T_SOLID = 1, T_WATER = 2, T_LOW = 3; // LOW = solid but short: blocks movement, not line of sight
+export const T_EDGE = 4; // off the edge of the round table: nobody walks there, but you can see and shoot across
 
 export const THEMES = ['wood', 'carpet', 'kitchen', 'sand', 'grass', 'snow'];
 
@@ -14,22 +15,39 @@ const OBSTACLES = {
   snow:    { tall: ['snowman', 'rock', 'bucket'], low: ['twigs'], water: ['ice'] },
 };
 
-// Map size grows with the number of armies so 8 armies still have room to build.
+// Two armies face each other across a rectangle. Three or more sit at the corners of a regular
+// polygon on a round table, so every army is exactly as far from its neighbours and from the middle.
+// (No Math.sin/cos: the map must come out identical on every machine.)
+const ZONE = { 3: 18, 4: 17, 5: 16, 6: 15, 7: 14, 8: 13 };   // zone edge (cells)
+const NEIGHBOUR = 52;                                        // distance between neighbouring HQ zones
 export function mapSize(n) {
-  if (n <= 2) return { W: 64, H: 40, zw: 16, zh: 40 };
-  if (n <= 4) return { W: 96, H: 64, zw: 22, zh: 17 };
-  return { W: 140, H: 96, zw: 24, zh: 18 };
+  if (n <= 2) return { W: 64, H: 40, zw: 16, zh: 40, round: false };
+  n = Math.min(8, n);
+  const z = ZONE[n], d = NEIGHBOUR / (2 * sinT(PI / n));
+  const S = 2 * Math.ceil(d + z * 0.70715 + 2);
+  return { W: S, H: S, zw: z, zh: z, round: true };
 }
+const PI = 3.141592653589793;
+function sinT(a) {   // Taylor series after range reduction: plain + and *, so bit-identical everywhere
+  a = a % (2 * PI); if (a > PI) a -= 2 * PI; if (a < -PI) a += 2 * PI;
+  if (a > PI / 2) a = PI - a; else if (a < -PI / 2) a = -PI - a;
+  const a2 = a * a;
+  return a * (1 - a2 / 6 * (1 - a2 / 20 * (1 - a2 / 42 * (1 - a2 / 72 * (1 - a2 / 110 * (1 - a2 / 156))))));
+}
+const cosT = a => sinT(a + PI / 2);
+export const tableRadius = (W, H) => Math.min(W, H) / 2 - 1;
 
-// Deployment zones for 2..8 armies.
-function zoneRects(n, W, H, zw, zh) {
-  if (n === 2) return [[0, 0, zw, H], [W - zw, 0, zw, H]];
-  const spots = [
-    [0, H - zh], [W - zw, 0], [W - zw, H - zh], [0, 0],                     // corners
-    [Math.floor(W / 2 - zw / 2), 0], [Math.floor(W / 2 - zw / 2), H - zh],  // top / bottom middle
-    [0, Math.floor(H / 2 - zh / 2)], [W - zw, Math.floor(H / 2 - zh / 2)],  // left / right middle
-  ];
-  return spots.slice(0, n).map(([x, y]) => [x, y, zw, zh]);
+// Deployment zones: the first army (you) sits at the bottom, the rest go round the table.
+function zoneRects(n, W, H, zw, zh, round) {
+  if (!round) return [[0, 0, zw, H], [W - zw, 0, zw, H]];
+  const R = tableRadius(W, H), d = R - zw / 2 * 1.4143 - 1;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const a = PI / 2 + i * 2 * PI / n;
+    const cx = W / 2 + d * cosT(a), cy = H / 2 + d * sinT(a);
+    out.push([Math.round(cx - zw / 2), Math.round(cy - zh / 2), zw, zh]);
+  }
+  return out;
 }
 
 // Every visual style a household obstacle can have, by grid kind (used by Claude-made layouts too).
@@ -42,11 +60,16 @@ export const STYLES = {
 // layout (optional): { theme, objects: [{ kind: 'tall'|'low'|'water', style, x, y, w, h }], decor: [{ kind, x, y }] }
 export function makeMap({ teams, theme, seed, layout = null }) {
   const rng = mulberry(seed);
-  const { W, H, zw, zh } = mapSize(teams);
+  const { W, H, zw, zh, round } = mapSize(teams);
   if (layout && THEMES.includes(layout.theme)) theme = layout.theme;
   theme = THEMES.includes(theme) ? theme : THEMES[Math.floor(rng() * THEMES.length)];
   const grid = new Uint8Array(W * H);
-  const zones = zoneRects(teams, W, H, zw, zh).map(([x, y, w, h]) => ({ x, y, w, h }));
+  const R = round ? tableRadius(W, H) : 0;
+  if (round) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const dx = x + 0.5 - W / 2, dy = y + 0.5 - H / 2;
+    if (dx * dx + dy * dy > R * R) grid[y * W + x] = T_EDGE;
+  }
+  const zones = zoneRects(teams, W, H, zw, zh, round).map(([x, y, w, h]) => ({ x, y, w, h }));
   const inZone = (x, y) => zones.some(z => x >= z.x - 1 && x < z.x + z.w + 1 && y >= z.y - 1 && y < z.y + z.h + 1);
   const objects = [];
   const pal = OBSTACLES[theme];
@@ -117,40 +140,70 @@ export function makeMap({ teams, theme, seed, layout = null }) {
       decor.push({ x, y, kind: ['palm', 'pine', 'bush'].includes(d.kind) ? d.kind : 'bush', seed: Math.floor(rng() * 1e9) });
     }
   } else {
-  for (let i = 0; i < Math.round(7 * area); i++) {
+  // Random battlefield, rotationally symmetric: every obstacle is copied once per army,
+  // turned around the middle of the table, so nobody gets better cover than the others.
+  const n = zones.length, turns = [];
+  for (let k = 0; k < n; k++) {
+    const a = k * 2 * PI / n;
+    turns.push({ c: cosT(a), s: sinT(a), swap: Math.round(a / (PI / 2)) % 2 === 1 });
+  }
+  const copies = (x, y, w, h) => turns.map(({ c, s, swap }) => {
+    const px = x + w / 2 - W / 2, py = y + h / 2 - H / 2;
+    const ww = swap ? h : w, hh = swap ? w : h;
+    return { x: Math.round(px * c - py * s + W / 2 - ww / 2), y: Math.round(px * s + py * c + H / 2 - hh / 2), w: ww, h: hh };
+  });
+  const fits = rects => {
+    const taken = new Set();
+    for (const r of rects) {
+      if (r.x < 2 || r.y < 2 || r.x + r.w > W - 2 || r.y + r.h > H - 2) return false;
+      for (let yy = r.y - 1; yy < r.y + r.h + 1; yy++) for (let xx = r.x - 1; xx < r.x + r.w + 1; xx++) {
+        if (inZone(xx, yy) || grid[yy * W + xx] !== T_OPEN || taken.has(yy * W + xx)) return false;
+      }
+      for (let yy = r.y - 1; yy < r.y + r.h + 1; yy++) for (let xx = r.x - 1; xx < r.x + r.w + 1; xx++) taken.add(yy * W + xx);
+    }
+    return true;
+  };
+  const placeSym = (kind, style, w, h) => {
+    for (let t = 0; t < 40; t++) {
+      const rects = copies(2 + Math.floor(rng() * (W - w - 4)), 2 + Math.floor(rng() * (H - h - 4)), w, h);
+      if (!fits(rects)) continue;
+      const seed0 = Math.floor(rng() * 1e9);
+      for (const r of rects) {
+        if (kind === T_WATER) putWater(style, r.x, r.y, r.w, r.h);
+        else {
+          for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) grid[yy * W + xx] = kind;
+          objects.push({ kind, style, ...r, seed: seed0 });
+        }
+      }
+      return true;
+    }
+    return false;
+  };
+  let open = 0;
+  for (let c = 0; c < W * H; c++) if (grid[c] === T_OPEN) open++;
+  const per = open / 2000 / n;
+  for (let i = 0; i < Math.round(7 * per); i++) {
     const style = pick(pal.tall);
     const big = style === 'books' || style === 'shoebox' || style === 'toybox' || style === 'cereal' || style === 'castle';
     const w = big ? 3 + Math.floor(rng() * 3) : 2, h = big ? 2 + Math.floor(rng() * 2) : 2;
-    tryPlace(T_SOLID, style, rng() < 0.5 ? w : h, rng() < 0.5 ? h : w);
+    placeSym(T_SOLID, style, rng() < 0.5 ? w : h, rng() < 0.5 ? h : w);
   }
-  for (let i = 0; i < Math.round(4 * area); i++) {
+  for (let i = 0; i < Math.round(4 * per); i++) {
     const long = 4 + Math.floor(rng() * 4);
     const horiz = rng() < 0.5;
-    tryPlace(T_LOW, pick(pal.low), horiz ? long : 1, horiz ? 1 : long);
+    placeSym(T_LOW, pick(pal.low), horiz ? long : 1, horiz ? 1 : long);
   }
-  for (let i = 0; i < Math.round(2 * area); i++) {
-    const w = 4 + Math.floor(rng() * 5), h = 3 + Math.floor(rng() * 4);
-    // rasterise an ellipse-ish puddle into the grid
-    for (let n = 0; n < 40; n++) {
-      const x = 3 + Math.floor(rng() * (W - w - 6)), y = 3 + Math.floor(rng() * (H - h - 6));
-      let ok = true;
-      for (let yy = y - 1; yy < y + h + 1 && ok; yy++) for (let xx = x - 1; xx < x + w + 1 && ok; xx++) if (inZone(xx, yy) || grid[yy * W + xx] !== T_OPEN) ok = false;
-      if (!ok) continue;
-      const cells = [];
-      for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
-        const dx = (xx + 0.5 - x - w / 2) / (w / 2), dy = (yy + 0.5 - y - h / 2) / (h / 2);
-        if (dx * dx + dy * dy <= 1.05 + (rng() - 0.5) * 0.3) { grid[yy * W + xx] = T_WATER; cells.push(yy * W + xx); }
-      }
-      objects.push({ kind: T_WATER, style: pick(pal.water), x, y, w, h, cells, seed: Math.floor(rng() * 1e9) });
-      break;
+  for (let i = 0; i < Math.max(1, Math.round(2 * per)); i++) placeSym(T_WATER, pick(pal.water), 4 + Math.floor(rng() * 4), 3 + Math.floor(rng() * 3));
+  // a few harmless palm trees / decorations, also one per army
+  for (let i = 0; i < Math.round(6 * per); i++) {
+    const x0 = 1 + rng() * (W - 2), y0 = 1 + rng() * (H - 2), seed0 = Math.floor(rng() * 1e9);
+    for (const { c, s } of turns) {
+      const px = x0 - W / 2, py = y0 - H / 2, x = px * c - py * s + W / 2, y = px * s + py * c + H / 2;
+      if (x < 1 || y < 1 || x > W - 1 || y > H - 1) continue;
+      const cell = Math.floor(y) * W + Math.floor(x);
+      if (grid[cell] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
+      decor.push({ x, y, kind: theme === 'snow' ? 'pine' : theme === 'grass' ? 'bush' : 'palm', seed: seed0 });
     }
-  }
-  // a few harmless palm trees / decorations
-  for (let i = 0; i < Math.round(6 * area); i++) {
-    const x = 1 + rng() * (W - 2), y = 1 + rng() * (H - 2);
-    const c = Math.floor(y) * W + Math.floor(x);
-    if (grid[c] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
-    decor.push({ x, y, kind: theme === 'snow' ? 'pine' : theme === 'grass' ? 'bush' : 'palm', seed: Math.floor(rng() * 1e9) });
   }
   }
 
@@ -185,5 +238,5 @@ export function makeMap({ teams, theme, seed, layout = null }) {
     for (let k = objects.length - 1; k >= 0; k--) if (objects[k].removed) objects.splice(k, 1);
   }
 
-  return { W, H, theme, grid, zones, objects, decor, seed, title: layout && layout.title || '', briefing: layout && layout.briefing || '', tint: layout && /^#[0-9a-f]{6}$/i.test(layout.floorColor || '') ? layout.floorColor : null };
+  return { W, H, theme, grid, zones, objects, decor, seed, round, R, title: layout && layout.title || '', briefing: layout && layout.briefing || '', tint: layout && /^#[0-9a-f]{6}$/i.test(layout.floorColor || '') ? layout.floorColor : null };
 }

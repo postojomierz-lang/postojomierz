@@ -64,6 +64,19 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .card.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 .card.off { opacity: .4; }
 .hint { font-size: 12px; color: var(--muted); }
+.orders { display: flex; align-items: center; gap: 6px; }
+.orders small { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.orders select { padding: 5px 6px; max-width: 150px; }
+.seg { display: flex; }
+.seg button { padding: 5px 9px; border-radius: 0; }
+.seg button:first-child { border-radius: 6px 0 0 6px; }
+.seg button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+.seg button.on { background: var(--accent); color: #1a1204; }
+.army .tg { grid-column: 2 / 4; font-size: 11px; color: var(--ink-2); }
+.army .tg.me { color: var(--danger); font-weight: 600; }
+.army.pick { cursor: pointer; }
+.army.pick:hover { background: rgba(255,255,255,.08); }
+.army.focus { box-shadow: 0 0 0 1px var(--danger) inset; }
 
 #toast { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
 #toast div { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-weight: 600; animation: toast 3.2s ease forwards; }

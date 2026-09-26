@@ -102,3 +102,33 @@ export function aiDeploy(sim, teamId, seed) {
     if (tryPlace(type, lo, hi)) { infantry++; fails = 0; } else fails++;
   }
 }
+
+// Pick this round's main target and stance: punish whoever hurt us most, prefer close and weak
+// armies but do not pile on someone the others are already beating up, and dig in when the
+// armies coming for us are much stronger than we are.
+// Call it for every computer army, twice: the second pass sees everybody's first choice.
+export function aiOrders(sim, teamId, seed) {
+  const t = sim.teams[teamId];
+  if (!t.alive) return;
+  const rng = mulberry(seed * 31 + teamId * 977 + sim.round * 7);
+  const value = new Array(sim.teams.length).fill(0);
+  for (const e of sim.ents) if (!e.dead && e.def.cls !== 'hq') value[e.team] += e.def.cost * (e.hp > 0 ? e.hp / e.maxHp : 0.5);
+  const hq = id => sim.byId.get(sim.teams[id].hq);
+  const me = hq(teamId), diag = Math.sqrt(sim.W * sim.W + sim.H * sim.H);
+  let best = -1, bs = Infinity, threat = 0;
+  for (const o of sim.teams) {
+    if (o.id === teamId || !o.alive) continue;
+    const h = hq(o.id);
+    const d = me && h ? Math.sqrt((h.x - me.x) ** 2 + (h.z - me.z) ** 2) / diag : 0.5;
+    const weak = value[o.id] / (value[teamId] + 50);
+    const grudge = Math.min(6, t.hurtBy[o.id] / 40);
+    const hqHurt = h ? 1 - h.hp / h.maxHp : 0;      // finish off a crumbling HQ
+    let piled = 0;
+    for (const x of sim.teams) if (x.alive && x.id !== teamId && x.id !== o.id && sim.focusOf(x.id) === o.id && x.stance === 'attack') piled++;
+    const s = d * 10 + weak * 3 - grudge - hqHurt * 4 + piled * (hqHurt > 0.6 ? 0 : 3) + rng() * 1.5;
+    if (s < bs) { bs = s; best = o.id; }
+    if (sim.focusOf(o.id) === teamId && o.stance === 'attack') threat += value[o.id];
+  }
+  const defend = value[teamId] < threat * 0.7;
+  sim.setOrders(teamId, { focus: best, stance: defend ? 'defend' : 'attack' });
+}

@@ -275,6 +275,15 @@ export function buildTape(map, color = '#efe2b4', inset = 0) {
   const m = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
   const strip = (x, z, w, d) => { const s = new THREE.Mesh(new THREE.BoxGeometry(w, 0.02, d), m); s.position.set(x, 0.012, z); s.receiveShadow = true; g.add(s); };
   const t = 0.5;
+  if (map.round) {
+    // round table: a tape circle, and everything beyond it in shadow
+    const ring = new THREE.Mesh(new THREE.RingGeometry(map.R, map.R + t, 128), m);
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.012; ring.receiveShadow = true; g.add(ring);
+    const off = new THREE.Mesh(new THREE.RingGeometry(map.R + t, map.R + 400, 128, 1),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false }));
+    off.rotation.x = -Math.PI / 2; off.position.y = 0.01; g.add(off);
+    return g;
+  }
   strip(0, wz(0) - t / 2 - inset, map.W + 2 * t, t); strip(0, wz(map.H) + t / 2 + inset, map.W + 2 * t, t);
   strip(wx(0) - t / 2 - inset, 0, t, map.H); strip(wx(map.W) + t / 2 + inset, 0, t, map.H);
   return g;

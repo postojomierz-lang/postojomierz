@@ -1,6 +1,6 @@
 import { makeMap } from '../src/sim/map.js';
 import { Sim } from '../src/sim/sim.js';
-import { aiDeploy } from '../src/sim/ai.js';
+import { aiDeploy, aiOrders } from '../src/sim/ai.js';
 import { RULES } from '../src/data/catalog.js';
 
 function play(seed, teams) {
@@ -11,6 +11,7 @@ function play(seed, teams) {
   const t0 = Date.now();
   while (sim.phase !== 'over' && sim.round <= RULES.maxRounds + 1) {
     for (const t of sim.teams) aiDeploy(sim, t.id, seed);
+    for (let pass = 0; pass < 2; pass++) for (const t of sim.teams) aiOrders(sim, t.id, seed);
     const placed = sim.ents.filter(e => !e.dead).length;
     sim.startBattle();
     while (sim.phase === 'battle') { sim.step(); ticks++; sim.events.length = 0; }
