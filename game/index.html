@@ -26,6 +26,7 @@
     <button data-speed="2">2×</button>
     <button data-speed="4">4×</button>
   </div>
+  <button id="btnSaveMap" class="ghost" title="Save this battlefield to a file you can share">Save map</button>
   <button id="btnHelp" class="ghost">Controls</button>
   <button id="btnMenu" class="ghost">New game</button>
 </header>
@@ -46,6 +47,28 @@
   </div>
   <div class="cards" id="cards"></div>
   <div class="hint" id="hint">Pick a piece, then click (or drag) inside your zone to place it. <b>R</b> rotates · right-click removes · <b>Esc</b> cancels.</div>
+</footer>
+
+<footer class="build panel" id="editor" hidden>
+  <div class="build-head">
+    <div class="tabs" id="edTabs"></div>
+    <div class="grow"></div>
+    <input type="text" id="edTitle" class="edtitle" placeholder="Map name" maxlength="80">
+    <select id="edTheme" title="Floor"></select>
+    <input type="color" id="edColor" value="#b98a55" title="Floor colour">
+    <span class="muted" id="edCount"></span>
+  </div>
+  <div class="chips" id="edCards"></div>
+  <div class="build-head">
+    <span class="hint">Drag on the floor to draw (size = drag). Click for a default size. Right-click removes. Army zones must stay clear.</span>
+    <div class="grow"></div>
+    <button type="button" id="edDrawing" class="ghost">Import drawing</button><input type="file" id="edDrawingFile" accept="image/*" hidden>
+    <button type="button" id="edOpen" class="ghost">Open file</button><input type="file" id="edOpenFile" accept=".json,application/json" hidden>
+    <button type="button" id="edSave" class="ghost">Save file</button>
+    <button type="button" id="edClear" class="ghost">Clear</button>
+    <button type="button" id="edExit" class="ghost">Exit</button>
+    <button type="button" id="edPlay" class="go">Play this map ▶</button>
+  </div>
 </footer>
 
 <div id="toast"></div>
@@ -69,6 +92,14 @@
         <select id="optColor"></select>
       </label>
       <label>Battlefield
+        <select id="optSource">
+          <option value="random">Random battlefield</option>
+          <option value="library">From the map library</option>
+          <option value="file">Load a map file</option>
+          <option value="drawing">From a hand-drawn map (photo)</option>
+        </select>
+      </label>
+      <label id="rowTheme">Floor
         <select id="optTheme">
           <option value="">Random</option>
           <option value="wood">Living room floor</option>
@@ -77,9 +108,16 @@
           <option value="sand">Sandbox</option>
           <option value="grass">Back garden</option>
           <option value="snow">Snowy yard</option>
-          <option value="claude-text">✨ Describe it (Claude)</option>
-          <option value="claude-photo">📷 From a photo (Claude)</option>
         </select>
+      </label>
+      <label id="rowLibrary">Map
+        <select id="optLibrary"></select>
+      </label>
+      <label id="rowFile">Map file (.pfmap.json)
+        <input type="file" id="optMapFile" accept=".json,application/json">
+      </label>
+      <label id="rowDrawing">Photo of your drawing
+        <input type="file" id="optDrawing" accept="image/*">
       </label>
       <label>Enemy commanders
         <select id="optDiff">
@@ -97,11 +135,23 @@
       </label>
       <label class="check"><input type="checkbox" id="optSound" checked> Sound effects</label>
     </div>
-    <div id="claudeBox" class="claude" hidden>
-      <label id="photoRow">Photo of a floor, table or desk
+    <div id="drawingHelp" class="claude" hidden>
+      <p class="note">Draw on white paper with markers: <b>black</b> = books, boxes and walls · <b>red</b> = LEGO bricks · <b>blue</b> = spills · <b>green</b> lines = low cover (pencils). Keep the army zones empty, then photograph just the sheet from above. Everything is read on your device; nothing is uploaded.</p>
+      <div><button type="button" id="btnBlank" class="ghost">Download a blank sheet to print</button></div>
+    </div>
+    <details id="advanced" class="claude">
+      <summary>Advanced: let Claude design the battlefield (needs your own Anthropic API key)</summary>
+      <label class="check"><input type="checkbox" id="optUseClaude"> Use Claude for this battlefield</label>
+      <label>Claude designs it from
+        <select id="optClaudeMode">
+          <option value="text">A description</option>
+          <option value="photo">A photo of a real floor, table or desk</option>
+        </select>
+      </label>
+      <label id="photoRow">Photo
         <input type="file" id="optPhoto" accept="image/*">
       </label>
-      <label>Describe the battlefield <span class="muted" id="promptHint">(optional with a photo)</span>
+      <label>Description <span class="muted" id="promptHint">(optional with a photo)</span>
         <textarea id="optPrompt" rows="2" placeholder="e.g. Breakfast table: cereal box fortress, spilled milk river, spoons as bridges"></textarea>
       </label>
       <div class="grid2">
@@ -116,10 +166,10 @@
           </select>
         </label>
       </div>
-      <p class="note">Your description or photo is sent to Anthropic's Claude API to lay out the map. The key is saved only in this browser; use a key with a spending limit. If anything fails you get a random battlefield instead.</p>
-    </div>
+      <p class="note">Your description or photo is sent to Anthropic's Claude API and billed to your key. The key is saved only in this browser; use one with a spending limit. If anything fails you get a random battlefield instead.</p>
+    </details>
     <p class="note">Online battles against other players come in a later stage. Right now the other armies are commanded by the computer.</p>
-    <div class="actions"><button value="go" class="go">Tip out the toy box ▶</button></div>
+    <div class="actions"><button value="editor" class="ghost">🛠 Map editor</button><button value="go" class="go">Tip out the toy box ▶</button></div>
   </form>
 </dialog>
 
@@ -143,6 +193,7 @@
       <b>Aircraft</b><span>Fighters hunt aircraft, attack planes hit tanks and guns, bombers make one bombing run near the nearest enemy HQ, transports drop 6 paratroopers. Counter them with anti-air guns, AA missile soldiers and your own fighters.</span>
       <b>Wounded</b><span>Soldiers often go down wounded instead of dying (red cross). A nearby comrade drags them behind cover or home, and field ambulances carry up to 4 back to base. Anyone saved fights again next round for free. Wounded left out in the open bleed out.</span>
       <b>Friendly fire</b><span>Explosions hurt everyone nearby, including your own soldiers. Troops avoid lobbing grenades or shells at enemies standing next to friends, but misses happen.</span>
+      <b>Maps</b><span>Play a random battlefield, pick one from the map library, load a map file a friend sent you, or draw one on paper and photograph it. "Save map" (top bar) saves the current battlefield; the Map editor lets you build your own.</span>
       <b>Minimap</b><span>Click the minimap (bottom right) to jump the camera there.</span>
       <b>Winning</b><span>Destroy the enemy headquarters. After 10 rounds the strongest army wins.</span>
     </div>
