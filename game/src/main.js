@@ -138,7 +138,9 @@ const miniCanvas = $('minimap'), miniCtx = miniCanvas.getContext('2d');
 function miniJump(e) {
   if (!game.sim) return;
   const r = miniCanvas.getBoundingClientRect(), map = game.sim.map;
-  view.lookAt((e.clientX - r.left) / r.width * map.W, (e.clientY - r.top) / r.height * map.H);
+  const f = view.miniFit || { sc: miniCanvas.width / map.W, ox: 0, oy: 0 };
+  const cx = (e.clientX - r.left) * miniCanvas.width / r.width, cy = (e.clientY - r.top) * miniCanvas.height / r.height;
+  view.lookAt((cx - f.ox) / f.sc, (cy - f.oy) / f.sc);
 }
 miniCanvas.addEventListener('pointerdown', e => { miniJump(e); miniCanvas.setPointerCapture(e.pointerId); });
 miniCanvas.addEventListener('pointermove', e => { if (e.buttons & 1) miniJump(e); });

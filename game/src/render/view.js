@@ -660,9 +660,13 @@ export class View {
   }
   drawMinimap(ctx, w, h) {
     if (!this.sim || !this.miniBase) return;
-    const map = this.map, sx = w / map.W, sz = h / map.H;
+    // keep the map's proportions (a round table stays round), centred in the panel
+    const map = this.map, sc = Math.min(w / map.W, h / map.H), sx = sc, sz = sc;
+    const ox = (w - map.W * sc) / 2, oy = (h - map.H * sc) / 2;
+    this.miniFit = { sc, ox, oy };
     ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(this.miniBase, 0, 0, w, h);
+    ctx.save(); ctx.translate(ox, oy);
+    ctx.drawImage(this.miniBase, 0, 0, map.W * sc, map.H * sc);
     if (this.sim.phase === 'deploy') for (const t of this.sim.teams) {
       ctx.strokeStyle = TEAM_COLORS[t.color].main; ctx.lineWidth = 1;
       ctx.strokeRect(t.zone.x * sx + 0.5, t.zone.y * sz + 0.5, t.zone.w * sx - 1, t.zone.h * sz - 1);
@@ -689,6 +693,7 @@ export class View {
       ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.5; ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.stroke();
     }
+    ctx.restore();
   }
 
   keyboardPan(dt) {

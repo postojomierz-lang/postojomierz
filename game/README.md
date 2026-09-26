@@ -12,6 +12,11 @@ comrades drag them behind the nearest cover, medics heal them on the spot, and c
 field ambulances carry them home, and everyone saved fights
 again next round. Explosions cause friendly fire.
 
+With 3 or more armies the battle is fought on a round table: headquarters sit at the corners of a
+regular polygon, so every army is equally far from its neighbours, and random obstacles are
+rotationally symmetric. Every round each army gets orders: a main target (or the nearest enemy)
+and Attack or Defend. 2–6 armies are standard; 8 is an experimental "Chaos" mode.
+
 Battlefields (all free and offline):
 - random, per floor theme;
 - the built-in map library (`src/data/maps.js`);
@@ -35,5 +40,6 @@ npm run dev     # local dev server
 npm test        # AI-vs-AI games, checks the simulation is deterministic
 node test/air.test.mjs   # scripted aircraft / paratrooper / ambulance battle
 node test/medic.test.mjs # wounded dragged to cover, medics heal, ambulances avoid fire
+node test/orders.test.mjs # main target steers the army, Defend keeps it home
 npm run build   # writes a single self-contained ../plastic-front/index.html
 ```

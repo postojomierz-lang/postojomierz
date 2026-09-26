@@ -68,6 +68,8 @@ export class Sim {
     return f >= 0 && f !== teamId && this.teams[f] && this.teams[f].alive ? f : -1;
   }
   defending(teamId) { return this.teams[teamId].stance === 'defend'; }
+  // Stays home this round: everyone when defending; when attacking, every fourth foot soldier guards the HQ.
+  holds(e) { return this.defending(e.team) || (e.def.cls === 'infantry' && !e.free && e.id % 4 === 0); }
   // Round orders for a whole army: main target and stance. Recorded with the placements for replays / online.
   setOrders(teamId, { focus, stance } = {}) {
     const t = this.teams[teamId];
@@ -209,7 +211,7 @@ export class Sim {
       if (!t.alive) continue;
       for (const cls of this.neededClasses(t.id)) this.enemyField(t.id, cls);
       this.homeField(t.id, 'wheel');
-      if (this.defending(t.id)) for (const cls of this.neededClasses(t.id)) if (cls !== 'wheel') this.homeField(t.id, cls);
+      for (const cls of this.neededClasses(t.id)) if (cls !== 'wheel') this.homeField(t.id, cls);
     }
     for (const e of this.ents) {
       if (e.def.cls !== 'plane') continue;
@@ -884,7 +886,7 @@ export class Sim {
     const plane = e.def.cls === 'plane';
     const sight = plane ? 70 : w.range + 6;
     const splashy = (w.splash || 0) >= 0.9 || w.kind === 'grenade' || w.kind === 'arty';
-    const focus = this.focusOf(e.team), defend = this.defending(e.team) && !e.def.static;
+    const focus = this.focusOf(e.team), defend = !e.def.static && !isAir(e) && this.holds(e);
     const cands = [];
     for (const o of this.ents) {
       if (!this.isThreat(o) || !this.canHit(e, o)) continue;
@@ -1018,7 +1020,7 @@ export class Sim {
         gx = z.x + z.w / 2; gz = z.y + z.h / 2;
         if ((gx - e.x) * (gx - e.x) + (gz - e.z) * (gz - e.z) < 4) return;
       } else { gx = o.x; gz = o.z; }
-    } else if (this.defending(e.team)) {
+    } else if (this.holds(e)) {
       // defensive stance: hold inside our zone, walk back if we are outside it
       if (!this.inZone(e.team, e.x, e.z)) { this.followField(e, this.fields.get(e.team + ':home:' + cls), 1); return; }
       if (!tgt) return;
