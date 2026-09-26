@@ -222,21 +222,22 @@ function sandbagRing(b, cx, cz, radius, from, to, layers = 2, n = 10) {
   }
 }
 
+// Emplacements come in two parts: a fixed base and a "turret" that turns to aim.
 function buildMgNest() {
-  const b = new Builder();
+  const b = new Builder(), t = new Builder();
   sandbagRing(b, 0, 0, 0.8, -Math.PI * 0.62, Math.PI * 0.62, 3, 9);
-  b.cyl(0.05, 0.05, 0.4, { p: [0.35, 0.35, 0] });
-  b.limb([0.1, 0.6, 0], [1.0, 0.62, 0], 0.055);
-  b.box(0.3, 0.14, 0.12, { p: [0.25, 0.6, 0], dark: true });
-  const s = pose('rifleman');
-  for (const p of s) {
-    if (p.t === 'l' && p.w > 10) b.limb([p.x1 * S - 0.3, -p.y1 * S - 0.1, 0], [p.x2 * S - 0.3, -p.y2 * S - 0.1, 0], p.w / 2 * S);
-    if (p.t === 'c' && p.r > 5) b.sphere(p.r * S, { p: [p.x * S - 0.3, -p.y * S - 0.1, 0] });
-    if (p.t === 'h') b.add(new THREE.SphereGeometry(7.4 * S, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), { p: [p.x * S - 0.3, -p.y * S - 0.1, 0], s: [1, 0.82, 1] });
-  }
-  b.limb([-0.3, 0.6, 0.12], [0.2, 0.6, 0.05], 0.05);
   b.cyl(0.95, 1.0, 0.04, { p: [0, 0.02, 0], dark: true }, 24);
-  return b.done();
+  t.cyl(0.05, 0.05, 0.4, { p: [0.35, 0.35, 0] });
+  t.limb([0.1, 0.6, 0], [1.0, 0.62, 0], 0.055);
+  t.box(0.3, 0.14, 0.12, { p: [0.25, 0.6, 0], dark: true });
+  for (const p of pose('rifleman')) {
+    if (p.t === 'l' && p.w > 10) t.limb([p.x1 * S - 0.3, -p.y1 * S - 0.1, 0], [p.x2 * S - 0.3, -p.y2 * S - 0.1, 0], p.w / 2 * S);
+    if (p.t === 'c' && p.r > 5) t.sphere(p.r * S, { p: [p.x * S - 0.3, -p.y * S - 0.1, 0] });
+    if (p.t === 'h') t.add(new THREE.SphereGeometry(7.4 * S, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), { p: [p.x * S - 0.3, -p.y * S - 0.1, 0], s: [1, 0.82, 1] });
+  }
+  t.limb([-0.3, 0.6, 0.12], [0.2, 0.6, 0.05], 0.05);
+  const out = b.done(); out.turret = t.done();
+  return out;
 }
 
 function buildFieldGun() {
@@ -253,17 +254,18 @@ function buildFieldGun() {
 }
 
 function buildAA() {
-  const b = new Builder();
+  const b = new Builder(), t = new Builder();
   b.cyl(0.85, 0.95, 0.18, { p: [0, 0.09, 0] }, 24);
-  b.cyl(0.45, 0.5, 0.25, { p: [0, 0.3, 0] }, 18);
-  b.box(0.5, 0.5, 0.6, { p: [0, 0.65, 0] }, 0.06);
-  for (const z of [-0.18, 0.18]) {
-    b.cyl(0.045, 0.055, 1.4, { p: [0.45, 1.25, z], r: [0, 0, -Math.PI / 4] }, 10);
-    b.cyl(0.07, 0.07, 0.3, { p: [0.18, 0.95, z], r: [0, 0, -Math.PI / 4] }, 10);
-  }
-  b.box(0.25, 0.08, 0.3, { p: [-0.35, 0.72, 0], dark: true });
   sandbagRing(b, 0, 0, 1.0, 0, Math.PI * 2, 1, 16);
-  return b.done();
+  t.cyl(0.45, 0.5, 0.25, { p: [0, 0.3, 0] }, 18);
+  t.box(0.5, 0.5, 0.6, { p: [0, 0.65, 0] }, 0.06);
+  for (const z of [-0.18, 0.18]) {
+    t.cyl(0.045, 0.055, 1.4, { p: [0.45, 1.25, z], r: [0, 0, -Math.PI / 4] }, 10);
+    t.cyl(0.07, 0.07, 0.3, { p: [0.18, 0.95, z], r: [0, 0, -Math.PI / 4] }, 10);
+  }
+  t.box(0.25, 0.08, 0.3, { p: [-0.35, 0.72, 0], dark: true });
+  const out = b.done(); out.turret = t.done();
+  return out;
 }
 
 function buildTower() {

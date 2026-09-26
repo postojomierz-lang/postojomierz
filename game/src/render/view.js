@@ -272,8 +272,10 @@ export class View {
       tail = new THREE.Object3D(); tail.position.set(-1.85, 0.45, 0.06); pivot.add(tail);
     }
     if (e.def.cls === 'infantry') { chute = new THREE.Object3D(); g.add(chute); }
+    let turret = null;
+    if (m.turret) { turret = new THREE.Object3D(); pivot.add(turret); }
     const yaw = Math.atan2(-e.dirZ, e.dirX);
-    const v = { e, g, pivot, rotor, tail, chute, key, m, yaw, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
+    const v = { e, g, pivot, rotor, tail, chute, turret, tyaw: yaw, key, m, yaw, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
     if (e.def.static && e.def.cls === 'fort') g.rotation.y = e.rot & 1 ? Math.PI / 2 : 0;
     else g.rotation.y = yaw;
     g.position.set(this.wx(e.x), e.y, this.wz(e.z));
@@ -286,7 +288,7 @@ export class View {
 
   muzzleOf(v) {
     const [f, h] = MUZZLE[v.e.type] || [0.4, 0.7];
-    const y = v.g.rotation.y;
+    const y = v.turret ? v.tyaw : v.g.rotation.y;
     return new THREE.Vector3(v.g.position.x + Math.cos(y) * f, v.g.position.y + h, v.g.position.z - Math.sin(y) * f);
   }
 
@@ -393,12 +395,22 @@ export class View {
     g.position.set(this.wx(x), 0, this.wz(z));
     const air = isAir(def);
     let dyaw = 0;
-    if (!def.static && !(e.dead && v.deadAt) && !(e.down && e.carrier === 0 && v.downAt)) {
-      const target = Math.atan2(-e.dirZ, e.dirX);
-      let d = target - v.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
-      const step = d * (1 - Math.exp(-dt * (def.cls === 'plane' ? 8 : def.vehicle ? 5 : 12)));
+    const turnTo = (cur, rate) => {
+      let d = Math.atan2(-e.dirZ, e.dirX) - cur; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+      return d * (1 - Math.exp(-dt * rate));
+    };
+    const alive = !(e.dead && v.deadAt) && !(e.down && e.carrier === 0 && v.downAt);
+    if (!def.static && alive) {
+      const step = turnTo(v.yaw, def.cls === 'plane' ? 8 : def.vehicle ? 5 : 12);
       v.yaw += step; dyaw = dt > 0 ? step / dt : 0;
       g.rotation.y = v.yaw;
+    } else if (v.turret && alive) {
+      // the base stays put; only the gun and its crew traverse
+      v.tyaw += turnTo(v.tyaw, 4);
+      v.turret.rotation.y = v.tyaw - v.yaw;
+    } else if (e.type === 'fieldgun' && alive) {
+      // a towed gun is swung round by its crew, slowly
+      v.yaw += turnTo(v.yaw, 1.5); g.rotation.y = v.yaw;
     }
     const moved = Math.hypot(x - v.lastX, z - v.lastZ);
     v.lastX = x; v.lastZ = z;
@@ -483,6 +495,11 @@ export class View {
     this.batches.push(this.batches.get(v.key + ':m', m.main, this.plasticMat), pm, mainC, id);
     if (m.dark) this.batches.push(this.batches.get(v.key + ':d', m.dark, this.plasticMat), pm, darkC, id);
     if (m.accent) this.batches.push(this.batches.get(v.key + ':a', m.accent, this.accentMat), pm, accC, id);
+    if (v.turret) {
+      const tm = v.turret.matrixWorld;
+      this.batches.push(this.batches.get(v.key + ':tm', m.turret.main, this.plasticMat), tm, mainC, id);
+      if (m.turret.dark) this.batches.push(this.batches.get(v.key + ':td', m.turret.dark, this.plasticMat), tm, darkC, id);
+    }
     if (v.rotor && !v.e.dead) {
       this.batches.push(this.batches.get(v.key + ':r', m.rotor, this.plasticMat), v.rotor.matrixWorld, darkC, id);
       this.batches.push(this.batches.get(v.key + ':t', m.tailRotor, this.plasticMat), v.tail.matrixWorld, darkC, id);
@@ -626,6 +643,7 @@ export class View {
       const m = model(type, 1), g = new THREE.Group();
       const mat = new THREE.MeshStandardMaterial({ color: 0x9fe06a, transparent: true, opacity: 0.55, depthWrite: false });
       g.add(new THREE.Mesh(m.main, mat)); if (m.dark) g.add(new THREE.Mesh(m.dark, mat)); if (m.accent) g.add(new THREE.Mesh(m.accent, mat));
+      if (m.turret) { g.add(new THREE.Mesh(m.turret.main, mat)); if (m.turret.dark) g.add(new THREE.Mesh(m.turret.dark, mat)); }
       g.traverse(o => { o.userData.shared = true; });
       const pad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x9fe06a, transparent: true, opacity: 0.35, depthWrite: false }));
       pad.rotation.x = -Math.PI / 2; pad.position.y = 0.03;
@@ -665,6 +683,7 @@ export function renderThumbnails(types, color) {
     g.add(new THREE.Mesh(m.main, plastic(col.main)));
     if (m.dark) g.add(new THREE.Mesh(m.dark, plastic(col.dark, 'dark')));
     if (m.accent) g.add(new THREE.Mesh(m.accent, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 })));
+    if (m.turret) { g.add(new THREE.Mesh(m.turret.main, plastic(col.main))); if (m.turret.dark) g.add(new THREE.Mesh(m.turret.dark, plastic(col.dark, 'dark'))); }
     if (m.rotor) { const ro = new THREE.Mesh(m.rotor, plastic(col.dark, 'dark')); ro.position.set(0.3, 0.7, 0); g.add(ro); }
     g.rotation.y = -0.6;
     scene.add(g);
