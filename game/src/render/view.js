@@ -582,7 +582,9 @@ export class View {
     const darkC = variant === 'flash' ? p.flash : variant === 'dead' ? p.deadDark : variant === 'burnt' ? p.burntDark : p.dark;
     const accC = variant === 'dead' ? p.deadAccent : variant === 'burnt' ? p.burntAccent : WHITE;
     const id = v.e.id;
-    this.batches.push(this.batches.get(v.key + ':m', m.main, this.plasticMat), pm, mainC, id);
+    // distant (or low-quality) figures use their light version
+    const far = m.far && (this.quality === 'low' || this.camera.position.distanceToSquared(v.g.position) > 30 * 30);
+    this.batches.push(far ? this.batches.get(v.key + ':fm', m.far.main, this.plasticMat) : this.batches.get(v.key + ':m', m.main, this.plasticMat), pm, mainC, id);
     if (m.dark) this.batches.push(this.batches.get(v.key + ':d', m.dark, this.plasticMat), pm, darkC, id);
     if (m.accent) this.batches.push(this.batches.get(v.key + ':a', m.accent, this.accentMat), pm, accC, id);
     if (m.legs) {
