@@ -86,3 +86,9 @@ podmurówka, ściany z bali (lub desek, kamienia), strome dachy gontowe z okapam
 z podziałem na szybki i drzwi. Pod budynkami teren jest wyrównany do tarasu (`terrain.setFlats`),
 a drzewa, trawa i głazy omijają budynki. Tekstury: Poly Haven `wood_plank_wall`,
 `weathered_brown_planks`, `roof_slates_02`, `stone_wall` (CC0).
+
+## Łańcuchy i klamry
+`src/chains.js`: powyżej Buli pod Rysami (~2075 m), wszędzie gdzie szlak jest stromy (spadek > 40%),
+biegnie łańcuch po stronie skały, zawieszony na kotwach co ~3 m i lekko zwisający między nimi
+(ok. 700 m łańcuchów w 4 odcinkach). Na najbardziej stromych płytach (> 88%) są stalowe klamry
+w poprzek ścieżki, co ~45 cm wysokości. Ogniwa, kotwy i klamry to instancje.
