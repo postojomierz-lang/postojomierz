@@ -1,9 +1,8 @@
 # The British Army's vehicles, aircraft and headquarters, built with the tools in vehicles.py:
 # Universal (Bren) Carrier, Austin K2 ambulance, Bedford truck, Daimler armoured car, Terrapin,
 # Tetrarch, Cromwell, Churchill, a Bedford with the Land Mattress rocket launcher, the Cierva C.30
-# autogyro, Spitfire, Typhoon, Lancaster and a sandbagged Nissen hut. (The RAF's transport was the
-# Dakota, so the American model is used.) Written to .cache/figures/vehicles/gb; tools/figures.mjs
-# packs them into public/nation-gb.js.
+# autogyro, Spitfire, Typhoon, Lancaster, the Bristol Bombay transport and a sandbagged Nissen hut.
+# Written to .cache/figures/vehicles/gb; tools/figures.mjs packs them into public/nation-gb.js.
 #
 #   python tools/blender/vehicles_gb.py [name ...]
 import math, os, sys
@@ -341,8 +340,35 @@ def hq():
     m.fin('main', [(1.8, 2.58), (2.45, 2.55), (2.42, 2.15), (1.8, 2.2)], 1.0, 0.012)
     m.finish()
 
+def transport():
+    """Bristol Bombay: the RAF's own troop transport - a slab-sided fuselage under a high wing,
+    two Pegasus radials, fixed wheels in spats, twin fins and gun turrets in the nose and tail.
+    (It dropped the first British paratroops in North Africa.)"""
+    m = Model('transport')
+    fuselage(m, [(1.45, -0.1, 0.12, 0.1, 2.2), (1.25, -0.24, 0.24, 0.2, 3.0), (0.8, -0.28, 0.28, 0.22, 4.0), (-0.6, -0.26, 0.27, 0.21, 4.0),
+                 (-1.25, -0.08, 0.2, 0.1, 3.0), (-1.55, 0.02, 0.14, 0.04, 2.2)], seg=40)
+    m.lathe(GLASS, [(0.0, 0.12), (0.08, 0.09), (0.1, 0.0), (0.09, -0.05)], (1.48, 0.0, 0), (1, 0, 0), seg=18)    # nose turret
+    m.cyl('dark', (1.56, 0.02, 0), (1.72, 0.02, 0), 0.01, seg=6)
+    m.lathe(GLASS, [(0.0, 0.0), (0.06, 0.04), (0.08, 0.12), (0.07, 0.16)], (-1.55, 0.06, 0), (-1, 0, 0), seg=16)  # tail turret
+    canopy(m, [(1.2, 0.22, 0.24, 0.12, 2.6), (1.1, 0.22, 0.36, 0.14, 2.8), (0.85, 0.22, 0.36, 0.14, 2.8), (0.75, 0.24, 0.3, 0.08, 2.4)], frames=[(0.98, 0.22, 0.35, 0.14)])
+    for s in (1, -1):
+        for k in range(7): m.box(GLASS, (0.55 - k * 0.2, 0.08, s * 0.223), (0.08, 0.08, 0.012), bevel=0.0)
+    m.box('dark', (-0.7, -0.02, -0.215), (0.2, 0.32, 0.012), bevel=0.0)                   # jump door
+    m.wing('main', [(-2.0, 0.26, 0.26, 0.34), (-1.3, 0.4, 0.5, 0.32), (-0.3, 0.5, 0.7, 0.3), (0.0, 0.52, 0.72, 0.3),
+                    (0.3, 0.5, 0.7, 0.3), (1.3, 0.4, 0.5, 0.32), (2.0, 0.26, 0.26, 0.34)], thick=0.13)
+    for z in (-0.7, 0.7):
+        nacelle(m, 0.82, 0.2, z, 0.17, 0.75, 0.42)
+        for dz in (-0.07, 0.07): m.cyl('main', (0.34, 0.2, z + dz), (0.34, -0.3, z + dz * 0.4), 0.02, seg=8)
+        m.loft('main', [(0.5, -0.4, -0.22, 0.03, 2.2, z), (0.34, -0.46, -0.2, 0.07, 2.4, z), (0.16, -0.42, -0.24, 0.035, 2.2, z)], seg=18)   # spat
+        m.lathe('dark', [(0.03, -0.035), (0.08, -0.035), (0.09, 0.0), (0.08, 0.035), (0.03, 0.035)], (0.34, -0.36, z), (0, 0, 1), seg=18, closed=True)
+    m.wing('main', [(-0.6, -1.3, 0.2, 0.08), (-0.45, -1.26, 0.3, 0.08), (0.0, -1.22, 0.36, 0.08), (0.45, -1.26, 0.3, 0.08), (0.6, -1.3, 0.2, 0.08)], thick=0.1)
+    for z in (-0.6, 0.6):
+        m.wing('main', [(-0.1, -1.3, 0.2, z), (0.06, -1.26, 0.28, z), (0.24, -1.28, 0.24, z), (0.32, -1.33, 0.12, z)], thick=0.1, vertical=True)
+    m.lathe('dark', [(0.02, -0.02), (0.04, -0.02), (0.04, 0.02), (0.02, 0.02)], (-1.35, -0.1, 0), (0, 0, 1), seg=12, closed=True)
+    m.finish()
+
 MODELS = {'jeep': jeep, 'ambulance': ambulance, 'engtruck': engtruck, 'apc': apc, 'amphib': amphib, 'tank_light': tank_light, 'tank': tank,
-          'tank_heavy': tank_heavy, 'rockets': rockets, 'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'hq': hq}
+          'tank_heavy': tank_heavy, 'rockets': rockets, 'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'transport': transport, 'hq': hq}
 
 if __name__ == '__main__':
     only = sys.argv[1:]

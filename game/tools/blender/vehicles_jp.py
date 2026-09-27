@@ -1,8 +1,8 @@
 # The Imperial Japanese Army's vehicles, aircraft and headquarters, built with the tools in
 # vehicles.py: Kurogane Type 95, Isuzu Type 94 (ambulance and engineers), Type 1 Ho-Ha half-track,
 # Type 2 Ka-Mi amphibious tank, Type 95 Ha-Go, Type 97 Chi-Ha, Type 4 Chi-To, an Isuzu with 20 cm
-# rocket rails, the Kayaba Ka-1 autogyro, A6M Zero, D3A 'Val', G4M 'Betty' and a field headquarters
-# house. (Their transport, the L2D, was a licence-built DC-3: the American model is used.)
+# rocket rails, the Kayaba Ka-1 autogyro, A6M Zero, D3A 'Val', G4M 'Betty', the Ki-57 transport and
+# a field headquarters house.
 # Written to .cache/figures/vehicles/jp; tools/figures.mjs packs them into public/nation-jp.js.
 #
 #   python tools/blender/vehicles_jp.py [name ...]
@@ -326,8 +326,31 @@ def hq():
     for a in (0.5, 2.6, 4.7): m.cyl('dark', (-1.2, 2.8, 0.9), (-1.2 + math.cos(a) * 1.0, 0.05, 0.9 + math.sin(a) * 1.0), 0.004, seg=4)
     m.finish()
 
+def transport():
+    """Mitsubishi Ki-57 'Topsy': the army transport of the MC-20 airliner - a rounded fuselage with
+    a row of cabin windows, a low wing, two radials in long nacelles and a single tall fin. (The
+    paratroops who took Palembang jumped from these.)"""
+    m = Model('transport')
+    fuselage(m, [(1.5, -0.05, 0.06, 0.06, 2), (1.35, -0.18, 0.2, 0.17, 2.1), (1.05, -0.25, 0.27, 0.23, 2.2), (0.4, -0.27, 0.29, 0.24, 2.3),
+                 (-0.7, -0.22, 0.26, 0.21, 2.3), (-1.3, -0.06, 0.2, 0.11, 2.2), (-1.6, 0.06, 0.15, 0.03, 2.0)], seg=40)
+    for z in (-0.1, 0.1): m.box(GLASS, (1.26, 0.18, z * 1.2), (0.12, 0.07, 0.1), bevel=0.0, yaw=-z * 3, pitch=-0.45)
+    for s in (1, -1):
+        m.box(GLASS, (1.1, 0.16, s * 0.215), (0.12, 0.06, 0.012), bevel=0.0)
+        for k in range(7): m.box(GLASS, (0.7 - k * 0.19, 0.1, s * 0.245), (0.06, 0.07, 0.012), bevel=0.0)
+    m.box('dark', (-0.7, -0.02, -0.24), (0.2, 0.32, 0.012), bevel=0.0)                   # jump door
+    m.wing('main', [(-1.95, 0.18, 0.26, -0.02), (-1.2, 0.34, 0.56, -0.1), (-0.3, 0.52, 0.9, -0.17), (0.0, 0.55, 0.94, -0.19),
+                    (0.3, 0.52, 0.9, -0.17), (1.2, 0.34, 0.56, -0.1), (1.95, 0.18, 0.26, -0.02)], thick=0.15)
+    for z in (-0.7, 0.7):
+        nacelle(m, 0.92, -0.1, z, 0.18, 1.05, 0.42)
+        m.cyl('main', (0.4, -0.2, z), (0.4, -0.34, z), 0.022, seg=8)
+        m.lathe('dark', [(0.03, -0.04), (0.08, -0.04), (0.09, 0.0), (0.08, 0.04), (0.03, 0.04)], (0.4, -0.35, z), (0, 0, 1), seg=18, closed=True)
+    m.wing('main', [(-0.8, -1.12, 0.22, 0.08), (-0.65, -1.08, 0.34, 0.08), (0.0, -1.04, 0.44, 0.08), (0.65, -1.08, 0.34, 0.08), (0.8, -1.12, 0.22, 0.08)], thick=0.1)
+    m.wing('main', [(0.14, -1.0, 0.56, 0), (0.42, -1.12, 0.42, 0), (0.7, -1.26, 0.26, 0), (0.78, -1.32, 0.14, 0)], thick=0.1, vertical=True)
+    m.lathe('dark', [(0.02, -0.02), (0.04, -0.02), (0.04, 0.02), (0.02, 0.02)], (-1.45, 0.0, 0), (0, 0, 1), seg=12, closed=True)
+    m.finish()
+
 MODELS = {'jeep': jeep, 'ambulance': ambulance, 'engtruck': engtruck, 'apc': apc, 'amphib': amphib, 'tank_light': tank_light, 'tank': tank,
-          'tank_heavy': tank_heavy, 'rockets': rockets, 'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'hq': hq}
+          'tank_heavy': tank_heavy, 'rockets': rockets, 'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'transport': transport, 'hq': hq}
 
 if __name__ == '__main__':
     only = sys.argv[1:]

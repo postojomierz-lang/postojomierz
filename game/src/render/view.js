@@ -28,7 +28,7 @@ const MUZZLE = {
   // the Soviet ones
   'su:apc': [0.55, 1.05], 'su:amphib': [0.45, 0.93], 'su:tank_light': [1.04, 0.94], 'su:tank': [1.64, 1.09], 'su:tank_heavy': [2.86, 1.17],
   'gb:jeep': [1.08, 0.82], 'gb:apc': [1.0, 0.92], 'gb:amphib': [0.92, 1.16], 'gb:tank_light': [1.04, 0.88], 'gb:tank': [1.7, 1.08], 'gb:tank_heavy': [1.78, 1.26],
-  'gb:rockets': [-0.17, 1.58], 'gb:heli': [0.45, -0.08], 'gb:fighter': [0.45, -0.07], 'gb:attacker': [0.2, -0.2], 'gb:bomber': [0.2, -0.24], 'gb:hq': [1.55, 0.5],
+  'gb:rockets': [-0.17, 1.58], 'gb:heli': [0.45, -0.08], 'gb:fighter': [0.45, -0.07], 'gb:attacker': [0.2, -0.2], 'gb:bomber': [0.2, -0.24], 'gb:hq': [1.55, 0.5], 'gb:transport': [-0.7, -0.02],
   'it:apc': [1.02, 0.97], 'it:tank_light': [0.96, 0.88], 'it:tank': [1.19, 1.1], 'it:tank_heavy': [1.96, 1.18],
   'it:fighter': [0.8, 0.1], 'it:attacker': [0.46, -0.1], 'it:bomber': [0.0, -0.3], 'it:hq': [1.55, 0.5],
   'it:amphib': [0.92, 0.72], 'it:rockets': [-0.05, 1.35], 'it:heli': [0.4, -0.2], 'it:transport': [-0.7, -0.08],
@@ -36,14 +36,14 @@ const MUZZLE = {
   'fr:apc': [0.9, 0.98], 'fr:tank_light': [0.84, 0.94], 'fr:tank': [1.43, 1.14], 'fr:tank_heavy': [1.27, 1.28],
   'fr:heli': [0.45, -0.08], 'fr:fighter': [1.1, 0.0], 'fr:attacker': [1.08, -0.04], 'fr:bomber': [0.2, -0.24], 'fr:hq': [1.55, 0.5],
   'jp:apc': [0.27, 1.12], 'jp:amphib': [0.92, 0.9], 'jp:tank_light': [0.84, 0.92], 'jp:tank': [1.32, 1.06], 'jp:tank_heavy': [2.57, 1.2],
-  'jp:rockets': [0.07, 1.42], 'jp:heli': [0.45, -0.08], 'jp:fighter': [0.48, -0.06], 'jp:attacker': [0.3, -0.1], 'jp:bomber': [0.1, -0.27], 'jp:hq': [1.3, 0.8],
+  'jp:rockets': [0.07, 1.42], 'jp:heli': [0.45, -0.08], 'jp:fighter': [0.48, -0.06], 'jp:attacker': [0.3, -0.1], 'jp:bomber': [0.1, -0.27], 'jp:hq': [1.3, 0.8], 'jp:transport': [-0.7, -0.02],
   'su:heli': [0.45, -0.08], 'su:fighter': [0.7, 0.1], 'su:attacker': [0.5, -0.08], 'su:bomber': [0.2, -0.19], 'su:hq': [1.42, 0.62],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
 // the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)
 const POSE_MUZZLE = { 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
 const HEIGHT = { mg: 0.95, tank: 1.5, tank_light: 1.3, tank_heavy: 1.6, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
-const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4, 'de:attacker': 0.55, 'de:transport': 0.5, 'jp:attacker': 0.55, 'fr:transport': 0.44, 'it:transport': 0.47 };
+const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4, 'de:attacker': 0.55, 'de:transport': 0.5, 'jp:attacker': 0.55, 'fr:transport': 0.44, 'it:transport': 0.47, 'gb:transport': 0.46, 'jp:transport': 0.44 };
 const CREW_SCALE = new THREE.Vector3(0.82, 0.82, 0.82);
 const isAir = def => def.cls === 'air' || def.cls === 'plane';
 
