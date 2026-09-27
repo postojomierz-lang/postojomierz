@@ -232,7 +232,7 @@ ${keys.filter(k => flines[k]).map(k => flines[k]).join('\n')}
 // ---- the other armies (tools/blender/army_men.py --nation=xx, tools/blender/vehicles_xx.py): every
 // model that looks different for that nation, in a file of its own next to the game
 // (public/nation-xx.js), downloaded only when an army of that nation is in the battle
-for (const nation of ['de', 'su', 'gb', 'jp', 'fr']) {
+for (const nation of ['de', 'su', 'gb', 'jp', 'fr', 'it']) {
   const fdir = path.join(CACHE, 'blender', nation), vdir = path.join(CACHE, 'vehicles', nation);
   const figs = fs.existsSync(fdir) ? packFigures(SOURCES.filter(src => fs.existsSync(path.join(fdir, src.key + '.stl')))
     .map(src => ({ ...src, name: `blender/${nation}/${src.key}.stl` }))) : [];

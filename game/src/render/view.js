@@ -29,6 +29,8 @@ const MUZZLE = {
   'su:apc': [0.55, 1.05], 'su:amphib': [0.45, 0.93], 'su:tank_light': [1.04, 0.94], 'su:tank': [1.64, 1.09], 'su:tank_heavy': [2.86, 1.17],
   'gb:jeep': [1.08, 0.82], 'gb:apc': [1.0, 0.92], 'gb:amphib': [0.92, 1.16], 'gb:tank_light': [1.04, 0.88], 'gb:tank': [1.7, 1.08], 'gb:tank_heavy': [1.78, 1.26],
   'gb:rockets': [-0.17, 1.58], 'gb:heli': [0.45, -0.08], 'gb:fighter': [0.45, -0.07], 'gb:attacker': [0.2, -0.2], 'gb:bomber': [0.2, -0.24], 'gb:hq': [1.55, 0.5],
+  'it:apc': [1.02, 0.97], 'it:tank_light': [0.96, 0.88], 'it:tank': [1.19, 1.1], 'it:tank_heavy': [1.96, 1.18],
+  'it:fighter': [0.8, 0.1], 'it:attacker': [0.46, -0.1], 'it:bomber': [0.0, -0.3], 'it:hq': [1.55, 0.5],
   'fr:apc': [0.9, 0.98], 'fr:tank_light': [0.84, 0.94], 'fr:tank': [1.43, 1.14], 'fr:tank_heavy': [1.27, 1.28],
   'fr:heli': [0.45, -0.08], 'fr:fighter': [1.1, 0.0], 'fr:attacker': [1.08, -0.04], 'fr:bomber': [0.2, -0.24], 'fr:hq': [1.55, 0.5],
   'jp:apc': [0.27, 1.12], 'jp:amphib': [0.92, 0.9], 'jp:tank_light': [0.84, 0.92], 'jp:tank': [1.32, 1.06], 'jp:tank_heavy': [2.57, 1.2],
