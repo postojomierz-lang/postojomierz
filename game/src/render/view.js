@@ -23,7 +23,8 @@ const MUZZLE = {
   heli: [0.8, -0.25], fighter: [1.0, -0.1], attacker: [0.4, -0.2], bomber: [0, -0.35], transport: [-1, -0.35],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
-const HEIGHT = { mg: 0.95, tank: 1.5, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
+const HEIGHT = { mg: 0.95, tank: 1.5, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
+const CREW_SCALE = new THREE.Vector3(0.82, 0.82, 0.82);
 const isAir = def => def.cls === 'air' || def.cls === 'plane';
 
 // Toy-style animation: soldiers stay rigid plastic figures but are swapped between poses,
@@ -384,6 +385,12 @@ export class View {
           break;
         }
         case 'deploy': this.fx.fadeDecals(0.45); break;
+        case 'lay': {
+          const p = new THREE.Vector3(this.wx(ev.x), 0.05, this.wz(ev.z));
+          if (ev.kind === 'tanktrap' || ev.team === this.human) this.fx.puff(p, 0.6, 0xb8ab90, 0.5, 0.35, 700);
+          if (ev.team === this.human || ev.kind === 'tanktrap') sounds && sounds.play('place', p);
+          break;
+        }
         case 'hit': { const v = this.ents.get(ev.id); if (v) { v.flashUntil = this.now + 70; v.lastHit = v.wobbleAt = this.now; } break; }
         case 'over': for (const v of this.ents.values()) if (v.e.team === ev.winner && !v.e.dead && !v.e.down && v.e.def.cls === 'infantry') v.celebrate = true; break;
         case 'healed': {
@@ -438,6 +445,7 @@ export class View {
       this.zones.visible = deploy;
       this.batches.begin();
       for (const v of this.ents.values()) this.updateEnt(v, alpha, now, dt, deploy);
+      this.emitMines();
       this.batches.end();
       this.fx.update(now);
     }
@@ -580,6 +588,32 @@ export class View {
     this.emit(v, variant);
   }
 
+  // our own mines, half dug in (the enemy's stay hidden until they go off)
+  emitMines() {
+    for (const mn of this.sim.mines) {
+      if (this.human != null && this.human >= 0 && mn.team !== this.human) continue;
+      const m = model('mine_' + mn.kind), p = this.palettes[mn.team];
+      this.tmpM.makeRotationY(mn.id * 1.7).setPosition(this.wx(mn.x), -0.02, this.wz(mn.z));
+      this.batches.push(this.batches.get('mine_' + mn.kind + ':m', m.main, this.plasticMat), this.tmpM, p.main, 0);
+      this.batches.push(this.batches.get('mine_' + mn.kind + ':d', m.dark, this.plasticMat), this.tmpM, p.dark, 0);
+    }
+  }
+  // the engineers' two sappers: riding in the back of the truck, or kneeling in front of it at work
+  emitCrew(v, pm, color) {
+    const e = v.e, work = e.working && !e.dead;
+    const f = model(work ? 'pose-kneel' : 'rifleman');
+    for (let i = 0; i < 2; i++) {
+      const s = i ? 1 : -1;
+      if (work) {
+        // they take turns walking out to the line and back
+        const t = ((this.now * 0.0009 + i * 0.5) % 1), reach = 1.0 + Math.sin(t * Math.PI) * 0.9;
+        this.legM.makeRotationY(s * 0.4).scale(CREW_SCALE).setPosition(reach, 0, s * (0.5 + i * 0.2));
+      } else this.legM.makeRotationY(0).scale(CREW_SCALE).setPosition(-0.45 - i * 0.28, 0.56, s * 0.2);
+      this.tmpM.multiplyMatrices(pm, this.legM);
+      this.batches.push(this.batches.get((work ? 'pose-kneel' : 'rifleman') + ':m', f.main, this.plasticMat), this.tmpM, color, e.id);
+    }
+  }
+
   // push this entity's parts into the instanced batches
   emit(v, variant) {
     const p = v.pal, m = v.m;
@@ -607,6 +641,7 @@ export class View {
       this.batches.push(this.batches.get(v.key + ':tm', m.turret.main, this.plasticMat), tm, mainC, id);
       if (m.turret.dark) this.batches.push(this.batches.get(v.key + ':td', m.turret.dark, this.plasticMat), tm, darkC, id);
     }
+    if (v.e.def.engineer && !v.e.dead) this.emitCrew(v, pm, mainC);
     if (v.rotor && !v.e.dead) {
       this.batches.push(this.batches.get(v.key + ':r', m.rotor, this.plasticMat), v.rotor.matrixWorld, darkC, id);
       this.batches.push(this.batches.get(v.key + ':t', m.tailRotor, this.plasticMat), v.tail.matrixWorld, darkC, id);

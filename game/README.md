@@ -10,7 +10,8 @@ soldiers), vehicles, aircraft (fighters, ground-attack planes, bombers, paratroo
 helicopters), defences and fortifications. Soldiers are often wounded rather than killed:
 comrades drag them behind the nearest cover, medics heal them on the spot, and cautious
 field ambulances carry them home, and everyone saved fights
-again next round. Explosions cause friendly fire.
+again next round. Engineer trucks lay belts of tank traps, anti-tank or anti-personnel mines
+across the enemy's way in front of the base. Explosions cause friendly fire.
 
 With 3 or more armies the battle is fought on a round table: headquarters sit at the corners of a
 regular polygon, so every army is equally far from its neighbours, and random obstacles are
@@ -78,6 +79,7 @@ npm run dev     # local dev server
 npm test        # AI-vs-AI games, checks the simulation is deterministic
 node test/air.test.mjs   # scripted aircraft / paratrooper / ambulance battle
 node test/medic.test.mjs # wounded dragged to cover, medics heal, ambulances avoid fire
+node test/engineer.test.mjs # engineers lay tank traps and mines; mines go off under the enemy only
 node test/orders.test.mjs # main target steers the army, Defend keeps it home
 npm run build   # writes a single self-contained ../plastic-front/index.html
 ```
@@ -93,10 +95,10 @@ simplified for the game by `tools/figures.mjs` (`npm run figures`), which writes
 The bazooka, AA missile, grenadier, medic and "dragging a wounded comrade" figures were modelled
 for the game in the free Blender by `tools/blender/army_men.py` (run it with `pip install bpy`,
 then `python tools/blender/army_men.py`, then `npm run figures`).
-The vehicles and aircraft (jeep, ambulance, armored car, amphibian, tank, rocket truck, helicopter,
+The vehicles and aircraft (jeep, ambulance, engineer truck, armored car, amphibian, tank, rocket truck, helicopter,
 fighter, ground-attack plane, bomber, transport) are modelled the same way by
 `tools/blender/vehicles.py`, and the headquarters, emplacements (MG nest with its gunner, field gun,
-AA gun, watchtower with a lookout) and fortifications (sandbags, brick walls, barbed wire, oil drums)
+AA gun, watchtower with a lookout) and fortifications (sandbags, brick walls, barbed wire, oil drums, tank traps, mines)
 by `tools/blender/structures.py`; all of them are packed into `src/data/vehicles.js`.
 The diorama scenery is Blender-made as well: `tools/blender/scenery.py` (Normandy: hedgerows, oaks,
 apple trees, farmhouse, barn, walls, hay, reeds, craters) and `tools/blender/town.py` (town houses,

@@ -221,6 +221,48 @@ def ambulance():
         for z in (-0.47, 0.47): m.wheel((x, 0.26, z), 0.26, 0.18)
     m.finish()
 
+def engtruck():
+    """engineers' truck: a short cab-over lorry with an open bed full of the sappers' kit -
+    mine crates, a stack of steel beams for hedgehogs, a spool of wire, shovels and a winch."""
+    m = Model('engtruck')
+    for z in (-0.3, 0.3): m.box('dark', (0, 0.3, z), (1.85, 0.08, 0.08), bevel=0.01)
+    m.box('main', (0, 0.42, 0), (1.9, 0.1, 0.95), bevel=0.03)
+    # cab with windscreen, doors, bonnet, grille, lights and a front winch
+    m.box('main', (0.62, 0.74, 0), (0.5, 0.54, 0.95), bevel=0.06)
+    m.box('main', (0.86, 0.55, 0), (0.24, 0.24, 0.82), bevel=0.05)
+    m.grille('dark', (0.99, 0.54, 0), 0.52, 0.18, 8)
+    for z in (-0.3, 0.3): m.light((0.99, 0.62, z), 0.05)
+    m.box('main', (1.02, 0.3, 0), (0.08, 0.08, 1.0), bevel=0.012)                      # bumper
+    m.cyl('dark', (1.04, 0.4, -0.18), (1.04, 0.4, 0.18), 0.07, seg=16)                    # winch drum
+    for z in (-0.2, 0.2): m.box('dark', (1.04, 0.4, z), (0.08, 0.14, 0.02), bevel=0.0)
+    m.box(GLASS, (0.875, 0.88, 0), (0.02, 0.22, 0.8), bevel=0.0, pitch=-0.12)
+    for z in (-0.48, 0.48):
+        m.box(GLASS, (0.64, 0.88, z), (0.3, 0.18, 0.02), bevel=0.0)
+        m.box('dark', (0.46, 0.7, z * 1.01), (0.02, 0.36, 0.01), bevel=0.0)
+        m.box('dark', (0.67, 0.68, z * 1.03), (0.08, 0.02, 0.02), bevel=0.0)
+    m.box('main', (0.62, 1.02, 0), (0.44, 0.03, 0.8), bevel=0.01)                       # roof hatch rim
+    # open bed with drop sides and stake posts
+    m.box('main', (-0.42, 0.52, 0), (1.1, 0.08, 0.98), bevel=0.02)
+    for z in (-0.47, 0.47): m.box('main', (-0.42, 0.68, z), (1.1, 0.26, 0.04), bevel=0.01)
+    m.box('main', (-0.96, 0.68, 0), (0.04, 0.26, 0.98), bevel=0.01)
+    for x in (-0.9, -0.62, -0.34, -0.06):
+        for z in (-0.48, 0.48): m.box('dark', (x, 0.68, z * 1.01), (0.03, 0.28, 0.02), bevel=0.0)
+    # cargo: crates of mines (painted stencils), a stack of steel beams, a wire spool, shovels
+    for i, (x, z) in enumerate([(-0.78, -0.26), (-0.78, 0.02), (-0.52, -0.26)]):
+        m.box('dark', (x, 0.66, z), (0.24, 0.2, 0.24), bevel=0.015)
+        m.box('#e8d44a', (x, 0.66, z - 0.121), (0.14, 0.05, 0.01), bevel=0.0)
+    for k in range(3):
+        for j in range(2): m.box('dark', (-0.3 + j * 0.0, 0.6 + k * 0.05, 0.22 + j * 0.08), (0.9, 0.04, 0.05), bevel=0.004)
+    m.cyl('main', (-0.25, 0.64, -0.2), (-0.25, 0.64, -0.02), 0.14, seg=20, bevel=0.01)       # wire spool
+    m.cyl('dark', (-0.25, 0.64, -0.19), (-0.25, 0.64, -0.03), 0.1, seg=20)
+    for z in (-0.51, 0.51):                                                                 # shovel and pick on the sides
+        m.box('dark', (-0.4, 0.68, z), (0.6, 0.025, 0.02), bevel=0.0)
+        m.box('dark', (-0.08, 0.68, z), (0.12, 0.1, 0.015), bevel=0.005)
+    m.cyl('dark', (0.4, 0.95, 0.4), (0.4, 1.6, 0.4), 0.006, seg=6)                          # radio antenna
+    for x in (0.6, -0.55):
+        for z in (-0.46, 0.46): m.wheel((x, 0.26, z), 0.26, 0.18)
+    m.finish()
+
 def apc():
     m = Model('apc')
     # armoured hull: sloped front, vision slits, hatches, rivets
@@ -510,7 +552,7 @@ def chute():
     m.box('dark', (0, 0.78, 0), (0.05, 0.03, 0.14), bevel=0.005)                               # connector links
     m.finish()
 
-MODELS = {'jeep': jeep, 'ambulance': ambulance, 'apc': apc, 'amphib': amphib, 'tank': tank, 'rockets': rockets,
+MODELS = {'jeep': jeep, 'ambulance': ambulance, 'engtruck': engtruck, 'apc': apc, 'amphib': amphib, 'tank': tank, 'rockets': rockets,
           'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'transport': transport, 'chute': chute}
 
 if __name__ == '__main__':
