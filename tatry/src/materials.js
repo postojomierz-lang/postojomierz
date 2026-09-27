@@ -278,10 +278,14 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
   return m;
 }
 
-// Lakes: deep green-blue, sky reflection by fresnel, rippling sun glint.
+// Lakes: deep green-blue, mirror reflection of the mountains (planar, for the lake nearest to the
+// camera; others reflect the sky colour), fresnel, rippling sun glint.
 export function waterMaterial() {
   const m = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { skyCol: { value: new THREE.Color(0.5, 0.65, 0.85) } }]),
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+      skyCol: { value: new THREE.Color(0.5, 0.65, 0.85) },
+      reflMap: { value: null }, reflMat: { value: new THREE.Matrix4() }, reflLevel: { value: -1e4 }, reflOn: { value: 0 },
+    }]),
     fog: true,
     vertexShader: /* glsl */`
       #include <common>
@@ -300,6 +304,7 @@ export function waterMaterial() {
       #include <fog_pars_fragment>
       #include <logdepthbuf_pars_fragment>
       uniform vec3 sunDir; uniform vec3 sunCol; uniform vec3 ambCol; uniform vec3 skyCol; uniform float time;
+      uniform sampler2D reflMap; uniform mat4 reflMat; uniform float reflLevel; uniform float reflOn;
       varying vec3 vWorld;
       ${NOISE}
       void main(){
@@ -315,7 +320,20 @@ export function waterMaterial() {
         vec3 deep = vec3(0.004, 0.03, 0.035) * (ambCol + sunCol * 0.4);
         vec3 R = reflect(-V, N);
         float spec = pow(max(dot(R, sunDir), 0.0), 220.0) * 6.0;
-        vec3 col = mix(deep, skyCol, fres) + sunCol * spec * step(0.0, sunDir.y);
+        vec3 refl = skyCol;
+        if (reflOn > 0.5 && abs(vWorld.y - reflLevel) < 0.6) {
+          vec4 pc = reflMat * vec4(vWorld, 1.0);
+          float dist = length(cameraPosition - vWorld);
+          // ripples bend the mirror image, less so far away (they are too small to see there)
+          vec2 ruv = pc.xy / pc.w + N.xz * (0.035 / (1.0 + dist * 0.004));
+          vec3 m = texture2D(reflMap, clamp(ruv, 0.001, 0.999)).rgb;
+          // soften the edge of the reflection texture
+          float edge = smoothstep(0.0, 0.03, min(min(ruv.x, 1.0 - ruv.x), min(ruv.y, 1.0 - ruv.y)));
+          refl = mix(skyCol, m, edge);
+          // a calm mountain lake: reflection stays visible even looking down
+          fres = max(fres, 0.32);
+        }
+        vec3 col = mix(deep, refl, fres) + sunCol * spec * step(0.0, sunDir.y);
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
