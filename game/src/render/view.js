@@ -237,7 +237,7 @@ export class View {
     this.span = span; this.shadowHalf = 0;
 
     this.groundPicture = null;
-    if (map.theme === 'normandy' || map.theme === 'town') {
+    if (map.theme === 'normandy' || map.theme === 'town' || map.theme === 'beach') {
       const d = buildDiorama(map, this.quality);
       this.world.add(d.group); this.groundPicture = d.minimap;
     } else {

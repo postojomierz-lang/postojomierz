@@ -21,7 +21,7 @@ const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', the
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
 settings.teams = Math.max(2, Math.min(MAX_ARMIES, +settings.teams || 2));   // at most 6 armies
 if (!settings.diorama) { settings.diorama = 1; settings.source = 'normandy'; }   // the Normandy diorama is the new default
-if (!['normandy', 'town', 'random', 'library', 'file'].includes(settings.source)) settings.source = 'normandy';
+if (!['normandy', 'town', 'beach', 'random', 'library', 'file'].includes(settings.source)) settings.source = 'normandy';
 const save = () => { try { localStorage.setItem('plasticfront3d', JSON.stringify(settings)); } catch {} };
 
 let view;
