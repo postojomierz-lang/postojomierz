@@ -278,11 +278,15 @@ async function main() {
 
   // ---------- lakes
   const water = waterMaterial();
+  const lakeMeshes = [], lakeInfo = [];
   for (const l of meta.lakes) {
     const shape = new THREE.Shape(l.ring.map(([x, z]) => new THREE.Vector2(x, -z)));
     const g = new THREE.ShapeGeometry(shape);
     g.rotateX(-Math.PI / 2);
     const m = new THREE.Mesh(g, water);
+    lakeMeshes.push(m);
+    lakeInfo.push({ level: l.level, cx: l.ring.reduce((a, q) => a + q[0], 0) / l.ring.length, cz: l.ring.reduce((a, q) => a + q[1], 0) / l.ring.length,
+      r: Math.max(...l.ring.map((q) => Math.hypot(q[0] - l.ring[0][0], q[1] - l.ring[0][1]))) });
     m.position.y = l.level;
     scene.add(m);
   }
@@ -562,7 +566,7 @@ async function main() {
   // ---------------------------------------------------------------- loop
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); drawProfile();
+    renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); sizeRefl(); drawProfile();
   });
   // ---------- post-processing: bloom on sun glints, filmic grade, vignette
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 0 : 4 }));
@@ -588,6 +592,55 @@ async function main() {
   });
   composer.addPass(grade);
   const shadowSnap = (SH * 2) / sunLight.shadow.mapSize.x;
+
+  // ---------- planar reflection for the lake nearest to the camera
+  const REFL_SCALE = QUALITY === 'low' ? 0.33 : 0.5;
+  const reflRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 0 : 2 });
+  const reflCam = new THREE.PerspectiveCamera();
+  const reflClip = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const bias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
+  water.uniforms.reflMap.value = reflRT.texture;
+  const sizeRefl = () => reflRT.setSize(Math.round(innerWidth * renderer.getPixelRatio() * REFL_SCALE), Math.round(innerHeight * renderer.getPixelRatio() * REFL_SCALE));
+  sizeRefl();
+  const tmpV = new THREE.Vector3(), tmpT = new THREE.Vector3(), tmpR = new THREE.Matrix4();
+  function renderReflection() {
+    const c = camera.position;
+    let best = null, bd = Infinity;
+    for (const l of lakeInfo) {
+      const d = Math.max(0, Math.hypot(c.x - l.cx, c.z - l.cz) - l.r);
+      if (d < bd && c.y > l.level + 0.5) { bd = d; best = l; }
+    }
+    if (!best || bd > 2500) { water.uniforms.reflOn.value = 0; return; }
+    const L = best.level;
+    // mirror the camera about the water plane
+    camera.updateMatrixWorld();
+    tmpR.extractRotation(camera.matrixWorld);
+    tmpV.set(0, 0, -1).applyMatrix4(tmpR).add(c);
+    reflCam.position.set(c.x, 2 * L - c.y, c.z);
+    tmpT.set(tmpV.x, 2 * L - tmpV.y, tmpV.z);
+    reflCam.up.set(0, 1, 0).applyMatrix4(tmpR); reflCam.up.y = -reflCam.up.y;
+    reflCam.lookAt(tmpT);
+    reflCam.near = camera.near; reflCam.far = camera.far;
+    reflCam.projectionMatrix.copy(camera.projectionMatrix);
+    reflCam.updateMatrixWorld();
+    water.uniforms.reflMat.value.copy(bias).multiply(reflCam.projectionMatrix).multiply(reflCam.matrixWorldInverse);
+    water.uniforms.reflLevel.value = L;
+    water.uniforms.reflOn.value = 1;
+    // render everything above the water, without the lakes and the hiker, into the reflection texture
+    reflClip.constant = -(L - 0.2);
+    for (const m of lakeMeshes) m.visible = false;
+    const hv = hiker.visible; hiker.visible = false;
+    const prevClip = renderer.clippingPlanes, prevAuto = renderer.shadowMap.autoUpdate;
+    renderer.clippingPlanes = [reflClip];
+    renderer.shadowMap.autoUpdate = false;
+    renderer.setRenderTarget(reflRT);
+    renderer.clear();
+    renderer.render(scene, reflCam);
+    renderer.setRenderTarget(null);
+    renderer.clippingPlanes = prevClip; renderer.shadowMap.autoUpdate = prevAuto;
+    for (const m of lakeMeshes) m.visible = true;
+    hiker.visible = hv;
+  }
   const clock = new THREE.Clock();
   let hudT = 0;
   $('loading').classList.add('done');
@@ -669,6 +722,7 @@ async function main() {
       const fz = state.mode === 'walk' ? camera.position.z : hiker.position.z;
       updatePatch(fx, fz); updateNear(fx, fz);
     }
+    renderReflection();
     composer.render();
     requestAnimationFrame(tick);
   }
