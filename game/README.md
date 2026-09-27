@@ -47,6 +47,12 @@ Battlefields (all free and offline):
 - **Jungle** (the Pacific): dense jungle that infantry can move and hide in (vehicles keep to the
   muddy trails and clearings), a river with wooden bridges, a village of stilt huts, coconut-log
   bunkers that infantry fight from, giant banyans, bamboo and a crashed fighter (`jungle()`);
+- **Mountains and fortress**: rock massifs really rise from the board (they block movement and
+  sight), with passes where the lanes run, alpine meadows, fir woods, boulders, scree and stone
+  houses; a fortress stands in the middle: battlemented walls you can shoot over, a gatehouse facing
+  every army, round towers and a keep (`mountain()`, `fortress()`). Options: `snow` (mountains in
+  winter); any diorama can have the fortress (`fortress: true`), the Normandy fields can be open
+  steppe (`steppe`) and a beach black volcanic sand or a tropical island with palms (`sand`, `tropic`);
 - the classic toy room: random floors with household obstacles, the built-in map library
   (`src/data/maps.js`), map files (`*.pfmap.json`: "Save map" in the top bar, "Load a map file" in
   setup; `src/mapfile.js`) and the map editor (setup → Map editor; `src/editor.js`).
@@ -89,6 +95,8 @@ by `tools/blender/structures.py`; all of them are packed into `src/data/vehicles
 The diorama scenery is Blender-made as well: `tools/blender/scenery.py` (Normandy: hedgerows, oaks,
 apple trees, farmhouse, barn, walls, hay, reeds, craters) and `tools/blender/town.py` (town houses,
 shop fronts, ruins, church, monument, rubble, barricade, hedgehog, bridge, quay, street lamp) and
+`tools/blender/winter.py`, `desert.py`, `jungle.py`, `mountain.py` (spruces, farmhouse, palms,
+mud-brick houses, wrecks, rainforest trees, huts, bunkers, firs, the fortress...) and
 `tools/blender/beach.py` (casemate, pillbox, Tobruk pit, trench, barbed wire, Belgian gate, stakes,
 dune, lighthouse, rocks, landing craft, minefield sign), packed
 into `src/data/scenery.js` (buildings also come in a light version for the town beyond the table edge).

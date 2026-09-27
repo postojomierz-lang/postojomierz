@@ -6,7 +6,7 @@ export const T_EDGE = 4; // off the edge of the round table: nobody walks there,
 export const T_RUIN = 5; // a ruined building: soldiers on foot can get in and fight from it (good cover), vehicles can't
 
 // diorama battlefields ('normandy': see normandy(), 'town': see town(), 'beach': see beach()); the rest are the classic toy-room floors
-export const DIORAMAS = ['normandy', 'town', 'beach', 'winter', 'desert', 'jungle'];
+export const DIORAMAS = ['normandy', 'town', 'beach', 'winter', 'desert', 'jungle', 'mountain'];
 export const ROOM_THEMES = ['wood', 'carpet', 'kitchen', 'sand', 'grass', 'snow'];
 export const THEMES = [...DIORAMAS, ...ROOM_THEMES];
 
@@ -191,6 +191,8 @@ export function makeMap({ teams, theme, seed, layout = null, options = {} }) {
       if (grid[Math.floor(y) * W + Math.floor(x)] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
       decor.push({ x, y, kind: ['palm', 'pine', 'bush'].includes(d.kind) ? d.kind : 'bush', seed: Math.floor(rng() * 1e9) });
     }
+  } else if (theme === 'mountain') {
+    extra = mountain({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, round, R, opts: options });
   } else if (theme === 'jungle') {
     extra = jungle({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, round, R, opts: options });
   } else if (theme === 'desert') {
@@ -198,11 +200,11 @@ export function makeMap({ teams, theme, seed, layout = null, options = {} }) {
   } else if (theme === 'winter') {
     extra = winter({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, round, R });
   } else if (theme === 'beach') {
-    extra = beach({ W, H, grid, zones, objects, decor, rng, turns, round, R });
+    extra = beach({ W, H, grid, zones, objects, decor, rng, turns, round, R, opts: options });
   } else if (theme === 'town') {
     extra = town({ W, H, grid, zones, objects, decor, rng, turns, roads, round, R, opts: options });
   } else if (theme === 'normandy') {
-    extra = normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, copies, placeSym, putWater, fields, roads, round, R });
+    extra = normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, copies, placeSym, putWater, fields, roads, round, R, opts: options });
   } else {
   let open = 0;
   for (let c = 0; c < W * H; c++) if (grid[c] === T_OPEN) open++;
@@ -231,6 +233,10 @@ export function makeMap({ teams, theme, seed, layout = null, options = {} }) {
     }
   }
   }
+
+  // a fortress in the middle (mountains have one unless told otherwise; a scenario can add one anywhere)
+  if (!layout && DIORAMAS.includes(theme) && (options.fortress || (theme === 'mountain' && options.fortress !== false)))
+    extra.fortress = fortress({ W, H, grid, zones, objects, decor, turns, round, R });
 
   // Make sure every zone can reach every other zone on foot; carve through obstacles if not.
   const reach = (from) => {
@@ -270,7 +276,8 @@ export function makeMap({ teams, theme, seed, layout = null, options = {} }) {
 // ---- Normandy bocage: small fields boxed in by hedgerows on earth banks, farms, lanes, orchards.
 // Fields are a Voronoi diagram of points copied once per army around the middle (so it is fair);
 // every field border is a hedgerow unless it was left open, and each hedgerow has a gate.
-function normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, placeSym, putWater, fields, roads, round, R }) {
+// options.steppe: open steppe and big fields with only a few hedgerows (the Eastern Front, Poland)
+function normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, placeSym, putWater, fields, roads, round, R, opts = {} }) {
   const n = turns.length, cx = W / 2, cy = H / 2, M = 14;                 // M: scenery beyond the play area
   const rot = (x, y, k) => { const { c, s } = turns[k], px = x - cx, py = y - cy; return [px * c - py * s + cx, px * s + py * c + cy]; };
   const inside = (x, y) => x >= 1 && y >= 1 && x < W - 1 && y < H - 1 && grid[(y | 0) * W + (x | 0)] !== T_EDGE;
@@ -304,7 +311,7 @@ function normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, place
     const A = sites[i], B = sites[j], d = ((B.k - A.k) % n + n) % n, d2 = ((A.k - B.k) % n + n) % n;
     let key = [A.b, B.b, d], flip = false;
     if (B.b < A.b || (B.b === A.b && d2 < d)) { key = [B.b, A.b, d2]; flip = true; }
-    if (hash(key[0], key[1], key[2]) < 0.25) return;                        // an open border
+    if (hash(key[0], key[1], key[2]) < (opts.steppe ? 0.82 : 0.25)) return;   // an open border
     let g = 0.2 + 0.6 * hash(key[1], key[0], key[2] + 7); if (flip) g = 1 - g;
     const q = poly[(a + 1) % poly.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]);
     if (L < 1.5) return;
@@ -369,7 +376,7 @@ function normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, place
     if (round) { const dx = x - cx, dy = y - cy; if (dx * dx + dy * dy < (R + 1.5) * (R + 1.5)) continue; }
     decor.push({ x, y, kind: rng() < 0.75 ? 'oak' : 'apple', seed: Math.floor(rng() * 1e9) });
   }
-  return { margin: M, borders, road };
+  return { margin: M, borders, road, steppe: !!opts.steppe };
 }
 
 // Voronoi diagram of random points copied once per army round the middle (so it is fair):
@@ -583,7 +590,8 @@ function town({ W, H, grid, zones, objects, decor, rng, turns, roads, round, R, 
 // in the middle a belt of fortifications round a lighthouse on the rocks: gun casemates (solid),
 // pillboxes, Tobruk pits and trenches (infantry can get into those and fight from them).
 // Everything is laid out for army 0 and copied round the table, so it is fair.
-function beach({ W, H, grid, zones, objects, decor, rng, turns, round, R }) {
+// options: sand: 'black' (volcanic sand), tropic (palms along the dunes)
+function beach({ W, H, grid, zones, objects, decor, rng, turns, round, R, opts = {} }) {
   const n = turns.length, cx = W / 2, cy = H / 2, M = 14, z0 = zones[0];
   // army 0's frame: t = inland from the front edge of its zone, a = sideways from its middle line
   const T0 = round ? z0.y : z0.x + z0.w;                                    // the zone's front edge
@@ -673,9 +681,18 @@ function beach({ W, H, grid, zones, objects, decor, rng, turns, round, R }) {
       decor.push({ x, y, kind, seed: seed + k });
     }
   }
+  // palms on a tropical island
+  if (opts.tropic) for (let i = 0; i < A * 1.5; i++) {
+    const r = frect(5 + rng() * (bt - 6), (rng() - 0.5) * 2 * A, 0, 0), seed = Math.floor(rng() * 1e9);
+    for (let k = 0; k < n; k++) {
+      const { c, s } = turns[k], px = r.x - cx, py = r.y - cy, x = px * c - py * s + cx, y = px * s + py * c + cy, gx = Math.floor(x), gy = Math.floor(y);
+      if (!inPlay(gx, gy) || grid[gy * W + gx] !== T_OPEN || near(gx, gy, 1)) continue;
+      decor.push({ x, y, kind: 'palm', seed: seed + k });
+    }
+  }
   // how far each point of the board is from the sea (negative: in the sea) - for the painter
   const shore = round ? { round: true, r: R + 1.5 } : { round: false };
-  return { margin: M, shore, frame: { T0, Tc, round } };
+  return { margin: M, shore, frame: { T0, Tc, round }, sand: opts.sand || 'gold', tropic: !!opts.tropic };
 }
 
 // Lanes: one from every army's base to the middle, and one out to the edge between each pair of
@@ -964,4 +981,118 @@ function jungle({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, 
     }
   }
   return { margin: M, road, bridges, river: hasRiver, riverShape: hasRiver ? (round ? { ring: R * 0.45 } : { A: riverA, f: riverF }) : null };
+}
+
+// ---- Mountains: rock massifs with passes between them (the lanes always get through), alpine
+// meadows with firs and small groves, boulders and scree, a few stone houses. options.snow: the
+// mountains in winter (Narvik). The massifs are really high on the board; the battle is fought
+// in the valleys and passes.
+function mountain({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, round, R, opts }) {
+  const n = turns.length, cx = W / 2, cy = H / 2, M = 14, BW = W + 2 * M, BH = H + 2 * M;
+  const rot = (x, y, k) => { const { c, s } = turns[k], px = x - cx, py = y - cy; return [px * c - py * s + cx, px * s + py * c + cy]; };
+  const near = (x, y, m) => zones.some(z => x >= z.x - m && x < z.x + z.w + m && y >= z.y - m && y < z.y + z.h + m);
+  const road = lanes({ W, H, M, n, rng, rot, zones, roads });
+  const { sites, cells } = voronoiSym({ W, H, M, n, rng, rot, per: Math.max(3, Math.round(BW * BH / 70 / n)) });
+  const hash = (a, b) => { let h = Math.imul(a * 374761393 + b * 668265263, 0x5bd1e995); h ^= h >>> 15; return ((Math.imul(h, 0x27d4eb2d) ^ (h >>> 13)) >>> 0) / 4294967296; };
+  const kindOf = b => { const h = hash(b, 31); return h < 0.42 ? 'rock' : h < 0.56 ? 'wood' : 'meadow'; };
+  sites.forEach((st, i) => fields.push({ x: st.x, y: st.y, kind: st.b, k: st.k, rock: kindOf(st.b) === 'rock', forest: kindOf(st.b) === 'wood', poly: cells[i].map(([x, y]) => [x, y]) }));
+  const nearestI = (x, y) => { let best = 0, bd = Infinity; for (let i = 0; i < sites.length; i++) { const d = (sites[i].x - x) ** 2 + (sites[i].y - y) ** 2; if (d < bd) { bd = d; best = i; } } return best; };
+  const keep = opts.fortress !== false ? (round ? 10 : 9) : 0;                 // room for the fortress in the middle
+  // which board cells are mountain (the play area and the scenery round it)
+  const rockB = new Uint8Array(BW * BH), pass = (x, y) => x >= 0 && y >= 0 && x < W && y < H && (road[y * W + x] || near(x, y, 3) || Math.hypot(x + 0.5 - cx, y + 0.5 - cy) < keep);
+  const massif = new Map();
+  for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) {
+    const i = nearestI(x + 0.5, y + 0.5);
+    if (kindOf(sites[i].b) !== 'rock' || pass(x, y)) continue;
+    // lanes also cut through beyond the table edge, so the mountains don't wall them in
+    rockB[(y + M) * BW + x + M] = 1;
+    if (x < 0 || y < 0 || x >= W || y >= H) continue;
+    const c = y * W + x;
+    if (grid[c] !== T_OPEN) continue;
+    grid[c] = T_SOLID;
+    if (!massif.has(i)) massif.set(i, []);
+    massif.get(i).push(c);
+  }
+  for (const r of roads) for (let t = 0; t <= 1; t += 0.004) {                 // lanes outside the play area stay open too
+    const u = 1 - t, x = u * u * r.x0 + 2 * u * t * r.qx + t * t * r.x1, y = u * u * r.y0 + 2 * u * t * r.qy + t * t * r.y1;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = Math.floor(x) + dx, yy = Math.floor(y) + dy; if (xx >= -M && yy >= -M && xx < W + M && yy < H + M) rockB[(yy + M) * BW + xx + M] = 0; }
+  }
+  for (const [i, list] of massif) objects.push({ kind: T_SOLID, style: 'massif', cells: list, x: 0, y: 0, w: W, h: H, seed: i });
+  // how far into the rock each board cell is (the painter raises the mountains by it)
+  const depth = new Uint8Array(BW * BH), q = [];
+  for (let i = 0; i < BW * BH; i++) if (rockB[i]) { const x = i % BW, y = (i / BW) | 0; if (x === 0 || y === 0 || x === BW - 1 || y === BH - 1 || !rockB[i - 1] || !rockB[i + 1] || !rockB[i - BW] || !rockB[i + BW]) { depth[i] = 1; q.push(i); } }
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h], x = i % BW, y = (i / BW) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= BW || yy >= BH) continue;
+      const j = yy * BW + xx; if (rockB[j] && !depth[j]) { depth[j] = depth[i] + 1; q.push(j); }
+    }
+  }
+  // fir groves (infantry can get in), boulders, scree, stone houses, craters
+  const wood = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const c = y * W + x;
+    if (grid[c] !== T_OPEN || pass(x, y)) continue;
+    if (kindOf(sites[nearestI(x + 0.5, y + 0.5)].b) === 'wood') { grid[c] = T_RUIN; wood.push(c); }
+  }
+  if (wood.length) objects.push({ kind: T_RUIN, style: 'forest', cells: wood, x: 0, y: 0, w: W, h: H, seed: 8 });
+  const place = symPlacer({ W, H, grid, zones, objects, rng, turns, block: road });
+  let open = 0; for (let c = 0; c < W * H; c++) if (grid[c] === T_OPEN) open++;
+  const per = open / n;
+  const tries = (count, fn) => { for (let i = 0; i < count; i++) { const x = Math.floor(rng() * W), y = Math.floor(rng() * H); if (Math.hypot(x - cx, y - cy) > keep + 1) fn(x, y); } };
+  tries(Math.round(per / 45), (x, y) => { const big = rng() < 0.3; place(x, y, big ? 2 : 1, big ? 2 : 1, T_SOLID, 'boulder'); });
+  tries(Math.round(per / 45), (x, y) => { const len = 2 + Math.floor(rng() * 3), hz = rng() < 0.5; place(x, y, hz ? len : 1, hz ? 1 : len, T_LOW, 'scree'); });
+  tries(Math.round(per / 200) + 20, (x, y) => { if (objects.filter(o => o.style === 'mhouse').length >= n * Math.max(1, Math.round(per / 700))) return; const hz = rng() < 0.5; place(x, y, hz ? 4 : 2, hz ? 2 : 4, T_SOLID, 'mhouse'); });
+  for (let i = 0; i < 3 + per / 300; i++) {
+    const x0 = rng() * W, y0 = rng() * H, seed = Math.floor(rng() * 1e9);
+    for (let k = 0; k < n; k++) {
+      const [x, y] = rot(x0, y0, k), gx = Math.floor(x), gy = Math.floor(y);
+      if (gx < 0 || gy < 0 || gx >= W || gy >= H || grid[gy * W + gx] !== T_OPEN || near(gx, gy, 1)) continue;
+      decor.push({ x, y, kind: 'crater', seed: seed + k });
+    }
+  }
+  return { margin: M, road, rockBoard: rockB, rockDepth: depth, snow: !!opts.snow };
+}
+
+// ---- A fortress in the middle of the board: a ring of battlemented walls (you can shoot over them,
+// not walk through), a gate facing every army, round towers between the gates and a keep in the
+// middle. Whatever was there before is cleared away. Fair: every army faces a gate.
+function fortress({ W, H, grid, zones, objects, decor, turns, round, R }) {
+  const n = turns.length, cx = W / 2, cy = H / 2, R0 = round ? 7 : 6;
+  // clear the ground
+  const inside = (x, y) => Math.hypot(x + 0.5 - cx, y + 0.5 - cy) < R0 + 2.5;
+  for (let y = Math.floor(cy - R0 - 3); y <= cy + R0 + 3; y++) for (let x = Math.floor(cx - R0 - 3); x <= cx + R0 + 3; x++) {
+    if (x < 0 || y < 0 || x >= W || y >= H || !inside(x, y) || grid[y * W + x] === T_EDGE) continue;
+    grid[y * W + x] = T_OPEN;
+  }
+  for (let k = objects.length - 1; k >= 0; k--) {
+    const o = objects[k];
+    if (o.cells) { o.cells = o.cells.filter(c => !inside(c % W, (c / W) | 0)); if (!o.cells.length) objects.splice(k, 1); continue; }
+    let hit = false;
+    for (let y = o.y; y < o.y + o.h && !hit; y++) for (let x = o.x; x < o.x + o.w && !hit; x++) if (inside(x, y)) hit = true;
+    if (hit) objects.splice(k, 1);
+  }
+  for (let k = decor.length - 1; k >= 0; k--) if (inside(Math.floor(decor[k].x), Math.floor(decor[k].y))) decor.splice(k, 1);
+  // gates towards every army, towers half-way between them
+  const gates = zones.map(z => { const dx = z.x + z.w / 2 - cx, dy = z.y + z.h / 2 - cy, l = Math.hypot(dx, dy) || 1; return { dx: dx / l, dy: dy / l }; });
+  const gateAt = (x, y) => gates.some(g => { const px = x + 0.5 - cx, py = y + 0.5 - cy; return px * g.dx + py * g.dy > 0 && Math.abs(px * g.dy - py * g.dx) < 1.6; });
+  const wall = [];
+  for (let y = Math.floor(cy - R0 - 1); y <= cy + R0 + 1; y++) for (let x = Math.floor(cx - R0 - 1); x <= cx + R0 + 1; x++) {
+    const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+    if (d < R0 - 0.5 || d >= R0 + 0.5 || gateAt(x, y)) continue;
+    grid[y * W + x] = T_LOW; wall.push(y * W + x);
+  }
+  objects.push({ kind: T_LOW, style: 'fwall', cells: wall, x: 0, y: 0, w: W, h: H, seed: 4 });
+  const towers = [];
+  for (let k = 0; k < n; k++) {
+    const g = gates[k], a = Math.atan2(g.dy, g.dx) + PI / n;
+    const tx = cx + cosT(a) * R0, ty = cy + sinT(a) * R0, r = { x: Math.round(tx - 1), y: Math.round(ty - 1), w: 2, h: 2 };
+    for (let y = r.y; y < r.y + 2; y++) for (let x = r.x; x < r.x + 2; x++) grid[y * W + x] = T_SOLID;
+    objects.push({ kind: T_SOLID, style: 'ftower', ...r, seed: 10 + k });
+    towers.push({ x: tx, y: ty });
+  }
+  const kr = { x: Math.round(cx - 1.5), y: Math.round(cy - 1.5), w: 3, h: 3 };
+  for (let y = kr.y; y < kr.y + 3; y++) for (let x = kr.x; x < kr.x + 3; x++) grid[y * W + x] = T_SOLID;
+  objects.push({ kind: T_SOLID, style: 'keep', ...kr, seed: 3, fx: 0, fy: 1 });
+  return { r: R0, gates: gates.map(g => ({ x: cx + g.dx * R0, y: cy + g.dy * R0, a: Math.atan2(g.dy, g.dx) })), towers };
 }
