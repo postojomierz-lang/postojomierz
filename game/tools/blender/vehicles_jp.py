@@ -68,15 +68,29 @@ def jeep():
     m.finish()
 
 def ambulance():
+    """an Isuzu Type 94 fitted out as a field ambulance: a round canvas tilt over hoops, rolled up
+    at the back on two tiers of stretchers, red crosses on the tilt, a stretcher lashed on top of the cab."""
     m = Model('ambulance')
     for z in (-0.3, 0.3): m.box('dark', (0, 0.3, z), (1.8, 0.08, 0.08), bevel=0.01)
     isuzu_front(m, 0.05)
-    m.loft('main', [(-1.0, 0.5, 1.34, 0.5, 10), (-0.08, 0.5, 1.34, 0.5, 10)], seg=40, bevel=0.01)
-    for z in (-0.506, 0.506):
-        m.box(WHITE, (-0.52, 0.95, z), (0.46, 0.46, 0.012), bevel=0.0)
-        m.box(RED, (-0.52, 0.95, z * 1.004), (0.3, 0.09, 0.012), bevel=0.0); m.box(RED, (-0.52, 0.95, z * 1.004), (0.09, 0.3, 0.012), bevel=0.0)
-    m.box(WHITE, (-0.52, 1.342, 0), (0.46, 0.012, 0.46), bevel=0.0)
-    m.box(RED, (-0.52, 1.35, 0), (0.3, 0.012, 0.09), bevel=0.0); m.box(RED, (-0.52, 1.35, 0), (0.09, 0.012, 0.3), bevel=0.0)
+    m.box('main', (-0.5, 0.5, 0), (1.04, 0.07, 1.0), bevel=0.015)                                    # bed
+    for z in (-0.48, 0.48): m.box('main', (-0.5, 0.63, z), (1.04, 0.2, 0.04), bevel=0.01)            # low sides
+    m.loft('main', [(-0.98, 0.72, 1.4, 0.5, 3.2), (-0.04, 0.72, 1.4, 0.5, 3.2)], seg=40, bevel=0.01)  # the tilt
+    for x in (-0.8, -0.5, -0.2):                                                                    # hoops showing through
+        m.loft('dark', [(x - 0.012, 0.72, 1.41, 0.505, 3.2), (x + 0.012, 0.72, 1.41, 0.505, 3.2)], seg=40)
+    m.box('dark', (-0.985, 1.0, 0), (0.012, 0.5, 0.78), bevel=0.0)                                   # open back
+    m.cyl('main', (-0.99, 1.3, -0.4), (-0.99, 1.3, 0.4), 0.05, seg=12)                               # rolled flap
+    for y in (0.78, 1.1):                                                                            # stretchers inside
+        m.box('main', (-0.6, y, 0.18), (0.8, 0.02, 0.2), bevel=0.004)
+        m.box('main', (-0.6, y, -0.18), (0.8, 0.02, 0.2), bevel=0.004)
+        for z in (-0.3, -0.06, 0.06, 0.3): m.cyl('dark', (-1.0, y - 0.01, z), (-0.2, y - 0.01, z), 0.012, seg=5)
+    for z in (-0.49, 0.49):
+        m.box(WHITE, (-0.52, 1.04, z * 1.02), (0.4, 0.4, 0.012), bevel=0.0)
+        m.box(RED, (-0.52, 1.04, z * 1.03), (0.3, 0.09, 0.012), bevel=0.0); m.box(RED, (-0.52, 1.04, z * 1.03), (0.09, 0.3, 0.012), bevel=0.0)
+    m.box(WHITE, (-0.52, 1.405, 0), (0.42, 0.012, 0.42), bevel=0.0)
+    m.box(RED, (-0.52, 1.413, 0), (0.3, 0.012, 0.09), bevel=0.0); m.box(RED, (-0.52, 1.413, 0), (0.09, 0.012, 0.3), bevel=0.0)
+    for z in (-0.11, 0.11): m.cyl('dark', (-0.08, 1.2, z), (0.5, 1.2, z), 0.014, seg=6)               # stretcher on the cab roof
+    m.box('main', (0.21, 1.21, 0), (0.56, 0.02, 0.2), bevel=0.004)
     for x in (0.63, -0.6):
         for z in (-0.46, 0.46): m.tyre((x, 0.27, z), 0.27, 0.18)
     m.finish()
