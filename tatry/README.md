@@ -122,3 +122,12 @@ W shaderze terenu (`src/materials.js`), bez nowych danych:
 - wyostrzenie zdjęcia (unsharp mask względem aktualnie widocznego poziomu mipmapy), także w panoramie;
 - ściany nie dostają zielonych smug z zdjęcia robionego z góry i są mniej rozjaśniane;
 - z bliska na ścianach druga, ~9x większa skala tekstury granitu (bloki i pęknięcia 20–40 m).
+
+## Ścieżka
+`src/trailsurface.js`: szlak podzielony na odcinki z szerokością i nawierzchnią (brzeg Morskiego
+Oka 2,6 m bruk, schody na Czarny Staw, brzeg Czarnego Stawu częściowo brukowany, podejście pod Bulę
+kamienna ścieżka, powyżej Buli goła skała i słabo wydeptany ślad).
+- Ostra maska ścieżki w oknie 256 m wokół kamery (0,25 m na piksel zamiast 1,3 m), z nierówną,
+  wydeptaną krawędzią; bruk z nieregularnych płyt granitowych w ziemi, niektórych brak.
+- Na brukowanych odcinkach teren pod ścieżką jest wyrównany w poprzek (półka wcięta w zbocze),
+  a na stromiznach (> 20%) stoją kamienne stopnie co ~20–28 cm wysokości.

@@ -123,7 +123,7 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
 export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1, textures, near, lowerUnderPatch = false }) {
   const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const u = {
-    nearMap: near.map, nearRect: near.rect, patchRect: near.patch, lowerInside: { value: lowerUnderPatch ? 1 : 0 },
+    nearMap: near.map, nearRect: near.rect, patchRect: near.patch, trailNear: near.trail, trailRect: near.trailRect, lowerInside: { value: lowerUnderPatch ? 1 : 0 },
     texD: { value: textures.diff }, texN: { value: textures.nor },
     texMean: { value: textures.mean }, texScale: { value: textures.scale },
     satMap: { value: map }, trailMap: { value: trailMap },
@@ -142,7 +142,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
       .replace('#include <common>', `#include <common>
         varying vec3 vWorld; varying vec3 vWN;
         uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail;
-        uniform sampler2D nearMap; uniform vec4 nearRect;
+        uniform sampler2D nearMap; uniform vec4 nearRect; uniform sampler2D trailNear; uniform vec4 trailRect;
         uniform sampler2DArray texD; uniform sampler2DArray texN; uniform vec3 texMean[6]; uniform float texScale[6];
         ${NOISE}
         // one texture layer at two scales, blended by noise to hide tiling; returns colour and tangent normal
@@ -288,8 +288,22 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
             wT[3] = 0.0;                                          // trail (below)
             wT[4] = wGreen * (1.0 - forest);                      // alpine grass
             wT[5] = wGreen * forest;                              // forest floor
-            float tr = texture2D(trailMap, uv).r;
+            // the path: the sharp window around the camera where there is one (R = path, G = R * paved),
+            // with a ragged, trodden edge; the coarse whole-area mask elsewhere
+            float tr = texture2D(trailMap, uv).r, paved = 0.0;
             float wTrail = smoothstep(0.2, 0.75, tr);
+            {
+              vec2 tuv = (w.xz - trailRect.xy) / (trailRect.zw - trailRect.xy);
+              float te = min(min(tuv.x, 1.0 - tuv.x), min(tuv.y, 1.0 - tuv.y));
+              if (te > 0.0) {
+                vec4 tn4 = texture2D(trailNear, tuv);
+                float k = smoothstep(0.0, 0.08, te);
+                float edge = 0.22 + 0.5 * (vnoise(w.xz * 1.3) * 0.6 + vnoise(w.xz * 4.7) * 0.4);
+                wTrail = mix(wTrail, smoothstep(edge - 0.07, edge + 0.07, tn4.r), k);
+                paved = tn4.r > 0.02 ? clamp(tn4.g / tn4.r, 0.0, 1.0) * k : 0.0;
+                tr = mix(tr, tn4.r, k);
+              }
+            }
             for (int i = 0; i < 6; i++) wT[i] *= 1.0 - wTrail;
             wT[3] = wTrail;
             vec3 tc = vec3(0.0), tm = vec3(0.0), tn = vec3(0.0);
@@ -320,6 +334,28 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               }
               // tame the lime tint of sunlit grass in the satellite image
               nearCol = mix(nearCol, vec3(dot(nearCol, vec3(0.3, 0.55, 0.15))), 0.22 * wGreen);
+              // trodden fringe: grass worn brown at the edge of the path
+              float fringe = smoothstep(0.08, 0.3, tr) * (1.0 - wTrail);
+              nearCol = mix(nearCol, nearCol * vec3(0.86, 0.8, 0.7), fringe * 0.6);
+              // granite paving: irregular blocks of different sizes set in soil, some missing (gravel
+              // and dirt there), dirty and mossy from the photo; each block tilted a little
+              if (paved > 0.05 && wTrail > 0.01) {
+                vec2 wp = vec2(vnoise(w.xz * 0.7), vnoise(w.xz * 0.7 + 5.2)) - 0.5;
+                vec2 pp = w.xz / 0.5 + wp * 1.4;               // fixed scale: a varying one would swirl at world coordinates
+                vec2 vc = vor(pp);
+                float fade = 1.0 - smoothstep(0.12, 0.35, fwidth(pp.x));
+                float missing = step(vc.y, 0.14 + 0.25 * (1.0 - paved));
+                float joint = smoothstep(0.05, 0.17, vc.x + (vnoise(w.xz * 9.0) - 0.5) * 0.07);
+                joint = mix(0.75, joint, fade) * (1.0 - missing);
+                float lum = mix(0.5, vc.y, fade);
+                vec3 stone = vec3(0.36, 0.355, 0.335) * (0.7 + 0.55 * lum) * (0.85 + 0.3 * vnoise(w.xz * 6.0));
+                stone = mix(stone, nearCol, 0.45);            // moss and dirt, as the photo shows them
+                vec3 pave = mix(nearCol * vec3(0.85, 0.8, 0.74), stone, joint);
+                float pw = wTrail * paved;
+                nearCol = mix(nearCol, pave, pw);
+                vec3 tilt = normalize(Nr + vec3((vc.y - 0.5) * 0.3, 0.0, (fract(vc.y * 7.3) - 0.5) * 0.3));   // relative to the slope
+                tn = normalize(mix(tn, tilt, pw * fade * joint * 0.8));
+              }
               col = mix(col, nearCol, near);
               // tn is already a world normal here; exaggerate its tilt on rock faces
               detN = normalize(Nr + (tn - N) * (1.0 + 0.8 * wCliff));

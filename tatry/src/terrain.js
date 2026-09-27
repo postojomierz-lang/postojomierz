@@ -92,10 +92,42 @@ export class Terrain {
     }
     return h;
   }
+  // The footpath as a bench cut into the slope: level across its width (not along it).
+  // X, Z, H: centre line every metre with its smoothed height; half: half-width; str: 0..1 per point.
+  setBench({ X, Z, H, half, str }) {
+    const C = 4, cells = new Map();
+    for (let i = 0; i < X.length - 1; i++) {
+      if (str[i] <= 0 && str[i + 1] <= 0) continue;
+      const r = half[i] + 1.5;
+      for (let cx = Math.floor((Math.min(X[i], X[i + 1]) - r) / C); cx <= Math.floor((Math.max(X[i], X[i + 1]) + r) / C); cx++) {
+        for (let cz = Math.floor((Math.min(Z[i], Z[i + 1]) - r) / C); cz <= Math.floor((Math.max(Z[i], Z[i + 1]) + r) / C); cz++) {
+          const k = cx * 100003 + cz;
+          let l = cells.get(k); if (!l) cells.set(k, l = []);
+          l.push(i);
+        }
+      }
+    }
+    this.bench = { X, Z, H, half, str, cells, C };
+  }
+  benchAt(x, z, h) {
+    const b = this.bench;
+    const l = b.cells.get(Math.floor(x / b.C) * 100003 + Math.floor(z / b.C));
+    if (!l) return h;
+    let best = 1e9, bh = 0, bi = 0;
+    for (const i of l) {
+      const ax = b.X[i], az = b.Z[i], dx = b.X[i + 1] - ax, dz = b.Z[i + 1] - az;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+      const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+      if (d < best) { best = d; bh = b.H[i] + (b.H[i + 1] - b.H[i]) * t; bi = i; }
+    }
+    const k = (1 - smooth(b.half[bi], b.half[bi] + 1.3, best)) * b.str[bi];
+    return k > 0 ? h + (bh - h) * k : h;
+  }
   // Full height: 1 m tile if there is one, otherwise the grids plus micro relief.
   height(x, z) {
-    const h = this.rawHeight(x, z);
-    return this.flats ? this.flatten(x, z, h) : h;
+    let h = this.rawHeight(x, z);
+    if (this.flats) h = this.flatten(x, z, h);
+    return this.bench ? this.benchAt(x, z, h) : h;
   }
   rawHeight(x, z) {
     const t = this.tileAt(x, z);
