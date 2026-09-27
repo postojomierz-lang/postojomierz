@@ -279,7 +279,25 @@ def hospital():
         m.box(RED, (fx + 0.3, 1.95, fz + dz), (0.09, 0.3, 0.008), bevel=0.0)
     m.finish()
 
-MODELS = {'hq': hq, 'hospital': hospital,
+def litter_frame(m, L=0.68, w=0.17, y=0.12, pole='dark', r=0.016, handles=0.1, canvas='main', bed=0.55):
+    """the common part of a stretcher lying under a wounded man: two poles along x with handles
+    beyond the bed, a canvas bed between them. Returns nothing; nations add legs and extras."""
+    for s in (1, -1): m.cyl(pole, (-L - handles, y, s * w), (L + handles, y, s * w), r, seg=8)
+    m.box(canvas, (0, y + 0.004, 0), (2 * bed + 0.1, 0.014, 2 * w - 0.02), bevel=0.004)
+
+def litter():
+    """the US Army folding litter: wooden poles, olive canvas, steel stirrup legs and spreader bars."""
+    m = Model('litter')
+    litter_frame(m)
+    for x in (-0.5, 0.5):
+        m.cyl('dark', (x, 0.1, -0.17), (x, 0.1, 0.17), 0.008, seg=5)                          # spreader bar
+        for s in (1, -1):                                                                     # stirrup
+            m.cyl('dark', (x - 0.05, 0.12, s * 0.17), (x - 0.05, 0.0, s * 0.17), 0.008, seg=5)
+            m.cyl('dark', (x + 0.05, 0.12, s * 0.17), (x + 0.05, 0.0, s * 0.17), 0.008, seg=5)
+            m.cyl('dark', (x - 0.05, 0.004, s * 0.17), (x + 0.05, 0.004, s * 0.17), 0.008, seg=5)
+    m.finish()
+
+MODELS = {'hq': hq, 'hospital': hospital, 'litter': litter,
           'sandbags0': lambda: sandbags(0), 'sandbags1': lambda: sandbags(1), 'wall0': lambda: wall(0), 'wall1': lambda: wall(1),
           'wire': wire, 'barrel': barrel, 'tanktrap': tanktrap}
 

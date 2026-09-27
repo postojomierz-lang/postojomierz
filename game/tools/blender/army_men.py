@@ -1418,24 +1418,35 @@ def medic(kneel_=False):
         T = Frame(pel, F, D(0.05, 0, 1))
     shR, shL, neck = torso(fig, T, pack=False)
     H = head(fig, neck, F, D(0.55, 0, 1) if kneel_ else U)
-    # white circle with a red cross on the front of the helmet
-    hc = H.at(3.35, 0, 6.0)
-    fig.cyl(hc - H.f * 0.1, hc + H.f * 0.25, 1.35, WHITE, seg=20)
-    fig.box(hc + H.f * 0.3, (1.7, 0.2, 0.45), H.q, RED, bevel=0.02); fig.box(hc + H.f * 0.3, (0.45, 0.2, 1.7), H.q, RED, bevel=0.02)
+    # each army marks its medics its own way: helmet (US: white circles with red crosses front and
+    # sides; British: a white square; Italians: a white circle; French: the cross painted straight
+    # on; the others none), the bag (colour, with or without a cross) - all wear the arm band
+    helm, bag, bag_cross = {'us': ('disc', WHITE, True), 'de': (None, '#5a4632', False), 'su': (None, '#9a8f5a', True),
+                            'gb': ('square', '#b5a57a', False), 'jp': (None, '#6b4a2a', True), 'fr': ('bare', '#8b6b43', False),
+                            'it': ('disc', '#7d7f5e', True)}[NATION]
+    spots = [(H.f, H.at(3.35, 0, 6.0))]
+    if US: spots += [(H.l, H.at(0, 3.35, 6.0)), (-H.l, H.at(0, -3.35, 6.0))]
+    for n, hc in spots:
+        q = Frame(hc, n, H.u).q
+        if helm == 'disc': fig.cyl(hc - n * 0.1, hc + n * 0.25, 1.35, WHITE, seg=20)
+        elif helm == 'square': fig.box(hc + n * 0.08, (2.5, 0.35, 2.3), q, WHITE, bevel=0.02)
+        if helm: fig.box(hc + n * 0.3, (1.7, 0.2, 0.45), q, RED, bevel=0.02); fig.box(hc + n * 0.3, (0.45, 0.2, 1.7), q, RED, bevel=0.02)
     if kneel_:
         arm(fig, shR, P(10.0, -1.6, 3.4), pole=D(0, -1, -0.3), grip_dir=L)
         elL = arm(fig, shL, P(10.0, 1.6, 3.2), pole=D(0, 1, -0.3), grip_dir=L)
         fig.ring(shL + (elL - shL) * 0.45, elL - shL, 1.45, 0.4, WHITE, seg=18)     # arm band
         with fig.hard(): fig.cyl(P(10.0, -1.4, 3.2), P(10.0, 1.4, 3.2), 0.9, WHITE, seg=14)   # bandage roll
-        K = kitbag(fig, P(9.2, -6.5, 1.4), turn(F, 0.4), WHITE)
+        K = kitbag(fig, P(9.2, -6.5, 1.4), turn(F, 0.4), bag)
         fig.ground(P(11, -1, 0), K.o)
     else:
         elL = arm(fig, shL, shL + P(3.0, 3.0, 9.5), pole=D(-0.3, 1, 0), wave=True)
         fig.ring(shL + (elL - shL) * 0.45, elL - shL, 1.45, 0.4, WHITE, seg=18)     # arm band
         g = shR + P(0.5, -1.2, -13.2)
         arm(fig, shR, g, pole=D(-1, -0.2, 0), grip_dir=L)
-        K = kitbag(fig, g + P(0, -0.4, -2.2), F, WHITE)
-    fig.box(K.at(0, -1.25, 0), (2.1, 0.12, 0.6), K.q, RED, bevel=0.01); fig.box(K.at(0, -1.25, 0), (0.6, 0.12, 2.1), K.q, RED, bevel=0.01)
+        K = kitbag(fig, g + P(0, -0.4, -2.2), F, bag)
+    if bag_cross:
+        if bag != WHITE: fig.box(K.at(0, -1.22, 0), (2.6, 0.1, 2.6), K.q, WHITE, bevel=0.01)
+        fig.box(K.at(0, -1.25, 0), (2.1, 0.12, 0.6), K.q, RED, bevel=0.01); fig.box(K.at(0, -1.25, 0), (0.6, 0.12, 2.1), K.q, RED, bevel=0.01)
     fig.finish()
 
 def drag():

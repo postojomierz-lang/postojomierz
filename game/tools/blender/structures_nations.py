@@ -18,7 +18,7 @@ import bpy
 import vehicles
 from mathutils import Quaternion
 from vehicles import Model, clear, LIGHT, GLASS, WHITE, RED
-from structures import mulberry, sandbag, sandbag_row, sandbag_ring
+from structures import mulberry, sandbag, sandbag_row, sandbag_ring, litter_frame
 
 BASE = vehicles.OUT
 H = 2.55                                   # tower platform height
@@ -1676,38 +1676,107 @@ def it_hospital():
     rc_flag(m, -1.3, -1.3)
     m.finish()
 
+# =========================================================================================
+# Stretchers, laid under the wounded waiting for the ambulance (the American one is in structures.py).
+def legs4(m, xs=(-0.5, 0.5), w=0.17, y=0.12, r=0.012, part='dark', foot=None):
+    for x in xs:
+        for s in (1, -1):
+            m.cyl(part, (x, 0.0, s * w), (x, y, s * w), r, seg=6)
+            if foot: m.box(part, (x, 0.008, s * w), (foot, 0.016, foot), bevel=0.003)
+
+def de_litter():
+    """the Krankentrage: wooden poles, square iron feet, a raised head rest and carrying straps."""
+    m = Model('litter')
+    litter_frame(m)
+    legs4(m, foot=0.05)
+    m.prism('main', [(-0.55, 0.126), (-0.3, 0.126), (-0.55, 0.2)], -0.15, 0.15, bevel=0.01)          # head rest
+    for s in (1, -1): m.cyl('dark', (-0.78, 0.12, s * 0.17), (0.78, 0.12, s * 0.17), 0.006, seg=4)    # strap
+    for x in (-0.2, 0.25): m.box('dark', (x, 0.14, 0), (0.05, 0.012, 0.36), bevel=0.0)                 # buckled belts
+    m.finish()
+
+def su_litter():
+    """plain wooden poles and canvas on short wooden legs, a rolled greatcoat under the head."""
+    m = Model('litter')
+    litter_frame(m, r=0.019)
+    legs4(m, r=0.018, part='main')
+    for x in (-0.58, 0.58): m.box('main', (x, 0.1, 0), (0.035, 0.03, 0.4), bevel=0.005)                # cross battens
+    m.cyl('main', (-0.48, 0.16, -0.14), (-0.48, 0.16, 0.14), 0.045, seg=12)                             # greatcoat roll
+    m.finish()
+
+def gb_litter():
+    """the Furley stretcher: ash poles on curved iron runners, hinged traverses."""
+    m = Model('litter')
+    litter_frame(m, y=0.14)
+    for s in (1, -1):
+        m.arc('dark', (0.0, 2.0, s * 0.17), 1.98, 1.995, 0.02, math.pi * 1.5 - 0.31, math.pi * 1.5 + 0.31, n=12)   # runners
+    for x in (-0.55, 0.55): m.cyl('dark', (x, 0.12, -0.17), (x, 0.12, 0.17), 0.009, seg=5)
+    for x in (-0.3, 0.3):
+        for s in (1, -1): m.cyl('dark', (x, 0.02, s * 0.17), (x, 0.14, s * 0.17), 0.008, seg=5)
+    m.finish()
+
+def jp_litter():
+    """bamboo poles with their joints showing, a woven mat for a bed, low bamboo legs."""
+    m = Model('litter')
+    for s in (1, -1):
+        m.cyl('main', (-0.8, 0.12, s * 0.17), (0.8, 0.12, s * 0.17), 0.02, seg=10)
+        for x in (-0.6, -0.2, 0.2, 0.6): m.torus('main', (x, 0.12, s * 0.17), (1, 0, 0), 0.021, 0.006, seg=12)
+    m.box('main', (0, 0.126, 0), (1.2, 0.014, 0.32), bevel=0.004)
+    for k in range(9): m.box('dark', (-0.56 + k * 0.14, 0.135, 0), (0.012, 0.006, 0.32), bevel=0.0)      # weave
+    legs4(m, r=0.016, part='main')
+    m.finish()
+
+def fr_litter():
+    """the brancard with a canvas hood over the head end on a bent iron hoop."""
+    m = Model('litter')
+    litter_frame(m)
+    legs4(m, xs=(-0.55, 0.55))
+    m.torus('dark', (-0.56, 0.12, 0), (1, 0, 0), 0.17, 0.008, seg=20)
+    m.loft('main', [(-0.64, 0.02, 0.33, 0.18, 2.2), (-0.44, 0.02, 0.33, 0.18, 2.2)], seg=24)           # hood
+    m.box('main', (-0.54, 0.075, 0), (0.22, 0.11, 0.37), bevel=0.0)                                     # hides the lower half
+    m.finish()
+
+def it_litter():
+    """a folding stretcher on tubular legs, a grey blanket folded over the foot end."""
+    m = Model('litter')
+    litter_frame(m)
+    for x in (-0.48, 0.48):
+        for s in (1, -1): m.cyl('dark', (x - 0.08, 0.0, s * 0.17), (x + 0.08, 0.12, s * 0.17), 0.009, seg=5)   # crossed legs
+        for s in (1, -1): m.cyl('dark', (x + 0.08, 0.0, s * 0.17), (x - 0.08, 0.12, s * 0.17), 0.009, seg=5)
+    m.box('#8f969c', (0.38, 0.15, 0), (0.42, 0.04, 0.36), bevel=0.01)                                    # blanket
+    m.finish()
+
 NATIONS = {
     'us': {'fieldgun': us_fieldgun, 'aa': us_aa, 'mgnest': us_mgnest, 'tower': us_tower, 'mine_at': us_mine_at, 'mine_ap': us_mine_ap},
     'de': {'fieldgun': de_fieldgun, 'aa': de_aa, 'mgnest': de_mgnest, 'tower': de_tower,
            'wall0': lambda: de_wall(0), 'wall1': lambda: de_wall(1), 'wire': de_wire,
            'sandbags0': lambda: de_sandbags(0), 'sandbags1': lambda: de_sandbags(1), 'tanktrap': de_tanktrap,
            'barrel': de_barrel, 'mine_at': de_mine_at, 'mine_ap': de_mine_ap, 'chute': de_chute,
-           'hospital': de_hospital},
+           'hospital': de_hospital, 'litter': de_litter},
     'su': {'fieldgun': su_fieldgun, 'aa': su_aa, 'mgnest': su_mgnest, 'tower': su_tower,
            'wall0': lambda: su_wall(0), 'wall1': lambda: su_wall(1), 'wire': su_wire,
            'sandbags0': lambda: su_sandbags(0), 'sandbags1': lambda: su_sandbags(1), 'tanktrap': su_tanktrap,
            'barrel': su_barrel, 'mine_at': su_mine_at, 'mine_ap': su_mine_ap, 'chute': su_chute,
-           'hospital': su_hospital},
+           'hospital': su_hospital, 'litter': su_litter},
     'gb': {'fieldgun': gb_fieldgun, 'aa': gb_aa, 'mgnest': gb_mgnest, 'tower': gb_tower,
            'wall0': lambda: gb_wall(0), 'wall1': lambda: gb_wall(1), 'wire': gb_wire,
            'sandbags0': lambda: gb_sandbags(0), 'sandbags1': lambda: gb_sandbags(1), 'tanktrap': gb_tanktrap,
            'barrel': gb_barrel, 'mine_at': gb_mine_at, 'mine_ap': gb_mine_ap, 'chute': gb_chute,
-           'hospital': gb_hospital},
+           'hospital': gb_hospital, 'litter': gb_litter},
     'jp': {'fieldgun': jp_fieldgun, 'aa': jp_aa, 'mgnest': jp_mgnest, 'tower': jp_tower,
            'wall0': lambda: jp_wall(0), 'wall1': lambda: jp_wall(1), 'wire': jp_wire,
            'sandbags0': lambda: jp_sandbags(0), 'sandbags1': lambda: jp_sandbags(1), 'tanktrap': jp_tanktrap,
            'barrel': jp_barrel, 'mine_at': jp_mine_at, 'mine_ap': jp_mine_ap, 'chute': jp_chute,
-           'hospital': jp_hospital},
+           'hospital': jp_hospital, 'litter': jp_litter},
     'fr': {'fieldgun': fr_fieldgun, 'aa': fr_aa, 'mgnest': fr_mgnest, 'tower': fr_tower,
            'wall0': lambda: fr_wall(0), 'wall1': lambda: fr_wall(1), 'wire': fr_wire,
            'sandbags0': lambda: fr_sandbags(0), 'sandbags1': lambda: fr_sandbags(1), 'tanktrap': fr_tanktrap,
            'barrel': fr_barrel, 'mine_at': fr_mine_at, 'mine_ap': fr_mine_ap, 'chute': fr_chute,
-           'hospital': fr_hospital},
+           'hospital': fr_hospital, 'litter': fr_litter},
     'it': {'fieldgun': it_fieldgun, 'aa': it_aa, 'mgnest': it_mgnest, 'tower': it_tower,
            'wall0': lambda: it_wall(0), 'wall1': lambda: it_wall(1), 'wire': it_wire,
            'sandbags0': lambda: it_sandbags(0), 'sandbags1': lambda: it_sandbags(1), 'tanktrap': it_tanktrap,
            'barrel': it_barrel, 'mine_at': it_mine_at, 'mine_ap': it_mine_ap, 'chute': it_chute,
-           'hospital': it_hospital},
+           'hospital': it_hospital, 'litter': it_litter},
 }
 
 if __name__ == '__main__':

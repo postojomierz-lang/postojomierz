@@ -118,7 +118,7 @@ console.log('wrote', OUT, fs.statSync(OUT).size, 'bytes');
 const VQ = 8000;
 const VEHICLES = ['jeep', 'ambulance', 'engtruck', 'apc', 'amphib', 'tank', 'tank_light', 'tank_heavy', 'rockets', 'heli', 'fighter', 'attacker', 'bomber', 'transport',
   // headquarters, emplacements and fortifications (tools/blender/structures.py)
-  'hq', 'hospital', 'mgnest', 'fieldgun', 'aa', 'tower', 'sandbags0', 'sandbags1', 'wall0', 'wall1', 'wire', 'barrel', 'tanktrap', 'mine_at', 'mine_ap', 'chute'];
+  'hq', 'hospital', 'litter', 'mgnest', 'fieldgun', 'aa', 'tower', 'sandbags0', 'sandbags1', 'wall0', 'wall1', 'wire', 'barrel', 'tanktrap', 'mine_at', 'mine_ap', 'chute'];
 const BUDGET = { main: [7000, 1800], dark: [4500, 1000], turret_main: [2500, 1000], turret_dark: [1200, 600] };
 // structures are made of many small pieces (bricks, sacks): smaller budgets keep the download light
 const OVERRIDE = { tank: { main: [11000, 2500] }, tank_light: { main: [9000, 2200] }, tank_heavy: { main: [12000, 2800] }, apc: { main: [8000, 2000] }, hq: { main: [6000, 1800] }, mgnest: { main: [3000, 900] }, tower: { main: [4000, 1200] }, aa: { main: [3000, 900] },
