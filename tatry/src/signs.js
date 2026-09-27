@@ -77,6 +77,7 @@ export function buildSigns({ scene, terrain, trail, profile, shade, posts }) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 2.6, 8), steel);
     pole.position.set(x, y + 1.2, z); pole.castShadow = true;
     group.add(pole);
+    p.at = { x, y, z, nx, nz, tx, tz };
     // plate faces the trail
     const face = Math.atan2(-nx, -nz);
     const pm = new THREE.MeshLambertMaterial({ map: plateTexture(p.title, p.ele) });
@@ -107,5 +108,5 @@ export function buildSigns({ scene, terrain, trail, profile, shade, posts }) {
     });
   }
   scene.add(group);
-  return { group };
+  return { group, posts };
 }

@@ -6,7 +6,8 @@ import * as THREE from 'three';
 
 const ICON = { peak: '▲', pass: '⌒', lake: '≈', hut: '⌂', fall: '⇣', trail: '◆' };
 
-export function buildLabels({ meta, terrain, camera, container, extra = [] }) {
+// blockers: [{ x, y, z }] signposts; while near, their boards keep the labels off them
+export function buildLabels({ meta, terrain, camera, container, extra = [], blockers = [] }) {
   const layer = document.createElement('div');
   layer.id = 'labels';
   container.appendChild(layer);
@@ -61,12 +62,25 @@ export function buildLabels({ meta, terrain, camera, container, extra = [] }) {
     // importance: rank, nearness
     cand.sort((a, b) => (b.rank - Math.log10(b.d + 100) * 0.8) - (a.rank - Math.log10(a.d + 100) * 0.8));
     const placed = [];
+    for (const b of blockers) {
+      if (camera.position.distanceTo(v.set(b.x, b.y + 2.2, b.z)) > 80) continue;
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, front = false;
+      for (const [dx, dy, dz] of [[-0.9, 1.8, -0.9], [0.9, 1.8, 0.9], [-0.9, 2.6, 0.9], [0.9, 2.6, -0.9], [-0.9, 1.8, 0.9], [0.9, 2.6, 0.9], [-0.9, 2.6, -0.9], [0.9, 1.8, -0.9]]) {
+        v.set(b.x + dx, b.y + dy, b.z + dz).project(camera);
+        if (v.z >= 1) continue;
+        front = true;
+        const sx = (v.x * 0.5 + 0.5) * W, sy = (-v.y * 0.5 + 0.5) * H;
+        x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+      }
+      if (front) placed.push({ x0, x1, y0, y1 });
+    }
+    const nBlock = placed.length;
     for (const it of cand) {
       if (!it.w) { const r = it.el.firstChild.getBoundingClientRect(); it.w = r.width || 120; it.h = r.height || 28; }
       const pole = 26 + Math.min(40, 400000 / (it.d * it.d + 4000));
       const box = { x0: it.sx - 4, x1: it.sx + it.w + 4, y0: it.sy - pole - it.h - 2, y1: it.sy - pole + 2 };
       const clash = placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
-      if (clash || placed.length >= 26) { if (it.visible) { it.el.classList.remove('on'); it.visible = false; } continue; }
+      if (clash || placed.length - nBlock >= 26) { if (it.visible) { it.el.classList.remove('on'); it.visible = false; } continue; }
       placed.push(box);
       it.el.style.transform = `translate(${it.sx.toFixed(1)}px, ${(it.sy - pole - it.h).toFixed(1)}px)`;
       it.el.lastChild.style.height = `${pole.toFixed(0)}px`;
