@@ -132,7 +132,11 @@ Their walls and wire are their own too: Atlantic Wall concrete and a knife rest;
 or cribbed log wall and a double-apron fence; a corrugated-iron revetment and triple Dannert
 concertina; a bamboo palisade and sharpened bamboo stakes; a village stone wall and the réseau
 Brun; a tufa-block wall and a cavallo di Frisia (the Americans keep the brick wall and concertina).
-Sandbags, tank traps, barrels and mines are the same for everyone.
+So are their sandbags and tank traps: sandbags behind a wattle revetment and dragon's teeth;
+sandbags under a log and the rail hedgehog of Moscow; a header-and-stretcher breastwork and a 1940
+concrete cube; rice-straw bales and a lashed log obstacle; fascines under sandbags and Maginot
+rails in concrete; a stone wall topped with sandbags and a concrete tetrahedron (the Americans keep
+their sandbags and the Czech hedgehog). Only barrels and mines are the same for everyone.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
