@@ -112,3 +112,13 @@ przełęczami, jeziorami, schroniskami i wodospadami (418 punktów; szczyty i pr
 Overture, polskie nazwy). Włączanie/wyłączanie: klawisz **L** albo przycisk 🏷 (zapamiętywane).
 Etykiety za górami są ukryte (test widoczności po mapie wysokości), a na ekranie zostaje najwyżej
 26 najważniejszych, niezachodzących na siebie.
+
+## Wyostrzanie zboczy
+W shaderze terenu (`src/materials.js`), bez nowych danych:
+- normalne liczone na piksel z mapy wysokości 4 m (za łatką 1 m), więc grzbiety i żleby są
+  ostrzejsze niż z siatki 6/12 m;
+- proceduralne żebra i żleby biegnące po linii spadku na stromej skale (nie na trawie), trzy oktawy
+  od 7 do 60 m, każda wygaszana, zanim zacznie migotać; na ścianach także łamane poziome półki;
+- wyostrzenie zdjęcia (unsharp mask względem aktualnie widocznego poziomu mipmapy), także w panoramie;
+- ściany nie dostają zielonych smug z zdjęcia robionego z góry i są mniej rozjaśniane;
+- z bliska na ścianach druga, ~9x większa skala tekstury granitu (bloki i pęknięcia 20–40 m).
