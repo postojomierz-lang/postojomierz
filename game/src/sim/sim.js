@@ -35,7 +35,7 @@ export class Sim {
     this.teams = teamSpecs.map((t, i) => ({
       id: i, name: t.name, color: t.color, nation: t.nation || 'us', human: !!t.human, zone: map.zones[i],
       money: RULES.startBudget, bounty: 0, vehicles: 0, aircraft: 0, alive: true, hq: 0,
-      kills: 0, losses: 0, spent: 0, saved: 0, healed: 0, recovered: [],
+      kills: 0, losses: 0, spent: 0, saved: 0, healed: 0, ward: [],
       focus: -1, stance: 'attack', hurtBy: teamSpecs.map(() => 0),   // orders: main target (-1 = nearest) and attack/defend
     }));
     this.fields = new Map();
@@ -173,9 +173,25 @@ export class Sim {
     for (let y = e.cy; y < e.cy + e.h; y++) for (let x = e.cx; x < e.cx + e.w; x++) if (this.occ[y * this.W + x] === e.id) this.occ[y * this.W + x] = 0;
   }
 
-  // Put returning (rescued) soldiers next to their HQ for free.
+  // A rescued soldier goes to the ward in the base (as himself: rank and experience kept).
+  admit(d) {
+    const t = this.teams[d.team];
+    t.ward.push({ type: d.type, xp: d.xp, rank: d.rank, heal: 0 });
+    t.saved++;
+    this.remove(d);
+  }
+  beds(teamId) {
+    let n = 0;
+    for (const e of this.ents) if (!e.dead && e.team === teamId && e.def.beds) n += e.def.beds;
+    return n;
+  }
+  // Between rounds: the wounded in hospital beds (first come, first served) heal twice as fast;
+  // whoever is well again stands next to the HQ, for free.
   returnRecovered(t) {
-    if (!t.recovered.length) return;
+    if (!t.ward.length) return;
+    const R = RULES.recovery, beds = this.beds(t.id), well = [];
+    t.ward.forEach((p, i) => { p.heal += i < beds ? R.bed : R.noBed; });
+    t.ward = t.ward.filter(p => p.heal >= R.rounds ? (well.push(p), false) : true);
     const hq = this.byId.get(t.hq), z = t.zone;
     const cand = [];
     for (let y = z.y; y < z.y + z.h; y++) for (let x = z.x; x < z.x + z.w; x++) {
@@ -184,7 +200,7 @@ export class Sim {
     }
     cand.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
     let n = 0;
-    for (const type of t.recovered) {
+    for (const p of well) {
       for (const c of cand) {
         if (c[0] < 0) continue;
         const cell = c[2] * this.W + c[1];
@@ -193,13 +209,14 @@ export class Sim {
         for (const e of this.ents) if (!e.dead && !e.def.static && e.y < 0.5 && Math.floor(e.x) === c[1] && Math.floor(e.z) === c[2]) { taken = true; break; }
         c[0] = -1;
         if (taken) continue;
-        const e = this.spawn(t.id, type, c[1], c[2], 0);
-        e.free = true; n++;
+        const e = this.spawn(t.id, p.type, c[1], c[2], 0);
+        e.free = true; e.xp = p.xp; e.rank = p.rank;
+        if (p.rank) e.hp = e.maxHp = Math.round(e.def.hp * (1 + RULES.veteran.hp[p.rank - 1]));
+        n++;
         break;
       }
     }
-    t.recovered = [];
-    if (n) this.events.push({ t: 'returned', team: t.id, n });
+    if (n || t.ward.length) this.events.push({ t: 'returned', team: t.id, n, ward: t.ward.length, beds });
   }
 
   // ---------------------------------------------------------------- phases
@@ -239,7 +256,7 @@ export class Sim {
     for (const e of [...this.ents]) {
       if (!e.down || e.dead) continue;
       const t = this.teams[e.team];
-      if (t.alive && (e.loaded || e.stable || this.inZone(e.team, e.x, e.z))) { t.recovered.push(e.type); t.saved++; this.remove(e); }
+      if (t.alive && (e.loaded || e.stable || this.inZone(e.team, e.x, e.z))) this.admit(e);
       else this.die(e, this.attackerOf(e));
     }
     for (const e of this.ents) {
@@ -278,7 +295,7 @@ export class Sim {
     // clear wrecks and fallen soldiers from the previous round
     for (const e of [...this.ents]) if (e.dead) this.remove(e);
     for (const t of this.teams) {
-      if (!t.alive) { t.recovered = []; continue; }
+      if (!t.alive) { t.ward = []; continue; }
       t.money += RULES.income + RULES.incomeGrowth * (this.round - 1) + Math.round(t.bounty);
       t.bounty = 0; t.vehicles = 0; t.aircraft = 0;
       this.returnRecovered(t);
@@ -800,6 +817,15 @@ export class Sim {
     for (let i = 0; i < cands.length && i < 5; i++) if (!this.danger(e.team, cands[i][2].x, cands[i][2].z, 6.5)) return cands[i][1];
     return 0;
   }
+  hospitalFor(e) {
+    let best = null, bd = Infinity;
+    for (const o of this.ents) {
+      if (o.dead || o.team !== e.team || !o.def.beds) continue;
+      const d = (o.x - e.x) ** 2 + (o.z - e.z) ** 2;
+      if (d < bd) { bd = d; best = o; }
+    }
+    return best;
+  }
   thinkAmbulance(e) {
     const cap = e.def.capacity, home = this.fields.get(e.team + ':home:wheel');
     if (--e.retarget <= 0) {
@@ -821,13 +847,23 @@ export class Sim {
         else { e.dirX = dx / l; e.dirZ = dz / l; e.moving = true; }
       }
     } else if (this.inZone(e.team, e.x, e.z)) {
-      if (e.cargo.length) {
-        const t = this.teams[e.team];
+      // home: drive up to the field hospital if there is one, then hand the wounded over
+      const hosp = e.cargo.length ? this.hospitalFor(e) : null;
+      let there = true;
+      if (hosp) {
+        const dx = hosp.x - e.x, dz = hosp.z - e.z, l = Math.sqrt(dx * dx + dz * dz);
+        if (l > 2.6 && e.stuck < 30) {
+          const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
+          if (this.tryMove(e, dx * k, dz * k)) { e.dirX = dx / l; e.dirZ = dz / l; e.moving = true; e.stuck = 0; } else e.stuck++;
+          there = false;
+        }
+      }
+      if (there && e.cargo.length) {
         for (const id of e.cargo) {
           const d = this.byId.get(id);
-          if (d && !d.dead) { t.recovered.push(d.type); t.saved++; this.events.push({ t: 'rescued', id, team: e.team }); this.remove(d); }
+          if (d && !d.dead) { this.events.push({ t: 'rescued', id, team: e.team }); this.admit(d); }
         }
-        e.cargo = [];
+        e.cargo = []; e.stuck = 0;
       }
     } else if (e.cargo.length || e.retreat) this.followField(e, home, 1);   // drive the wounded home, or get out of the line of fire
     for (const id of e.cargo) { const d = this.byId.get(id); if (d) { d.x = e.x; d.z = e.z; } }
@@ -1352,7 +1388,7 @@ export class Sim {
     const mix = v => { h ^= Math.round(v * 1000) | 0; h = Math.imul(h, 16777619); };
     for (const e of this.ents) { mix(e.id); mix(e.x); mix(e.z); mix(e.y); mix(e.hp); mix(e.rank); mix(e.dead ? 1 : 0); mix(e.down ? 1 : 0); }
     for (const m of this.mines) { mix(m.id); mix(m.x); mix(m.z); }
-    for (const t of this.teams) { mix(t.money); mix(t.kills); mix(t.saved); mix(t.alive ? 1 : 0); }
+    for (const t of this.teams) { mix(t.money); mix(t.kills); mix(t.saved); mix(t.alive ? 1 : 0); for (const p of t.ward) mix(p.heal * 7 + p.rank); }
     return (h >>> 0).toString(16);
   }
 }

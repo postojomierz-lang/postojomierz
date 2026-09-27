@@ -162,7 +162,9 @@ function onEvent(ev) {
     // spectating after defeat: nobody presses Start, so the next round begins by itself
     if (!sim.teams[game.human].alive) setTimeout(() => { if (game.sim === sim && game.mode === 'play') startBattle(); }, 1500);
   } else if (ev.t === 'returned' && ev.team === game.human) {
-    toast(`${ev.n} rescued soldier${ev.n > 1 ? 's are' : ' is'} back in the fight`);
+    const back = ev.n ? `${ev.n} soldier${ev.n > 1 ? 's' : ''} back from hospital` : '';
+    const ward = ev.ward ? `${ev.ward} still recovering${ev.beds ? '' : ' — build a field hospital to heal them faster'}` : '';
+    toast([back, ward].filter(Boolean).join(', '));
   } else if (ev.t === 'promote' && ev.team === game.human) {
     const e = sim.byId.get(ev.id);
     if (e) toast(`${e.def.name} promoted to ${RULES.veteran.names[ev.rank - 1]}`);
@@ -237,7 +239,7 @@ function refresh() {
     const order = !t.alive ? '' : t.stance === 'defend' ? '🛡 defending' : foc === game.human && t.id !== game.human ? '⚔ attacking <b>you</b>' : `⚔ → ${foc >= 0 ? sim.teams[foc].name : 'nearest'}`;
     const cls = [t.alive ? '' : 'out', pickable && t.alive && t.id !== game.human ? 'pick' : '', me.focus === t.id ? 'focus' : ''].join(' ');
     return `<div class="army ${cls}" data-team="${t.id}" ${pickable && t.id !== game.human && t.alive ? 'title="Make this army your main target"' : ''}><span class="sw" style="background:${TEAM_COLORS[t.color].main}"></span>
-      <span class="nm">${t.id === game.human ? 'You' : t.name}</span><span class="v">${t.alive ? units + ' units' : 'defeated'}</span>
+      <span class="nm">${t.id === game.human ? 'You' : t.name}</span><span class="v">${t.alive ? units + ' units' + (t.ward.length ? ` <span title="Wounded recovering in the base">✚${t.ward.length}</span>` : '') : 'defeated'}</span>
       <span class="bar"><i style="width:${Math.round(f * 100)}%"></i></span>${order ? `<span class="tg ${foc === game.human && t.id !== game.human && t.stance !== 'defend' ? 'me' : ''}">${order}</span>` : ''}</div>`;
   }).join('');
   if ($('armies').dataset.last !== rows) { $('armies').innerHTML = rows; $('armies').dataset.last = rows; }

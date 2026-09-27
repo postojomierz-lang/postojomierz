@@ -216,7 +216,64 @@ def tanktrap():
     m.box('dark', (0, 0.38, 0), (0.14, 0.14, 0.14), bevel=0.02)                               # welded gusset
     m.finish()
 
-MODELS = {'hq': hq,
+def hospital():
+    """a field hospital: a ward tent with low side walls, red crosses on the roof and the gable,
+    its door flaps rolled up, stretchers and a medical chest outside, a Red Cross flag on a pole."""
+    m = Model('hospital')
+    L, W, WH, R = 1.15, 0.8, 0.5, 1.2                     # half length (along z), half width, wall height, ridge
+    m.box('dark', (0, 0.012, 0), (2 * W + 0.2, 0.024, 2 * L + 0.2), bevel=0.01)          # groundsheet
+    m.prism('main', [(-W, 0.02), (W, 0.02), (W, WH), (0, R), (-W, WH)], -L, L, bevel=0.02)
+    # canvas seams on the roof and the walls, eaves line, guy ropes and pegs
+    slope = math.atan2(R - WH, W)
+    for z in (-0.6, 0.0, 0.6):
+        for s in (1, -1):
+            m.box('main', (s * W / 2, (R + WH) / 2 + 0.012, z), (math.hypot(W, R - WH), 0.012, 0.035), bevel=0.0, pitch=-s * slope)
+            m.box('main', (s * (W + 0.008), WH / 2, z), (0.012, WH - 0.04, 0.035), bevel=0.0)
+    for s in (1, -1):
+        m.box('main', (s * (W + 0.02), WH + 0.005, 0), (0.05, 0.03, 2 * L + 0.04), bevel=0.008)
+        for z in (-0.9, -0.3, 0.3, 0.9):
+            m.cyl('dark', (s * (W + 0.02), WH, z), (s * (W + 0.42), 0.03, z), 0.006, seg=5)
+            m.cyl('dark', (s * (W + 0.42), 0.0, z), (s * (W + 0.45), 0.09, z), 0.014, seg=6)
+    m.cyl('dark', (0, R + 0.01, -L - 0.06), (0, R + 0.01, L + 0.06), 0.025, seg=10)        # ridge pole
+    for z in (-L - 0.03, L + 0.03):
+        m.cyl('dark', (0, 0, z), (0, R + 0.07, z), 0.03, seg=10)                           # end poles
+        m.sphere('dark', (0, R + 0.09, z), 0.035, seg=10)
+    # red crosses on white panels: both roof slopes and the back gable
+    for s in (1, -1):
+        cx, cy = s * W / 2 + s * 0.012 * math.sin(slope), (R + WH) / 2 + 0.018 * math.cos(slope)
+        m.box(WHITE, (cx, cy, 0.3), (0.5, 0.012, 0.5), bevel=0.0, pitch=-s * slope)
+        m.box(RED, (cx + s * 0.004 * math.sin(slope), cy + 0.004, 0.3), (0.38, 0.012, 0.11), bevel=0.0, pitch=-s * slope)
+        m.box(RED, (cx + s * 0.004 * math.sin(slope), cy + 0.004, 0.3), (0.11, 0.012, 0.38), bevel=0.0, pitch=-s * slope)
+    m.box(WHITE, (0, 0.58, -L - 0.012), (0.42, 0.42, 0.012), bevel=0.0)
+    m.box(RED, (0, 0.58, -L - 0.02), (0.32, 0.09, 0.012), bevel=0.0)
+    m.box(RED, (0, 0.58, -L - 0.02), (0.09, 0.32, 0.012), bevel=0.0)
+    # the entrance at the front: dark doorway, flaps tied back as rolls
+    m.box('dark', (0, 0.4, L + 0.008), (0.52, 0.76, 0.012), bevel=0.0)
+    for s in (1, -1):
+        m.cyl('main', (s * 0.33, 0.06, L + 0.05), (s * 0.33, 0.78, L + 0.05), 0.05, seg=12)
+        m.torus('dark', (s * 0.33, 0.45, L + 0.05), (0, 1, 0), 0.052, 0.008, seg=14)
+    # stretchers along the sides, a medical chest by the door
+    for k, x in enumerate((-1.2, 1.2)):
+        for dx in (-0.11, 0.11): m.cyl('dark', (x + dx, 0.14, -0.55 + k * 0.1), (x + dx, 0.14, 0.55 + k * 0.1), 0.015, seg=6)
+        m.box('main', (x, 0.15, k * 0.1), (0.2, 0.02, 0.9), bevel=0.004)
+        for z in (-0.42, 0.42):
+            for dx in (-0.09, 0.09): m.cyl('dark', (x + dx, 0.0, z + k * 0.1), (x + dx, 0.14, z + k * 0.1), 0.012, seg=5)
+    m.box('main', (0.75, 0.13, L + 0.45), (0.36, 0.26, 0.24), bevel=0.015)                  # chest
+    m.box(WHITE, (0.75, 0.13, L + 0.575), (0.2, 0.2, 0.01), bevel=0.0)
+    m.box(RED, (0.75, 0.13, L + 0.58), (0.14, 0.045, 0.01), bevel=0.0)
+    m.box(RED, (0.75, 0.13, L + 0.58), (0.045, 0.14, 0.01), bevel=0.0)
+    # flag pole with the Red Cross flag at the back corner
+    fx, fz = -1.2, -1.2
+    m.cyl('dark', (fx, 0, fz), (fx, 2.2, fz), 0.022, seg=10)
+    m.sphere('dark', (fx, 2.22, fz), 0.035, seg=10)
+    m.box(WHITE, (fx + 0.3, 1.95, fz), (0.56, 0.38, 0.012), bevel=0.0)
+    m.box(RED, (fx + 0.3, 1.95, fz + 0.009), (0.36, 0.09, 0.008), bevel=0.0)
+    m.box(RED, (fx + 0.3, 1.95, fz + 0.009), (0.09, 0.3, 0.008), bevel=0.0)
+    m.box(RED, (fx + 0.3, 1.95, fz - 0.009), (0.36, 0.09, 0.008), bevel=0.0)
+    m.box(RED, (fx + 0.3, 1.95, fz - 0.009), (0.09, 0.3, 0.008), bevel=0.0)
+    m.finish()
+
+MODELS = {'hq': hq, 'hospital': hospital,
           'sandbags0': lambda: sandbags(0), 'sandbags1': lambda: sandbags(1), 'wall0': lambda: wall(0), 'wall1': lambda: wall(1),
           'wire': wire, 'barrel': barrel, 'tanktrap': tanktrap}
 
