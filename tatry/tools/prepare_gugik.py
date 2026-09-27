@@ -273,22 +273,47 @@ def main():
             o, v = wms_filled(lon_a, lat_a, lon_b, lat_b, c1 - c0, r1 - r0, f'base_{qi}{qj}')
             ortho[r0:r1, c0:c1] = o; validq[r0:r1, c0:c1] = v
     valid = validq
-    # lift the shadows of the morning flight: brighten dark regions, keep their texture
-    L = gaussian_filter(np.where(valid, ortho.mean(2), 90), 6)
-    shade = np.clip((85 - L) / 55, 0, 1)
-    # per-channel gain: brighten and take out the blue cast of skylight-only areas
-    gain = np.clip((88 / np.maximum(L, 1)) ** 0.9, 1, 5)[..., None] * (1 - shade[..., None] * np.array([0, 0.05, 0.18]))
-    ortho *= gain
     sen = np.asarray(Image.open(os.path.join(DATA, 'inner.sentinel.jpg')).convert('RGB').resize((ow, oh), Image.BICUBIC)).astype(np.float32)
-    # match the orthophoto to Sentinel-2 overall brightness/colour so shader constants still hold,
-    # keep a bit of the orthophoto's own contrast
-    # per-channel linear map (also applied to the detailed tiles)
-    cmap = []
-    for c in range(3):
-        o, sv = ortho[..., c][valid], sen[..., c][valid]
-        a = sv.std() * 1.15 / o.std()
-        cmap.append((a, sv.mean() - a * o.mean()))
-        ortho[..., c] = ortho[..., c] * a + cmap[-1][1]
+    lum = lambda im: im @ np.array([0.3, 0.55, 0.15], dtype=np.float32)
+    def fit_cmap(src, sel):
+        # per-channel gain towards Sentinel-2 colours (so shader constants hold)
+        # multiplicative only: an offset would crush the dark shadow pixels to zero before they are lifted
+        return [(float(sen[..., c][sel].mean() / max(src[..., c][sel].mean(), 1)), 0.0) for c in range(3)]
+    def apply_cmap(src, cm):
+        return np.stack([src[..., c] * cm[c][0] + cm[c][1] for c in range(3)], -1)
+    def shadow_mask(o):
+        # cast shadows of the morning flight: much darker than the high-sun Sentinel-2 image (July, 10:00 UTC);
+        # dark forest or water is dark in both, so it is left alone
+        r = gaussian_filter(lum(o), 2) / np.maximum(gaussian_filter(lum(sen), 3), 1)
+        from scipy.ndimage import binary_opening, binary_closing
+        from scipy.ndimage import label
+        m = (r < 0.62) & valid
+        m = binary_closing(binary_opening(m, iterations=1), iterations=2)
+        # fill unflagged islands inside shadows (they stay as dark blots) and drop tiny flagged specks
+        # (patches in dark forest turn light green)
+        def small(x, n):
+            lab, k = label(x)
+            sizes = np.bincount(lab.ravel())
+            return (sizes < n)[lab] & x
+        m = m | small(~m & valid, 3000)
+        m = m & ~small(m, 400)
+        return m & valid
+    raw = ortho.copy()
+    cmap = fit_cmap(raw, valid)
+    m0 = shadow_mask(apply_cmap(raw, cmap))
+    cmap = fit_cmap(raw, valid & ~m0)                 # colours fitted on sunlit ground only
+    ortho = apply_cmap(raw, cmap)
+    shadow = shadow_mask(ortho)
+    # inside shadows: brightness and colour from Sentinel-2, fine texture from the orthophoto.
+    # Both averages use shadow pixels only, so no bright halos leak across shadow edges.
+    def nconv(img, m, sig):
+        w = gaussian_filter(m.astype(np.float32), sig)
+        return np.stack([gaussian_filter(img[..., c] * m, sig) for c in range(3)], -1) / np.maximum(w, 1e-3)[..., None]
+    corr = np.clip(nconv(sen, shadow, 10) / np.maximum(nconv(ortho, shadow, 10), 1.5), 0.8, 10)
+    soft = gaussian_filter(shadow.astype(np.float32), 1.5)[..., None]
+    gain = 1 + (corr - 1) * soft                      # also applied to the detailed tiles
+    ortho *= gain
+    print('shadows equalised on', round(float(shadow.sum() / valid.sum()), 3), 'of the Polish photo')
     # Slovak orthophoto (ÚGKK SR / GKÚ Bratislava, 2025, uploaded to ../zbgis_orto) replaces Sentinel-2
     sk = sk_ortho(ll, ow, oh)
     if sk is not None:
@@ -338,11 +363,10 @@ def main():
             o, ov = wms_filled(*tll, 512, 512, f't_{i}_{j}')
             px0 = (x0 - ib[0]) / ORTHO_BASE; pz0 = (z0 - ib[1]) / ORTHO_BASE
             box = (px0, pz0, px0 + TILE / ORTHO_BASE, pz0 + TILE / ORTHO_BASE)
+            o = apply_cmap(o, cmap)
             for c in range(3):
                 g = Image.fromarray(gain[..., c].astype(np.float32)).crop(box).resize((512, 512), Image.BILINEAR)
                 o[..., c] *= np.asarray(g)
-            for c in range(3):
-                o[..., c] = o[..., c] * cmap[c][0] + cmap[c][1]
             # background from the fused base where the tile has no data
             bg = np.asarray(fused_img.crop((px0, pz0, px0 + TILE / ORTHO_BASE, pz0 + TILE / ORTHO_BASE)).resize((512, 512), Image.BICUBIC)).astype(np.float32)
             o = np.where(ov[..., None], o, bg)
