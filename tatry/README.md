@@ -92,3 +92,9 @@ a drzewa, trawa i głazy omijają budynki. Tekstury: Poly Haven `wood_plank_wall
 biegnie łańcuch po stronie skały, zawieszony na kotwach co ~3 m i lekko zwisający między nimi
 (ok. 700 m łańcuchów w 4 odcinkach). Na najbardziej stromych płytach (> 88%) są stalowe klamry
 w poprzek ścieżki, co ~45 cm wysokości. Ogniwa, kotwy i klamry to instancje.
+
+## Znaki szlaku
+`src/trailmarks.js`: czerwony znak szlaku (biały–czerwony–biały) namalowany na głazach ok. 2 m od
+ścieżki, co ~30 m (98 znaków), zwrócony do idącego w górę. Głaz ma jedną płaską ścianę pod znak,
+reszta jest zaokrąglona i nieregularna (tekstura `mossy_rock`); znak rysowany na płótnie, z
+nierównymi krawędziami i przetarciami.

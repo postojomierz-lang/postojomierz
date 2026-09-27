@@ -16,6 +16,7 @@ import { Sound } from './sound.js';
 import { buildAnimals } from './animals.js';
 import { buildBuildings, buildingFlats } from './buildings.js';
 import { buildChains } from './chains.js';
+import { buildTrailMarks } from './trailmarks.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -375,7 +376,10 @@ async function main() {
     },
     isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.2,
   });
-  const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.3 });
+  const blazes = buildTrailMarks({ scene, terrain, trail, shade,
+    rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso),
+    blocked: (x, z) => houses.inside(x, z, 1) || terrain.maskAt(lakeMask, x, z) > 0.05 });
+  const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6 });
   status('Wypuszczanie zwierząt…'); await frame();
   // height of the surface actually drawn at (x, z): the 1 m patch near the camera, the 6 m mesh elsewhere
   const drawnHeight = (x, z) => {
@@ -816,7 +820,7 @@ async function main() {
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
