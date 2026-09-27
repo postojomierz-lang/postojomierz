@@ -1,9 +1,9 @@
-// Trees without external assets: branch cards with a painted needle texture, rounded normals
-// and baked darkening near the trunk. Far trees are camera-independent impostors (three crossed
-// quads) rendered once from the detailed model at start-up.
+// Forest: spruces and young spruces as impostors baked from Poly Haven models (see impostor.js);
+// dwarf pine as low mounds of branch cards with a painted needle texture.
 import * as THREE from 'three';
 import { rng } from './noise.js';
 import { patchShading } from './materials.js';
+import { impostorMesh } from './impostor.js';
 
 // ---------------------------------------------------------------- texture atlas
 // top 7/8: spruce branch (twig from the left edge to the right tip), bottom strip: bark
@@ -104,39 +104,6 @@ class Builder {
 const norm = (v) => { const l = Math.hypot(...v); return v.map((x) => x / l); };
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
-// Norway spruce, unit height, base at y = 0
-function spruceGeometry(atlas, levels = 13, perLevel = 6) {
-  const b = new Builder(), r = rng(3);
-  const uvB = [0, atlas.branchV0, 1, 1];
-  b.cylinder(0.022, 0.006, 0.97, 6, atlas.barkV, 0.8);
-  let ang = 0;
-  for (let k = 0; k < levels; k++) {
-    const t = k / (levels - 1);
-    const y = 0.1 + 0.86 * Math.pow(t, 0.9);
-    const L = 0.34 * Math.pow(1 - y, 0.85) + 0.035;
-    const droop = 0.18 + 0.45 * (1 - t);
-    const shade = 0.55 + 0.45 * t;
-    const n = perLevel - (t > 0.8 ? 2 : 0);
-    for (let i = 0; i < n; i++) {
-      const a = ang + i / n * Math.PI * 2 + (r() - 0.5) * 0.5;
-      const dir = norm([Math.cos(a), -Math.sin(droop) * (0.8 + r() * 0.4), Math.sin(a)]);
-      const side = norm(cross(dir, [0, 1, 0]));
-      const up = norm(cross(side, dir));
-      const w = L * 0.3;
-      const p0 = [0, y, 0], center = [0, y + 0.05, 0];
-      b.card(p0, dir, side.map((v) => v * w), L, center, shade, uvB);            // flat, seen from above
-      b.card(p0, dir, up.map((v) => v * w * 0.8), L * 0.95, center, shade * 0.95, uvB); // upright
-    }
-    ang += 2.4;
-  }
-  // leader shoot
-  for (let i = 0; i < 3; i++) {
-    const a = i / 3 * Math.PI;
-    b.card([0, 0.93, 0], [0, 1, 0], [Math.cos(a) * 0.025, 0, Math.sin(a) * 0.025], 0.08, [0, 0.9, 0], 1, uvB);
-  }
-  return b.geometry();
-}
-
 // Dwarf mountain pine: low mound of branches radiating from the centre, unit radius
 function pineGeometry(atlas) {
   const b = new Builder(), r = rng(5);
@@ -164,82 +131,32 @@ function foliageMaterial(atlas, env, wind) {
   return m;
 }
 
-// ---------------------------------------------------------------- impostor
-function bakeImpostor(renderer, geo, atlas) {
-  const rt = new THREE.WebGLRenderTarget(256, 320, { samples: 4 });
-  rt.texture.generateMipmaps = true;
-  rt.texture.minFilter = THREE.LinearMipmapLinearFilter;
-  const scene = new THREE.Scene();
-  const mat = new THREE.MeshBasicMaterial({ map: atlas.tex, vertexColors: true, alphaTest: 0.42, side: THREE.DoubleSide });
-  const mesh = new THREE.Mesh(geo, mat);
-  scene.add(mesh);
-  const cam = new THREE.OrthographicCamera(-0.4, 0.4, 0.5, -0.5, 0.1, 10);
-  cam.position.set(0, 0.5, 3); cam.lookAt(0, 0.5, 0);
-  const prevTarget = renderer.getRenderTarget(), prevColor = new THREE.Color(), prevAlpha = renderer.getClearAlpha();
-  renderer.getClearColor(prevColor);
-  renderer.setRenderTarget(rt);
-  renderer.setClearColor(0x1a2a16, 0);
-  renderer.clear();
-  renderer.render(scene, cam);
-  renderer.setRenderTarget(prevTarget);
-  renderer.setClearColor(prevColor, prevAlpha);
-  return rt.texture;
-}
-
-function impostorGeometry() {
-  const b = new Builder();
-  for (let i = 0; i < 3; i++) {
-    const a = i / 3 * Math.PI;
-    const w = [Math.cos(a) * 0.4, 0, Math.sin(a) * 0.4];
-    const n = b.pos.length / 3;
-    const P = [[-1, 0, 0, 0], [1, 0, 1, 0], [1, 1, 1, 1], [-1, 1, 0, 1]];
-    for (const [s, y, u, v] of P) {
-      const x = w[0] * s, z = w[2] * s;
-      b.pos.push(x, y, z); b.uv.push(u, v);
-      const nl = Math.hypot(x, 0.4, z);
-      b.nor.push(x / nl, 0.4 / nl, z / nl);
-      b.col.push(1, 1, 1);
-    }
-    b.idx.push(n, n + 1, n + 2, n, n + 2, n + 3);
-  }
-  return b.geometry();
-}
-
 // ---------------------------------------------------------------- forest with distance LOD
-export function buildForest({ renderer, scene, env, spruce, pine, quality }) {
+export function buildForest({ scene, env, spruce, pine, quality, kinds }) {
   const atlas = branchTexture();
   const r = rng(21);
-  const spruceGeo = spruceGeometry(atlas, quality === 'low' ? 9 : 13, quality === 'low' ? 5 : 6);
-  const leaf = foliageMaterial(atlas, env, 1);
   const shrub = foliageMaterial(atlas, env, 0.4);
-
-  const impTex = bakeImpostor(renderer, spruceGeo, atlas);
-  const impMat = new THREE.MeshLambertMaterial({ map: impTex, alphaTest: 0.4, side: THREE.DoubleSide, vertexColors: true });
-  patchShading(impMat, env, { wind: 0.5, perVertexShadow: true });
-
-  // per-tree transform, computed once
-  const n = spruce.length / 4; // x, y, z, 1 if the ground height includes the canopy
-  const mats = new Float32Array(n * 16), cols = new Float32Array(n * 3);
   const dummy = new THREE.Object3D(), col = new THREE.Color();
+
+  // spruces (and young spruces near the upper tree line): baked impostors of the Poly Haven models
+  const n = spruce.length / 4; // x, y, z, 1 if the ground height includes the canopy
+  const trees = [], young = [];
+  const sv = kinds.spruce.meta.variants, yv = kinds.sapling.meta.variants;
   for (let k = 0; k < n; k++) {
-    const s = 15 + r() * 16;
-    // where the elevation model contains the forest canopy, sink trees into it
-    dummy.position.set(spruce[k * 4], spruce[k * 4 + 1] - (spruce[k * 4 + 3] ? s * 0.4 : 0.3), spruce[k * 4 + 2]);
-    dummy.rotation.set((r() - 0.5) * 0.05, r() * 6.28, (r() - 0.5) * 0.05);
-    const wdt = s * (0.8 + r() * 0.35);
-    dummy.scale.set(wdt, s, wdt);
-    dummy.updateMatrix(); dummy.matrix.toArray(mats, k * 16);
-    col.setHSL(0.27 + r() * 0.06, 0.25 + r() * 0.2, 0.62 + r() * 0.2); col.toArray(cols, k * 3);
+    const x = spruce[k * 4], y = spruce[k * 4 + 1], z = spruce[k * 4 + 2], canopy = spruce[k * 4 + 3];
+    // towards the tree line (≈1550 m) the forest thins into smaller, younger trees
+    const high = Math.min(1, Math.max(0, (y - 1430) / 120));
+    const isYoung = r() < 0.12 + 0.6 * high;
+    const list = isYoung ? young : trees, vars = isYoung ? yv : sv;
+    const row = Math.floor(r() * vars.length), v = vars[row];
+    const target = isYoung ? 4 + r() * 5 : (1 - 0.35 * high) * (17 + r() * 13);
+    const s = target / v.height;
+    list.push({ x, y: y - (canopy ? target * 0.4 : 0.3) - v.base * s, z, w: v.width * s * (0.9 + r() * 0.2), h: v.height * s,
+      row, rot: r() * 6.283, tint: r(), wind: isYoung ? 1.2 : 0.8 });
   }
-  const MAXNEAR = quality === 'low' ? 700 : 2500;
-  const near = new THREE.InstancedMesh(spruceGeo, leaf, MAXNEAR);
-  const far = new THREE.InstancedMesh(impostorGeometry(), impMat, n);
-  near.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAXNEAR * 3), 3);
-  far.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
-  near.castShadow = near.receiveShadow = true;
-  far.castShadow = true; far.receiveShadow = true;
-  near.frustumCulled = far.frustumCulled = false;
-  scene.add(near, far);
+  const treeMesh = impostorMesh(kinds.spruce, trees);
+  const youngMesh = impostorMesh(kinds.sapling, young);
+  scene.add(treeMesh, youngMesh);
 
   // dwarf pine: always the card model (cheap)
   const pn = pine.length / 3;
@@ -255,27 +172,6 @@ export function buildForest({ renderer, scene, env, spruce, pine, quality }) {
   pineMesh.castShadow = pineMesh.receiveShadow = true;
   scene.add(pineMesh);
 
-  const R_NEAR = quality === 'low' ? 140 : 260;
-  let lastX = Infinity, lastZ = Infinity;
-  function update(cam) {
-    const cx = cam.position.x, cz = cam.position.z;
-    if (Math.hypot(cx - lastX, cz - lastZ) < 25) return;
-    lastX = cx; lastZ = cz;
-    const R2 = R_NEAR * R_NEAR;
-    let a = 0, b = 0;
-    const nm = near.instanceMatrix.array, nc = near.instanceColor.array;
-    const fm = far.instanceMatrix.array, fc = far.instanceColor.array;
-    for (let k = 0; k < n; k++) {
-      const dx = mats[k * 16 + 12] - cx, dz = mats[k * 16 + 14] - cz;
-      if (dx * dx + dz * dz < R2 && a < MAXNEAR) {
-        nm.set(mats.subarray(k * 16, k * 16 + 16), a * 16); nc.set(cols.subarray(k * 3, k * 3 + 3), a * 3); a++;
-      } else {
-        fm.set(mats.subarray(k * 16, k * 16 + 16), b * 16); fc.set(cols.subarray(k * 3, k * 3 + 3), b * 3); b++;
-      }
-    }
-    near.count = a; far.count = b;
-    near.instanceMatrix.needsUpdate = far.instanceMatrix.needsUpdate = true;
-    near.instanceColor.needsUpdate = far.instanceColor.needsUpdate = true;
-  }
-  return { update, counts: { spruce: n, pine: pn } };
+  function update() {}
+  return { update, counts: { spruce: trees.length, young: young.length, pine: pn } };
 }
