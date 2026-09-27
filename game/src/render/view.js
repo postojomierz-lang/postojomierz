@@ -237,7 +237,7 @@ export class View {
     this.span = span; this.shadowHalf = 0;
 
     this.groundPicture = null;
-    if (map.theme === 'normandy') {
+    if (map.theme === 'normandy' || map.theme === 'town') {
       const d = buildDiorama(map, this.quality);
       this.world.add(d.group); this.groundPicture = d.minimap;
     } else {
@@ -665,7 +665,7 @@ export class View {
     for (let y = 0; y < map.H; y++) for (let x = 0; x < map.W; x++) {
       const t = map.grid[y * map.W + x];
       if (!t) continue;
-      g.fillStyle = t === 4 ? 'rgba(0,0,0,.55)' : t === 2 ? '#4f8fc0' : t === 1 ? 'rgba(60,45,30,.75)' : 'rgba(60,45,30,.45)';
+      g.fillStyle = t === 4 ? 'rgba(0,0,0,.55)' : t === 2 ? '#4f8fc0' : t === 1 ? 'rgba(60,45,30,.75)' : t === 5 ? 'rgba(150,95,55,.6)' : 'rgba(60,45,30,.45)';
       g.fillRect(x * S, y * S, S, S);
     }
     this.miniBase = c;

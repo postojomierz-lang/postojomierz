@@ -3,10 +3,12 @@ import { mulberry } from './rng.js';
 
 export const T_OPEN = 0, T_SOLID = 1, T_WATER = 2, T_LOW = 3; // LOW = solid but short: blocks movement, not line of sight
 export const T_EDGE = 4; // off the edge of the round table: nobody walks there, but you can see and shoot across
+export const T_RUIN = 5; // a ruined building: soldiers on foot can get in and fight from it (good cover), vehicles can't
 
-// 'normandy' is a diorama battlefield (see normandy() below); the rest are the classic toy-room floors
+// diorama battlefields ('normandy': see normandy(), 'town': see town()); the rest are the classic toy-room floors
+export const DIORAMAS = ['normandy', 'town'];
 export const ROOM_THEMES = ['wood', 'carpet', 'kitchen', 'sand', 'grass', 'snow'];
-export const THEMES = ['normandy', ...ROOM_THEMES];
+export const THEMES = [...DIORAMAS, ...ROOM_THEMES];
 
 const OBSTACLES = {
   wood:    { tall: ['books', 'shoebox', 'mug', 'lego'], low: ['pencils', 'remote'], water: ['juice', 'cola'] },
@@ -61,12 +63,13 @@ export const STYLES = {
 };
 
 // layout (optional): { theme, objects: [{ kind: 'tall'|'low'|'water', style, x, y, w, h }], decor: [{ kind, x, y }] }
-export function makeMap({ teams, theme, seed, layout = null }) {
+// options (diorama battlefields): { river: true | false } (default: decided by the seed)
+export function makeMap({ teams, theme, seed, layout = null, options = {} }) {
   teams = Math.max(2, Math.min(MAX_ARMIES, teams));
   const rng = mulberry(seed);
   const { W, H, zw, zh, round } = mapSize(teams);
   if (layout && ROOM_THEMES.includes(layout.theme)) theme = layout.theme;
-  theme = THEMES.includes(theme) && !(layout && theme === 'normandy') ? theme : ROOM_THEMES[Math.floor(rng() * ROOM_THEMES.length)];
+  theme = THEMES.includes(theme) && !(layout && DIORAMAS.includes(theme)) ? theme : ROOM_THEMES[Math.floor(rng() * ROOM_THEMES.length)];
   const grid = new Uint8Array(W * H);
   const R = round ? tableRadius(W, H) : 0;
   if (round) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -188,6 +191,8 @@ export function makeMap({ teams, theme, seed, layout = null }) {
       if (grid[Math.floor(y) * W + Math.floor(x)] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
       decor.push({ x, y, kind: ['palm', 'pine', 'bush'].includes(d.kind) ? d.kind : 'bush', seed: Math.floor(rng() * 1e9) });
     }
+  } else if (theme === 'town') {
+    extra = town({ W, H, grid, zones, objects, decor, rng, turns, roads, round, R, opts: options });
   } else if (theme === 'normandy') {
     extra = normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, copies, placeSym, putWater, fields, roads, round, R });
   } else {
@@ -295,32 +300,7 @@ function normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, place
   }
 
   // field sites, copied round the table
-  const base = [], per = Math.max(3, Math.round((W + 2 * M) * (H + 2 * M) / 120 / n));
-  for (let i = 0; i < per; i++) base.push([-M + rng() * (W + 2 * M), -M + rng() * (H + 2 * M)]);
-  const sites = [];
-  for (let k = 0; k < n; k++) base.forEach(([x, y], b) => { const [sx, sy] = rot(x, y, k); sites.push({ x: sx, y: sy, b, k }); });
-  // Voronoi cells by clipping the board rectangle with the bisector of every other site
-  const X0 = -M, Y0 = -M, X1 = W + M, Y1 = H + M;
-  const cells = sites.map((s, i) => {
-    let poly = [[X0, Y0, -1], [X1, Y0, -1], [X1, Y1, -1], [X0, Y1, -1]];   // [x, y, label of the edge that starts here]
-    for (let j = 0; j < sites.length && poly.length; j++) {
-      if (j === i) continue;
-      const o = sites[j], nx = o.x - s.x, ny = o.y - s.y;
-      if (nx * nx + ny * ny > 60 * 60) continue;                           // too far to matter
-      const mx = (o.x + s.x) / 2, my = (o.y + s.y) / 2, f = p => (p[0] - mx) * nx + (p[1] - my) * ny;   // > 0: on the other side
-      const out = [];
-      for (let a = 0; a < poly.length; a++) {
-        const p = poly[a], q = poly[(a + 1) % poly.length], fp = f(p), fq = f(q);
-        if (fp <= 0) out.push(p);
-        if ((fp <= 0) !== (fq <= 0)) {
-          const t = fp / (fp - fq), x = p[0] + (q[0] - p[0]) * t, y = p[1] + (q[1] - p[1]) * t;
-          out.push([x, y, fp <= 0 ? j : p[2]]);
-        }
-      }
-      poly = out;
-    }
-    return poly;
-  });
+  const { sites, cells } = voronoiSym({ W, H, M, n, rng, rot, per: Math.max(3, Math.round((W + 2 * M) * (H + 2 * M) / 120 / n)) });
   sites.forEach((s, i) => fields.push({ x: s.x, y: s.y, kind: s.b, k: s.k, poly: cells[i].map(([x, y]) => [x, y]) }));
 
   // farms first (the hedges stop where a barn stands): a stone farmhouse, and a timber barn next to it
@@ -411,4 +391,209 @@ function normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, place
     decor.push({ x, y, kind: rng() < 0.75 ? 'oak' : 'apple', seed: Math.floor(rng() * 1e9) });
   }
   return { margin: M, borders, road };
+}
+
+// Voronoi diagram of random points copied once per army round the middle (so it is fair):
+// every cell is the board rectangle clipped by the bisector of each nearby site; each polygon
+// corner carries the site on the other side of the edge that starts there (-1: the board edge).
+function voronoiSym({ W, H, M, n, rng, rot, per }) {
+  const base = [];
+  for (let i = 0; i < per; i++) base.push([-M + rng() * (W + 2 * M), -M + rng() * (H + 2 * M)]);
+  const sites = [];
+  for (let k = 0; k < n; k++) base.forEach(([x, y], b) => { const [sx, sy] = rot(x, y, k); sites.push({ x: sx, y: sy, b, k }); });
+  const X0 = -M, Y0 = -M, X1 = W + M, Y1 = H + M;
+  const cells = sites.map((s, i) => {
+    let poly = [[X0, Y0, -1], [X1, Y0, -1], [X1, Y1, -1], [X0, Y1, -1]];
+    for (let j = 0; j < sites.length && poly.length; j++) {
+      if (j === i) continue;
+      const o = sites[j], nx = o.x - s.x, ny = o.y - s.y;
+      if (nx * nx + ny * ny > 60 * 60) continue;
+      const mx = (o.x + s.x) / 2, my = (o.y + s.y) / 2, f = p => (p[0] - mx) * nx + (p[1] - my) * ny;
+      const out = [];
+      for (let a = 0; a < poly.length; a++) {
+        const p = poly[a], q = poly[(a + 1) % poly.length], fp = f(p), fq = f(q);
+        if (fp <= 0) out.push(p);
+        if ((fp <= 0) !== (fq <= 0)) {
+          const t = fp / (fp - fq);
+          out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, fp <= 0 ? j : p[2]]);
+        }
+      }
+      poly = out;
+    }
+    return poly;
+  });
+  return { sites, cells };
+}
+
+// ---- A town in ruins: old-town blocks between cobbled streets (a Voronoi diagram again, so it is
+// fair), a wide avenue from every army's base to the square in the middle, stone town houses (some
+// still standing, many in ruins that infantry can fight from), churches, rubble, barricades and
+// anti-tank obstacles. Optionally a river with stone bridges: straight through the middle with two
+// armies, a ring round the old town with more.
+function town({ W, H, grid, zones, objects, decor, rng, turns, roads, round, R, opts }) {
+  const n = turns.length, cx = W / 2, cy = H / 2, M = 14, BW = W + 2 * M, BH = H + 2 * M;
+  const rot = (x, y, k) => { const { c, s } = turns[k], px = x - cx, py = y - cy; return [px * c - py * s + cx, px * s + py * c + cy]; };
+  const near = (x, y, m) => zones.some(z => x >= z.x - m && x < z.x + z.w + m && y >= z.y - m && y < z.y + z.h + m);
+  const inPlay = (x, y) => x >= 0 && y >= 0 && x < W && y < H && grid[y * W + x] !== T_EDGE;
+  // what each cell of the whole board is (the play area and the scenery round it): 0 lot, 1 street,
+  // 2 avenue, 3 square, 4 river, 5 bridge, 6 park (army zones)
+  const B = new Uint8Array(BW * BH), bi = (x, y) => (y + M) * BW + x + M;
+  const mark = (x, y, v, over = false) => { if (x < -M || y < -M || x >= W + M || y >= H + M) return; const i = bi(x, y); if (over || B[i] === 0 || B[i] === 1) B[i] = v; };
+  const segment = (ax, ay, bx, by, half, v, over) => {   // cells whose centre is within half of the segment
+    const x0 = Math.floor(Math.min(ax, bx) - half - 1), x1 = Math.ceil(Math.max(ax, bx) + half + 1), y0 = Math.floor(Math.min(ay, by) - half - 1), y1 = Math.ceil(Math.max(ay, by) + half + 1);
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const px = x + 0.5 - ax, py = y + 0.5 - ay, t = Math.max(0, Math.min(1, (px * dx + py * dy) / L2));
+      const ex = px - t * dx, ey = py - t * dy;
+      if (ex * ex + ey * ey <= half * half) mark(x, y, v, over);
+    }
+  };
+  const streets = [], river = { cells: [], bridges: [] };
+  const hasRiver = opts.river !== undefined ? !!opts.river : rng() < 0.6;
+  const zc = zones.map(z => [z.x + z.w / 2, z.y + z.h / 2]);
+
+  // streets: the borders of the old-town blocks
+  const { sites, cells } = voronoiSym({ W, H, M, n, rng, rot, per: Math.max(3, Math.round(BW * BH / 70 / n)) });
+  cells.forEach((poly, i) => poly.forEach((p, a) => {
+    const j = p[2]; if (j < i) return;
+    const q = poly[(a + 1) % poly.length];
+    if (Math.hypot(q[0] - p[0], q[1] - p[1]) < 0.5) return;
+    streets.push({ ax: p[0], ay: p[1], bx: q[0], by: q[1], w: 2 });
+    segment(p[0], p[1], q[0], q[1], 1.05, 1);
+  }));
+  // avenues from every base to the square, and on out behind it off the board
+  const far = Math.max(W, H) / 2 + M;
+  for (const [ax, ay] of zc) {
+    const l = Math.hypot(ax - cx, ay - cy) || 1, ox = ax + (ax - cx) / l * (far - l + 4), oy = ay + (ay - cy) / l * (far - l + 4);
+    streets.push({ ax: ox, ay: oy, bx: cx, by: cy, w: 3.2, avenue: true });
+    segment(ox, oy, cx, cy, 1.6, 2, true);
+  }
+  // the square (with two armies and a river, the river runs through the middle instead)
+  const SQ = round ? 6.5 : hasRiver ? 0 : 5.5;
+  for (let y = Math.floor(cy - SQ - 1); y <= cy + SQ + 1; y++) for (let x = Math.floor(cx - SQ - 1); x <= cx + SQ + 1; x++)
+    if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= SQ * SQ) mark(x, y, 3, true);
+  // parks round the army zones
+  for (const z of zones) for (let y = z.y - 2; y < z.y + z.h + 2; y++) for (let x = z.x - 2; x < z.x + z.w + 2; x++) mark(x, y, 6, true);
+
+  // the river and its bridges
+  if (hasRiver) {
+    const wet = [];
+    if (!round) {
+      const A = 2.2 + rng() * 1.5, f = 1 + Math.floor(rng() * 2);
+      const mid = y => cx + A * sinT((y - cy) / H * 2 * PI * f);          // odd round the middle: the same after a half turn
+      for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) if (Math.abs(x + 0.5 - mid(y + 0.5)) < 1.9) wet.push([x, y]);
+      for (const by of [cy, cy - H * 0.3, cy + H * 0.3]) river.bridges.push({ x: mid(by), y: by, dx: 1, dy: 0 });
+    } else {
+      const Rr = R * 0.45;
+      for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) { const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy); if (Math.abs(d - Rr) < 1.9) wet.push([x, y]); }
+      for (let k = 0; k < 2 * n; k++) {
+        const [ax, ay] = k < n ? rot(zc[0][0], zc[0][1], k) : rot(...rot(zc[0][0], zc[0][1], k - n), 0);
+        let dx = ax - cx, dy = ay - cy;
+        if (k >= n) { const h = PI / n, c = cosT(h), s = sinT(h); [dx, dy] = [dx * c - dy * s, dx * s + dy * c]; }
+        const l = Math.hypot(dx, dy); dx /= l; dy /= l;
+        river.bridges.push({ x: cx + dx * Rr, y: cy + dy * Rr, dx, dy });
+      }
+    }
+    for (const [x, y] of wet) mark(x, y, 4, true);
+    for (const b of river.bridges) {
+      // a bridge 3 cells wide across the water, and the street that leads onto it
+      segment(b.x - b.dx * 3.2, b.y - b.dy * 3.2, b.x + b.dx * 3.2, b.y + b.dy * 3.2, 1.6, 5, true);
+    }
+    // side streets stop at the quay; bridges carry a street on both sides
+    for (const b of river.bridges) segment(b.x - b.dx * 5, b.y - b.dy * 5, b.x + b.dx * 5, b.y + b.dy * 5, 1.2, 1);
+  }
+
+  // copy what the play area needs into the grid
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const c = y * W + x; if (grid[c] === T_EDGE) continue;
+    const v = B[bi(x, y)];
+    if (v === 4) { grid[c] = T_WATER; river.cells.push(c); }
+  }
+  if (river.cells.length) objects.push({ kind: T_WATER, style: 'river', cells: river.cells, x: 0, y: 0, w: W, h: H, seed: 1 });
+
+  // buildings on the lots, the same for every army; ruins can be entered on foot
+  const free = (x, y) => inPlay(x, y) && grid[y * W + x] === T_OPEN && B[bi(x, y)] === 0 && !near(x, y, 2);
+  const lotCopies = (x, y, w, h) => turns.map(({ c, s, swap }) => {
+    const px = x + w / 2 - cx, py = y + h / 2 - cy, ww = swap ? h : w, hh = swap ? w : h;
+    return { x: Math.round(px * c - py * s + cx - ww / 2), y: Math.round(px * s + py * c + cy - hh / 2), w: ww, h: hh };
+  });
+  const placeLot = (w, h, style, kind, x, y) => {
+    const rects = lotCopies(x, y, w, h), used = new Set();
+    for (const r of rects) for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) {
+      if (!free(xx, yy) || used.has(yy * W + xx)) return false;
+      used.add(yy * W + xx);
+    }
+    const seed = Math.floor(rng() * 1e9);
+    rects.forEach((r, k) => {
+      for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) grid[yy * W + xx] = kind;
+      objects.push({ kind, style, ...r, turn: k, seed, ...facing(r) });
+    });
+    return true;
+  };
+  // which side of a lot is on the street (the front door goes there)
+  const facing = r => {
+    const score = (x0, y0, dx, dy, len) => { let s2 = 0; for (let i = 0; i < len; i++) { const x = x0 + dx * i, y = y0 + dy * i; const v = x < -M || y < -M || x >= W + M || y >= H + M ? 0 : B[bi(x, y)]; if (v && v !== 4) s2++; } return s2; };
+    const sides = [[0, 1, score(r.x, r.y + r.h, 1, 0, r.w)], [0, -1, score(r.x, r.y - 1, 1, 0, r.w)], [1, 0, score(r.x + r.w, r.y, 0, 1, r.h)], [-1, 0, score(r.x - 1, r.y, 0, 1, r.h)]];
+    const long = r.w === r.h ? null : r.w > r.h ? 'y' : 'x';                   // long buildings face a long side
+    let best = null;
+    for (const sd of sides) { if (long === 'y' && sd[0]) continue; if (long === 'x' && sd[1]) continue; if (!best || sd[2] > best[2]) best = sd; }
+    return { fx: best[0], fy: best[1] };
+  };
+  const tries = (count, fn) => { for (let i = 0; i < count; i++) fn(Math.floor(rng() * W), Math.floor(rng() * H)); };
+  let lots = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (free(x, y)) lots++;
+  const per = lots / n;
+  tries(Math.round(per / 25) + 40, (x, y) => { if (objects.filter(o => o.style === 'church').length < n * Math.max(1, Math.round(per / 900))) placeLot(5, 3, 'church', T_SOLID, x, y); });
+  tries(Math.round(per * 30), (x, y) => {
+    const r = rng(), ruin = rng() < 0.45;
+    if (r < 0.45) placeLot(2, 2, ruin ? 'ruin2' : 'house2', ruin ? T_RUIN : T_SOLID, x, y);
+    else { const hz = rng() < 0.5; placeLot(hz ? 3 : 2, hz ? 2 : 3, ruin ? 'ruin3' : 'house3', ruin ? T_RUIN : T_SOLID, x, y); }
+  });
+  // gaps between houses: narrow houses, sheds, heaps of rubble; some yards stay open
+  tries(Math.round(per * 10), (x, y) => {
+    const r = rng();
+    if (r < 0.35) { const hz = rng() < 0.5, ruin = rng() < 0.5; placeLot(hz ? 2 : 1, hz ? 1 : 2, ruin ? 'ruin1' : 'house1', ruin ? T_RUIN : T_SOLID, x, y); }
+    else if (r < 0.37) placeLot(1, 1, 'rubble', T_LOW, x, y);
+  });
+  // the monument in the middle of the square
+  const mx = Math.round(cx - 1), my = Math.round(cy - 1);
+  let okM = SQ > 0; for (let y = my; y < my + 2; y++) for (let x = mx; x < mx + 2; x++) if (grid[y * W + x] !== T_OPEN) okM = false;
+  if (okM) { for (let y = my; y < my + 2; y++) for (let x = mx; x < mx + 2; x++) grid[y * W + x] = T_SOLID; objects.push({ kind: T_SOLID, style: 'monument', x: mx, y: my, w: 2, h: 2, seed: 7, fx: 0, fy: 1 }); }
+  // barricades and anti-tank hedgehogs across the side streets (never closing one completely)
+  const onStreet = (x, y) => inPlay(x, y) && grid[y * W + x] === T_OPEN && B[bi(x, y)] === 1 && !near(x, y, 3);
+  let bar = 0;
+  tries(Math.round(per / 8), (x, y) => {
+    if (bar >= Math.max(2, Math.round(per / 250)) * n) return;
+    const hz = rng() < 0.5, style = rng() < 0.5 ? 'barricade' : 'hedgehog', w = style === 'barricade' ? (hz ? 2 : 1) : 1, h = style === 'barricade' ? (hz ? 1 : 2) : 1;
+    const rects = lotCopies(x, y, w, h);
+    for (const r of rects) for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) if (!onStreet(xx, yy)) return;
+    const seed = Math.floor(rng() * 1e9);
+    rects.forEach((r, k) => { for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) grid[yy * W + xx] = T_LOW; objects.push({ kind: T_LOW, style, ...r, turn: k, seed }); });
+    bar += n;
+  });
+  // shell craters in the streets and the square (only for the eye)
+  for (let i = 0; i < Math.round(per / 60) + 2; i++) {
+    const x0 = rng() * W, y0 = rng() * H, seed = Math.floor(rng() * 1e9);
+    for (let k = 0; k < n; k++) {
+      const [x, y] = rot(x0, y0, k), xi = Math.floor(x), yi = Math.floor(y);
+      if (!inPlay(xi, yi) || grid[yi * W + xi] !== T_OPEN || near(xi, yi, 1) || !B[bi(xi, yi)] || B[bi(xi, yi)] >= 4) continue;
+      decor.push({ x, y, kind: 'crater', seed: seed + k });
+    }
+  }
+  // the town carries on beyond the play area (scenery only)
+  const outer = [];
+  const taken = new Uint8Array(BW * BH);
+  for (let i = 0; i < BW * BH / 3; i++) {
+    const x = -M + Math.floor(rng() * BW), y = -M + Math.floor(rng() * BH), r = rng(), hz = rng() < 0.5;
+    const [w, h] = r < 0.45 ? [2, 2] : hz ? [3, 2] : [2, 3];
+    let ok = true;
+    for (let yy = y; yy < y + h && ok; yy++) for (let xx = x; xx < x + w && ok; xx++) {
+      if (xx < -M || yy < -M || xx >= W + M || yy >= H + M || B[bi(xx, yy)] || taken[bi(xx, yy)]) ok = false;
+      else if (xx >= -1 && yy >= -1 && xx <= W && yy <= H && (!round || Math.hypot(xx + 0.5 - cx, yy + 0.5 - cy) < R + 1.5)) ok = false;
+    }
+    if (!ok) continue;
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) taken[bi(xx, yy)] = 1;
+    const ruin = rng() < 0.35, rr = { x, y, w, h };
+    outer.push({ style: (ruin ? 'ruin' : 'house') + (w === h ? 2 : 3), ...rr, seed: Math.floor(rng() * 1e9), ...facing(rr) });
+  }
+  return { margin: M, streets, board: B, outer, river: hasRiver ? river : null, square: SQ };
 }

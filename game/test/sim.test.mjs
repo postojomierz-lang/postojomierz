@@ -20,7 +20,7 @@ function play(seed, teams, theme = null) {
   return { hash: sim.stateHash(), winner: sim.winner, rounds: sim.round, ms: Date.now() - t0, ticks, log, theme: map.theme };
 }
 
-for (const [seed, teams, theme] of (process.argv[2] ? JSON.parse(process.argv[2]) : [[1, 2], [42, 2], [7, 4], [99, 3], [3, 2, 'normandy'], [11, 4, 'normandy'], [5, 6, 'normandy']])) {
+for (const [seed, teams, theme] of (process.argv[2] ? JSON.parse(process.argv[2]) : [[1, 2], [42, 2], [7, 4], [99, 3], [3, 2, 'normandy'], [11, 4, 'normandy'], [5, 6, 'normandy'], [6, 2, 'town'], [11, 4, 'town']])) {
   const a = play(seed, teams, theme), b = play(seed, teams, theme);
   console.log(`seed ${seed} teams ${teams} theme ${a.theme}: winner ${a.winner} after ${a.rounds} rounds, ${a.ticks} ticks in ${a.ms}ms (${(a.ms / a.ticks).toFixed(2)} ms/tick) deterministic=${a.hash === b.hash}`);
   console.log('  ' + a.log.join('\n  '));

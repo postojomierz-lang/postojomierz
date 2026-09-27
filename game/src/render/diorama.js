@@ -1,10 +1,13 @@
-// The Normandy battlefield as a model-railway diorama: a painted board of fields, lanes and craters,
-// bocage hedgerows, trees and farm buildings (Blender models, drawn instanced), the countryside
-// carrying on beyond the play area into low hills, and the board sitting on a wooden table.
+// Diorama battlefields, model-railway style, on a board sitting on a wooden table:
+// - Normandy: a painted board of fields, lanes and craters, bocage hedgerows, trees and farm
+//   buildings, the countryside carrying on beyond the play area into low hills;
+// - the town: cobbled streets and a paved square, town houses (plaster colour varies per house),
+//   ruins, a church, barricades, a river in stone quays with arched bridges.
+// All scenery comes from Blender (tools/blender/scenery.py, town.py) and is drawn instanced.
 import * as THREE from 'three';
 import { mulberry } from '../sim/rng.js';
 import { T_WATER, T_LOW } from '../sim/map.js';
-import { sceneryGeometry } from './models.js';
+import { sceneryGeometry, hasTint } from './models.js';
 import { floorTexture } from './terrain.js';
 
 const BOARD_DEPTH = 2.4;   // how thick the board is (its sides show from low camera angles)
@@ -41,7 +44,13 @@ export function buildDiorama(map, quality = 'medium') {
     return (v(xi, yi) * (1 - sx) + v(xi + 1, yi) * sx) * (1 - sy) + (v(xi, yi + 1) * (1 - sx) + v(xi + 1, yi + 1) * sx) * sy;
   };
   const ss = (a, b, t) => { t = Math.max(0, Math.min(1, (t - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const town = map.theme === 'town', BW = W + 2 * M, BH = H + 2 * M;
+  const bcell = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y); return xi < -M || yi < -M || xi >= W + M || yi >= H + M ? 0 : map.board[(yi + M) * BW + xi + M]; };
+  const wet = (x, y) => { const v = bcell(x, y); return v === 4 || v === 5; };
+  // the town is flat except for the river bed (a board corner sinks when all four cells round it are water)
+  const townHeight = (x, y) => (Number.isInteger(x) && Number.isInteger(y) ? wet(x, y) && wet(x - 1, y) && wet(x, y - 1) && wet(x - 1, y - 1) : wet(x, y)) ? -0.8 : 0;
   const height = (x, y) => {
+    if (town) return townHeight(x, y);
     const o = outDist(x, y); if (o <= 1) return 0;
     const hills = noise(x / 9, y / 9) * 1.6 + noise(x / 4, y / 4) * 0.4;
     return hills * ss(1, 6, o) * ss(0.5, 4, edgeDist(x, y));
@@ -49,14 +58,17 @@ export function buildDiorama(map, quality = 'medium') {
 
   // ---------------------------------------------------------------- the painted ground
   const PX = quality === 'low' ? 10 : quality === 'high' ? 24 : 16;
-  const BW = W + 2 * M, BH = H + 2 * M, px = Math.min(PX, Math.floor(4096 / Math.max(BW, BH)));
+  const px = Math.min(PX, Math.floor(4096 / Math.max(BW, BH)));
   const cv = document.createElement('canvas'); cv.width = BW * px; cv.height = BH * px;
   const bump = document.createElement('canvas'); bump.width = cv.width; bump.height = cv.height;
   const c = cv.getContext('2d'), b = bump.getContext('2d'), rng = mulberry(map.seed ^ 0x51f1);
   const X = x => (x + M) * px, Y = y => (y + M) * px;
-  c.fillStyle = FIELDS[0].base; c.fillRect(0, 0, cv.width, cv.height);
   b.fillStyle = '#808080'; b.fillRect(0, 0, bump.width, bump.height);
   const n = Math.max(1, map.zones.length);
+  const lanePts = [];
+  if (town) paintTown({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, bcell });
+  else {
+  c.fillStyle = FIELDS[0].base; c.fillRect(0, 0, cv.width, cv.height);
   for (const f of map.fields) {
     if (f.poly.length < 3) continue;
     const kind = FIELDS[fieldKind(f.kind)];
@@ -93,7 +105,6 @@ export function buildDiorama(map, quality = 'medium') {
     path(c); c.strokeStyle = 'rgba(70,95,45,.55)'; c.lineWidth = px * 0.9; c.stroke();
   }
   // lanes: packed earth with two wheel ruts and grass down the middle
-  const lanePts = [];
   for (const r of map.roads) {
     const L = Math.hypot(r.x1 - r.x0, r.y1 - r.y0), steps = Math.max(8, Math.ceil(L * 2)), pts = [];
     for (let i = 0; i <= steps; i++) {
@@ -111,15 +122,6 @@ export function buildDiorama(map, quality = 'medium') {
     for (const o of [-0.38, 0.38]) { line(c, o, 0.26, '#8a7152'); line(b, o, 0.26, '#4a4a4a'); }
     line(c, 0, 0.22, 'rgba(110,135,70,.8)');
   }
-  // shell craters: scorched earth (the thrown-up rim is a model)
-  for (const d of map.decor) if (d.kind === 'crater') {
-    const gr = c.createRadialGradient(X(d.x), Y(d.y), 0, X(d.x), Y(d.y), px * 1.5);
-    gr.addColorStop(0, '#3a2e22'); gr.addColorStop(0.45, '#56442f'); gr.addColorStop(0.7, 'rgba(90,70,45,.6)'); gr.addColorStop(1, 'rgba(60,50,30,0)');
-    c.fillStyle = gr; c.beginPath(); c.arc(X(d.x), Y(d.y), px * 1.5, 0, 7); c.fill();
-    const gb = b.createRadialGradient(X(d.x), Y(d.y), 0, X(d.x), Y(d.y), px * 0.8);
-    gb.addColorStop(0, '#202020'); gb.addColorStop(1, 'rgba(128,128,128,0)');
-    b.fillStyle = gb; b.beginPath(); b.arc(X(d.x), Y(d.y), px * 0.8, 0, 7); b.fill();
-  }
   // muddy pond shores and dark earth under the buildings
   for (const o of map.objects) {
     if (o.kind === T_WATER) {
@@ -128,6 +130,16 @@ export function buildDiorama(map, quality = 'medium') {
     } else if (o.style === 'house' || o.style === 'barn') {
       c.fillStyle = 'rgba(95,85,60,.7)'; c.fillRect(X(o.x - 0.4), Y(o.y - 0.4), (o.w + 0.8) * px, (o.h + 0.8) * px);
     }
+  }
+  }
+  // shell craters: scorched earth (the thrown-up rim is a model)
+  for (const d of map.decor) if (d.kind === 'crater') {
+    const gr = c.createRadialGradient(X(d.x), Y(d.y), 0, X(d.x), Y(d.y), px * 1.5);
+    gr.addColorStop(0, '#3a2e22'); gr.addColorStop(0.45, '#56442f'); gr.addColorStop(0.7, 'rgba(90,70,45,.6)'); gr.addColorStop(1, 'rgba(60,50,30,0)');
+    c.fillStyle = gr; c.beginPath(); c.arc(X(d.x), Y(d.y), px * 1.5, 0, 7); c.fill();
+    const gb = b.createRadialGradient(X(d.x), Y(d.y), 0, X(d.x), Y(d.y), px * 0.8);
+    gb.addColorStop(0, '#202020'); gb.addColorStop(1, 'rgba(128,128,128,0)');
+    b.fillStyle = gb; b.beginPath(); b.arc(X(d.x), Y(d.y), px * 0.8, 0, 7); b.fill();
   }
   // the edge of the play area: everything outside is a little darker, with a thin white line
   c.save();
@@ -187,7 +199,7 @@ export function buildDiorama(map, quality = 'medium') {
       const x0 = wx(-M), x1 = wx(W + M), z0 = wz(-M), z1 = wz(H + M), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
       const bw = x1 - x0, bd = z1 - z0;
       const box = (w, h, d, x, y, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; g.add(o); };
-      box(bw, BOARD_DEPTH, bd, cx, -BOARD_DEPTH / 2 - 0.01, cz, side);
+      box(bw, BOARD_DEPTH - 1.2, bd, cx, -BOARD_DEPTH / 2 - 0.6, cz, side);   // its top stays below the river bed
       const h = BOARD_DEPTH + 0.35, y = -BOARD_DEPTH / 2 + 0.17;
       box(bw + 2 * F, h, F, cx, y, z0 - F / 2, wood); box(bw + 2 * F, h, F, cx, y, z1 + F / 2, wood);
       box(F, h, bd, x0 - F / 2, y, cz, wood); box(F, h, bd, x1 + F / 2, y, cz, wood);
@@ -202,9 +214,10 @@ export function buildDiorama(map, quality = 'medium') {
   // ---------------------------------------------------------------- scenery (instanced)
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86 });
   const lists = new Map();
-  const put = (key, x, y, yaw, sx = 1, sy = sx, sz = sx, tint = 1, hue = 0) => {
+  // tint: brightness; hue: a small hue shift; paint: the plaster colour of a town house
+  const put = (key, x, y, yaw, sx = 1, sy = sx, sz = sx, tint = 1, hue = 0, paint = null) => {
     if (!lists.has(key)) lists.set(key, []);
-    lists.get(key).push({ x, y, yaw, sx, sy, sz, tint, hue });
+    lists.get(key).push({ x, y, yaw, sx, sy, sz, tint, hue, paint });
   };
   const nearLane = (() => {
     const cell = new Set(lanePts.map(([x, y]) => Math.round(x) + ',' + Math.round(y)));
@@ -215,6 +228,8 @@ export function buildDiorama(map, quality = 'medium') {
       return false;
     };
   })();
+  if (town) placeTown({ map, put, onBoard, W, H, M, BW, bcell, g, wx, wz, quality });
+  else {
   const hedgePiece = (x, y, yaw, seed) => {
     const r = mulberry(seed);
     put(r() < 0.5 ? 'hedge0' : 'hedge1', x, y, yaw + (r() - 0.5) * 0.25, 1.05 + r() * 0.25, 0.85 + r() * 0.35, 0.9 + r() * 0.2, 0.85 + r() * 0.3, (r() - 0.5) * 0.04);
@@ -262,19 +277,27 @@ export function buildDiorama(map, quality = 'medium') {
       }
     }
   }
+  }
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), s3 = new THREE.Vector3(), col = new THREE.Color();
-  for (const [key, list] of lists) {
-    const im = new THREE.InstancedMesh(sceneryGeometry(key), mat, list.length);
-    im.userData.shared = true;   // the geometry is cached: keep it when the battlefield is rebuilt
-    list.forEach((it, i) => {
-      p.set(wx(it.x), height(it.x, it.y) - 0.02, wz(it.y)); q.setFromEuler(e.set(0, it.yaw, 0)); s3.set(it.sx, it.sy, it.sz);
-      im.setMatrixAt(i, m4.compose(p, q, s3));
-      col.setRGB(it.tint, it.tint, it.tint); if (it.hue) col.offsetHSL(it.hue, 0, 0);
-      im.setColorAt(i, col);
-    });
-    im.castShadow = key !== 'crater' && key !== 'reeds'; im.receiveShadow = true;
-    im.computeBoundingSphere();
-    g.add(im);
+  const pc = new THREE.Color();
+  for (const [lkey, list] of lists) {
+    // "house2a|far": the light version (the town beyond the play area, low graphics quality)
+    const [key, farTag] = lkey.split('|'), far = !!farTag || quality === 'low';
+    // houses: the plaster is a separate mesh so every house gets its own colour
+    for (const part of hasTint(key) ? ['rest', 'tint'] : ['all']) {
+      const im = new THREE.InstancedMesh(sceneryGeometry(key, part, far), mat, list.length);
+      im.userData.shared = true;   // the geometry is cached: keep it when the battlefield is rebuilt
+      list.forEach((it, i) => {
+        p.set(wx(it.x), (town ? 0 : height(it.x, it.y)) - 0.02, wz(it.y)); q.setFromEuler(e.set(0, it.yaw, 0)); s3.set(it.sx, it.sy, it.sz);
+        im.setMatrixAt(i, m4.compose(p, q, s3));
+        col.setRGB(it.tint, it.tint, it.tint); if (it.hue) col.offsetHSL(it.hue, 0, 0);
+        if (part === 'tint' && it.paint) col.multiply(pc.set(it.paint));
+        im.setColorAt(i, col);
+      });
+      im.castShadow = key !== 'crater' && key !== 'reeds' && key !== 'quay'; im.receiveShadow = true;
+      im.computeBoundingSphere();
+      g.add(im);
+    }
   }
 
   // ---------------------------------------------------------------- grass tufts
@@ -286,7 +309,8 @@ export function buildDiorama(map, quality = 'medium') {
       const x = -M + r() * BW, y = -M + r() * BH;
       if (!onBoard(x, y, 0.5)) continue;
       if (x >= 0 && y >= 0 && x < W && y < H && map.grid[Math.floor(y) * W + Math.floor(x)] !== 0 && map.grid[Math.floor(y) * W + Math.floor(x)] !== 4) continue;
-      if (nearLane(x, y) && r() < 0.85) continue;
+      if (town) { const v = bcell(x, y); if ((v !== 0 && v !== 6) || r() < 0.5 || x < 0 || y < 0 || x >= W || y >= H) continue; }
+      else if (nearLane(x, y) && r() < 0.85) continue;
       pts.push([x, y, r() * 6, 0.7 + r() * 0.8, 0.8 + r() * 0.35]);
     }
     const im = new THREE.InstancedMesh(tuft, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }), pts.length);
@@ -338,4 +362,152 @@ function pondMesh(map, o, wx, wz) {
   const water = new THREE.Mesh(new THREE.PlaneGeometry(o.w + pad * 2, o.h + pad * 2), m);
   water.rotation.x = -Math.PI / 2; water.position.set(wx(o.x + o.w / 2), 0.03, wz(o.y + o.h / 2)); water.renderOrder = 2; water.receiveShadow = true;
   return water;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The town: painted ground
+const PLASTER = ['#efe6d2', '#ead2a4', '#e8c8b6', '#dcd8cc', '#cfd7d6', '#ecdcc0', '#dcc6a0', '#f1e2d4', '#d9c9b0', '#e3d0c8'];
+function setts(px, colours, grout, n, rng) {                 // a cell-sized tile of stones for canvas patterns
+  const t = document.createElement('canvas'); t.width = t.height = Math.max(8, px);
+  const g = t.getContext('2d'), s = t.width / n;
+  g.fillStyle = grout; g.fillRect(0, 0, t.width, t.height);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    g.fillStyle = colours[Math.floor(rng() * colours.length)];
+    const o = j % 2 ? s / 2 : 0;
+    g.fillRect(i * s + o + 0.6, j * s + 0.6, s - 1.2, s - 1.2);
+    if (o) g.fillRect(-s / 2 + 0.6, j * s + 0.6, s / 2 - 1.2, s - 1.2);
+  }
+  return t;
+}
+function paintTown({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, bcell }) {
+  // yards and gaps between houses: trodden earth, dust and weeds
+  c.fillStyle = '#857b69'; c.fillRect(0, 0, c.canvas.width, c.canvas.height);
+  for (let i = 0; i < BW * BH * px * 0.25; i++) {
+    c.fillStyle = ['#8f8573', '#7a705f', '#958b78', '#6f6a55'][Math.floor(rng() * 4)];
+    c.fillRect(rng() * c.canvas.width, rng() * c.canvas.height, 1 + rng() * 2, 1 + rng() * 2);
+  }
+  for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) {
+    const v = bcell(x, y);
+    if (v === 0 && rng() < 0.12) { c.fillStyle = 'rgba(100,125,65,.5)'; c.beginPath(); c.arc(X(x + rng()), Y(y + rng()), px * (0.3 + rng() * 0.5), 0, 7); c.fill(); }
+    else if (v === 4 || v === 5) { c.fillStyle = '#3f443a'; c.fillRect(X(x) - 0.5, Y(y) - 0.5, px + 1, px + 1); }
+  }
+  const pave = c.createPattern(setts(px, ['#b9b1a0', '#aea693', '#c2baa8'], '#8c8474', 2, rng), 'repeat');
+  const cobble = c.createPattern(setts(px, ['#77706a', '#6b645c', '#827a70', '#5f5953'], '#4b4640', 5, rng), 'repeat');
+  const cobbleB = b.createPattern(setts(px, ['#9a9a9a', '#8a8a8a', '#a4a4a4'], '#404040', 5, rng), 'repeat');
+  const stroke = (ctx, st, w, style) => { ctx.beginPath(); ctx.moveTo(X(st.ax), Y(st.ay)); ctx.lineTo(X(st.bx), Y(st.by)); ctx.strokeStyle = style; ctx.lineWidth = w * px; ctx.lineCap = 'round'; ctx.stroke(); };
+  const cx = W / 2, cy = H / 2, SQ = map.square;
+  for (const st of map.streets) stroke(c, st, st.w + 0.35, '#6d675b');                          // kerb shadow
+  for (const st of map.streets) stroke(c, st, st.w + 0.2, pave);                                // pavements
+  if (SQ > 0) { c.beginPath(); c.arc(X(cx), Y(cy), (SQ + 0.2) * px, 0, 7); c.fillStyle = pave; c.fill(); }
+  for (const st of map.streets) { stroke(c, st, st.w * 0.66, cobble); stroke(b, st, st.w * 0.66, cobbleB); }   // cobbled roadway
+  // the square: rings of setts round the monument
+  if (SQ > 0) { c.beginPath(); c.arc(X(cx), Y(cy), (SQ - 0.6) * px, 0, 7); c.fillStyle = cobble; c.fill(); }
+  for (let r = 1.4; r < SQ - 0.6; r += 0.55) { c.beginPath(); c.arc(X(cx), Y(cy), r * px, 0, 7); c.strokeStyle = 'rgba(60,55,50,.55)'; c.lineWidth = Math.max(1, px * 0.06); c.stroke(); }
+  // tram rails along the avenues
+  for (const st of map.streets) if (st.avenue) {
+    const dx = st.bx - st.ax, dy = st.by - st.ay, l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l;
+    for (const o of [-0.62, -0.38, 0.38, 0.62]) {
+      c.beginPath(); c.moveTo(X(st.ax + nx * o), Y(st.ay + ny * o)); c.lineTo(X(st.bx + nx * o), Y(st.by + ny * o));
+      c.strokeStyle = 'rgba(55,55,58,.9)'; c.lineWidth = Math.max(1, px * 0.05); c.stroke();
+    }
+  }
+  // parks where the armies gather (drawn over the streets, which stop at the park railings), with a gravel walk
+  for (const z of map.zones) {
+    const x0 = z.x - 2, y0 = z.y - 2, w = z.w + 4, h = z.h + 4;
+    c.fillStyle = '#9b927f'; c.fillRect(X(x0), Y(y0), w * px, h * px);
+    c.fillStyle = '#6c8844'; c.fillRect(X(x0 + 0.9), Y(y0 + 0.9), (w - 1.8) * px, (h - 1.8) * px);
+    for (let i = 0; i < w * h * px * 0.3; i++) {
+      c.fillStyle = ['#78944c', '#61803d', '#83a055'][Math.floor(rng() * 3)];
+      c.fillRect(X(x0 + 0.9 + rng() * (w - 1.8)), Y(y0 + 0.9 + rng() * (h - 1.8)), 1 + rng() * 2, 1 + rng() * 2);
+    }
+    c.strokeStyle = 'rgba(60,55,45,.6)'; c.lineWidth = Math.max(1, px * 0.08); c.strokeRect(X(x0 + 0.05), Y(y0 + 0.05), (w - 0.1) * px, (h - 0.1) * px);
+  }
+  // dust and fallen plaster round the ruins, dark footings round every building, soot on the street
+  const lots = [...map.objects.filter(o => /^(house|ruin|church)/.test(o.style)), ...(map.outer || [])];
+  for (const o of lots) {
+    if (o.style.startsWith('ruin')) {
+      const gr = c.createRadialGradient(X(o.x + o.w / 2), Y(o.y + o.h / 2), 0, X(o.x + o.w / 2), Y(o.y + o.h / 2), px * (Math.max(o.w, o.h) / 2 + 1.2));
+      gr.addColorStop(0, 'rgba(150,142,128,.8)'); gr.addColorStop(1, 'rgba(150,142,128,0)');
+      c.fillStyle = gr; c.fillRect(X(o.x - 1.5), Y(o.y - 1.5), (o.w + 3) * px, (o.h + 3) * px);
+    }
+    c.fillStyle = 'rgba(40,36,30,.55)'; c.fillRect(X(o.x - 0.08), Y(o.y - 0.08), (o.w + 0.16) * px, (o.h + 0.16) * px);
+  }
+  for (let i = 0; i < BW * BH / 90; i++) {
+    const x = -M + rng() * BW, y = -M + rng() * BH, v = bcell(x, y);
+    if (v < 1 || v > 3) continue;
+    const r = px * (0.5 + rng() * 1.2), gr = c.createRadialGradient(X(x), Y(y), 0, X(x), Y(y), r);
+    gr.addColorStop(0, 'rgba(25,22,20,.5)'); gr.addColorStop(1, 'rgba(25,22,20,0)');
+    c.fillStyle = gr; c.beginPath(); c.arc(X(x), Y(y), r, 0, 7); c.fill();
+  }
+}
+
+// The town: buildings, bridges, quay walls, lamps, rubble (instanced by the caller through put())
+function placeTown({ map, put, onBoard, W, H, M, BW, bcell, g, wx, wz, quality }) {
+  const MODEL = { house2: ['house2a', 'house2b'], house3: ['house3a', 'house3b'], house1: ['house1'], ruin2: ['ruin2'], ruin3: ['ruin3'], ruin1: ['ruin1'],
+    church: ['church'], monument: ['monument'], rubble: ['rubble'], barricade: ['barricade'], hedgehog: ['hedgehog'] };
+  const building = (o, outside) => {
+    const list = MODEL[o.style]; if (!list) return;
+    const r = mulberry(o.seed + (o.turn || 0) * 977), cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+    if (outside && !onBoard(cx, cy, Math.max(o.w, o.h) / 2 + 0.3)) return;
+    const key = list[Math.floor(r() * list.length)];
+    let yaw = o.fx !== undefined ? Math.atan2(o.fx, o.fy) : (o.w >= o.h ? 0 : Math.PI / 2) + (r() < 0.5 ? Math.PI : 0);
+    if (o.style === 'hedgehog' || o.style === 'rubble') yaw = r() * 6;
+    const tall = /^house/.test(o.style) ? 0.94 + r() * 0.14 : 1;
+    const paint = PLASTER[Math.floor(r() * PLASTER.length)];
+    const dirty = o.style.startsWith('ruin') ? 0.82 : 0.95 + r() * 0.08;
+    put(outside ? key + '|far' : key, cx, cy, yaw, 1, tall, 1, dirty, 0, paint);
+    // a few bricks and plaster lumps spilled into the street by every ruin
+    if (o.style.startsWith('ruin') && !outside) for (let k = 0; k < 3; k++) {
+      const a = r() * 6.283, d = Math.max(o.w, o.h) / 2 + 0.4 + r() * 0.5, x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+      const v = bcell(x, y), gx = Math.floor(x), gy = Math.floor(y);
+      if (v >= 1 && v <= 3 && gx >= 0 && gy >= 0 && gx < W && gy < H && map.grid[gy * W + gx] === 0) put('rubble', x, y, r() * 6, 0.35 + r() * 0.2, 0.3 + r() * 0.2);
+    }
+  };
+  for (const o of map.objects) building(o, false);
+  for (const o of map.outer || []) building(o, true);
+  for (const d of map.decor) if (d.kind === 'crater' && onBoard(d.x, d.y, 1.2)) { const r = mulberry(d.seed); put('crater', d.x, d.y, r() * 6, 0.75 + r() * 0.4, 0.7 + r() * 0.3); }
+  // the river: bridges, stone quays along every bank, and the water
+  if (map.river) {
+    for (const b of map.river.bridges) if (onBoard(b.x, b.y, 2)) put('bridge', b.x, b.y, -Math.atan2(b.dy, b.dx));
+    const isWet = (x, y) => { const v = bcell(x + 0.5, y + 0.5); return v === 4 || v === 5; };
+    for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) {
+      if (isWet(x, y) || !onBoard(x + 0.5, y + 0.5, 0.8)) continue;
+      if (isWet(x + 1, y)) put('quay', x + 1, y + 0.5, Math.PI / 2);
+      if (isWet(x - 1, y)) put('quay', x, y + 0.5, -Math.PI / 2);
+      if (isWet(x, y + 1)) put('quay', x + 0.5, y + 1, 0);
+      if (isWet(x, y - 1)) put('quay', x + 0.5, y, Math.PI);
+    }
+    // water: one sheet over the whole board, cut out to the river by an alpha mask
+    const s = 8, cv = document.createElement('canvas'); cv.width = BW * s; cv.height = (H + 2 * M) * s;
+    const c2 = cv.getContext('2d');
+    c2.fillStyle = '#000'; c2.fillRect(0, 0, cv.width, cv.height); c2.fillStyle = '#fff';
+    for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) if (isWet(x, y)) c2.fillRect((x + M) * s - 1, (y + M) * s - 1, s + 2, s + 2);
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(BW, H + 2 * M),
+      new THREE.MeshStandardMaterial({ color: '#3f5c58', alphaMap: new THREE.CanvasTexture(cv), transparent: true, opacity: 0.86, roughness: 0.22, metalness: 0, envMapIntensity: 0.25, depthWrite: false }));
+    water.rotation.x = -Math.PI / 2; water.position.set(wx(W / 2), -0.14, wz(H / 2)); water.receiveShadow = true; water.renderOrder = 2;
+    g.add(water);
+  }
+  // plane trees round the parks
+  for (const z of map.zones) {
+    const r = mulberry(z.x * 131 + z.y), ring = [];
+    for (let t = 0; t < z.w + 3; t += 2.6) ring.push([z.x - 1.5 + t, z.y - 1.3], [z.x - 1.5 + t, z.y + z.h + 1.3]);
+    for (let t = 0; t < z.h + 3; t += 2.6) ring.push([z.x - 1.3, z.y - 1.5 + t], [z.x + z.w + 1.3, z.y - 1.5 + t]);
+    for (const [x, y] of ring) {
+      const gx = Math.floor(x), gy = Math.floor(y);
+      if (!onBoard(x, y, 1) || (gx >= 0 && gy >= 0 && gx < W && gy < H && (map.grid[gy * W + gx] !== 0 || map.grid[gy * W + gx] === 4))) continue;
+      const v = bcell(x, y); if (v === 2 || v === 4 || v === 5) continue;
+      put(r() < 0.5 ? 'oak0' : 'oak1', x, y, r() * 6, 0.75 + r() * 0.2, 0.8 + r() * 0.25, 0.75 + r() * 0.2, 0.9 + r() * 0.2, (r() - 0.5) * 0.04);
+    }
+  }
+  // street lamps along the avenues
+  for (const st of map.streets) if (st.avenue) {
+    const dx = st.bx - st.ax, dy = st.by - st.ay, l = Math.hypot(dx, dy), nx = -dy / l, ny = dx / l;
+    for (let t = 2; t < l; t += 3.2) for (const side of [-1, 1]) {
+      const x = st.ax + dx / l * t + nx * side * 1.5, y = st.ay + dy / l * t + ny * side * 1.5;
+      const v = bcell(x, y), gx = Math.floor(x), gy = Math.floor(y);
+      if (v !== 2 || !onBoard(x, y, 1)) continue;
+      if (gx >= 0 && gy >= 0 && gx < W && gy < H && map.grid[gy * W + gx] !== 0) continue;
+      put('lamp', x, y, Math.atan2(-nx * side, -ny * side) - Math.PI / 2);
+    }
+  }
 }

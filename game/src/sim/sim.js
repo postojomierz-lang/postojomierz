@@ -2,7 +2,7 @@
 // given the same map, seed and placement orders, every machine produces the same battle.
 import { CATALOG, RULES } from '../data/catalog.js';
 import { mulberry } from './rng.js';
-import { T_OPEN, T_SOLID, T_WATER, T_LOW, T_EDGE } from './map.js';
+import { T_OPEN, T_SOLID, T_WATER, T_LOW, T_EDGE, T_RUIN } from './map.js';
 
 const DT = 1 / RULES.tickRate;
 const INF = 1e9;
@@ -15,6 +15,7 @@ export const isAir = e => e.def.cls === 'air' || e.def.cls === 'plane';
 export class Sim {
   constructor(map, teamSpecs, seed) {
     this.map = map;
+    this.ruins = map.grid.includes(T_RUIN);   // a town with ruined houses to fight from
     this.W = map.W; this.H = map.H;
     this.rng = mulberry(seed ^ 0x5bd1e995);
     this.tick = 0;
@@ -301,6 +302,7 @@ export class Sim {
     const g = this.map.grid[c];
     if (g === T_SOLID || g === T_LOW || g === T_EDGE) return INF;
     if (g === T_WATER) return cls === 'amphib' ? 1.4 : INF;
+    if (g === T_RUIN) return cls === 'foot' ? 1.6 : INF;              // clambering over rubble
     const s = this.occ[c];
     if (!s) return 1;
     const o = this.byId.get(s);
@@ -320,6 +322,7 @@ export class Sim {
     const g = this.map.grid[c];
     if (g === T_SOLID || g === T_LOW || g === T_EDGE) return false;
     if (g === T_WATER && cls !== 'amphib') return false;
+    if (g === T_RUIN && cls !== 'foot') return false;
     const s = this.occ[c];
     if (!s) return true;
     const o = this.byId.get(s);
@@ -436,6 +439,7 @@ export class Sim {
   // Is there cover (sandbags, wall, nest) right next to the target, between it and the shooter?
   inCover(o, from) {
     if (o.def.cls !== 'infantry') return o.def.cover ? 0.6 : 1;
+    if (this.map.grid[this.cellOf(o.x, o.z)] === T_RUIN) return 0.4;   // fighting from a ruined house
     const dx = from.x - o.x, dz = from.z - o.z;
     const d = Math.sqrt(dx * dx + dz * dz) || 1;
     for (const s of [0.8, 1.4]) {
@@ -571,6 +575,15 @@ export class Sim {
       }
     }
     e.moving = false;
+    // in a firefight next to a ruined house: get inside and fight from there
+    if (inRange && def.cls === 'infantry' && this.ruins && this.map.grid[this.cellOf(e.x, e.z)] !== T_RUIN) {
+      const c = this.ruinNear(e, tgt, w.range);
+      if (c >= 0) {
+        const gx = c % this.W + 0.5, gz = ((c / this.W) | 0) + 0.5, dx = gx - e.x, dz = gz - e.z, l = Math.sqrt(dx * dx + dz * dz) || 1;
+        const k = Math.min(def.speed * SPEED * DT * 0.8, l) / l;
+        this.tryMove(e, dx * k, dz * k); e.moving = true;
+      }
+    }
     if (def.static || inRange) return;
     // no fight within reach: help a wounded friend nearby
     if (RESCUERS.has(e.type)) {
@@ -578,6 +591,22 @@ export class Sim {
       if (e.rescue) return this.goRescue(e);
     }
     this.move(e, tgt);
+  }
+
+  // the nearest cell of a ruined house within a couple of steps from which the target is still in range
+  ruinNear(e, tgt, range) {
+    const cx = Math.floor(e.x), cz = Math.floor(e.z);
+    let best = -1, bd = 2.3 * 2.3;
+    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+      const x = cx + dx, z = cz + dz;
+      if (!this.inside(x, z)) continue;
+      const c = z * this.W + x;
+      if (this.map.grid[c] !== T_RUIN) continue;
+      const ex = x + 0.5 - e.x, ez = z + 0.5 - e.z, d = ex * ex + ez * ez;
+      const tx = tgt.x - x - 0.5, tz = tgt.z - z - 0.5;
+      if (d < bd && tx * tx + tz * tz <= range * range) { bd = d; best = c; }
+    }
+    return best;
   }
 
   // ---- wounded soldiers -----------------------------------------------------------
@@ -617,7 +646,7 @@ export class Sim {
   }
   isCoverCell(c, team) {
     const g = this.map.grid[c];
-    if (g === T_SOLID || g === T_LOW) return true;
+    if (g === T_SOLID || g === T_LOW || g === T_RUIN) return true;
     const o = this.occ[c] ? this.byId.get(this.occ[c]) : null;
     return !!(o && !o.dead && o.team === team && (o.def.cover || o.def.blocksLos || o.def.cls === 'hq'));
   }
