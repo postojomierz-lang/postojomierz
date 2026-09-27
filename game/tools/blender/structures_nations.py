@@ -1,12 +1,13 @@
-# Each army's own gun emplacements, lookout tower, walls and wire, in the style of structures.py:
-# the field gun, the anti-aircraft gun, the machine-gun nest and the watchtower of the Americans,
-# the Germans, the Red Army, the British, the Japanese, the French and the Italians, and the walls
-# and wire of all but the Americans (whose brick wall and concertina are in structures.py).
-# Sandbags, tank traps, barrels and mines (structures.py) look the same in every army. The American
+# Each army's own gun emplacements, lookout tower and fortifications, in the style of
+# structures.py: the field gun, the anti-aircraft gun, the machine-gun nest and the watchtower of
+# the Americans, the Germans, the Red Army, the British, the Japanese, the French and the
+# Italians, and the walls, wire, sandbags and tank traps of all but the Americans (whose brick
+# wall, concertina, sandbags and Czech hedgehog are in structures.py). Barrels and mines
+# (structures.py) look the same in every army. The American
 # ones are written to .cache/figures/vehicles (the default models, packed into src/data/vehicles.js),
 # the others to .cache/figures/vehicles/<nation> (packed into public/nation-<nation>.js).
 #
-#   python tools/blender/structures_nations.py [nation ...] [--only=fieldgun,aa,mgnest,tower,wall0,wall1,wire]
+#   python tools/blender/structures_nations.py [nation ...] [--only=fieldgun,aa,mgnest,tower,wall0,wall1,wire,...]
 #
 # All kept to one layout, so the game's crews and muzzle flashes fit: the MG sits
 # about 0.6 up with its gunner behind it at the origin, the AA gun turns about the origin
@@ -14,6 +15,7 @@
 import math, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vehicles
+from mathutils import Quaternion
 from vehicles import Model, clear, LIGHT, GLASS, WHITE, RED
 from structures import mulberry, sandbag, sandbag_row, sandbag_ring
 
@@ -997,20 +999,189 @@ def it_wire():
     for k in range(0, len(ends) - 4, 2): barbed(m, ends[k], ends[k + 4], barbs=5)
     m.finish()
 
+# =========================================================================================
+# Sandbag walls (two shapes, about 2 long and 0.5 high) and anti-tank obstacles (on a 0.8 pad,
+# about 0.75 high).
+def bag_row(m, rnd, y, n=5, x0=-0.8, step=0.4, skip=(), W=0.3, H=0.17, off=0.0):
+    for i in range(n):
+        x = x0 + off + i * step
+        if x > 0.85 or i in skip: continue
+        sandbag(m, 'main', (x, y, (rnd() - 0.5) * 0.04), 0.0, L=0.42, W=W, H=H, rnd=rnd)
+
+def de_sandbags(variant):
+    """sandbags behind a wattle revetment: stakes driven in with withies woven between them."""
+    m = Model(f'sandbags{variant}'); rnd = mulberry(300 + variant)
+    for x in (-0.9, -0.45, 0.0, 0.45, 0.9): m.cyl('main', (x, 0.0, 0.2), (x, 0.52, 0.2), 0.025, seg=8)
+    for k in range(9):                                                                          # the woven withies
+        y = 0.05 + k * 0.05
+        pts = [(-0.95 + j * 0.075, y, 0.2 + (0.022 if (j + k) % 2 else -0.022)) for j in range(27)]
+        for a, b in zip(pts, pts[1:]): m.cyl('main', a, b, 0.016, seg=5)
+    for l in range(2): bag_row(m, rnd, 0.09 + l * 0.15, off=(l % 2) * 0.2, skip=(4,) if l else ())
+    bag_row(m, rnd, 0.39, n=4, off=0.2, skip=(3,) if variant else ())
+    m.finish()
+
+def su_sandbags(variant):
+    """sandbags with a log laid along the top and pegged down."""
+    m = Model(f'sandbags{variant}'); rnd = mulberry(310 + variant)
+    for l in range(2): bag_row(m, rnd, 0.09 + l * 0.15, off=(l % 2) * 0.2)
+    x1 = 0.95 if variant == 0 else 0.4
+    m.cyl('main', (-0.95, 0.38, 0), (x1, 0.4, 0), 0.08, seg=12)
+    m.cyl('dark', (x1, 0.4, 0), (x1 + 0.005, 0.4, 0), 0.07, seg=12)
+    for x in (-0.6, 0.2): m.cyl('main', (x, 0.0, 0.18), (x, 0.5, 0.15), 0.02, seg=6)
+    if variant: m.cyl('main', (0.55, 0.08, 0.3), (1.0, 0.08, -0.1), 0.08, seg=12)             # the second log, rolled off
+    m.finish()
+
+def gb_sandbags(variant):
+    """a neatly built breastwork: courses of headers and stretchers, four high, with a picket at
+    the end."""
+    m = Model(f'sandbags{variant}'); rnd = mulberry(320 + variant)
+    for l in range(4 if variant == 0 else 3):
+        y = 0.09 + l * 0.14
+        if l % 2 == 0: bag_row(m, rnd, y, n=5, H=0.15)
+        else:
+            for i in range(8):
+                x = -0.84 + i * 0.24
+                sandbag(m, 'main', (x, y, (rnd() - 0.5) * 0.03), math.pi / 2, L=0.36, W=0.22, H=0.15, rnd=rnd)
+    m.cyl('main', (0.98, 0.0, 0), (0.98, 0.6, 0), 0.02, seg=6)
+    m.finish()
+
+def jp_sandbags(variant):
+    """rice-straw bales (tawara): fat round bales bound with rope, their woven ends showing,
+    stacked end-on in a pyramid."""
+    m = Model(f'sandbags{variant}'); rnd = mulberry(330 + variant)
+    def bale(x, y, z, yaw=0.0):
+        L_, r = 0.42, 0.14
+        c, sn = math.cos(yaw), math.sin(yaw)
+        a = (x - c * L_ / 2, y, z + sn * L_ / 2); b = (x + c * L_ / 2, y, z - sn * L_ / 2)
+        m.cyl('main', a, b, r, seg=14, bevel=0.03)
+        for t in (0.2, 0.5, 0.8):
+            m.torus('dark', (a[0] + (b[0] - a[0]) * t, y, a[2] + (b[2] - a[2]) * t), (c, 0, -sn), r + 0.004, 0.012, seg=16)
+        for p, k in ((a, -1), (b, 1)): m.cyl('main', p, (p[0] + k * c * 0.02, y, p[2] - k * sn * 0.02), r * 0.8, seg=14)   # the woven ends
+    for l, (n, off) in enumerate(((6, 0.0), (5, 0.15), (4, 0.3))):                               # laid end-on, in a pyramid
+        if variant and l == 2: continue
+        for i in range(n): bale(-0.75 + off + i * 0.3, 0.14 + l * 0.25, (rnd() - 0.5) * 0.04, math.pi / 2)
+    if variant: bale(1.0, 0.14, 0.3, 0.4)
+    m.finish()
+
+def fr_sandbags(variant):
+    """fascines - bundles of brushwood bound with wire - stacked and staked, with a row of sandbags
+    on top."""
+    m = Model(f'sandbags{variant}'); rnd = mulberry(340 + variant)
+    for l in range(2):
+        for zz in (-0.1, 0.1):
+            y = 0.1 + l * 0.18
+            m.cyl('main', (-0.95, y, zz), (0.95, y, zz), 0.09, seg=10)
+            for k in range(6): m.torus('dark', (-0.8 + k * 0.32, y, zz), (1, 0, 0), 0.094, 0.01, seg=12)
+            for k in range(5):                                                                  # twig ends
+                a = k * 1.25
+                m.cyl('main', (-0.96, y + math.sin(a) * 0.05, zz + math.cos(a) * 0.05), (-1.02, y + math.sin(a) * 0.06, zz + math.cos(a) * 0.06), 0.012, seg=4)
+    for x in (-0.7, 0.0, 0.7):
+        for zz in (-0.22, 0.22): m.cyl('main', (x, 0.0, zz), (x, 0.42, zz), 0.022, seg=6)
+    bag_row(m, rnd, 0.52, n=4 if variant else 5, off=0.2 if variant else 0.0)
+    m.finish()
+
+def it_sandbags(variant):
+    """a low wall of rough stones with sandbags laid along the top."""
+    m = Model(f'sandbags{variant}'); rnd = mulberry(350 + variant)
+    for l in range(2):
+        x = -0.95
+        while x < 0.93:
+            w = 0.18 + rnd() * 0.14
+            m.box('main', (x + w / 2, 0.08 + l * 0.14, (rnd() - 0.5) * 0.04), (w - 0.02, 0.13, 0.36 + rnd() * 0.06), bevel=0.03, yaw=(rnd() - 0.5) * 0.2)
+            x += w
+    bag_row(m, rnd, 0.37, n=5, skip=(2,) if variant else ())
+    if variant: m.box('main', (0.2, 0.08, 0.45), (0.2, 0.12, 0.18), bevel=0.03, yaw=0.6)      # a stone knocked out
+    m.finish()
+
+def de_tanktrap():
+    """dragon's teeth: four concrete pyramids of the Siegfried Line on their shared footing."""
+    m = Model('tanktrap')
+    m.box('dark', (0, 0.03, 0), (0.85, 0.06, 0.85), bevel=0.01)
+    for (x, z), h in (((-0.2, -0.2), 0.7), ((0.2, -0.2), 0.6), ((-0.2, 0.2), 0.6), ((0.2, 0.2), 0.5)):
+        m.cyl('main', (x, 0.06, z), (x, 0.06 + h, z), 0.24, seg=4, r2=0.07).rotation_quaternion @= Quaternion((0, 0, 1), math.pi / 4)   # square, edges to the sides
+    m.finish()
+
+def su_tanktrap():
+    """the Moscow hedgehog: three lengths of railway rail, cut and welded crosswise, with the
+    bolted fishplates still on."""
+    m = Model('tanktrap')
+    c = 0.38
+    for a, b in [((-c, 0.0, -c), (c, 0.8, c)), ((c, 0.0, -c), (-c, 0.8, c)), ((0, 0.0, c * 1.2), (0, 0.8, -c * 1.2))]:
+        m.cyl('main', a, b, 0.03, seg=4)                                                        # the rail's web
+        for dy in (0.04, -0.04):                                                                # head and foot
+            m.cyl('main', (a[0], a[1] + dy, a[2]), (b[0], b[1] + dy, b[2]), 0.035, seg=4)
+        p = tuple(a[i] + (b[i] - a[i]) * 0.2 for i in range(3))
+        m.box('dark', p, (0.12, 0.06, 0.06), bevel=0.005)                                        # fishplate
+    m.sphere('dark', (0, 0.4, 0), 0.08, seg=10)                                                  # the weld
+    m.finish()
+
+def gb_tanktrap():
+    """a 1940 anti-tank cube: a big concrete block with a lip round its top, and the marks of its
+    shuttering."""
+    m = Model('tanktrap')
+    m.box('main', (0, 0.32, 0), (0.64, 0.64, 0.64), bevel=0.03)
+    m.box('main', (0, 0.66, 0), (0.7, 0.06, 0.7), bevel=0.02)
+    for k in range(3):
+        for s in (1, -1):
+            m.box('dark', (0, 0.12 + k * 0.18, s * 0.321), (0.6, 0.008, 0.004), bevel=0.0)
+            m.box('dark', (s * 0.321, 0.12 + k * 0.18, 0), (0.004, 0.008, 0.6), bevel=0.0)
+    m.finish()
+
+def jp_tanktrap():
+    """a log obstacle: three logs lashed into a tripod with a sharpened log through it, pointing
+    at the enemy."""
+    m = Model('tanktrap')
+    top = (0.0, 0.7, 0.0)
+    for a in (0.0, 2.1, 4.2):
+        m.cyl('main', (math.cos(a) * 0.4, 0.0, math.sin(a) * 0.4), (-math.cos(a) * 0.08, 0.8, -math.sin(a) * 0.08), 0.06, seg=10)
+    m.torus('dark', top, (0, 1, 0), 0.1, 0.02, seg=14)                                          # the lashing
+    m.cyl('main', (-0.45, 0.3, 0.0), (0.38, 0.72, 0.0), 0.07, seg=10)
+    m.cyl('main', (0.38, 0.72, 0.0), (0.52, 0.79, 0.0), 0.07, seg=10, r2=0.008)                 # the point
+    m.finish()
+
+def fr_tanktrap():
+    """Maginot rails: lengths of railway rail set upright and leaning in a concrete footing, cut off
+    at different heights."""
+    m = Model('tanktrap')
+    m.box('dark', (0, 0.06, 0), (0.85, 0.12, 0.85), bevel=0.02)
+    for (x, z), h, lean in (((-0.25, -0.25), 0.72, 0.15), ((0.1, -0.2), 0.6, 0.1), ((-0.15, 0.2), 0.66, 0.12), ((0.25, 0.15), 0.5, 0.18), ((0.0, 0.0), 0.78, 0.08)):
+        a = (x, 0.1, z); b = (x + lean, 0.1 + h, z)
+        m.cyl('main', a, b, 0.028, seg=4)
+        for dz in (0.03, -0.03): m.cyl('main', (a[0], a[1], a[2] + dz), (b[0], b[1], b[2] + dz), 0.03, seg=4)
+    m.finish()
+
+def it_tanktrap():
+    """a concrete tetrahedron (tetraedro) with the lifting eye cast into its top."""
+    m = Model('tanktrap')
+    h = 0.72
+    pts = [(0.42 * math.cos(a), 0.0, 0.42 * math.sin(a)) for a in (0.0, 2.094, 4.189)] + [(0.0, h, 0.0)]
+    def build(bm):
+        vs = [bm.verts.new(vehicles.G(*p)) for p in pts]
+        for f in ((0, 2, 1), (0, 1, 3), (1, 2, 3), (2, 0, 3)): bm.faces.new([vs[i] for i in f])
+    m._mesh('main', build, 0.02)
+    m.torus('dark', (0.0, h + 0.03, 0.0), (1, 0, 0), 0.05, 0.012, seg=12)
+    m.finish()
+
 NATIONS = {
     'us': {'fieldgun': us_fieldgun, 'aa': us_aa, 'mgnest': us_mgnest, 'tower': us_tower},
     'de': {'fieldgun': de_fieldgun, 'aa': de_aa, 'mgnest': de_mgnest, 'tower': de_tower,
-           'wall0': lambda: de_wall(0), 'wall1': lambda: de_wall(1), 'wire': de_wire},
+           'wall0': lambda: de_wall(0), 'wall1': lambda: de_wall(1), 'wire': de_wire,
+           'sandbags0': lambda: de_sandbags(0), 'sandbags1': lambda: de_sandbags(1), 'tanktrap': de_tanktrap},
     'su': {'fieldgun': su_fieldgun, 'aa': su_aa, 'mgnest': su_mgnest, 'tower': su_tower,
-           'wall0': lambda: su_wall(0), 'wall1': lambda: su_wall(1), 'wire': su_wire},
+           'wall0': lambda: su_wall(0), 'wall1': lambda: su_wall(1), 'wire': su_wire,
+           'sandbags0': lambda: su_sandbags(0), 'sandbags1': lambda: su_sandbags(1), 'tanktrap': su_tanktrap},
     'gb': {'fieldgun': gb_fieldgun, 'aa': gb_aa, 'mgnest': gb_mgnest, 'tower': gb_tower,
-           'wall0': lambda: gb_wall(0), 'wall1': lambda: gb_wall(1), 'wire': gb_wire},
+           'wall0': lambda: gb_wall(0), 'wall1': lambda: gb_wall(1), 'wire': gb_wire,
+           'sandbags0': lambda: gb_sandbags(0), 'sandbags1': lambda: gb_sandbags(1), 'tanktrap': gb_tanktrap},
     'jp': {'fieldgun': jp_fieldgun, 'aa': jp_aa, 'mgnest': jp_mgnest, 'tower': jp_tower,
-           'wall0': lambda: jp_wall(0), 'wall1': lambda: jp_wall(1), 'wire': jp_wire},
+           'wall0': lambda: jp_wall(0), 'wall1': lambda: jp_wall(1), 'wire': jp_wire,
+           'sandbags0': lambda: jp_sandbags(0), 'sandbags1': lambda: jp_sandbags(1), 'tanktrap': jp_tanktrap},
     'fr': {'fieldgun': fr_fieldgun, 'aa': fr_aa, 'mgnest': fr_mgnest, 'tower': fr_tower,
-           'wall0': lambda: fr_wall(0), 'wall1': lambda: fr_wall(1), 'wire': fr_wire},
+           'wall0': lambda: fr_wall(0), 'wall1': lambda: fr_wall(1), 'wire': fr_wire,
+           'sandbags0': lambda: fr_sandbags(0), 'sandbags1': lambda: fr_sandbags(1), 'tanktrap': fr_tanktrap},
     'it': {'fieldgun': it_fieldgun, 'aa': it_aa, 'mgnest': it_mgnest, 'tower': it_tower,
-           'wall0': lambda: it_wall(0), 'wall1': lambda: it_wall(1), 'wire': it_wire},
+           'wall0': lambda: it_wall(0), 'wall1': lambda: it_wall(1), 'wire': it_wire,
+           'sandbags0': lambda: it_sandbags(0), 'sandbags1': lambda: it_sandbags(1), 'tanktrap': it_tanktrap},
 }
 
 if __name__ == '__main__':
