@@ -163,6 +163,9 @@ function onEvent(ev) {
     if (!sim.teams[game.human].alive) setTimeout(() => { if (game.sim === sim && game.mode === 'play') startBattle(); }, 1500);
   } else if (ev.t === 'returned' && ev.team === game.human) {
     toast(`${ev.n} rescued soldier${ev.n > 1 ? 's are' : ' is'} back in the fight`);
+  } else if (ev.t === 'promote' && ev.team === game.human) {
+    const e = sim.byId.get(ev.id);
+    if (e) toast(`${e.def.name} promoted to ${RULES.veteran.names[ev.rank - 1]}`);
   } else if (ev.t === 'drop') {
     const e = sim.byId.get(ev.id);
     if (e && e.team !== game.human) toast('Enemy paratroopers incoming!');

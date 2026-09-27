@@ -148,7 +148,7 @@ export class Sim {
       salvo: 0, salvoCd: 0, moving: false, aimX: 0, aimZ: 0,
       down: false, bleed: 0, stable: false, carrier: 0, carrying: 0, rescue: 0, rescuer: 0, loaded: false, cargo: [],
       heal: 0, healT: 0, healing: false, medicBy: 0, noCover: 0, goalX: 0, goalZ: 0, stuck: 0, retreat: false,
-      falling: false, bombs: def.bombs || 0, bombCd: 0, done: false, wp: 0,
+      falling: false, bombs: def.bombs || 0, bombCd: 0, done: false, wp: 0, xp: 0, rank: 0,
     };
     if (def.static) {
       if (def.cls === 'fort') { e.dirX = rot & 1 ? 0 : 1; e.dirZ = rot & 1 ? 1 : 0; }
@@ -491,10 +491,25 @@ export class Sim {
   damage(o, amount, attacker) {
     if (o.dead || amount <= 0) return;
     if (o.down) { if (amount >= 2) this.die(o, attacker); return; }   // explosions finish off the wounded
+    if (attacker && attacker.team >= 0 && attacker.team !== o.team) this.gainXp(attacker, Math.min(amount, o.hp) / o.maxHp * (o.def.cost || 100));
     o.hp -= amount;
     if (attacker && attacker.team >= 0 && attacker.team !== o.team) this.teams[o.team].hurtBy[attacker.team] += amount * (o.def.cls === 'hq' ? 2 : 1);
     this.events.push({ t: 'hit', id: o.id, amount });
     if (o.hp <= 0) this.kill(o, attacker);
+  }
+
+  // experience for the unit that did the damage; it is promoted as it passes each mark
+  gainXp(attacker, value) {
+    const e = this.byId.get(attacker.id);
+    if (!e || e.dead || e.team !== attacker.team || !e.def.cost || value <= 0) return;
+    e.xp += value;
+    const V = RULES.veteran;
+    while (e.rank < V.at.length && e.xp >= V.at[e.rank] * e.def.cost) {
+      e.rank++;
+      const max = Math.round(e.def.hp * (1 + V.hp[e.rank - 1]));
+      e.hp += max - e.maxHp; e.maxHp = max;
+      this.events.push({ t: 'promote', id: e.id, team: e.team, rank: e.rank });
+    }
   }
 
   kill(o, attacker) {
@@ -1106,9 +1121,11 @@ export class Sim {
         if (dx * dx + dz * dz <= f.def.aura * f.def.aura) { cd *= 0.7; break; }
       }
     }
+    const V = RULES.veteran, r = e.rank - 1, acc = Math.min(0.98, w.acc * (r >= 0 ? 1 + V.acc[r] : 1));
+    if (r >= 0) cd /= 1 + V.rate[r];                                          // veterans shoot faster and straighter
     e.cd = cd * (0.9 + this.rng() * 0.2);
     if (w.kind === 'bullet' || w.kind === 'flak') {
-      const hit = this.rng() < w.acc * this.inCover(o, e) * (isAir(o) && w.kind === 'bullet' ? 0.7 : 1);
+      const hit = this.rng() < acc * this.inCover(o, e) * (isAir(o) && w.kind === 'bullet' ? 0.7 : 1);
       let tx = o.x, tz = o.z;
       if (!hit) { tx += (this.rng() - 0.5) * 2.2; tz += (this.rng() - 0.5) * 2.2; }
       this.events.push({ t: 'shot', id: e.id, kind: w.kind, tx, tz, ty: isAir(o) ? o.y : (hit ? 0.5 : 0.05), target: o.id, hit });
@@ -1116,7 +1133,7 @@ export class Sim {
       return;
     }
     if (w.salvo) { e.salvo = w.salvo; e.salvoCd = 0; e.aimX = o.x; e.aimZ = o.z; return; }
-    this.launch(e, o.x, o.z, this.rng() < w.acc, o);
+    this.launch(e, o.x, o.z, this.rng() < acc, o);
   }
 
   launch(e, tx, tz, hit, o = null) {
@@ -1333,7 +1350,7 @@ export class Sim {
   stateHash() {
     let h = 2166136261;
     const mix = v => { h ^= Math.round(v * 1000) | 0; h = Math.imul(h, 16777619); };
-    for (const e of this.ents) { mix(e.id); mix(e.x); mix(e.z); mix(e.y); mix(e.hp); mix(e.dead ? 1 : 0); mix(e.down ? 1 : 0); }
+    for (const e of this.ents) { mix(e.id); mix(e.x); mix(e.z); mix(e.y); mix(e.hp); mix(e.rank); mix(e.dead ? 1 : 0); mix(e.down ? 1 : 0); }
     for (const m of this.mines) { mix(m.id); mix(m.x); mix(m.z); }
     for (const t of this.teams) { mix(t.money); mix(t.kills); mix(t.saved); mix(t.alive ? 1 : 0); }
     return (h >>> 0).toString(16);
