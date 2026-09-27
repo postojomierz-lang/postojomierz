@@ -11,7 +11,7 @@ import { aiDeploy, aiOrders } from './sim/ai.js';
 import { View, renderThumbnails } from './render/view.js';
 import { modelsReady, loadLiving } from './render/models.js';
 import { Sounds } from './audio.js';
-import { Host, Client, cleanCode } from './net.js';
+import { Host, Client, cleanCode, iceConfig } from './net.js';
 
 const $ = id => document.getElementById(id);
 const DT = 1 / RULES.tickRate;
@@ -593,7 +593,7 @@ function leaveOnline() {
 function lobbyRender() {
   $('lobby').hidden = !(online.host || online.client);
   $('netPlayers').innerHTML = online.players.map((p, i) => `<div class="army"><span class="sw" style="background:${TEAM_COLORS[p.color].main}"></span>
-    <span class="nm">${escapeHtml(p.name)}${i === 0 ? ' (host)' : ''}${p.me ? ' — you' : ''}</span><span class="v">army ${i + 1}</span></div>`).join('');
+    <span class="nm">${escapeHtml(p.name)}${i === 0 ? ' (host)' : ''}${p.me ? ' — you' : ''}</span><span class="v">${p.route === 'relay' ? 'via relay · ' : p.route === 'direct' ? 'direct · ' : ''}army ${i + 1}</span></div>`).join('');
   $('btnNetStart').hidden = !online.host;
   $('btnNetStart').disabled = online.players.length < 2;
   const n = Math.max(+settings.teams, online.players.length);
@@ -603,16 +603,27 @@ function lobbyRender() {
 }
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function myName() { const n = $('netName').value.trim().slice(0, 16) || 'Player'; settings.netName = n; save(); return n; }
+// connection settings (relay) from the lobby's "Connection settings" panel
+const NET_FIELDS = { relay: 'netRelay', turnUrls: 'netTurnUrls', turnUser: 'netTurnUser', turnPass: 'netTurnPass', meteredApp: 'netMeteredApp', meteredKey: 'netMeteredKey' };
+function netSettings() {
+  settings.net = {};
+  for (const [k, id] of Object.entries(NET_FIELDS)) settings.net[k] = $(id).value.trim();
+  save();
+  return settings.net;
+}
 function preferredColor() { return Math.max(0, TEAM_COLORS.findIndex(c => c.id === settings.color)); }
 
 async function hostGame() {
   leaveOnline();
   $('netStatus').textContent = 'Opening a room…';
   const host = new Host({
+    net: netSettings(),
     onHello: (id, msg) => {
       if (game.net || online.players.length >= 8) { host.send(id, { t: 'full' }); host.kick(id); return; }
-      online.players.push({ id, name: String(msg.name || 'Player').slice(0, 16), color: +msg.color || 0, seen: Date.now() });
+      const p = { id, name: String(msg.name || 'Player').slice(0, 16), color: +msg.color || 0, seen: Date.now(), route: '' };
+      online.players.push(p);
       lobbySync();
+      setTimeout(async () => { p.route = await host.route(id); if (!game.net) lobbySync(); }, 2500);   // direct or relayed?
     },
     onMessage: (id, msg) => {
       const p = online.players.find(p => p.id === id); if (!p) return;
@@ -644,7 +655,7 @@ async function hostGame() {
   } catch (e) { $('netStatus').textContent = 'Could not open a room: ' + (e.message || e.type || e); host.close(); }
 }
 function lobbySync() {
-  online.players.forEach((p, i) => { if (p.id) online.host.send(p.id, { t: 'lobby', players: online.players.map(q => ({ name: q.name, color: q.color })), you: i }); });
+  online.players.forEach((p, i) => { if (p.id) online.host.send(p.id, { t: 'lobby', players: online.players.map(q => ({ name: q.name, color: q.color, route: q.route })), you: i }); });
   lobbyRender();
 }
 
@@ -654,6 +665,7 @@ async function joinGame(code) {
   if (code.length !== 5) { $('netStatus').textContent = 'The room code has 5 letters.'; return; }
   $('netStatus').textContent = 'Connecting…';
   const client = new Client({
+    net: netSettings(),
     onMessage: msg => clientMessage(msg),
     onClose: () => {
       if (online.client !== client) return;
@@ -672,6 +684,10 @@ async function joinGame(code) {
     online.beat = setInterval(() => client.send({ t: 'ping' }), BEAT_MS);
     $('netRoom').textContent = code;
     $('netStatus').textContent = 'Connected — waiting for the host to start.';
+    setTimeout(async () => {
+      const r = await client.route();
+      if (r && online.client === client && !game.net) $('netStatus').textContent = `Connected ${r === 'relay' ? 'through the relay' : 'directly'} — waiting for the host to start.`;
+    }, 2500);
     lobbyRender();
   } catch (e) { $('netStatus').textContent = 'Could not join: ' + (e.message || e.type || e); client.close(); }
 }
@@ -711,6 +727,8 @@ async function startOnline() {
 
 function openOnline(code = '') {
   $('netName').value = settings.netName || '';
+  const net = settings.net || {};
+  for (const [k, id] of Object.entries(NET_FIELDS)) $(id).value = net[k] || (k === 'relay' ? 'auto' : '');
   if (code) $('netCode').value = code;
   lobbyRender();
   if (!$('dlgOnline').open) $('dlgOnline').showModal();
@@ -730,6 +748,6 @@ $('btnNetBack').onclick = () => { if (!game.net) leaveOnline(); $('dlgOnline').c
 openSetup();
 { const code = new URLSearchParams(location.search).get('join'); if (code) { $('dlgSetup').close('online'); openOnline(cleanCode(code)); } }
 
-window.__game = game; window.__flush = flushEvents;
+window.__game = game; window.__flush = flushEvents; window.__iceConfig = iceConfig;
 window.__onEv = onEvent;
 window.__view = view;
