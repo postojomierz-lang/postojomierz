@@ -14,6 +14,7 @@ import { buildGroundCover } from './groundcover.js';
 import { buildStreams } from './streams.js';
 import { Sound } from './sound.js';
 import { buildAnimals } from './animals.js';
+import { buildBuildings, buildingFlats } from './buildings.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -177,6 +178,7 @@ async function main() {
     g.beginPath(); trailPts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
   });
   const terrain = new Terrain(inner, outer, trailWide, lakeMask, { size: TS, origin: TO, grids: tileGrids }, base.mask);
+  terrain.setFlats(buildingFlats(meta, terrain));   // level terraces under the huts before the meshes are built
 
   // ---------- renderer / scene
   const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
@@ -330,6 +332,10 @@ async function main() {
   const profile = smoothArr(TH, 30);
 
   // ---------- vegetation and boulders
+  status('Budowanie schronisk i szałasów…'); await frame();
+  const houses = await buildBuildings({ scene, meta, terrain, shade,
+    loadTexture: async (url, srgb) => { const t = texture(await bitmap(url), aniso); if (!srgb) t.colorSpace = THREE.NoColorSpace; return t; } });
+
   status('Sadzenie lasu i kosodrzewiny…'); await frame();
   const land = pixels(landBmp), LW = landBmp.width, LH = landBmp.height;
   const r = rng(7);
@@ -344,6 +350,7 @@ async function main() {
       if (r() > (c === 30 ? density * 0.3 : density)) continue;
       const x = IB[0] + (i + r()) * px, z = IB[1] + (j + r()) * pz;
       if (terrain.maskAt(trailWide, x, z) > 0.05 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
+      if (houses.inside(x, z, c === 10 ? 6 : 2)) continue;
       if (c === 10 && terrain.maskAt(clearing, x, z) > 0) continue;
       const h = terrain.height(x, z);
       // Copernicus is a surface model (includes the canopy), GUGiK is bare ground
@@ -376,7 +383,7 @@ async function main() {
   };
   const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
-    masks: { path: trailVisWide, lake: lakeMask }, quality: QUALITY });
+    masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), quality: QUALITY });
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
   {
@@ -401,7 +408,7 @@ async function main() {
       const i = Math.floor(r() * N);
       const d = 2.5 + Math.pow(r(), 2.6) * 220, a = r() * 6.28;
       const x = trail.X[i] + Math.cos(a) * d, z = trail.Z[i] + Math.sin(a) * d;
-      if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02) continue;
+      if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 1.5)) continue;
       const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * IW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * IW);
       const o = (v * IW + u) * 4, R = ip[o], G = ip[o + 1], B = ip[o + 2];
       if (G > R + 6 && G > B) continue; // green: grass or dwarf pine
@@ -806,7 +813,7 @@ async function main() {
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 

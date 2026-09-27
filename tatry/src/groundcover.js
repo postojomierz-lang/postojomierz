@@ -9,7 +9,7 @@ const hash = (i, j, k) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, masks, quality }) {
+export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, masks, blocked = () => false, quality }) {
   const R = quality === 'low' ? 26 : 42, CELL = quality === 'low' ? 0.95 : 0.7;
   const GRASS_ROWS = [0, 1, 6, 7, 9, 10]; // clumps; the other baked variants are single blades or flower heads
   const LOW_GRASS = [9, 10];            // short dense clumps: forest floor and moss-and-lichen zone
@@ -45,7 +45,7 @@ export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, m
       const x = (i + hash(i, j, 1)) * CELL, z = (j + hash(i, j, 2)) * CELL;
       const d = Math.hypot(x - cx, z - cz);
       if (d > R) continue;
-      if (terrain.maskAt(masks.path, x, z) > 0.02 || terrain.maskAt(masks.lake, x, z) > 0.02) continue;
+      if (terrain.maskAt(masks.path, x, z) > 0.02 || terrain.maskAt(masks.lake, x, z) > 0.02 || blocked(x, z)) continue;
       const o = px(photo, x, z);
       if (o === null) continue;
       const r = photo.d[o], g = photo.d[o + 1], b = photo.d[o + 2];

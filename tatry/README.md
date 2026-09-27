@@ -77,3 +77,12 @@ Morskim Okiem, jeden niedźwiedź w lesie i kosodrzewinie; miejsca losowane raz,
 terenu. Zwierzęta pasą się, rozglądają i wędrują; gdy turysta podejdzie bliżej, jelenie i sarny
 szczekają i uciekają galopem, a niedźwiedź pomrukuje i powoli odchodzi. Głosy: Freesound (szczekanie
 jelenia CC0 Spamanator, sarny CC BY juskiddink, niedźwiedzie CC BY YleArkisto).
+
+## Budynki
+`python3 tools/prepare_buildings.py`: obrysy z OpenStreetMap (Overture) jako prostokąty z kalenicą
+wzdłuż dłuższego boku i stylem: nowe i stare schronisko nad Morskim Okiem, kamienna Chata pod Rysmi,
+małe drewniane budynki jako szałasy, reszta jako domy. `src/buildings.js` składa je z brył: granitowa
+podmurówka, ściany z bali (lub desek, kamienia), strome dachy gontowe z okapami, kominy, okna
+z podziałem na szybki i drzwi. Pod budynkami teren jest wyrównany do tarasu (`terrain.setFlats`),
+a drzewa, trawa i głazy omijają budynki. Tekstury: Poly Haven `wood_plank_wall`,
+`weathered_brown_planks`, `roof_slates_02`, `stone_wall` (CC0).
