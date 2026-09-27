@@ -95,6 +95,8 @@ dialog h1 { margin: 0; font: 30px "Black Ops One", Rubik, sans-serif; color: #7f
 .lead { margin: 0; color: var(--ink-2); }
 .note { margin: 0; font-size: 12px; color: var(--muted); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.grid2 .wide { grid-column: 1 / -1; }
+#scenarioText { line-height: 1.45; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
 label.check { flex-direction: row; align-items: center; gap: 8px; }
 select { font: inherit; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; }
