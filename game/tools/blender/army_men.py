@@ -28,6 +28,7 @@ SU = NATION == 'su'
 GB = NATION == 'gb'
 JP = NATION == 'jp'
 FR = NATION == 'fr'
+IT = NATION == 'it'
 
 def P(f, l, u):
     """pose sketch coordinates -> Blender: f forward, l to the figure's left, u up."""
@@ -293,7 +294,7 @@ def leg(fig, hip, ankle, pole=F, toe=F, up=U, knee=None, ground=True):
     side = th.cross(pole if pole.length > 0 else F)
     if side.length > 0.1:
         fig.ring(hip + (knee - hip) * 0.7, th, 1.8, 0.1, scale=(1, 0.85, 1))
-    if JP or FR:
+    if JP or FR or IT:
         # puttees: cloth wound round the calf from the ankle to below the knee
         g1 = ankle + (knee - ankle) * 0.8
         fig.cyl(ankle - sh * 0.3, g1, 1.62, seg=18, r2=1.72)
@@ -363,7 +364,7 @@ def torso(fig, T, pack=True, pouches=True, suspenders=True, jacket=True):
                 fig.sphere(c + T.u * 0.8 + T.f * 0.7, 0.14)
         if pouches:
             for s in (1, -1):
-                for k, a in enumerate(() if GB else (0.6, 1.05) if (SU or JP or FR) else (0.55, 0.95, 1.35)):
+                for k, a in enumerate(() if GB else (0.6, 1.05) if (SU or JP or FR or IT) else (0.55, 0.95, 1.35)):
                     d = T.f * math.cos(a) + T.l * (s * math.sin(a))
                     pf = Frame(T.o + d * 1.0, d, T.u)
                     c = T.o + T.f * (math.cos(a) * 2.6) + T.l * (s * math.sin(a) * 3.55) + T.u * 1.7
@@ -391,7 +392,18 @@ def torso(fig, T, pack=True, pouches=True, suspenders=True, jacket=True):
                 pts.append(c)
             for a_, b_ in zip(pts, pts[1:]): fig.cyl(a_, b_, 0.95, seg=12)
             for p_ in pts[1:-1]: fig.sphere(p_, 0.95, seg=12)
-        if pack and FR:
+        if pack and IT:
+            bp = T.at(-2.9, 0, 7.6)
+            fig.box(bp, (3.4, 1.6, 3.0), q, bevel=0.35)                         # the M1939 pack
+            fig.box(bp + T.u * 1.1 - T.f * 0.05, (3.6, 1.8, 0.9), q, bevel=0.25)
+            pts = []
+            for i in range(13):                                                  # the telo tenda rolled in a horseshoe round it
+                a = math.pi * i / 12
+                pts.append(bp + T.u * (0.4 + math.sin(a) * 2.0) + T.l * (math.cos(a) * 2.1) - T.f * 0.15)
+            for a_, b_ in zip(pts, pts[1:]): fig.cyl(a_, b_, 0.55, seg=10)
+            gm = T.o + T.f * (-0.6) + T.l * 3.3 - T.u * 1.1                       # the gas mask bag on the left hip
+            fig.box(gm, (0.9, 2.2, 2.4), Frame(gm, T.f, T.u).q, bevel=0.35)
+        elif pack and FR:
             bp = T.at(-3.1, 0, 7.0)
             fig.box(bp, (4.0, 2.0, 3.8), q, bevel=0.35)                         # the M1935 pack
             fig.cyl(bp + T.u * 2.5 + T.l * 2.7 - T.f * 0.1, bp + T.u * 2.5 - T.l * 2.7 - T.f * 0.1, 1.0, seg=18, bevel=0.2)   # blanket and tent rolled on top
@@ -430,7 +442,7 @@ def torso(fig, T, pack=True, pouches=True, suspenders=True, jacket=True):
             for s in (1.3, -1.3): fig.box(bp + T.l * s - T.f * 1.12, (0.45, 0.12, 3.8), q, bevel=0.04)   # straps
             fig.cyl(bp + T.u * 3.1 + T.l * 2.9 - T.f * 0.2, bp + T.u * 3.1 - T.l * 2.9 - T.f * 0.2, 1.05, seg=18, bevel=0.2)   # blanket roll
             for s in (1.6, -1.6): fig.ring(bp + T.u * 3.1 + T.l * s - T.f * 0.2, T.l, 1.1, 0.13)
-    if suspenders and not (SU or JP):
+    if suspenders and not (SU or JP or IT):
         for s in (1.8, -1.8):
             fig.strap([T.at(2.45, s, 2.6), T.at(2.65, s * 1.05, 7.0), T.at(1.2, s * 1.1, 10.4), T.at(-1.6, s * 0.95, 10.0), T.at(-2.6, s * 0.7, 6.0)], 0.3)
     return shR, shL, neck
@@ -451,6 +463,12 @@ def head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
         fig.ball(H.at(2.05, s * 1.45, 3.45), 0.72)                            # cheekbone
         fig.sphere(H.at(0.2, s * 2.3, 4.0), 0.8, scale=(0.45, 0.85, 1.25), q=H.q)   # ear
     fig.limb(H.at(2.55, 0.55, 2.75), H.at(2.55, -0.55, 2.75), 0.2)             # lips
+    if helmet == 'cap' and IT:
+        bustina(fig, H)
+        return H
+    if helmet and IT:
+        m33(fig, H, net)
+        return H
     if helmet == 'cap' and FR:
         kepi(fig, H)
         return H
@@ -583,6 +601,57 @@ def type90(fig, H, cap=False, net=False):
         fig.box(H.at(-2.0, k * 1.5, 2.6), (1.6, 0.25, 2.8), Frame(H.at(-2.0, k * 1.5, 2.6), H.d(-1, k * 0.6, 0), H.u).q)
     for s in (1, -1): fig.strap([tip.at(-0.1, s * 3.2, -0.8), H.at(1.3, s * 1.2, 1.6)], 0.15)
 
+def brim(fig, tip, rim, r, width, drop_f, drop_b, thick=0.2):
+    """a moulded brim: a strip round the rim of a helmet, width(cos of the angle from the front)
+    wide, dropping by drop_f (front) or drop_b (back) times its width at the edge."""
+    na = 48; rows = [[], []]
+    for i in range(na):
+        a = 2 * math.pi * i / na
+        c, sn = math.cos(a), math.sin(a)
+        w = width(c)
+        for j, t in enumerate((0.0, 1.0)):
+            rr = r + w * t
+            rows[j].append(rim + tip.f * (c * rr * 1.04) + tip.l * (sn * rr) - tip.u * (w * t * (drop_f if c > 0 else drop_b)))
+    me = bpy.data.meshes.new('brim'); bm = bmesh.new()
+    vs = [[bm.verts.new(p_) for p_ in row] for row in rows]
+    for i in range(na): bm.faces.new([vs[0][i], vs[0][(i + 1) % na], vs[1][(i + 1) % na], vs[1][i]])
+    bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new('brim', me); bpy.context.scene.collection.objects.link(o)
+    sol = o.modifiers.new('solid', 'SOLIDIFY'); sol.thickness = thick; sol.offset = 0
+    fig._add(o)
+
+def m33(fig, H, net=False):
+    """the Italian M33: a smooth rounded shell, deep at the sides, flaring into a short brim that
+    reaches a little further over the eyes and the neck, the badge on the front and the vent
+    rivets on the sides."""
+    tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.14), H.d(0.14, 0, 1))
+    R = 3.3
+    with fig.hard():
+        fig.dome(tip.o, R, tip.q, squash=0.96, cut=-0.3, thick=0.25)
+        rim = tip.at(0, 0, -0.3 * R * 0.96)
+        brim(fig, tip, rim, R * 0.93, lambda c: 0.45 + 0.35 * max(0.0, c) ** 2 + 0.55 * max(0.0, -c) ** 2, 0.5, 0.7)
+        for s in (1, -1): fig.sphere(tip.at(0.1, s * R * 0.95, 1.1), 0.28)            # vent rivets
+        fig.sphere(tip.at(-0.1, 0, R * 0.96 + 0.05), 0.3, scale=(1, 1, 0.5), q=tip.q)   # the vent on the crown
+        badge = tip.at(R * 0.93, 0, 0.9)
+        fig.box(badge, (0.9, 0.2, 0.7), tip.q, bevel=0.05)
+        if net:
+            rnd = mulberry(83)
+            for i in range(14):
+                a = rnd() * 6.28; e = 0.25 + rnd() * 0.8
+                p = tip.at(math.cos(a) * math.cos(e) * 3.4, math.sin(a) * math.cos(e) * 3.4, math.sin(e) * 3.2)
+                fig.box(p, (0.5, 1.0, 0.12), Frame(p, tip.d(math.cos(a), math.sin(a), 0), tip.u).q, bevel=0.03)
+    for s in (1, -1): fig.strap([tip.at(-0.1, s * 3.2, -0.9), H.at(1.3, s * 1.2, 1.6)], 0.15)
+
+def bustina(fig, H):
+    """the bustina: the Italian side cap, a folded boat shape worn tilted, with its front peak and
+    the badge on the left."""
+    b = Frame(H.at(0.1, 0, 6.2), H.d(1, 0, 0.0), H.d(0.0, -0.25, 1))
+    with fig.hard():
+        fig.cyl(b.at(0, 0, -0.6), b.at(0, 0, 0.35), 2.9, seg=32, r2=2.4, bevel=0.1).scale = (0.92, 1.12, 1)   # the folded curtain
+        fig.sphere(b.at(0, 0, 0.35), 2.4, scale=(0.35, 1.2, 0.55), q=b.q)       # the narrow crown
+        fig.sphere(b.at(2.6, 0, 0.5), 0.55, scale=(0.5, 1, 1), q=b.q)           # its front peak
+        fig.box(b.at(2.2, 2.2, -0.1), (0.2, 0.7, 0.8), Frame(b.o, b.f + b.l * 0.8, b.u).q, bevel=0.05)   # badge
+
 def adrian(fig, H, net=False):
     """the French Adrian helmet (M26): a round skull with the crest along the top, a peaked visor
     in front, a longer one over the neck, and the badge (a flaming grenade) on the front."""
@@ -593,21 +662,7 @@ def adrian(fig, H, net=False):
         rim = tip.at(0, 0, -0.15 * R * 0.9)
         fig.ring(rim, tip.u, R * 1.03, 0.2, seg=36, scale=(1, 1.04, 0.7))
         # the brim: one moulded strip round the rim, a peak in front, wider over the neck, narrow at the sides
-        na = 48; rows = [[], []]
-        for i in range(na):
-            a = 2 * math.pi * i / na
-            c, sn = math.cos(a), math.sin(a)
-            w = 0.25 + 1.15 * max(0.0, c) ** 2 + 1.5 * max(0.0, -c) ** 2
-            for j, t in enumerate((0.0, 1.0)):
-                rr = R * 0.98 + w * t
-                rows[j].append(rim + tip.f * (c * rr * 1.04) + tip.l * (sn * rr) - tip.u * (w * t * (0.45 if c > 0 else 0.6)))
-        me = bpy.data.meshes.new('brim'); bm = bmesh.new()
-        vs = [[bm.verts.new(p_) for p_ in row] for row in rows]
-        for i in range(na): bm.faces.new([vs[0][i], vs[0][(i + 1) % na], vs[1][(i + 1) % na], vs[1][i]])
-        bm.to_mesh(me); bm.free()
-        o = bpy.data.objects.new('brim', me); bpy.context.scene.collection.objects.link(o)
-        sol = o.modifiers.new('solid', 'SOLIDIFY'); sol.thickness = 0.2; sol.offset = 0
-        fig._add(o)
+        brim(fig, tip, rim, R * 0.98, lambda c: 0.25 + 1.15 * max(0.0, c) ** 2 + 1.5 * max(0.0, -c) ** 2, 0.45, 0.6)
         for k in range(9):                                                       # the crest along the top
             a = (k - 4) / 4 * 1.05
             p = tip.at(math.sin(a) * R * 0.99, 0, math.cos(a) * R * 0.9 + 0.2)
@@ -716,11 +771,18 @@ def rifle(fig, butt, muzzle, up=U, scope=False, sling=True, bayonet=False):
         fig.box(at(0.47, 0.0), (0.95, Ln * 0.42, 1.1), q, bevel=0.2)           # fore stock
         fig.box(at(0.62, 0.55), (0.8, Ln * 0.3, 0.5), q, bevel=0.15)           # handguard
         fig.box(at(0.33, 0.45), (0.8, Ln * 0.12, 0.85), q, bevel=0.1)          # receiver
-        if not (DE or SU or GB or JP or FR): fig.box(at(0.28, 0.95), (0.4, 0.4, 0.35), q, bevel=0.05)    # rear sight
+        if not (DE or SU or GB or JP or FR or IT): fig.box(at(0.28, 0.95), (0.4, 0.4, 0.35), q, bevel=0.05)    # rear sight
         fig.box(at(0.35, -0.35), (0.35, 1.0, 0.5), q, bevel=0.05)              # trigger
         fig.ring(at(0.33, -0.45), R.l, 0.55, 0.1, seg=16, scale=(1, 1.3, 1))    # trigger guard
         fig.cyl(at(0.3, 0.4), at(1.0, 0.4), 0.25, seg=10)                       # barrel
-        if FR:
+        if IT:
+            fig.cyl(at(0.3, 0.55, -0.4), at(0.31, 0.2, -1.0), 0.12, seg=8)        # the Carcano's bolt handle, turned down
+            fig.sphere(at(0.31, 0.18, -1.05), 0.26)
+            for k in (0.6, 0.82): fig.ring(at(k, 0.25), R.f, 0.56, 0.1, seg=16)
+            fig.box(at(0.96, 0.9), (0.3, 0.8, 0.5), q, bevel=0.05)
+            fig.box(at(1.08, 0.2, 0.25), (0.12, Ln * 0.14, 0.5), q, bevel=0.03)   # the folding bayonet, open
+            fig.box(at(0.99, 0.2, 0.2), (0.4, 0.45, 0.45), q, bevel=0.03)
+        elif FR:
             fig.cyl(at(0.3, 0.55, -0.4), at(0.38, 0.3, -1.1), 0.12, seg=8)        # the MAS-36's bolt handle, bent forward
             fig.sphere(at(0.39, 0.28, -1.15), 0.25)
             for k in (0.6, 0.8): fig.ring(at(k, 0.25), R.f, 0.56, 0.1, seg=16)
@@ -842,7 +904,26 @@ def fm2429(fig, butt, muzzle, up=U):
     fig.muzzle = muzzle
     return R
 
+def breda30(fig, butt, muzzle, up=U):
+    """the Breda 30: a slim butt, the receiver with the magazine box hinged on its right side, a
+    pistol grip, the thin barrel with its conical flash hider and the bipod."""
+    R = Frame(butt, muzzle - butt, up, True); Ln = (muzzle - butt).length; q = R.q
+    at = lambda k, u=0.0, l=0.0: R.at(Ln * k, l, u)
+    with fig.hard():
+        fig.box(at(0.1, -0.3), (0.8, Ln * 0.2, 1.5), q, bevel=0.2)
+        fig.box(at(0.38, 0.2), (1.0, Ln * 0.3, 1.25), q, bevel=0.1)
+        fig.box(at(0.3, -1.0), (0.55, 0.8, 1.5), Frame(at(0.3), R.d(1, 0, 0.3), R.u).q, bevel=0.1)
+        fig.box(at(0.42, 0.3, -1.3), (1.9, 1.4, 0.6), q, bevel=0.08)                 # the side magazine, sticking out to the right
+        fig.box(at(0.28, 0.9), (0.2, 1.2, 0.3), q, bevel=0.04)                        # carrying handle
+        fig.cyl(at(0.55, 0.25), at(0.95, 0.25), 0.28, seg=12)
+        for k in range(4): fig.ring(at(0.57 + k * 0.03, 0.25), R.f, 0.34, 0.08, seg=12)
+        fig.cyl(at(0.93, 0.25), at(1.0, 0.25), 0.26, seg=12, r2=0.46)                 # conical flash hider
+        for s in (0.45, -0.45): fig.cyl(at(0.86, 0.0, s), at(0.62, -0.25, s * 1.3), 0.11, seg=6)
+    fig.muzzle = muzzle
+    return R
+
 def smg(fig, butt, muzzle, up=U):
+    if IT: return breda30(fig, butt, muzzle, up)
     if FR: return fm2429(fig, butt, muzzle, up)
     if GB: return bren(fig, butt, muzzle, up)
     if JP:
@@ -883,6 +964,12 @@ def pistol(fig, grip, fwd, up=U):
     fig.muzzle = R.at(3.2, 0, 0.95)
 
 def grenade(fig, c, r=0.85, colour=None):
+    if IT:
+        with fig.hard():                                                        # the SRCM Mod. 35 'red devil'
+            fig.cyl(c - U * r * 0.9, c + U * r * 0.5, r * 0.8, colour, seg=16, bevel=0.2)
+            fig.cyl(c + U * r * 0.5, c + U * r * 1.0, r * 0.88, colour, seg=16, bevel=0.1)   # the cap
+            fig.box(c + U * r * 0.2 + F * r * 0.85, (r * 0.4, r * 0.15, r * 1.3), None, colour, bevel=0.02)   # the safety strap
+        return
     if JP:
         with fig.hard():                                                        # Type 97: a segmented cylinder
             fig.cyl(c - U * r * 0.8, c + U * r * 0.8, r * 0.85, colour, seg=14, bevel=0.1)
@@ -951,8 +1038,8 @@ def bazooka_tube(fig, a, b, r=1.25, missile=False):
             fig.box(at(0.42, -1.1), (0.6, 0.8, 1.6), q, bevel=0.1)
         fig.muzzle = at(1.12, 0.2)
         return
-    if SU or JP:
-        # PTRD (the long anti-tank rifle with its muzzle brake, bipod and carrying handle); for the AA
+    if SU or JP or IT:
+        # PTRD (Italy: the Solothurn S-18/1000, much the same shape) (the long anti-tank rifle with its muzzle brake, bipod and carrying handle); for the AA
         # soldier the semi-automatic PTRS with its magazine, aimed up at the aircraft
         with fig.hard():
             fig.box(at(0.32, -0.2), (1.0, Ln * 0.14, 1.9), q, bevel=0.2)            # butt with the pad
@@ -1115,7 +1202,7 @@ def officer():
     arm(fig, shR, grip, pole=D(0, -0.6, -1), grip_dir=F)
     pistol(fig, grip + F * 0.35, F)
     arm(fig, shL, shL + P(3.5, 3.5, 9.5), pole=D(-0.5, 1, -0.2), grip_dir=U)   # fist up: follow me
-    head(fig, neck, turn(F, 0.15), D(0.05, 0.1, 1), helmet='cap' if (DE or SU or GB or JP or FR) else True)
+    head(fig, neck, turn(F, 0.15), D(0.05, 0.1, 1), helmet='cap' if (DE or SU or GB or JP or FR or IT) else True)
     if JP:
         with fig.hard():                                                         # the officer's sword at his hip
             hilt = T.at(1.2, 3.6, 2.2)

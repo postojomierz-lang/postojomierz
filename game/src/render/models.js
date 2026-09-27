@@ -101,6 +101,14 @@ const CREW_NATION = {
     tank_heavy: [['lookout', -0.52, 0.96, 0.26]],
     heli: [['driver', 0.2, -0.2, 0], ['driver', -0.25, -0.2, 0]],
   },
+  it: {
+    jeep: [['driver', -0.1, 0.44, -0.2], ['mgstand', -0.7, 0.43, 0]],
+    engtruck: [],
+    apc: [['lookout', -0.1, 0.72, 0]],
+    tank: [['lookout', -0.2, 0.86, 0.15]],
+    tank_light: [['lookout', -0.12, 0.6, -0.07]],
+    tank_heavy: [['lookout', -0.3, 0.96, 0.18]],
+  },
   fr: {
     jeep: [['driver', -0.1, 0.46, -0.2], ['mgstand', -0.7, 0.45, 0]],
     engtruck: [],
@@ -124,10 +132,10 @@ const CREW_NATION = {
 // helicopter rotors: hubs [x, y, z], lean (radians, about the length axis) and spin direction; tail rotor hub
 const ROTORS = { us: { rotors: [[0.3, 0.7, 0, 0, 1]], tail: [-1.85, 0.45, 0.06] },
   de: { rotors: [[0.25, 0.72, 0.12, 0.2, 1], [0.25, 0.72, -0.12, -0.2, -1]], tail: null },   // Flettner's intermeshing pair
-  su: { rotors: [[0.15, 0.8, 0, 0, 1]], tail: null },
-  gb: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },
-  jp: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },
-  fr: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null } };                                          // the Kayaba autogyro                                          // the Cierva autogyro                                         // the Kamov autogyro
+  su: { rotors: [[0.15, 0.8, 0, 0, 1]], tail: null },                                         // the Kamov autogyro
+  gb: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },                                          // the Cierva autogyro
+  jp: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },                                          // the Kayaba autogyro
+  fr: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null } };                                        // the LeO-built Cierva
 // Toy vehicles and aircraft modelled in Blender (tools/blender/vehicles.py and vehicles_<nation>.py).
 function buildVehicle(key, nation = 'us') {
   const v = vehData(key, nation), g = (p, c) => figureGeometry(p, c, VEHICLE_SCALE, true);
