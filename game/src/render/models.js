@@ -141,6 +141,9 @@ const ROTORS = { us: { rotors: [[0.3, 0.7, 0, 0, 1]], tail: [-1.85, 0.45, 0.06] 
   jp: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },                                          // the Kayaba autogyro
   fr: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },                                         // the LeO-built Cierva
   it: { rotors: [[0.0, 0.86, 0, 0, 1], [0.0, 0.98, 0, 0, -1]], tail: null } };                 // D'Ascanio's coaxial pair
+// lorries and cars: where their markings go (the cab doors, and the bonnet of the small ones)
+const SOFT_SKINS = { jeep: { sideX: 0.5, sideY: 0.55, bonnet: true, size: 0.15 }, amphib: { sideX: 0.45, sideY: 0.6, bonnet: true, size: 0.17 },
+  ambulance: { sideX: [0.55, 0.85], sideAt: 0.7, size: 0.16 }, engtruck: { sideX: [0.55, 0.85], sideAt: 0.7, size: 0.16 }, rockets: { sideX: [0.55, 0.85], sideAt: 0.7, size: 0.16 } };
 const TANKS = new Set(['tank_light', 'tank', 'tank_heavy', 'apc']);
 const MARKED = new Set(['heli', 'fighter', 'attacker', 'bomber', 'transport']);
 const FLAGGED = new Set(['jeep', 'ambulance', 'engtruck', 'apc', 'amphib', 'tank_light', 'tank', 'tank_heavy', 'rockets']);
@@ -157,7 +160,8 @@ function buildVehicle(key, nation = 'us') {
   }
   if (v.turret_main) out.turret = { main: g(v.turret_main.near), dark: v.turret_dark ? g(v.turret_dark.near) : undefined };
   // the bare model (no crew, tracks and fittings included): where flags and markings are placed
-  const body = out.dark ? mergeGeometries([out.main, out.dark]) : out.main;
+  const bare = g => { const c = g.clone(); c.deleteAttribute('color'); return c; };          // painted parts too (windows)
+  const body = mergeGeometries([out.main, out.dark, out.accent && bare(out.accent)].filter(Boolean));
   // crews: army-men figures placed into the model (the MG gunner turns with his gun)
   const crew = (geo, x, y, z, s = 1) => (geo.index ? geo.toNonIndexed() : geo.clone()).scale(s, s, s).translate(x, y, z);
   const crews = (CREW_NATION[mine] && CREW_NATION[mine][key]) || CREW[key];
@@ -171,6 +175,7 @@ function buildVehicle(key, nation = 'us') {
   const paint = parts => { if (parts.length) out.accent = mergeGeometries(out.accent ? [out.accent, ...parts] : parts); };
   if (FLAGGED.has(key)) paint(vehicleFlag(body, nation));
   if (key === 'hq') paint(hqFlag(own(key, nation) ? nation : 'us'));
+  if (SOFT_SKINS[key]) paint(tankMarkings(body, nation, { turret: false, ...SOFT_SKINS[key] }));
   if (TANKS.has(key)) paint(tankMarkings(body, nation, { size: key === 'tank_heavy' ? 0.24 : key === 'tank_light' || key === 'apc' ? 0.17 : 0.2 }));
   if (MARKED.has(key)) paint(aircraftMarkings(body, nation, { wings: key !== 'heli', big: key === 'bomber' || key === 'transport' }));
   if (key === 'tower') {

@@ -156,10 +156,11 @@ flag from their flagpole, and every aircraft carries its national markings on th
 sides of the fuselage (placed by ray casts onto the model too): the star and bars, the Balkenkreuz,
 the red star, the RAF roundel, the Hinomaru, the French cocarde and the Italian fasces.
 Tanks and armoured cars wear their army's markings on both sides of the hull and of the turret
-(found as the narrower part above the hull): the white star, the Balkenkreuz, the red star with a
+(found as the narrower part above the hull), lorries on their cab doors (the widest flat side
+at door height) and jeeps and amphibians on their sides and bonnet: the white star, the Balkenkreuz, the red star with a
 broad white edge, the British white-red-white recognition flash, the Imperial Army's yellow star
 (outlined, for the white plastic), the cocarde and an Italian company rectangle. Flags and
-markings are placed on the bare model - tracks and fittings included, the crew left out.
+markings are placed on the bare model - tracks, fittings and windows included, the crew left out.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)

@@ -221,17 +221,32 @@ const TANK_MARKS = {
   it: (u, v) => Math.abs(u) > 0.95 || Math.abs(v) > 0.6 ? null : Math.abs(u) < 0.14 ? C.white : C.ired,
 };
 
-// markings for a tank (or armoured car) `main`: on both sides of the hull and, if it has one, of
-// the turret - found as the narrower part standing on the hull
-export function tankMarkings(main, nation, { turret = true, size = 0.2 } = {}) {
+// markings for a tank or any other vehicle `main`: on both sides of the hull (sideX along its
+// length from the back, or the widest place in a range of it; sideY of its height, or sideAt that
+// height - the cab doors of a lorry), on the bonnet if asked,
+// and on both sides of the turret if it has one - found as the narrower part standing on the hull
+export function tankMarkings(main, nation, { turret = true, size = 0.2, sideX = 0.42, sideY = 0.5, sideAt = null, bonnet = false } = {}) {
   const pattern = TANK_MARKS[nation] || TANK_MARKS.us, out = [];
   main.computeBoundingBox();
   const b = main.boundingBox, mesh = new THREE.Mesh(main, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
   const side = (x, y, s) => { ray.set(new THREE.Vector3(x, y, s * (b.max.z + 1)), new THREE.Vector3(0, 0, -s)); return ray.intersectObject(mesh, false)[0]; };
-  const len = b.max.x - b.min.x, hullX = b.min.x + len * 0.42, hullY = b.max.y * 0.5, width = Math.max(b.max.z, -b.min.z);
+  const len = b.max.x - b.min.x, hullX = b.min.x + len * (Array.isArray(sideX) ? sideX[0] : sideX), hullY = sideAt != null ? sideAt : b.max.y * sideY, width = Math.max(b.max.z, -b.min.z);
   for (const s of [1, -1]) {
-    const h = side(hullX, hullY, s);
-    if (h && Math.abs(h.face.normal.z) > 0.6) out.push(decal(pattern, h.point, facing(h), size));
+    // sideX as a range [from, to]: the widest flat side in it (a lorry's cab doors)
+    const xs = Array.isArray(sideX) ? Array.from({ length: 13 }, (_, i) => b.min.x + len * (sideX[0] + (sideX[1] - sideX[0]) * i / 12)) : [hullX];
+    let best = null;
+    for (const x of xs) {
+      const h = side(x, hullY, s);
+      if (h && Math.abs(h.face.normal.z) > 0.6 && (!best || s * h.point.z > s * best.point.z + 0.01)) best = h;
+    }
+    if (best) out.push(decal(pattern, best.point, facing(best), size));
+  }
+  if (bonnet) {                                                                 // the first flat surface back from the nose
+    for (let k = 0; k < 20; k++) {
+      ray.set(new THREE.Vector3(b.max.x - len * (0.06 + k * 0.01), b.max.y + 1, 0), down);
+      const h = ray.intersectObject(mesh, false)[0];
+      if (h && facing(h).y > 0.85) { out.push(decal(pattern, h.point, facing(h), size)); break; }
+    }
   }
   if (!turret) return out;
   // the turret: sample the top from above, keep what stands high and inside the hull's width
