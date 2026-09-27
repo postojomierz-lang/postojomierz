@@ -44,7 +44,7 @@ const MUZZLE = {
 };
 // the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)
 const POSE_MUZZLE = { 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
-const HEIGHT = { mg: 0.95, tank: 1.5, tank_light: 1.3, tank_heavy: 1.6, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
+const HEIGHT = { mg: 0.95, tank: 1.5, tank_light: 1.3, tank_heavy: 1.6, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hospital: 1.5, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
 const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4, 'de:attacker': 0.55, 'de:transport': 0.5, 'jp:attacker': 0.55, 'fr:transport': 0.44, 'it:transport': 0.47, 'gb:transport': 0.46, 'jp:transport': 0.44 };
 const CREW_SCALE = new THREE.Vector3(0.82, 0.82, 0.82);
 const isAir = def => def.cls === 'air' || def.cls === 'plane';

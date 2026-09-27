@@ -163,6 +163,10 @@ export const CATALOG = {
     weapon: { kind: 'bullet', range: 16, dmg: 4, cd: 1.4, acc: 0.8, air: true },
     blurb: 'Brick tower with a lookout rifleman.',
   },
+  hospital: {
+    name: 'Field hospital', group: 'defense', cls: 'emplacement', static: true, cost: 90, hp: 150, size: [3, 3], radius: 1.5, beds: 6,
+    blurb: 'Ward tent for 6 wounded: they are back the next round instead of missing one.',
+  },
 
   // ---- fortifications ---------------------------------------------------------
   sandbags: {
@@ -227,6 +231,9 @@ export const RULES = {
   tickRate: 20,
   // experience: a unit earns the value of the damage it does (the share of a target's health
   // times the target's cost); at 1x, 3x and 6x its own cost it becomes a Veteran, Elite, Hero
+  // rescued wounded recover in the base: with a hospital bed they are back the next round,
+  // without one they miss a round. They return as themselves, rank and experience kept.
+  recovery: { rounds: 2, bed: 2, noBed: 1 },
   veteran: {
     names: ['Veteran', 'Elite', 'Hero'],
     at: [1, 3, 6],
