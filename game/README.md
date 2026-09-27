@@ -24,6 +24,13 @@ Battlefields (all free and offline):
   base to the middle, stone farmhouses with timber-framed barns, dry-stone walls, hay bales, ponds,
   orchards and shell craters. The countryside carries on beyond the play area into low hills, and
   the board sits on a wooden table (`src/sim/map.js` → `normandy()`, `src/render/diorama.js`);
+- **Town in ruins**: old-town blocks between cobbled streets (again a symmetric Voronoi diagram),
+  an avenue from every base to the square with its monument, stone town houses with plaster fronts
+  and shop fronts, churches, and many houses in ruins: soldiers on foot can get into a ruin and fight
+  from it with good cover (vehicles can't), and infantry in a firefight next to one moves in. Rubble,
+  barricades and anti-tank hedgehogs block the streets in places. Often a river in stone quays with
+  arched bridges runs through the town (straight through the middle with two armies, a ring round
+  the old town with more); only amphibians can swim it (`town()` in `src/sim/map.js`);
 - the classic toy room: random floors with household obstacles, the built-in map library
   (`src/data/maps.js`), map files (`*.pfmap.json`: "Save map" in the top bar, "Load a map file" in
   setup; `src/mapfile.js`) and the map editor (setup → Map editor; `src/editor.js`).
@@ -63,6 +70,10 @@ fighter, ground-attack plane, bomber, transport) are modelled the same way by
 `tools/blender/vehicles.py`, and the headquarters, emplacements (MG nest with its gunner, field gun,
 AA gun, watchtower with a lookout) and fortifications (sandbags, brick walls, barbed wire, oil drums)
 by `tools/blender/structures.py`; all of them are packed into `src/data/vehicles.js`.
+The diorama scenery is Blender-made as well: `tools/blender/scenery.py` (Normandy: hedgerows, oaks,
+apple trees, farmhouse, barn, walls, hay, reeds, craters) and `tools/blender/town.py` (town houses,
+shop fronts, ruins, church, monument, rubble, barricade, hedgehog, bridge, quay, street lamp), packed
+into `src/data/scenery.js` (buildings also come in a light version for the town beyond the table edge).
 The parachute is in `vehicles.py` too. For "Living soldiers" mode `army_men.py` builds a second set
 of figures without stands (including rifleman, officer and sniper poses), with the legs of standing
 figures as separate parts that the game swings from the hips while they walk.

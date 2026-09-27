@@ -3,7 +3,7 @@
 // geometries - "main" in the army colour, "dark", painted parts - so each is a handful of draw calls.
 import { FIGURES, FIGURE_SCALE } from '../data/figures.js';
 import { VEHICLES, VEHICLE_SCALE } from '../data/vehicles.js';
-import { SCENERY, SCENERY_SCALE } from '../data/scenery.js';
+import { SCENERY, SCENERY_FAR, SCENERY_SCALE } from '../data/scenery.js';
 import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three';
@@ -77,7 +77,7 @@ function buildVehicle(key) {
   }
   return out;
 }
-const SOFT = new Set(['#4f6b35', '#6a8a42', '#3f5a2e', '#5c6d38', '#cfae5e', '#6e5b41']);
+const SOFT = new Set(['#4f6b35', '#6a8a42', '#3f5a2e', '#5c6d38', '#cfae5e', '#6e5b41', '#8f877a', '#5d6b50']);
 const LEAVES = new Set(['#4f6b35', '#6a8a42', '#3f5a2e', '#5c6d38']);
 // painted foam foliage: sunlit tops lighter and yellower, undersides dark, blotchy in between
 function shadeFoliage(g) {
@@ -95,14 +95,23 @@ function shadeFoliage(g) {
 }
 // Diorama scenery (tools/blender/scenery.py): all painted parts merged into one geometry
 const scenery = new Map();
-export function sceneryGeometry(key) {
-  if (!scenery.has(key)) scenery.set(key, mergeGeometries(SCENERY[key].map(p => {
-    const g = figureGeometry(p, p.c, SCENERY_SCALE, !SOFT.has(p.c));   // foliage and earth: smooth; buildings: crisp
-    if (LEAVES.has(p.c)) shadeFoliage(g);
-    return g.index ? g.toNonIndexed() : g;
-  })));
-  return scenery.get(key);
+// part: 'all', 'tint' (only the plaster that is coloured per house) or 'rest' (everything else)
+const TINT = '#ece6da';
+// far: the light version of a building (if there is one)
+export function sceneryGeometry(key, part = 'all', far = false) {
+  far = far && !!SCENERY_FAR[key];
+  const k = key + ':' + part + (far ? ':far' : '');
+  if (!scenery.has(k)) {
+    const parts = (far ? SCENERY_FAR : SCENERY)[key].filter(p => part === 'all' || (part === 'tint') === (p.c === TINT));
+    scenery.set(k, parts.length ? mergeGeometries(parts.map(p => {
+      const g = figureGeometry(p, p.c, SCENERY_SCALE, !SOFT.has(p.c));   // foliage and earth: smooth; buildings: crisp
+      if (LEAVES.has(p.c)) shadeFoliage(g);
+      return g.index ? g.toNonIndexed() : g;
+    })) : null);
+  }
+  return scenery.get(k);
 }
+export const hasTint = key => SCENERY[key].some(p => p.c === TINT);
 const figs = new Map();
 function figure(key) { if (!figs.has(key)) figs.set(key, buildFigure(key)); return figs.get(key); }
 

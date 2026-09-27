@@ -1,6 +1,6 @@
 import './style.css';
 import { CATALOG, GROUPS, TEAM_COLORS, RULES } from './data/catalog.js';
-import { makeMap, MAX_ARMIES } from './sim/map.js';
+import { makeMap, MAX_ARMIES, DIORAMAS } from './sim/map.js';
 import { designBattlefield, explainError } from './claude.js';
 import { LIBRARY } from './data/maps.js';
 import { exportLayout, downloadLayout, readLayoutFile } from './mapfile.js';
@@ -21,7 +21,7 @@ const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', the
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
 settings.teams = Math.max(2, Math.min(MAX_ARMIES, +settings.teams || 2));   // at most 6 armies
 if (!settings.diorama) { settings.diorama = 1; settings.source = 'normandy'; }   // the Normandy diorama is the new default
-if (!['normandy', 'random', 'library', 'file'].includes(settings.source)) settings.source = 'normandy';
+if (!['normandy', 'town', 'random', 'library', 'file'].includes(settings.source)) settings.source = 'normandy';
 const save = () => { try { localStorage.setItem('plasticfront3d', JSON.stringify(settings)); } catch {} };
 
 let view;
@@ -45,7 +45,7 @@ const busy = (lines) => {
 // Works out the battlefield from the setup screen. files: { mapFile }.
 // Returns everything every player needs to build the very same map: { n, seed, layout, theme }.
 async function prepareMap(files = {}, layout = null, n = +settings.teams) {
-  const seed = (Math.random() * 2 ** 31) >>> 0;
+  const seed = +new URLSearchParams(location.search).get('seed') || (Math.random() * 2 ** 31) >>> 0;   // ?seed=: a fixed battlefield (testing)
   if (!layout && settings.useClaude) {
     if (!settings.apiKey) toast('Add an Anthropic API key to let Claude design the battlefield — using a random one.', false, true);
     else {
@@ -62,7 +62,7 @@ async function prepareMap(files = {}, layout = null, n = +settings.teams) {
     if (!files.mapFile) toast('Choose a map file first — using a random battlefield.', false, true);
     else try { layout = await readLayoutFile(files.mapFile); } catch (e) { toast('Could not open the map (' + e.message + ') — using a random one.', false, true); }
   }
-  const theme = layout ? null : settings.source === 'normandy' && !settings.useClaude ? 'normandy' : settings.theme || null;
+  const theme = layout ? null : DIORAMAS.includes(settings.source) && !settings.useClaude ? settings.source : settings.theme || null;
   return { n, seed, layout, theme };
 }
 
@@ -465,7 +465,7 @@ for (const id of ['optSource', 'optUseClaude']) $(id).addEventListener('change',
 $('btnSaveMap').onclick = () => {
   const sim = game.mode === 'play' ? game.sim : null;
   if (!sim) return;
-  if (sim.map.theme === 'normandy') { toast('Map files are for toy-room battlefields — Normandy is a new diorama every game'); return; }
+  if (DIORAMAS.includes(sim.map.theme)) { toast('Map files are for toy-room battlefields — dioramas are new every game'); return; }
   downloadLayout(exportLayout(sim.map));
   toast('Map saved — share the file or load it from the setup screen');
 };
@@ -482,7 +482,7 @@ function openEditor() {
   for (const id of ['build', 'speed', 'armies']) $(id).hidden = true;
   $('phase').textContent = 'Editor';
   const cur = game.sim && game.sim.map;
-  editor.open(cur && cur.objects.length && cur.theme !== 'normandy' ? exportLayout(cur) : null);
+  editor.open(cur && cur.objects.length && !DIORAMAS.includes(cur.theme) ? exportLayout(cur) : null);
   toast('Map editor — draw household obstacles on the floor', true);
 }
 $('btnMenu').onclick = openSetup;
