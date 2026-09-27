@@ -1,9 +1,9 @@
-# Each army's own gun emplacements, lookout tower and fortifications, in the style of
-# structures.py: the field gun, the anti-aircraft gun, the machine-gun nest and the watchtower of
-# the Americans, the Germans, the Red Army, the British, the Japanese, the French and the
-# Italians, and their mines; and the walls, wire, sandbags, tank traps and fuel stores of all but
+# Each army's own gun emplacements, lookout tower, fortifications and parachute, in the style of
+# structures.py: the field gun, the anti-aircraft gun, the machine-gun nest, the watchtower and
+# the mines of the Americans, the Germans, the Red Army, the British, the Japanese, the French and
+# the Italians; and the walls, wire, sandbags, tank traps, fuel stores and parachutes of all but
 # the Americans (whose brick wall, concertina, sandbags, Czech hedgehog and oil drum are in
-# structures.py). The American ones are written to .cache/figures/vehicles (the default models,
+# structures.py, their T-5 parachute in vehicles.py). The American ones are written to .cache/figures/vehicles (the default models,
 # packed into src/data/vehicles.js), the others to .cache/figures/vehicles/<nation> (packed into
 # public/nation-<nation>.js).
 #
@@ -14,6 +14,7 @@
 # (turret parts), the tower's lookout stands on a platform 2.6 up.
 import math, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bpy
 import vehicles
 from mathutils import Quaternion
 from vehicles import Model, clear, LIGHT, GLASS, WHITE, RED
@@ -1383,32 +1384,123 @@ def it_mine_ap():
     m.cyl('main', (0, 0.06, 0), (0, 0.1, 0), 0.012, seg=8)
     m.finish()
 
+# =========================================================================================
+# Paratroopers' canopies (the American T-5 is in vehicles.py): about 1.5 across, the skirt some
+# 1.2 up and the lines gathering at the harness 0.78 up, as the game hangs the figure under it.
+def canopy(m, n=20, R=0.75, top=1.62, depth=0.62, vent=0.18, bulge=1.05, apex=0.0, scallop=0.0,
+           panel=lambda i: 'main', harness=((0.0, 0.78, 0.0),), tapes=False):
+    """a round canopy of n gores bulging between their seams. apex pulls the crown down (as in the
+    Italian Salvator), scallop lifts the skirt between the lines, panel(i) picks each gore's part
+    and the rigging lines run from the seams to the harness point(s)."""
+    rows = 7
+    def point(k, a, mid):
+        t = k / (rows - 1)
+        phi = vent + t * (math.pi / 2 - 0.35)
+        r = R * math.sin(phi) * (bulge if mid else 1.0)
+        y = top - R * depth * (1 - math.cos(phi)) * 1.6 - apex * (1 - t) ** 2 + (0.015 if mid else 0.0)
+        if mid and k == rows - 1: y += scallop
+        return (math.cos(a) * r, y, math.sin(a) * r)
+    skirt = []
+    for i in range(n):
+        a0, a1 = i / n * 2 * math.pi, (i + 1) / n * 2 * math.pi; am = (a0 + a1) / 2
+        verts, faces = [], []
+        for k in range(rows):
+            for a, mid in ((a0, False), (am, True), (a1, False)): verts.append(vehicles.G(*point(k, a, mid)))
+        for k in range(rows - 1):
+            for j in range(2):
+                v00, v01, v10, v11 = k * 3 + j, k * 3 + j + 1, (k + 1) * 3 + j, (k + 1) * 3 + j + 1
+                faces += [(v00, v10, v11), (v00, v11, v01)]
+        me = bpy.data.meshes.new('gore'); me.from_pydata(verts, [], faces)
+        o = bpy.data.objects.new('gore', me); bpy.context.scene.collection.objects.link(o)
+        sol = o.modifiers.new('s', 'SOLIDIFY'); sol.thickness = 0.012
+        m.parts.setdefault(panel(i), []).append(o)
+        edge = point(rows - 1, a0, False); skirt.append(edge)
+        m.cyl('dark' if tapes else 'main', point(0, a0, False), edge, 0.008 if not tapes else 0.011, seg=6)   # seam tape
+        h = min(harness, key=lambda q: (q[2] - edge[2]) ** 2 + (q[0] - edge[0]) ** 2)
+        m.cyl('dark', edge, h, 0.004, seg=5)                                                    # rigging line
+    y0 = point(0, 0.0, False)[1]
+    m.torus('main', (0, y0, 0), (0, 1, 0), R * math.sin(vent), 0.012, seg=24)                  # vent band
+    m.torus('main', (0, skirt[0][1], 0), (0, 1, 0), R * math.sin(vent + math.pi / 2 - 0.35), 0.012, seg=48)   # skirt band
+    return skirt
+
+def risers(m, z=0.06):
+    for s in (1, -1): m.cyl('dark', (0, 0.78, s * z), (0, 0.62, s * z * 1.6), 0.01, seg=6)
+    m.box('dark', (0, 0.78, 0), (0.05, 0.03, 0.14), bevel=0.005)
+
+def de_chute():
+    """the RZ 20: a flatter, wider canopy of 28 gores whose lines all gather at a single point
+    behind the jumper's back - the Fallschirmjäger hung from it face down, with no risers to hold."""
+    m = Model('chute')
+    canopy(m, n=28, R=0.82, top=1.55, depth=0.5, harness=((-0.12, 0.8, 0.0),))
+    m.cyl('dark', (-0.12, 0.8, 0.0), (-0.05, 0.62, 0.0), 0.012, seg=6)                           # the single strop
+    m.finish()
+
+def su_chute():
+    """the PD-6: a deep canopy with a wide vent and the reinforcing tapes running over it, and the
+    two risers down to the harness."""
+    m = Model('chute')
+    canopy(m, n=16, R=0.72, top=1.7, depth=0.72, vent=0.3, tapes=True, harness=((0.0, 0.78, -0.06), (0.0, 0.78, 0.06)))
+    risers(m)
+    m.finish()
+
+def gb_chute():
+    """the X-type: a hemispherical canopy of 28 gores, the rigging lines in four groups to the
+    lift webs of the harness."""
+    m = Model('chute')
+    canopy(m, n=28, R=0.76, top=1.66, depth=0.66, vent=0.12, bulge=1.03,
+           harness=((0.03, 0.8, -0.07), (0.03, 0.8, 0.07), (-0.03, 0.8, -0.07), (-0.03, 0.8, 0.07)))
+    for x in (0.03, -0.03):
+        for z in (-0.07, 0.07): m.cyl('dark', (x, 0.8, z), (0.0, 0.62, z * 1.4), 0.008, seg=6)    # the four lift webs
+    m.finish()
+
+def jp_chute():
+    """the Type 1: a light silk canopy with its skirt scalloped up between the lines."""
+    m = Model('chute')
+    canopy(m, n=18, R=0.76, top=1.6, depth=0.6, scallop=0.07, bulge=1.07, harness=((0.0, 0.78, -0.06), (0.0, 0.78, 0.06)))
+    risers(m)
+    m.finish()
+
+def fr_chute():
+    """a French canopy sewn from alternate light and dark panels."""
+    m = Model('chute')
+    canopy(m, n=16, R=0.75, top=1.62, depth=0.62, panel=lambda i: 'dark' if i % 2 else 'main', harness=((0.0, 0.78, -0.06), (0.0, 0.78, 0.06)))
+    risers(m)
+    m.finish()
+
+def it_chute():
+    """the Salvator D.39: its crown pulled down by a central line into a deep ring-shaped canopy."""
+    m = Model('chute')
+    canopy(m, n=20, R=0.78, top=1.66, depth=0.6, vent=0.22, apex=0.28, harness=((0.0, 0.78, -0.06), (0.0, 0.78, 0.06)))
+    m.cyl('dark', (0.0, 1.38, 0.0), (0.0, 0.78, 0.0), 0.005, seg=5)                             # the centre line
+    risers(m)
+    m.finish()
+
 NATIONS = {
     'us': {'fieldgun': us_fieldgun, 'aa': us_aa, 'mgnest': us_mgnest, 'tower': us_tower, 'mine_at': us_mine_at, 'mine_ap': us_mine_ap},
     'de': {'fieldgun': de_fieldgun, 'aa': de_aa, 'mgnest': de_mgnest, 'tower': de_tower,
            'wall0': lambda: de_wall(0), 'wall1': lambda: de_wall(1), 'wire': de_wire,
            'sandbags0': lambda: de_sandbags(0), 'sandbags1': lambda: de_sandbags(1), 'tanktrap': de_tanktrap,
-           'barrel': de_barrel, 'mine_at': de_mine_at, 'mine_ap': de_mine_ap},
+           'barrel': de_barrel, 'mine_at': de_mine_at, 'mine_ap': de_mine_ap, 'chute': de_chute},
     'su': {'fieldgun': su_fieldgun, 'aa': su_aa, 'mgnest': su_mgnest, 'tower': su_tower,
            'wall0': lambda: su_wall(0), 'wall1': lambda: su_wall(1), 'wire': su_wire,
            'sandbags0': lambda: su_sandbags(0), 'sandbags1': lambda: su_sandbags(1), 'tanktrap': su_tanktrap,
-           'barrel': su_barrel, 'mine_at': su_mine_at, 'mine_ap': su_mine_ap},
+           'barrel': su_barrel, 'mine_at': su_mine_at, 'mine_ap': su_mine_ap, 'chute': su_chute},
     'gb': {'fieldgun': gb_fieldgun, 'aa': gb_aa, 'mgnest': gb_mgnest, 'tower': gb_tower,
            'wall0': lambda: gb_wall(0), 'wall1': lambda: gb_wall(1), 'wire': gb_wire,
            'sandbags0': lambda: gb_sandbags(0), 'sandbags1': lambda: gb_sandbags(1), 'tanktrap': gb_tanktrap,
-           'barrel': gb_barrel, 'mine_at': gb_mine_at, 'mine_ap': gb_mine_ap},
+           'barrel': gb_barrel, 'mine_at': gb_mine_at, 'mine_ap': gb_mine_ap, 'chute': gb_chute},
     'jp': {'fieldgun': jp_fieldgun, 'aa': jp_aa, 'mgnest': jp_mgnest, 'tower': jp_tower,
            'wall0': lambda: jp_wall(0), 'wall1': lambda: jp_wall(1), 'wire': jp_wire,
            'sandbags0': lambda: jp_sandbags(0), 'sandbags1': lambda: jp_sandbags(1), 'tanktrap': jp_tanktrap,
-           'barrel': jp_barrel, 'mine_at': jp_mine_at, 'mine_ap': jp_mine_ap},
+           'barrel': jp_barrel, 'mine_at': jp_mine_at, 'mine_ap': jp_mine_ap, 'chute': jp_chute},
     'fr': {'fieldgun': fr_fieldgun, 'aa': fr_aa, 'mgnest': fr_mgnest, 'tower': fr_tower,
            'wall0': lambda: fr_wall(0), 'wall1': lambda: fr_wall(1), 'wire': fr_wire,
            'sandbags0': lambda: fr_sandbags(0), 'sandbags1': lambda: fr_sandbags(1), 'tanktrap': fr_tanktrap,
-           'barrel': fr_barrel, 'mine_at': fr_mine_at, 'mine_ap': fr_mine_ap},
+           'barrel': fr_barrel, 'mine_at': fr_mine_at, 'mine_ap': fr_mine_ap, 'chute': fr_chute},
     'it': {'fieldgun': it_fieldgun, 'aa': it_aa, 'mgnest': it_mgnest, 'tower': it_tower,
            'wall0': lambda: it_wall(0), 'wall1': lambda: it_wall(1), 'wire': it_wire,
            'sandbags0': lambda: it_sandbags(0), 'sandbags1': lambda: it_sandbags(1), 'tanktrap': it_tanktrap,
-           'barrel': it_barrel, 'mine_at': it_mine_at, 'mine_ap': it_mine_ap},
+           'barrel': it_barrel, 'mine_at': it_mine_at, 'mine_ap': it_mine_ap, 'chute': it_chute},
 }
 
 if __name__ == '__main__':
