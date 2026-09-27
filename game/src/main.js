@@ -18,7 +18,7 @@ const $ = id => document.getElementById(id);
 const DT = 1 / RULES.tickRate;
 
 // ---------------------------------------------------------------- settings (per-browser convenience)
-const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', nation: 'us', enemyNation: 'auto', theme: '', diff: 'normal', source: 'normandy', scenario: '', library: LIBRARY[0].id,
+const settings = { quality: 'medium', sound: true, teams: 2, nation: 'us', enemyNation: 'auto', theme: '', diff: 'normal', source: 'normandy', scenario: '', library: LIBRARY[0].id,
   useClaude: false, apiKey: '', model: 'claude-opus-5', prompt: '' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
 settings.teams = Math.max(2, Math.min(MAX_ARMIES, +settings.teams || 2));   // at most 6 armies
@@ -104,15 +104,22 @@ async function beginGame({ n, seed, layout, theme, options = {}, scenario = null
   else toast(`Round 1 — build your base`, true);
 }
 
+// every army wears its nation's colour; a second army of the same nation (or one whose colour
+// is taken) gets the first free one
+const colorOf = nation => Math.max(0, TEAM_COLORS.findIndex(c => c.id === nationById(nation).color));
+function colourPicker() {
+  const used = new Set();
+  return c => { if (used.has(c)) c = TEAM_COLORS.findIndex((_, i) => !used.has(i)); used.add(c); return c; };
+}
+
 // a single-player game against the computer
 async function newGame(files = {}, layout = null) {
   leaveOnline();
   const setup = await prepareMap(files, layout);
-  const humanColor = TEAM_COLORS.findIndex(c => c.id === settings.color);
-  const colors = [humanColor, ...TEAM_COLORS.map((_, i) => i).filter(i => i !== humanColor)].slice(0, setup.n);
-  const foes = enemyNations(settings.nation, setup.n - 1, settings.enemyNation);
-  const armies = colors.map((c, i) => {
-    const nation = i === 0 ? settings.nation : foes[i - 1];
+  const nations = [settings.nation, ...enemyNations(settings.nation, setup.n - 1, settings.enemyNation)];
+  const pick = colourPicker();
+  const armies = nations.map((nation, i) => {
+    const c = pick(colorOf(nation));
     return { name: i === 0 ? 'You' : `${nationById(nation).adj} army (${TEAM_COLORS[c].name.toLowerCase()})`, color: c, nation, human: i === 0 };
   });
   await beginGame({ ...setup, armies, me: 0, diff: settings.diff });
@@ -440,12 +447,10 @@ function showEnd() {
 }
 $('dlgEnd').addEventListener('close', () => openSetup());
 
-const colorSel = $('optColor');
 $('optNation').innerHTML = NATIONS.map(n => `<option value="${n.id}">${n.name}</option>`).join('');
 $('optEnemyNation').innerHTML = '<option value="auto">Other nations</option>' + NATIONS.map(n => `<option value="${n.id}">All ${n.name}</option>`).join('');
-colorSel.innerHTML = TEAM_COLORS.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 function openSetup() {
-  $('optTeams').value = settings.teams; colorSel.value = settings.color; $('optTheme').value = settings.theme;
+  $('optTeams').value = settings.teams; $('optTheme').value = settings.theme;
   $('optNation').value = settings.nation; $('optEnemyNation').value = settings.enemyNation;
   $('optDiff').value = settings.diff; $('optQuality').value = settings.quality; $('optSound').checked = settings.sound;
   $('optSource').value = settings.source; $('optLibrary').value = settings.library;
@@ -456,7 +461,7 @@ function openSetup() {
   $('dlgSetup').showModal();
 }
 function readSetup() {
-  settings.teams = +$('optTeams').value; settings.color = colorSel.value; settings.theme = $('optTheme').value;
+  settings.teams = +$('optTeams').value; settings.theme = $('optTheme').value;
   settings.nation = $('optNation').value; settings.enemyNation = $('optEnemyNation').value;
   settings.diff = $('optDiff').value; settings.quality = $('optQuality').value; settings.sound = $('optSound').checked;
   settings.source = $('optSource').value; settings.library = $('optLibrary').value;
@@ -636,7 +641,7 @@ function netSettings() {
   save();
   return settings.net;
 }
-function preferredColor() { return Math.max(0, TEAM_COLORS.findIndex(c => c.id === settings.color)); }
+function preferredColor() { return colorOf(settings.nation); }
 
 // ---- the host (the one who opened the room, or whoever took over)
 function makeHost() {
@@ -646,7 +651,7 @@ function makeHost() {
       const net = game.net;
       if (msg.resume && net) return playerResumed(id, msg);
       if (net || online.players.length >= MAX_ARMIES) { host.send(id, { t: 'full' }); host.kick(id); return; }
-      const p = { id, name: String(msg.name || 'Player').slice(0, 16), color: +msg.color || 0, nation: nationById(msg.nation).id, seen: Date.now(), route: '' };
+      const p = { id, name: String(msg.name || 'Player').slice(0, 16), color: colorOf(msg.nation), nation: nationById(msg.nation).id, seen: Date.now(), route: '' };
       online.players.push(p);
       lobbySync();
       setTimeout(async () => { p.route = await host.route(id); if (!game.net) lobbySync(); }, 2500);   // direct or relayed?
@@ -856,12 +861,12 @@ async function startOnline() {
   readSetup();
   const n = Math.min(MAX_ARMIES, Math.max(+settings.teams, online.players.length));
   const setup = await prepareMap({ mapFile: $('optMapFile').files[0] || null }, null, n);
-  // colours: everyone keeps their favourite unless somebody earlier already took it
-  const used = new Set(), pick = c => { if (used.has(c)) c = TEAM_COLORS.findIndex((_, i) => !used.has(i)); used.add(c); return c; };
-  const armies = online.players.map((p, i) => { p.team = i; p.seen = Date.now(); return { name: p.name, color: pick(p.color), nation: p.nation || 'us', human: true }; });
+  // colours: each army its nation's, unless somebody earlier already took it
+  const pick = colourPicker();
+  const armies = online.players.map((p, i) => { p.team = i; p.seen = Date.now(); return { name: p.name, color: pick(colorOf(p.nation)), nation: p.nation || 'us', human: true }; });
   const foes = enemyNations(settings.nation, n - armies.length, settings.enemyNation);
   while (armies.length < n) {
-    const c = pick(0), nation = foes[armies.length - online.players.length];
+    const nation = foes[armies.length - online.players.length], c = pick(colorOf(nation));
     armies.push({ name: `${nationById(nation).adj} army (computer)`, color: c, nation, human: false });
   }
   const full = { ...setup, armies, diff: settings.diff };
