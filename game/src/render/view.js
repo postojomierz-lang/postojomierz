@@ -18,11 +18,13 @@ import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
-  rifleman: [0.47, 0.81], para: [0.47, 0.81], officer: [0.53, 0.76], grenadier: [-0.16, 1.1], bazooka: [0.47, 0.79], manpads: [0.32, 1.17], medic: [0.26, 0.82],
-  sniper: [0.66, 0.76], mg: [0.9, 0.5], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.14, 1.47], tank: [2.05, 1.05], rockets: [0.2, 1.8],
+  rifleman: [0.82, 0.87], para: [0.82, 0.87], officer: [0.51, 0.9], grenadier: [-0.12, 1.04], bazooka: [0.49, 0.68], manpads: [0.36, 1.09], medic: [0.3, 0.8],
+  sniper: [0.88, 0.87], mg: [0.78, 0.81], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.14, 1.47], tank: [2.05, 1.05], rockets: [0.2, 1.8],
   heli: [0.8, -0.25], fighter: [1.0, -0.1], attacker: [0.4, -0.2], bomber: [0, -0.35], transport: [-1, -0.35],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
+// the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)
+const POSE_MUZZLE = { 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
 const HEIGHT = { mg: 0.95, tank: 1.5, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
 const CREW_SCALE = new THREE.Vector3(0.82, 0.82, 0.82);
 const isAir = def => def.cls === 'air' || def.cls === 'plane';
@@ -130,7 +132,6 @@ export class View {
     this.now = performance.now();
     this.keys = new Set();
     this.tmpM = new THREE.Matrix4(); this.legM = new THREE.Matrix4();
-    this.living = false;
     new ResizeObserver(() => this.resize()).observe(stage);
     this.resize();
     window.addEventListener('keydown', e => { if (!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) this.keys.add(e.key.toLowerCase()); });
@@ -138,8 +139,6 @@ export class View {
     window.addEventListener('blur', () => this.keys.clear());
   }
 
-  // "Living soldiers": figures without bases whose legs walk (toy style otherwise)
-  setLiving(on) { this.living = !!on; }
 
   // ---------------------------------------------------------------- quality / post
   setQuality(q) {
@@ -318,7 +317,7 @@ export class View {
   addEnt(e) {
     if (this.ents.has(e.id)) return;
     const inf = e.def.cls === 'infantry';
-    const first = inf ? (this.living ? 'living:' : '') + basePose(e.type) : null;
+    const first = inf ? basePose(e.type) : null;
     const key = inf ? first : modelKey(e.type, e.id), m = inf ? model(first) : model(e.type, e.id);
     // transform-only scene graph (never rendered): root -> pivot -> parts
     const g = new THREE.Object3D(), pivot = new THREE.Object3D(); g.add(pivot);
@@ -331,7 +330,7 @@ export class View {
     let turret = null;
     if (m.turret) { turret = new THREE.Object3D(); pivot.add(turret); }
     const yaw = Math.atan2(-e.dirZ, e.dirX);
-    const v = { e, g, pivot, rotor, tail, chute, turret, tyaw: yaw, key, m, yaw, pose: inf ? basePose(e.type) : e.type, poseAt: 0, walk: 0, swing: 0, lastFire: 0, fireAt: 0, lastHit: 0, wobbleAt: 0, throwUntil: 0, celebrate: false, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
+    const v = { e, g, pivot, rotor, tail, chute, turret, tyaw: yaw, key, m, yaw, pose: inf ? basePose(e.type) : e.type, poseAt: 0, lastFire: 0, fireAt: 0, lastHit: 0, wobbleAt: 0, throwUntil: 0, celebrate: false, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
     if (e.def.static && e.def.cls === 'fort') g.rotation.y = e.rot & 1 ? Math.PI / 2 : 0;
     else g.rotation.y = yaw;
     g.position.set(this.wx(e.x), e.y, this.wz(e.z));
@@ -343,10 +342,7 @@ export class View {
   removeEnt(id) { this.ents.delete(id); }
 
   muzzleOf(v) {
-    let [f, h] = MUZZLE[v.e.type] || [0.4, 0.7];
-    if (v.pose === 'pose-prone') { f = 0.52; h = 0.12; }            // the crawling army man
-    else if (v.pose === 'pose-kneel') { f = 0.59; h = 0.56; }
-    else if (v.pose === 'pose-manpads-kneel') { f = 0.29; h = 1.0; }
+    const [f, h] = POSE_MUZZLE[v.pose] || MUZZLE[v.e.type] || [0.4, 0.7];
     const y = v.turret ? v.tyaw : v.g.rotation.y;
     return new THREE.Vector3(v.g.position.x + Math.cos(y) * f, v.g.position.y + h, v.g.position.z - Math.sin(y) * f);
   }
@@ -516,18 +512,9 @@ export class View {
     // toy-style animation
     if (def.cls === 'infantry' && !e.dead && !e.down && !e.falling) {
       const pose = poseFor(v, now, this.sim.phase === 'battle');
-      const name = (this.living ? 'living:' : '') + pose;
-      if (pose !== v.pose || name !== v.key) { v.pose = pose; v.poseAt = now; v.key = name; v.m = model(name); }
-      if (this.living) {
-        // walking legs: the stride follows the distance actually covered, so feet don't slide
-        const walking = e.moving && this.sim.phase === 'battle' && v.m.legs;
-        if (walking) { v.walk += moved * 7.5; v.swing = Math.sin(v.walk) * 0.6; }
-        else v.swing *= Math.exp(-dt * 10);
-        g.position.y = walking ? Math.abs(Math.sin(v.walk)) * 0.035 : 0;
-      } else {
-        const hk = (now - v.poseAt) / 180;
-        if (hk < 1) g.position.y += Math.sin(hk * Math.PI) * 0.15;
-      }
+      if (pose !== v.pose) { v.pose = pose; v.poseAt = now; v.key = pose; v.m = model(pose); }
+      const hk = (now - v.poseAt) / 180;
+      if (hk < 1) g.position.y += Math.sin(hk * Math.PI) * 0.15;
       if (v.celebrate) g.position.y = Math.abs(Math.sin(now * 0.011 + e.id * 1.7)) * 0.45;
     }
     if (!e.dead && !e.down) {
@@ -601,7 +588,7 @@ export class View {
   // the engineers' two sappers: riding in the back of the truck, or kneeling in front of it at work
   emitCrew(v, pm, color) {
     const e = v.e, work = e.working && !e.dead;
-    const f = model(work ? 'pose-kneel' : 'rifleman');
+    const f = model(work ? 'pose-sapper' : 'rifleman');
     for (let i = 0; i < 2; i++) {
       const s = i ? 1 : -1;
       if (work) {
@@ -610,7 +597,7 @@ export class View {
         this.legM.makeRotationY(s * 0.4).scale(CREW_SCALE).setPosition(reach, 0, s * (0.5 + i * 0.2));
       } else this.legM.makeRotationY(0).scale(CREW_SCALE).setPosition(-0.45 - i * 0.28, 0.56, s * 0.2);
       this.tmpM.multiplyMatrices(pm, this.legM);
-      this.batches.push(this.batches.get((work ? 'pose-kneel' : 'rifleman') + ':m', f.main, this.plasticMat), this.tmpM, color, e.id);
+      this.batches.push(this.batches.get((work ? 'pose-sapper' : 'rifleman') + ':m', f.main, this.plasticMat), this.tmpM, color, e.id);
     }
   }
 
@@ -628,14 +615,6 @@ export class View {
     this.batches.push(far ? this.batches.get(v.key + ':fm', m.far.main, this.plasticMat) : this.batches.get(v.key + ':m', m.main, this.plasticMat), pm, mainC, id);
     if (m.dark) this.batches.push(far && m.far.dark ? this.batches.get(v.key + ':fd', m.far.dark, this.plasticMat) : this.batches.get(v.key + ':d', m.dark, this.plasticMat), pm, darkC, id);
     if (m.accent) this.batches.push(this.batches.get(v.key + ':a', m.accent, this.accentMat), pm, accC, id);
-    if (m.legs) {
-      for (let i = 0; i < m.legs.length; i++) {
-        const L = m.legs[i];
-        this.legM.makeRotationZ(i ? -v.swing : v.swing).setPosition(L.hip[0], L.hip[1], L.hip[2]);
-        this.tmpM.multiplyMatrices(pm, this.legM);
-        this.batches.push(this.batches.get(v.key + ':L' + i, L.geo, this.plasticMat), this.tmpM, mainC, id);
-      }
-    }
     if (v.turret) {
       const tm = v.turret.matrixWorld;
       this.batches.push(this.batches.get(v.key + ':tm', m.turret.main, this.plasticMat), tm, mainC, id);

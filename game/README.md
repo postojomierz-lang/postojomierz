@@ -86,15 +86,11 @@ npm run build   # writes a single self-contained ../plastic-front/index.html
 
 ## Credits
 
-The rifleman, officer, sniper, machine-gunner, kneeling and crawling figures are based on
-"Miniature Army Men" [1](https://www.printables.com/model/449280) and
-[2](https://www.printables.com/model/744788) by **alo89**, licensed
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). They were re-oriented, scaled and
-simplified for the game by `tools/figures.mjs` (`npm run figures`), which writes `src/data/figures.js`.
-
-The bazooka, AA missile, grenadier, medic and "dragging a wounded comrade" figures were modelled
-for the game in the free Blender by `tools/blender/army_men.py` (run it with `pip install bpy`,
-then `python tools/blender/army_men.py`, then `npm run figures`).
+The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
+bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
+were modelled for the game in the free Blender by `tools/blender/army_men.py`: a soft moulded body
+with crisp helmet, weapons and kit, each on its stand (run it with `pip install bpy`, then
+`python tools/blender/army_men.py`, then `npm run figures`, which writes `src/data/figures.js`).
 The vehicles and aircraft (jeep, ambulance, engineer truck, armored car, amphibian, tank, rocket truck, helicopter,
 fighter, ground-attack plane, bomber, transport) are modelled the same way by
 `tools/blender/vehicles.py`, and the headquarters, emplacements (MG nest with its gunner, field gun,
@@ -108,14 +104,10 @@ mud-brick houses, wrecks, rainforest trees, huts, bunkers, firs, the fortress...
 `tools/blender/beach.py` (casemate, pillbox, Tobruk pit, trench, barbed wire, Belgian gate, stakes,
 dune, lighthouse, rocks, landing craft, minefield sign), packed
 into `src/data/scenery.js` (buildings also come in a light version for the town beyond the table edge).
-The parachute is in `vehicles.py` too. For "Living soldiers" mode `army_men.py` builds a second set
-of figures without stands (including rifleman, officer and sniper poses), with the legs of standing
-figures as separate parts that the game swings from the hips while they walk.
+The parachute is in `vehicles.py` too.
 The scenery of each diorama is a separate file too (`public/scenery-<battlefield>.js`, built by
 `npm run figures`), downloaded when a battle on it starts.
-Those figures live in `public/living-figures.js` (copied next to the game as
-`plastic-front/living-figures.js`) and are downloaded only when the option is switched on, so the
-main file stays smaller; opened straight from disk the game falls back to toy style. Every model has a detailed
+Every model has a detailed
 close-up version and a light one for distant units; the data is meshopt-compressed.
 
 ## Online play

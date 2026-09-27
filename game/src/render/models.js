@@ -1,5 +1,5 @@
 // Plastic toy models. Every piece comes from src/data/figures.js and src/data/vehicles.js
-// (alo89's army men and our own Blender models, see tools/) and is split into at most a few
+// (our Blender models, see tools/) and is split into at most a few
 // geometries - "main" in the army colour, "dark", painted parts - so each is a handful of draw calls.
 import { FIGURES, FIGURE_SCALE } from '../data/figures.js';
 import { VEHICLES, VEHICLE_SCALE } from '../data/vehicles.js';
@@ -7,34 +7,18 @@ import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeom
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three';
 
-// Classic army-men figures ("Miniature Army Men" by alo89, CC BY 4.0), see tools/figures.mjs.
-// The bazooka, AA missile, grenadier, medic and drag poses were modelled for the game in Blender
-// (tools/blender/army_men.py), as was every "Living soldiers" figure (no stands, legs that swing).
+// The army men (tools/blender/army_men.py): which figure each unit type and pose uses.
 const FIGURE_FOR = {
-  rifleman: 'rifle', para: 'rifle', officer: 'pointer', mg: 'mg50', sniper: 'sniper', 'pose-kneel': 'kneel', 'pose-prone': 'crawl',
+  rifleman: 'rifleman', para: 'rifleman', officer: 'officer', mg: 'mg', sniper: 'sniper', 'pose-kneel': 'kneel', 'pose-prone': 'prone',
   bazooka: 'bazooka', 'pose-bazooka-stand': 'bazooka-stand', manpads: 'manpads', 'pose-manpads-kneel': 'manpads-kneel',
   grenadier: 'grenadier', 'pose-grenadier-idle': 'grenadier-idle', medic: 'medic', 'pose-medic-heal': 'medic-heal', 'pose-drag': 'drag',
-};
-const LIVING_FOR = {
-  rifleman: 'rifleman', para: 'rifleman', officer: 'officer', sniper: 'sniper', grenadier: 'grenadier', 'pose-grenadier-idle': 'grenadier-idle',
-  bazooka: 'bazooka', 'pose-bazooka-stand': 'bazooka-stand', manpads: 'manpads', 'pose-manpads-kneel': 'manpads-kneel',
-  medic: 'medic', 'pose-medic-heal': 'medic-heal', 'pose-drag': 'drag',
+  'pose-sapper': 'sapper',
 };
 // figure data is meshopt-compressed: wait for the (tiny, built-in) decoder before building models
 export const modelsReady = MeshoptDecoder.ready;
 
-// "Living soldiers" figures are a separate file next to the game, downloaded only when that
-// option is switched on (needs the game to be served over http, e.g. GitHub Pages).
-let LIVING = null;
-export async function loadLiving() {
-  if (LIVING) return true;
-  try {
-    LIVING = (await import(/* @vite-ignore */ new URL('living-figures.js', document.baseURI).href)).LIVING_FIGURES;
-    return true;
-  } catch (e) { console.warn('Living soldiers not available:', e); return false; }
-}
 function b64(s) { const bin = atob(s), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return u8; }
-function figureGeometry(part, colour = null, scale = FIGURE_SCALE, crease = false) {
+function figureGeometry(part, colour = null, scale = FIGURE_SCALE, crease = true) {
   const vb = new Uint8Array(part.v * 8), ib = new Uint8Array(part.n * 4);
   MeshoptDecoder.decodeVertexBuffer(vb, part.v, 8, b64(part.p));
   MeshoptDecoder.decodeIndexBuffer(ib, part.n, 4, b64(part.i));
@@ -128,9 +112,8 @@ function figure(key) { if (!figs.has(key)) figs.set(key, buildFigure(key)); retu
 
 // near: full detail; far: a light version drawn for figures far from the camera
 function buildFigure(key) {
-  const f = FIGURES[key] || LIVING[key], out = { main: figureGeometry(f.near), far: { main: figureGeometry(f.far) } };
+  const f = FIGURES[key], out = { main: figureGeometry(f.near), far: { main: figureGeometry(f.far) } };
   if (f.a) out.accent = mergeGeometries(f.a.map(a => figureGeometry(a, a.c)));   // painted parts (medic's white bag, red crosses)
-  if (f.legs) out.legs = f.legs.map(l => ({ geo: figureGeometry(l), hip: l.hip }));    // swung from the hip while walking
   return out;
 }
 
@@ -141,12 +124,6 @@ export function model(type, seed = 0) {
   const k = modelKey(type, seed);
   if (cache.has(k)) return cache.get(k);
   let m;
-  if (type.startsWith('living:')) {
-    const t = type.slice(7);
-    m = LIVING && LIVING_FOR[t] ? buildFigure('living-' + LIVING_FOR[t]) : buildFigure(FIGURE_FOR[t] || 'rifle');
-    cache.set(k, m);
-    return m;
-  }
   if (FIGURE_FOR[type]) { m = buildFigure(FIGURE_FOR[type]); cache.set(k, m); return m; }
   // walls and sandbags come in two shapes, picked by the placement seed; all engineers share one truck
   const vk = type === 'wall' || type === 'sandbags' ? type + (seed % 2) : type.startsWith('eng_') ? 'engtruck' : type;
