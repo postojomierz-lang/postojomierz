@@ -53,3 +53,12 @@ rosną w promieniu ~40 m od kamery na siatce z ustalonym losowaniem (kępy nie p
 nigdy nie rośnie w dół potoku). Prędkość i piana rosną ze spadkiem; przy wodospadach z OSM woda jest
 spieniona, a u podnóża unosi się pył wodny. Daleko od kamery teren jest rysowany siatką 6 m, która
 przykrywa wąskie koryta, więc woda jest lekko przysuwana do kamery.
+
+## Dźwięki
+Nagrania z Wikimedia Commons (CC0, CC BY, CC BY-SA; autorzy i licencje w `public/sounds/credits.json`,
+wyświetlane też w oknie pomocy). `python3 tools/prepare_sounds.py <katalog z pobranymi plikami>` tnie
+pętle (potok, wodospad, wiatr), pojedyncze kroki i głosy ptaków oraz świstaków, i zapisuje spis
+`sounds.json`. Silnik (`src/sound.js`, Web Audio) startuje po pierwszym klawiszu lub kliknięciu:
+wiatr zależny od wysokości, lasu i pogody, przestrzenny szum najbliższych potoków i wodospadu, kroki
+(ciszej i głucho poza ścieżką), ptaki według piętra roślinności, gwizdy świstaków na halach. Klawisz N
+lub 🔊 wycisza.

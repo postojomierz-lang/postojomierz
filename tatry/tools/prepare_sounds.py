@@ -17,6 +17,9 @@ raw_dir = sys.argv[1]
 OUT = os.path.join(os.path.dirname(__file__), '..', 'public', 'sounds')
 os.makedirs(OUT, exist_ok=True)
 
+def have(name):
+    return any(os.path.splitext(x)[0] == name and os.path.getsize(os.path.join(raw_dir, x)) > 0 for x in os.listdir(raw_dir))
+
 def load(name):
     f = next(os.path.join(raw_dir, x) for x in os.listdir(raw_dir) if os.path.splitext(x)[0] == name and os.path.getsize(os.path.join(raw_dir, x)) > 0)
     b = subprocess.run([FF, '-v', 'error', '-i', f, '-ac', '1', '-ar', str(SR), '-f', 'f32le', '-'], capture_output=True, check=True).stdout
@@ -44,7 +47,7 @@ def envelope(x, win=0.05):
     return e
 
 def phrases(x, n, min_len=0.8, max_len=6.0, gap=0.35, peak=0.9):
-    e = envelope(x); thr = max(np.percentile(e, 70) * 2.2, e.max() * 0.08)
+    e = envelope(x); p50 = np.percentile(e, 50); thr = p50 + 0.22 * (e.max() - p50)
     on = e > thr
     segs, i, N = [], 0, len(x)
     while i < N:
@@ -78,20 +81,26 @@ def steps(x, n):
     return out
 
 made = {}
-def done(name, key):
+groups = {}
+def done(name, key, group=None):
     made[name] = key
+    groups.setdefault(group or name, []).append(name)
 
-save(loop(load('stream'), 8, 22, 2.0, 0.12), 'stream'); done('stream', 'stream')
-save(loop(load('waterfall'), 2, 24, 2.5, 0.14), 'waterfall'); done('waterfall', 'waterfall')
-save(loop(load('wind_forest'), 5, 40, 4.0, 0.1), 'wind_forest'); done('wind_forest', 'wind_forest')
-try:
-    save(loop(load('wind_open'), 3, 36, 4.0, 0.1), 'wind_open'); done('wind_open', 'wind_open')
-except StopIteration:
-    save(loop(load('wind_forest'), 20, 36, 4.0, 0.1), 'wind_open'); done('wind_open', 'wind_forest')
-for k, s in enumerate(steps(load('steps'), 6)): save(s, f'step_{k}', '64k'); done(f'step_{k}', 'steps')
-for key, n in (('wren', 2), ('robin', 2), ('nutcracker', 1), ('chough', 1)):
-    for k, s in enumerate(phrases(load(key), n)): save(s, f'{key}_{k}', '64k'); done(f'{key}_{k}', key)
-for k, s in enumerate(phrases(load('marmot'), 3, min_len=0.25, max_len=2.5, gap=0.2)): save(s, f'marmot_{k}', '64k'); done(f'marmot_{k}', 'marmot')
+for f in os.listdir(OUT):
+    if f.endswith('.mp3'): os.remove(os.path.join(OUT, f))
+save(loop(load('stream'), 8, 22, 2.0, 0.12), 'stream'); done('stream', 'stream', 'stream')
+save(loop(load('waterfall'), 2, 24, 2.5, 0.14), 'waterfall'); done('waterfall', 'waterfall', 'waterfall')
+save(loop(load('wind_forest'), 5, 40, 4.0, 0.1), 'wind_forest'); done('wind_forest', 'wind_forest', 'windForest')
+if have('wind_open'):
+    save(loop(load('wind_open'), 3, 36, 4.0, 0.1), 'wind_open'); done('wind_open', 'wind_open', 'windOpen')
+else:  # stand-in: a later stretch of the forest wind
+    save(loop(load('wind_forest'), 20, 36, 4.0, 0.1), 'wind_open'); done('wind_open', 'wind_forest', 'windOpen')
+for k, s in enumerate(steps(load('steps'), 6)): save(s, f'step_{k}', '64k'); done(f'step_{k}', 'steps', 'steps')
+for key, n in (('wren', 3), ('robin', 2), ('nutcracker', 2), ('chough', 2)):
+    if not have(key): continue
+    for k, s in enumerate(phrases(load(key), n, min_len=0.6)): save(s, f'{key}_{k}', '64k'); done(f'{key}_{k}', key, key)
+for k, s in enumerate(phrases(load('marmot'), 3, min_len=0.15, max_len=2.5, gap=0.25)): save(s, f'marmot_{k}', '64k'); done(f'marmot_{k}', 'marmot', 'marmot')
+json.dump(groups, open(os.path.join(OUT, 'sounds.json'), 'w'), indent=1)
 
 credits = json.load(open(os.path.join(raw_dir, 'credits.json')))
 used = sorted(set(made.values()))

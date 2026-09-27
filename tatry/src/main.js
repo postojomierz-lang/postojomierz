@@ -612,6 +612,15 @@ async function main() {
   $('btn-help').onclick = () => $('help').classList.toggle('hidden');
   $('btn-sound').onclick = () => { sound.setEnabled(!sound.enabled); updateButtons(); };
   $('sources').textContent = meta.sources + '; textures: Poly Haven (CC0)';
+  // sound credits (CC BY / CC BY-SA need the authors shown)
+  fetch('sounds/credits.json').then((r) => r.json()).then((cr) => {
+    const names = { stream: 'potok', waterfall: 'wodospad', wind_forest: 'wiatr w lesie', wind_open: 'wiatr', steps: 'kroki',
+      marmot: 'świstak', wren: 'strzyżyk', robin: 'rudzik', nutcracker: 'orzechówka', chough: 'wieszczek' };
+    const el = document.createElement('p'); el.className = 'note';
+    el.textContent = 'Dźwięki (Wikimedia Commons): ' + Object.entries(cr).map(([k, c]) =>
+      `${names[k] || k}: ${c.author || 'autor nieznany'}, ${c.license}`).join('; ') + '.';
+    $('help').insertBefore(el, $('help').lastElementChild);
+  }).catch(() => {});
   updateButtons();
 
   const fmtTime = (sec) => { const m = Math.floor(sec / 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`; };
@@ -785,7 +794,7 @@ async function main() {
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 

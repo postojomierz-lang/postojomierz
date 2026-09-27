@@ -3,13 +3,6 @@
 // on the alpine meadows. Recordings from Wikimedia Commons (see public/sounds/credits.json).
 // Browsers only allow audio after a user gesture, so everything starts on the first key or click.
 
-const FILES = {
-  stream: 'stream', waterfall: 'waterfall', windForest: 'wind_forest', windOpen: 'wind_open',
-  steps: ['step_0', 'step_1', 'step_2', 'step_3', 'step_4', 'step_5'],
-  wren: ['wren_0', 'wren_1'], robin: ['robin_0', 'robin_1'], nutcracker: ['nutcracker_0'], chough: ['chough_0'],
-  marmot: ['marmot_0', 'marmot_1', 'marmot_2'],
-};
-
 export class Sound {
   constructor({ base, streams, terrain, isForest, isPath }) {
     this.base = base; this.streamPts = streams.samples; this.falls = streams.sprays;
@@ -26,6 +19,10 @@ export class Sound {
 
   async start() {
     if (this.ctx) return;
+    try { await this._start(); } catch (e) { console.warn('sound disabled:', e); }
+  }
+
+  async _start() {
     const ctx = this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     this.master = ctx.createGain(); this.master.gain.value = this.enabled ? 1 : 0;
     const comp = ctx.createDynamicsCompressor();
@@ -34,10 +31,16 @@ export class Sound {
       const r = await fetch(`${this.base}${name}.mp3`);
       return ctx.decodeAudioData(await r.arrayBuffer());
     };
-    const entries = Object.entries(FILES);
-    await Promise.all(entries.map(async ([k, v]) => {
-      this.buf[k] = Array.isArray(v) ? await Promise.all(v.map(load)) : await load(v);
-    }));
+    // sounds.json lists the clips of every group (tools/prepare_sounds.py)
+    const groups = await (await fetch(this.base + 'sounds.json')).json();
+    await Promise.all(Object.entries(groups).map(async ([k, names]) => { this.buf[k] = await Promise.all(names.map(load)); }));
+    for (const k of ['stream', 'waterfall', 'windForest', 'windOpen']) this.buf[k] = this.buf[k][0];
+    const pick = (...ks) => ks.map((k) => this.buf[k]).find((b) => b && b.length) || null;
+    this.pools = {
+      forest: [pick('wren'), pick('robin'), pick('nutcracker')].filter(Boolean),
+      edge: [pick('nutcracker'), pick('chough'), pick('wren')].filter(Boolean),
+      rock: [pick('chough'), pick('nutcracker')].filter(Boolean),
+    };
     const loop = (buffer, gain = 0) => {
       const src = ctx.createBufferSource(); src.buffer = buffer; src.loop = true;
       const g = ctx.createGain(); g.gain.value = gain;
@@ -136,7 +139,8 @@ export class Sound {
         this.stepAcc = 0;
         const onPath = this.isPath(c.x, c.z);
         this.stepFilter.frequency.setTargetAtTime(onPath ? 9000 : 2200, now, 0.05);
-        const s = this.buf.steps;
+        const s = this.buf.steps || [];
+        if (s.length)
         this.play(s[Math.floor(Math.random() * s.length)], { gain: onPath ? 0.35 : 0.22, rate: 0.9 + Math.random() * 0.2, dest: this.stepFilter });
       }
     } else this.stepAcc = 0.5;
@@ -149,10 +153,8 @@ export class Sound {
     };
     this.nextBird -= dt;
     if (this.nextBird <= 0) {
-      let pool = null;
-      if (forest || ground < 1520) pool = Math.random() < 0.55 ? this.buf.wren : Math.random() < 0.7 ? this.buf.robin : this.buf.nutcracker;
-      else if (ground < 1750) pool = Math.random() < 0.6 ? this.buf.nutcracker : this.buf.chough;
-      else pool = this.buf.chough;
+      const zone = forest || ground < 1520 ? this.pools.forest : ground < 1750 ? this.pools.edge : this.pools.rock;
+      const pool = zone.length ? zone[Math.floor(Math.random() * zone.length)] : null;
       if (pool && !(weather === 'mist' && Math.random() < 0.6)) {
         this.play(pool[Math.floor(Math.random() * pool.length)], { pos: around(12, 45), gain: 0.5, rate: 0.95 + Math.random() * 0.1, ref: 15 });
       }
@@ -160,8 +162,8 @@ export class Sound {
     }
     this.nextMarmot -= dt;
     if (this.nextMarmot <= 0) {
-      if (ground > 1550 && ground < 2250 && !forest) {
-        const m = this.buf.marmot;
+      if (ground > 1550 && ground < 2250 && !forest && (this.buf.marmot || []).length) {
+        const m = this.buf.marmot || [];
         this.play(m[Math.floor(Math.random() * m.length)], { pos: around(60, 180), gain: 0.9, ref: 40 });
       }
       this.nextMarmot = 25 + Math.random() * 60;
