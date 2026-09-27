@@ -21,6 +21,8 @@ import { buildSigns } from './signs.js';
 import { buildLabels } from './labels.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
+import { routeFromHash, routePath, loadRegionArea, REGION_BASE } from './region.js';
+import { routeInfo } from './routeinfo.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -37,6 +39,8 @@ const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r,
 
 const P = new URLSearchParams(location.search);
 const QUALITY = P.get('q') === 'low' ? 'low' : 'high';
+// ?trasa#r=lat,lon;lat,lon...: a route from the planner, anywhere in the Polish High Tatras
+const STOPS = P.has('trasa') ? routeFromHash() : null;
 
 // ---------------------------------------------------------------- loading
 async function bin(url) { return new Uint16Array(await (await fetch(url)).arrayBuffer()); }
@@ -129,17 +133,30 @@ function sunAt(hour) {
 // ---------------------------------------------------------------- main
 async function main() {
   status('Pobieranie danych terenu…');
-  const meta = await (await fetch(DATA + 'meta.json')).json();
-  const [base, outerU, innerBmp, outerBmp, landBmp] = await Promise.all([
-    heights(DATA + 'inner4.bin', ...meta.base.n), bin(DATA + 'outer.u16'),
-    bitmap(DATA + 'inner.jpg'), bitmap(DATA + 'outer.jpg'), bitmap(DATA + 'landcover.png')]);
+  let meta, base, outerU, innerBmp, outerBmp, landBmp, route = null, TILES = DATA + 'tiles/';
+  if (STOPS) {
+    // a planned route: the region's data around it
+    status('Wyznaczanie trasy…');
+    route = await routePath(STOPS);
+    const area = await loadRegionArea(route, { status, quality: QUALITY });
+    ({ meta, base, innerBmp, landBmp } = area);
+    TILES = area.tilesBase;
+    [outerU, outerBmp] = await Promise.all([bin(REGION_BASE + 'outer.u16'), bitmap(REGION_BASE + 'outer.jpg')]);
+  } else {
+    meta = await (await fetch(DATA + 'meta.json')).json();
+    [base, outerU, innerBmp, outerBmp, landBmp] = await Promise.all([
+      heights(DATA + 'inner4.bin', ...meta.base.n), bin(DATA + 'outer.u16'),
+      bitmap(DATA + 'inner.jpg'), bitmap(DATA + 'outer.jpg'), bitmap(DATA + 'landcover.png')]);
+  }
+  // size of the detailed area relative to the Rysy one: meshes and plant density scale with it
+  const AREA_K = Math.max(1, ((meta.inner.bounds[2] - meta.inner.bounds[0]) * (meta.inner.bounds[3] - meta.inner.bounds[1])) / (5238 * 5086));
   // 1 m terrain and 0.5 m orthophoto tiles along the trail (GUGiK)
   const TS = meta.tiles.size, TO = meta.tiles.origin;
   const tileGrids = new Map(), tileImgs = new Map();
   let loaded = 0;
   await Promise.all(meta.tiles.list.map(async ([i, j]) => {
     const n = meta.tiles.samples;
-    const [t, img] = await Promise.all([heights(`${DATA}tiles/h_${i}_${j}.bin`, n, n), bitmap(`${DATA}tiles/o_${i}_${j}.jpg`)]);
+    const [t, img] = await Promise.all([heights(`${TILES}h_${i}_${j}.bin`, n, n), bitmap(`${TILES}o_${i}_${j}.jpg`)]);
     const x0 = TO[0] + i * TS, z0 = TO[1] + j * TS;
     tileGrids.set(i + ',' + j, new Grid(t.h, [n, n], [x0, z0, x0 + TS, z0 + TS]));
     tileImgs.set(i + ',' + j, img);
@@ -185,11 +202,17 @@ async function main() {
   });
   const terrain = new Terrain(inner, outer, trailWide, lakeMask, { size: TS, origin: TO, grids: tileGrids }, base.mask);
   terrain.setFlats(buildingFlats(meta, terrain));   // level terraces under the huts before the meshes are built
+  // what the route carries along its length: surface, trail colour, difficulty, places, signposts
+  const TH0 = new Float32Array(N);
+  for (let i = 0; i < N; i++) TH0[i] = terrain.height(trail.X[i], trail.Z[i]);
+  const RI = route ? routeInfo({ route, trail, TH: TH0, meta, pois: route.pois }) : null;
+  const sections = RI ? RI.sectionAt : sectionAt;
+  if (RI) $('route-title').textContent = `${RI.startName} → ${RI.endName}`;
   {
-    // the paved path is a bench, level across; the bare rock above the Bula is left as scanned
-    const H = new Float32Array(N), half = new Float32Array(N), str = new Float32Array(N);
-    for (let i = 0; i < N; i++) { H[i] = terrain.height(trail.X[i], trail.Z[i]); const sec = sectionAt(i * trail.step); half[i] = sec.width / 2 + 0.2; str[i] = Math.min(1, sec.paved * 1.6); }
-    terrain.setBench({ X: trail.X, Z: trail.Z, H: smoothArr(H, 2), half, str });
+    // the paved path is a bench, level across; bare rock is left as scanned
+    const half = new Float32Array(N), str = new Float32Array(N);
+    for (let i = 0; i < N; i++) { const sec = sections(i * trail.step); half[i] = sec.width / 2 + 0.2; str[i] = Math.min(1, sec.paved * 1.6); }
+    terrain.setBench({ X: trail.X, Z: trail.Z, H: smoothArr(TH0, 2), half, str });
   }
 
   // ---------- renderer / scene
@@ -238,14 +261,14 @@ async function main() {
   nearTex.colorSpace = THREE.SRGBColorSpace; nearTex.flipY = false; nearTex.anisotropy = aniso;
   nearTex.minFilter = THREE.LinearMipmapLinearFilter;
   // sharp path mask around the camera (width and surface per section of the trail)
-  const trailWin = makeTrailWindow({ trail, px: QUALITY === 'low' ? 1024 : 2048, size: 256 });
+  const trailWin = makeTrailWindow({ trail, px: QUALITY === 'low' ? 1024 : 2048, size: 256, sections });
   const near = {
     map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: { value: new THREE.Vector4(0, 0, 0, 0) },
     trail: trailWin.map, trailRect: trailWin.rect,
   };
   const noNear = { map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: near.patch,
     trail: trailWin.map, trailRect: { value: new THREE.Vector4(0, 0, 0, 0) } };
-  const step = QUALITY === 'low' ? 12 : 6;
+  const step = (QUALITY === 'low' ? 12 : 6) * Math.sqrt(AREA_K);
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
   const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, lowerUnderPatch: true });
@@ -357,7 +380,7 @@ async function main() {
   const r = rng(7);
   const spruce = [], pine = [];
   const px = (IB[2] - IB[0]) / LW, pz = (IB[3] - IB[1]) / LH;
-  const density = QUALITY === 'low' ? 0.35 : 0.9;
+  const density = (QUALITY === 'low' ? 0.35 : 0.9) / AREA_K;
   for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) {
     const c = land[(j * LW + i) * 4];
     if (c !== 10 && c !== 20 && c !== 30) continue;
@@ -420,9 +443,10 @@ async function main() {
   });
   const blazes = buildTrailMarks({ scene, terrain, trail, shade,
     rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso),
-    blocked: (x, z) => houses.inside(x, z, 1) || terrain.maskAt(lakeMask, x, z) > 0.05 });
-  const steps = buildSteps({ scene, terrain, trail, TH, shade, rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso) });
-  const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6 });
+    blocked: (x, z) => houses.inside(x, z, 1) || terrain.maskAt(lakeMask, x, z) > 0.05,
+    ...(RI ? { colourAt: RI.colourAt, colours: route.colours } : {}) });
+  const steps = buildSteps({ scene, terrain, trail, TH, shade, sections, rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso) });
+  const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6, ...(RI ? { chainOK: RI.chainAt } : {}) });
   status('Wypuszczanie zwierząt…'); await frame();
   // height of the surface actually drawn at (x, z): the 1 m patch near the camera, the 6 m mesh elsewhere
   const drawnHeight = (x, z) => {
@@ -649,7 +673,7 @@ async function main() {
   // PTTK signposts at the start, at Czarny Staw, at the Bula and on the summit
   const sCzarny = nearestNamed()[0]?.s ?? LENGTH * 0.45;
   const sBula = (chains.chainRuns[0]?.[0] ?? Math.round(LENGTH * 0.83 / trail.step)) * trail.step - 25;
-  const signs = buildSigns({ scene, terrain, trail, profile, shade, posts: [
+  const signs = buildSigns({ scene, terrain, trail, profile, shade, posts: RI ? RI.posts : [
     { s: 12, title: 'Morskie Oko', ele: 1395, boards: [{ dest: 'Czarny Staw', toS: sCzarny }, { dest: 'Rysy', toS: LENGTH }] },
     { s: sCzarny + 15, title: 'Czarny Staw pod Rysami', ele: 1583, boards: [{ dest: 'Rysy', toS: LENGTH }, { dest: 'Morskie Oko', toS: 0 }] },
     { s: sBula, title: 'Bula pod Rysami', ele: Math.round(profile[Math.round(sBula / trail.step)]), side: -1,
@@ -659,12 +683,13 @@ async function main() {
   // map labels (peaks, passes, lakes, huts, waterfalls) plus the Polish summit of Rysy
   const top = at(LENGTH);
   const labels = buildLabels({ meta, terrain, camera, container: document.body, blockers: signs.posts.map((p) => p.at),
-    extra: [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }] });
+    extra: RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }] });
 
-  const PLACES = [
+  const chainNote = chains.chainRuns.length ? [{ s: chains.chainRuns[0][0] * trail.step, name: 'Łańcuchy — trzymaj się mocno' }] : [];
+  const PLACES = RI ? [...RI.places, ...chainNote] : [
     { s: 0, name: 'Schronisko nad Morskim Okiem' },
     ...nearestNamed(),
-    ...(chains.chainRuns.length ? [{ s: chains.chainRuns[0][0] * trail.step, name: 'Łańcuchy — trzymaj się mocno' }] : []),
+    ...chainNote,
     { s: LENGTH, name: 'Rysy' },
   ];
   function nearestNamed() {

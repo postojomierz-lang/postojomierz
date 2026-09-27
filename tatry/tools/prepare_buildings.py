@@ -11,7 +11,7 @@ from shapely.geometry import box
 import pyarrow.dataset as ds, pyarrow.fs as pfs, pyarrow.compute as pc
 import prepare as P
 
-DATA = os.path.join(os.path.dirname(__file__), '..', 'public', 'data')
+DATA = P.OUT                      # public/data, or ../region with AREA=region
 
 def main():
     meta = json.load(open(os.path.join(DATA, 'meta.json')))

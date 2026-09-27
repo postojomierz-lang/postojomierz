@@ -1,4 +1,4 @@
-// Trail blazes: the Polish mark (white–red–white stripes) painted on stones beside the path every
+// Trail blazes: the Polish mark (white–colour–white stripes, in the trail's colour) painted on stones beside the path every
 // ~30 m, facing the hiker coming up. Each stone is a small block with one flat, weathered face that
 // carries the mark; stones and marks are instanced.
 import * as THREE from 'three';
@@ -45,10 +45,11 @@ function stoneGeometry() {
   return g;
 }
 
-export function buildTrailMarks({ scene, terrain, trail, shade, rockTex, blocked, every = 30 }) {
+// colourAt(s): the trail colour at s metres ('red', 'blue', ...), colours: name -> CSS colour
+export function buildTrailMarks({ scene, terrain, trail, shade, rockTex, blocked, every = 30, colourAt = () => 'red', colours = { red: '#c8201c' } }) {
   const N = trail.X.length, step = trail.step;
   const r = rng(99);
-  const stones = [], marks = [];
+  const stones = [], marks = {};
   const heading = (i) => {
     const a = Math.max(0, i - 4), b = Math.min(N - 1, i + 4);
     const dx = trail.X[b] - trail.X[a], dz = trail.Z[b] - trail.Z[a], l = Math.hypot(dx, dz) || 1;
@@ -79,14 +80,18 @@ export function buildTrailMarks({ scene, terrain, trail, shade, rockTex, blocked
     const fy = y + 0.34 * s, off = 0.305 * s + 0.012;
     const fx = best.x + Math.sin(yaw) * off, fz = best.z + Math.cos(yaw) * off;
     m4.compose(new THREE.Vector3(fx, fy, fz), q, new THREE.Vector3(0.2 / s, 0.27 / s, 1).multiplyScalar(s));
-    marks.push(m4.clone());
+    const c = colourAt(i * step);
+    (marks[c] = marks[c] || []).push(m4.clone());
   }
   rockTex.wrapS = rockTex.wrapT = THREE.RepeatWrapping;
   const stoneMat = new THREE.MeshLambertMaterial({ map: rockTex, color: new THREE.Color(1.25, 1.32, 1.38) });
   patchShading(stoneMat, shade);
-  const markMat = new THREE.MeshLambertMaterial({ map: blazeTexture(), transparent: true, alphaTest: 0.3,
-    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  patchShading(markMat, shade);
+  const markMat = (c) => {
+    const m = new THREE.MeshLambertMaterial({ map: blazeTexture(c === 'black' ? '#1e1e1e' : colours[c] || '#c8201c'), transparent: true, alphaTest: 0.3,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    patchShading(m, shade);
+    return m;
+  };
   const group = new THREE.Group();
   const inst = (geo, mat, list, shadow) => {
     const m = new THREE.InstancedMesh(geo, mat, list.length);
@@ -95,7 +100,8 @@ export function buildTrailMarks({ scene, terrain, trail, shade, rockTex, blocked
     group.add(m);
   };
   inst(stoneGeometry(), stoneMat, stones, true);
-  inst(new THREE.PlaneGeometry(1, 1), markMat, marks, false);
+  const plane = new THREE.PlaneGeometry(1, 1);
+  for (const [c, list] of Object.entries(marks)) inst(plane, markMat(c), list, false);
   scene.add(group);
   return { group, count: stones.length };
 }

@@ -10,7 +10,7 @@ import shapely
 import pyarrow.dataset as ds, pyarrow.fs as pfs, pyarrow.compute as pc
 import prepare as P
 
-DATA = os.path.join(os.path.dirname(__file__), '..', 'public', 'data')
+DATA = P.OUT                      # public/data, or ../region with AREA=region
 FAMOUS = ['Kasprowy', 'Giewont', 'Gerlach', 'Lomnický', 'Łomnica', 'Rysy', 'Mięguszowiecki', 'Mengusovský', 'Wysoka', 'Vysoká',
           'Mnich', 'Świnica', 'Kozi Wierch', 'Kriváň', 'Krywań', 'Cubryna', 'Szpiglasowy', 'Kościelec', 'Zawrat', 'Wołowiec',
           'Starorobociański', 'Lodowy', 'Ľadový', 'Kežmarský', 'Slavkovský', 'Baranie', 'Żabi', 'Žabí', 'Opalony', 'Mnich']
@@ -35,7 +35,8 @@ def main():
     rows = ds.dataset(f'{root}/theme=base/type=land', filesystem=fs, format='parquet').to_table(
         filter=f & pc.field('class').isin(['peak', 'saddle']), columns=['names', 'class', 'elevation', 'geometry']).to_pylist()
     ob = meta['outer']['bounds']
-    trail = shapely.geometry.LineString(meta['trail'])
+    trail = shapely.geometry.MultiLineString([l for l in meta['trails'] if len(l) > 1]) if meta.get('trails') \
+        else shapely.geometry.LineString(meta['trail'])
     pts = []
     for r in rows:
         g = shapely.from_wkb(r['geometry'])

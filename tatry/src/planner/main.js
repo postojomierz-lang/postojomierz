@@ -8,8 +8,6 @@ import { TrailGraph, fmtTime } from './graph.js';
 
 const $ = (id) => document.getElementById(id);
 const COLOUR_PL = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny', none: 'bez znaków' };
-// the 3D model exists for Morskie Oko -> Rysy only so far (the area of its data)
-const AREA_3D = [20.040, 49.168, 20.112, 49.214];
 
 const data = await (await fetch('data/region/trails.json')).json();
 const G = new TrailGraph(data);
@@ -212,17 +210,14 @@ $('b-gpx').onclick = () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
 
-// "walk in 3D": for now only where the 3D data exists (Morskie Oko -> Rysy)
+// "walk in 3D": the 3D view loads the region's data around the route (?trasa#r=...)
 function updateGo() {
   const note = $('go-note');
-  if (!path) { $('go').disabled = true; note.hidden = true; return; }
-  const inside = path.every((v) => data.v[v][0] > AREA_3D[0] && data.v[v][0] < AREA_3D[2] && data.v[v][1] > AREA_3D[1] && data.v[v][1] < AREA_3D[3]);
-  $('go').disabled = !inside;
-  note.hidden = false;
-  note.textContent = inside ? 'Widok 3D pokazuje na razie szlak Morskie Oko → Rysy.'
-    : 'Widok 3D jest na razie gotowy tylko dla okolic Morskiego Oka i Rysów; pozostałe trasy dojdą w kolejnym etapie.';
+  $('go').disabled = !path;
+  note.hidden = !path;
+  if (path) note.textContent = summary.dist > 14000 ? 'Długa trasa: wczytanie widoku 3D potrwa dłużej (duży obszar terenu).' : 'Widok 3D wczytuje teren wokół trasy (kilkanaście MB).';
 }
-$('go').onclick = () => { location.href = './index.html'; };
+$('go').onclick = () => { location.href = './index.html?trasa' + (matchMedia('(max-width: 760px)').matches ? '&q=low' : '') + location.hash; };
 
 // restore a route from the address (#r=lat,lon;lat,lon...)
 const h = location.hash.match(/r=([^&]+)/);

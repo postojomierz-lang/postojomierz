@@ -22,12 +22,16 @@ from rasterio.features import rasterize
 from scipy.ndimage import gaussian_filter, distance_transform_edt, zoom
 from PIL import Image
 from pyproj import Transformer
+from affine import Affine
 from shapely.geometry import LineString
 
 import prepare as P
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
-DATA = os.path.join(ROOT, 'public', 'data')
+DATA = P.OUT                                  # public/data, or ../region with AREA=region
+REGION = P.AREA == 'region'
+PFX = 'r_' if REGION else ''                  # cache names of the region's photo requests
+BLOCK = 256                                   # region: base grid and photo in blocks of 256 samples (1024 m)
 CACHE = os.path.join(os.path.dirname(__file__), '.cache')
 WCS = ('https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFF'
        '?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage&COVERAGEID=DTM_PL-KRON86-NH_TIFF&FORMAT=image/tiff')
@@ -40,6 +44,7 @@ TILE = 256          # metres
 BASE_STEP = 4       # metres, base grid
 ORTHO_BASE = 2      # metres per pixel
 CORRIDOR = 420      # tiles whose centre is this close to the trail get 1 m / 0.5 m data
+if P.AREA == 'region': CORRIDOR = 200     # tiles touching this band round any trail of the region
 
 to2180 = Transformer.from_crs(4326, 2180, always_xy=True)
 
@@ -212,10 +217,17 @@ def main():
         """GUGiK where present, Slovak DMR 5.0 elsewhere (0 = neither), without spikes."""
         from scipy.ndimage import median_filter, distance_transform_edt as edt
         def one(src, t, crs):
-            v = to_local_grid(src, t, bounds, w, h, resampling, crs=crs)
+            # cut the source down to the target area first (the region's mosaic is ~1 GB)
+            tr = Transformer.from_crs(4326, crs, always_xy=True)
+            xs, ys = tr.transform([bounds[0], bounds[2], bounds[0], bounds[2]], [bounds[1], bounds[1], bounds[3], bounds[3]])
+            c0, r0 = ~t * (min(xs) - 20, max(ys) + 20); c1, r1 = ~t * (max(xs) + 20, min(ys) - 20)
+            c0, r0 = max(0, int(c0)), max(0, int(r0)); c1, r1 = min(src.shape[1], int(c1) + 1), min(src.shape[0], int(r1) + 1)
+            if c1 - c0 < 2 or r1 - r0 < 2: return np.zeros((h, w), np.float32)
+            sub = np.ascontiguousarray(src[r0:r1, c0:c1]); st = t * Affine.translation(c0, r0)
+            v = to_local_grid(sub, st, bounds, w, h, resampling, crs=crs)
             # only samples whose whole neighbourhood is valid: interpolating against "no data"
             # (zeros) would dig pits along the edge of each survey
-            m = to_local_grid((src > 100).astype(np.float32), t, bounds, w, h, Resampling.bilinear, crs=crs, nodata=None)
+            m = to_local_grid((sub > 100).astype(np.float32), st, bounds, w, h, Resampling.bilinear, crs=crs, nodata=None)
             return np.where(m > 0.999, v, 0)
         a = one(mos, mos_t, 'EPSG:2180')
         if zb is not None:
@@ -258,19 +270,34 @@ def main():
             # the terrain model has the real water surface: use it
             l['level'] = round(float(np.median(base[m & have])), 2)
         base[m] = np.minimum(base[m], l['level'] - 1.0)
-    open(os.path.join(DATA, 'inner4.bin'), 'wb').write(pack_heights(base, have))
-    print('base', bw, bh, 'max', round(float(base.max()), 1))
+    blocks = []
+    if REGION:
+        # blocks of BLOCK x BLOCK samples plus one shared row/column, each with its lidar mask
+        os.makedirs(os.path.join(DATA, 'base'), exist_ok=True)
+        for bj in range(math.ceil((bh - 1) / BLOCK)):
+            for bi in range(math.ceil((bw - 1) / BLOCK)):
+                sl = (slice(bj * BLOCK, bj * BLOCK + BLOCK + 1), slice(bi * BLOCK, bi * BLOCK + BLOCK + 1))
+                hb, mb = base[sl], have[sl]
+                pad = ((0, BLOCK + 1 - hb.shape[0]), (0, BLOCK + 1 - hb.shape[1]))
+                hb, mb = np.pad(hb, pad, mode='edge'), np.pad(mb, pad, mode='constant')
+                open(os.path.join(DATA, 'base', f'h_{bi}_{bj}.bin'), 'wb').write(pack_heights(hb, mb))
+                blocks.append([bi, bj])
+    else:
+        open(os.path.join(DATA, 'inner4.bin'), 'wb').write(pack_heights(base, have))
+    print('base', bw, bh, 'max', round(float(base.max()), 1), 'blocks', len(blocks))
 
     # ---- orthophoto base, 2 m, in 4 quadrants (WMS max 4096 px)
     ow = int(round((ib[2] - ib[0]) / ORTHO_BASE)); oh = int(round((ib[3] - ib[1]) / ORTHO_BASE))
     ortho = np.zeros((oh, ow, 3), dtype=np.float32)
     validq = np.zeros((oh, ow), dtype=bool)
-    hw, hh = ow // 2, oh // 2
-    for qi, (c0, c1) in enumerate([(0, hw), (hw, ow)]):
-        for qj, (r0, r1) in enumerate([(0, hh), (hh, oh)]):
+    nq_x, nq_z = math.ceil(ow / 4000), math.ceil(oh / 4000)
+    cols = [(ow * k // nq_x, ow * (k + 1) // nq_x) for k in range(nq_x)]
+    rows = [(oh * k // nq_z, oh * (k + 1) // nq_z) for k in range(nq_z)]
+    for qi, (c0, c1) in enumerate(cols):
+        for qj, (r0, r1) in enumerate(rows):
             lon_a = ll[0] + (ll[2] - ll[0]) * c0 / ow; lon_b = ll[0] + (ll[2] - ll[0]) * c1 / ow
             lat_b = ll[3] - (ll[3] - ll[1]) * r0 / oh; lat_a = ll[3] - (ll[3] - ll[1]) * r1 / oh
-            o, v = wms_filled(lon_a, lat_a, lon_b, lat_b, c1 - c0, r1 - r0, f'base_{qi}{qj}')
+            o, v = wms_filled(lon_a, lat_a, lon_b, lat_b, c1 - c0, r1 - r0, f'{PFX}base_{qi}{qj}')
             ortho[r0:r1, c0:c1] = o; validq[r0:r1, c0:c1] = v
     valid = validq
     sen = np.asarray(Image.open(os.path.join(DATA, 'inner.sentinel.jpg')).convert('RGB').resize((ow, oh), Image.BICUBIC)).astype(np.float32)
@@ -332,10 +359,24 @@ def main():
     dist = distance_transform_edt(~valid) * ORTHO_BASE
     wgt = np.clip(1 - dist / 60, 0, 1)[..., None]
     fused = np.clip(np.where(valid[..., None], ortho, wgt * gaussian_filter(ortho, (4, 4, 0)) + (1 - wgt) * sen), 0, 255).astype(np.uint8)
-    Image.fromarray(fused).save(os.path.join(DATA, 'inner.jpg'), quality=86, optimize=True, progressive=True)
+    if REGION:
+        # photo blocks matching the height blocks: 1024 m, 512 px
+        os.makedirs(os.path.join(DATA, 'photo'), exist_ok=True)
+        PB = BLOCK * BASE_STEP // ORTHO_BASE
+        for bi, bj in blocks:
+            im = fused[bj * PB:(bj + 1) * PB, bi * PB:(bi + 1) * PB]
+            im = np.pad(im, ((0, PB - im.shape[0]), (0, PB - im.shape[1]), (0, 0)), mode='edge')
+            Image.fromarray(im).save(os.path.join(DATA, 'photo', f'o_{bi}_{bj}.jpg'), quality=82, optimize=True)
+    else:
+        Image.fromarray(fused).save(os.path.join(DATA, 'inner.jpg'), quality=86, optimize=True, progressive=True)
 
     # ---- detailed tiles near the trail
-    line = LineString(meta['trail'])
+    if REGION:
+        from shapely.geometry import MultiLineString, box as sbox
+        from shapely.prepared import prep
+        zone = prep(MultiLineString([LineString(l) for l in meta['trails'] if len(l) > 1]).buffer(CORRIDOR))
+    else:
+        line = LineString(meta['trail'])
     nx = math.ceil((ib[2] - ib[0]) / TILE); nz = math.ceil((ib[3] - ib[1]) / TILE)
     tiles = []
     os.makedirs(os.path.join(DATA, 'tiles'), exist_ok=True)
@@ -344,7 +385,9 @@ def main():
         for i in range(nx):
             x0 = ib[0] + i * TILE; z0 = ib[1] + j * TILE
             from shapely.geometry import Point
-            if line.distance(Point(x0 + TILE / 2, z0 + TILE / 2)) > CORRIDOR: continue
+            if REGION:
+                if not zone.intersects(sbox(x0, z0, x0 + TILE, z0 + TILE)): continue
+            elif line.distance(Point(x0 + TILE / 2, z0 + TILE / 2)) > CORRIDOR: continue
             x1, z1 = x0 + TILE, z0 + TILE
             if x1 > ib[2] or z1 > ib[3]: continue
             tll = (*lonlat(x0, z1), *lonlat(x1, z0))
@@ -360,7 +403,7 @@ def main():
                 bb = map_coordinates(base, [GZ, GX], order=1)
                 h = np.where(ok, h, bb)
             open(os.path.join(DATA, 'tiles', f'h_{i}_{j}.bin'), 'wb').write(pack_heights(h))
-            o, ov = wms_filled(*tll, 512, 512, f't_{i}_{j}')
+            o, ov = wms_filled(*tll, 512, 512, f'{PFX}t_{i}_{j}')
             px0 = (x0 - ib[0]) / ORTHO_BASE; pz0 = (z0 - ib[1]) / ORTHO_BASE
             box = (px0, pz0, px0 + TILE / ORTHO_BASE, pz0 + TILE / ORTHO_BASE)
             o = apply_cmap(o, cmap)
@@ -374,7 +417,7 @@ def main():
             tiles.append([i, j])
     print('tiles', len(tiles))
 
-    meta['base'] = {'bounds': ib, 'n': [bw, bh], 'step': BASE_STEP}
+    meta['base'] = {'bounds': ib, 'n': [bw, bh], 'step': BASE_STEP, **({'block': BLOCK, 'blocks': blocks} if REGION else {})}
     meta['tiles'] = {'size': TILE, 'origin': ib[:2], 'list': tiles, 'samples': TILE + 1, 'orthoPx': 512}
     if 'GUGiK' not in meta['sources']: meta['sources'] += '; GUGiK: NMT 1 m, ortofotomapa (geoportal.gov.pl)'
     if zb is not None and 'ÚGKK' not in meta['sources']: meta['sources'] += '; Zdroj produktov LLS: ÚGKK SR (DMR 5.0, CC BY 4.0)'

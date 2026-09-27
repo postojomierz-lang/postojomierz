@@ -22,6 +22,8 @@ STEP = 10.0                                   # m between vertices
 OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']
 WCS = ('https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFF'
        '?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage&COVERAGEID=DTM_PL-KRON86-NH_TIFF&FORMAT=image/tiff')
+SAC = {'hiking': 1, 'mountain_hiking': 2, 'demanding_mountain_hiking': 3, 'alpine_hiking': 4,
+       'demanding_alpine_hiking': 5, 'difficult_alpine_hiking': 6}
 COLOURS = {'red': '#d8261d', 'blue': '#1f5fd1', 'green': '#1f9a3a', 'yellow': '#e8c21a', 'black': '#222222'}
 LAT0 = (REGION[1] + REGION[3]) / 2
 MX, MZ = 111320 * math.cos(math.radians(LAT0)), 110540
@@ -94,12 +96,13 @@ def copernicus(lon, lat):
 def main():
     os.makedirs(OUT, exist_ok=True)
     s, w, n, e = REGION[1], REGION[0], REGION[3], REGION[2]
-    routes = overpass(f'[out:json][timeout:180];relation["route"="hiking"]({s},{w},{n},{e});out body;>;out skel qt;', 'routes')
+    routes = overpass(f'[out:json][timeout:180];relation["route"="hiking"]({s},{w},{n},{e});out body;way(r);out body qt;node(w);out skel qt;', 'routes_tags')
     pois = overpass(f'[out:json][timeout:180];(node["tourism"~"alpine_hut|wilderness_hut"]({s},{w},{n},{e});'
                     f'way["tourism"="alpine_hut"]({s},{w},{n},{e});node["information"="guidepost"]({s},{w},{n},{e});'
                     f'node["natural"~"peak|saddle"]["name"]({s},{w},{n},{e}););out center tags;', 'pois')
     nodes = {el['id']: (el['lon'], el['lat']) for el in routes['elements'] if el['type'] == 'node'}
     ways = {el['id']: el['nodes'] for el in routes['elements'] if el['type'] == 'way'}
+    wtags = {el['id']: el.get('tags', {}) for el in routes['elements'] if el['type'] == 'way'}
     # colours and names per way (a way may carry several trails)
     wcol, wname = {}, {}
     for r in (el for el in routes['elements'] if el['type'] == 'relation'):
@@ -156,7 +159,10 @@ def main():
             f = (t - d[k]) / max(1e-9, d[k + 1] - d[k])
             seq.append(vertex(pts[k][0] + (pts[k + 1][0] - pts[k][0]) * f, pts[k][1] + (pts[k + 1][1] - pts[k][1]) * f))
         seq.append(vertex(*pts[-1], key=ns[-1]))
-        edges.append({'v': seq, 'c': sorted(wcol.get(wid, [])), 'n': sorted(wname.get(wid, []))[:2]})
+        t = wtags.get(wid, {})
+        # surface and difficulty for the 3D path: s = surface, d = SAC scale 1..6, h = highway class
+        edges.append({'v': seq, 'c': sorted(wcol.get(wid, [])), 'n': sorted(wname.get(wid, []))[:2],
+                      's': t.get('surface', ''), 'd': SAC.get(t.get('sac_scale', ''), 0), 'h': t.get('highway', '')})
     print('vertices', len(V))
     # fetch the 1 km DTM chunks under the trails in parallel first
     import concurrent.futures as cf
