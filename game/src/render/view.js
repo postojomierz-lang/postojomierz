@@ -12,6 +12,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { model, modelKey, plastic } from './models.js';
 import { buildTerrain, floorTexture, FLOOR, buildTape } from './terrain.js';
 import { buildDiorama } from './diorama.js';
+import { DIORAMAS } from '../sim/map.js';
 import { Fx } from './fx.js';
 import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 
@@ -237,7 +238,7 @@ export class View {
     this.span = span; this.shadowHalf = 0;
 
     this.groundPicture = null;
-    if (map.theme === 'normandy' || map.theme === 'town' || map.theme === 'beach') {
+    if (DIORAMAS.includes(map.theme)) {
       const d = buildDiorama(map, this.quality);
       this.world.add(d.group); this.groundPicture = d.minimap;
     } else {

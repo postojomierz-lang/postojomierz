@@ -8,7 +8,7 @@ import { Editor } from './editor.js';
 import { Sim } from './sim/sim.js';
 import { aiDeploy, aiOrders } from './sim/ai.js';
 import { View, renderThumbnails } from './render/view.js';
-import { modelsReady, loadLiving } from './render/models.js';
+import { modelsReady, loadLiving, loadScenery } from './render/models.js';
 import { Sounds } from './audio.js';
 import { Host, Client, cleanCode, iceConfig } from './net.js';
 
@@ -21,7 +21,7 @@ const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', the
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
 settings.teams = Math.max(2, Math.min(MAX_ARMIES, +settings.teams || 2));   // at most 6 armies
 if (!settings.diorama) { settings.diorama = 1; settings.source = 'normandy'; }   // the Normandy diorama is the new default
-if (!['normandy', 'town', 'beach', 'random', 'library', 'file'].includes(settings.source)) settings.source = 'normandy';
+if (![...DIORAMAS, 'random', 'library', 'file'].includes(settings.source)) settings.source = 'normandy';
 const save = () => { try { localStorage.setItem('plasticfront3d', JSON.stringify(settings)); } catch {} };
 
 let view;
@@ -67,9 +67,14 @@ async function prepareMap(files = {}, layout = null, n = +settings.teams) {
 }
 
 // armies: [{ name, color (index), human }]; me: which of them this browser plays
-async function beginGame({ n, seed, layout, theme, armies, me, diff }) {
+async function beginGame({ n, seed, layout, theme, options = {}, armies, me, diff }) {
   await modelsReady;
-  const map = makeMap({ teams: n, theme, seed, layout });
+  const map = makeMap({ teams: n, theme, seed, layout, options });
+  if (DIORAMAS.includes(map.theme)) {
+    const done = busy(['Unpacking the battlefield…']);
+    const ok = await loadScenery(map.theme); done();
+    if (!ok) toast('Could not load the scenery (it needs the online version) — the battlefield is bare.', false, true);
+  }
   game.mode = 'play'; game.seed = seed;
   game.sim = new Sim(map, armies, seed);
   game.human = me; game.diff = diff; game.acc = 0; game.undo = []; game.speed = 1;

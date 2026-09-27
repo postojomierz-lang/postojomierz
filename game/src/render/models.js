@@ -3,7 +3,6 @@
 // geometries - "main" in the army colour, "dark", painted parts - so each is a handful of draw calls.
 import { FIGURES, FIGURE_SCALE } from '../data/figures.js';
 import { VEHICLES, VEHICLE_SCALE } from '../data/vehicles.js';
-import { SCENERY, SCENERY_FAR, SCENERY_SCALE } from '../data/scenery.js';
 import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three';
@@ -93,7 +92,18 @@ function shadeFoliage(g) {
     col[i] *= k * (1 + up * 0.12); col[i + 1] *= k * (1 + up * 0.06); col[i + 2] *= k * 0.92;
   }
 }
-// Diorama scenery (tools/blender/scenery.py): all painted parts merged into one geometry
+// Diorama scenery (tools/blender/*.py): one file per battlefield next to the game, downloaded when a
+// battle on it starts (public/scenery-<theme>.js); all painted parts merged into one geometry
+const SCENERY = {}, SCENERY_FAR = {}, SCENERY_SCALE = 8000, sceneryLoaded = new Set();
+export async function loadScenery(theme) {
+  if (sceneryLoaded.has(theme)) return true;
+  try {
+    const m = await import(/* @vite-ignore */ new URL(`scenery-${theme}.js`, document.baseURI).href);
+    Object.assign(SCENERY, m.SCENERY); Object.assign(SCENERY_FAR, m.SCENERY_FAR);
+    sceneryLoaded.add(theme);
+    return true;
+  } catch (e) { console.warn('scenery not available:', theme, e); return false; }
+}
 const scenery = new Map();
 // part: 'all', 'tint' (only the plaster that is coloured per house) or 'rest' (everything else)
 const TINT = '#ece6da';
@@ -101,6 +111,7 @@ const TINT = '#ece6da';
 export function sceneryGeometry(key, part = 'all', far = false) {
   far = far && !!SCENERY_FAR[key];
   const k = key + ':' + part + (far ? ':far' : '');
+  if (!SCENERY[key]) return null;
   if (!scenery.has(k)) {
     const parts = (far ? SCENERY_FAR : SCENERY)[key].filter(p => part === 'all' || (part === 'tint') === (p.c === TINT));
     scenery.set(k, parts.length ? mergeGeometries(parts.map(p => {
@@ -111,7 +122,7 @@ export function sceneryGeometry(key, part = 'all', far = false) {
   }
   return scenery.get(k);
 }
-export const hasTint = key => SCENERY[key].some(p => p.c === TINT);
+export const hasTint = key => !!SCENERY[key] && SCENERY[key].some(p => p.c === TINT);
 const figs = new Map();
 function figure(key) { if (!figs.has(key)) figs.set(key, buildFigure(key)); return figs.get(key); }
 

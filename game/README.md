@@ -37,6 +37,9 @@ Battlefields (all free and offline):
   round a lighthouse in the middle: gun casemates, pillboxes, Tobruk pits and trenches, which
   infantry can get into and fight from like ruins. Landing craft lie on the sand at the water's
   edge (`beach()` in `src/sim/map.js`);
+- **Winter forest** (the Ardennes): snowy spruce forests between clearings and lanes, a small village
+  of stone farmhouses, foxholes, log piles, fallen trees and frozen ponds. Soldiers on foot can move
+  and take cover among the trees; vehicles keep to the lanes and clearings (`winter()`);
 - the classic toy room: random floors with household obstacles, the built-in map library
   (`src/data/maps.js`), map files (`*.pfmap.json`: "Save map" in the top bar, "Load a map file" in
   setup; `src/mapfile.js`) and the map editor (setup → Map editor; `src/editor.js`).
@@ -85,6 +88,8 @@ into `src/data/scenery.js` (buildings also come in a light version for the town 
 The parachute is in `vehicles.py` too. For "Living soldiers" mode `army_men.py` builds a second set
 of figures without stands (including rifleman, officer and sniper poses), with the legs of standing
 figures as separate parts that the game swings from the hips while they walk.
+The scenery of each diorama is a separate file too (`public/scenery-<battlefield>.js`, built by
+`npm run figures`), downloaded when a battle on it starts.
 Those figures live in `public/living-figures.js` (copied next to the game as
 `plastic-front/living-figures.js`) and are downloaded only when the option is switched on, so the
 main file stays smaller; opened straight from disk the game falls back to toy style. Every model has a detailed
