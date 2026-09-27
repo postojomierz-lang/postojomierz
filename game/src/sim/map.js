@@ -6,7 +6,7 @@ export const T_EDGE = 4; // off the edge of the round table: nobody walks there,
 export const T_RUIN = 5; // a ruined building: soldiers on foot can get in and fight from it (good cover), vehicles can't
 
 // diorama battlefields ('normandy': see normandy(), 'town': see town(), 'beach': see beach()); the rest are the classic toy-room floors
-export const DIORAMAS = ['normandy', 'town', 'beach', 'winter'];
+export const DIORAMAS = ['normandy', 'town', 'beach', 'winter', 'desert', 'jungle'];
 export const ROOM_THEMES = ['wood', 'carpet', 'kitchen', 'sand', 'grass', 'snow'];
 export const THEMES = [...DIORAMAS, ...ROOM_THEMES];
 
@@ -191,6 +191,10 @@ export function makeMap({ teams, theme, seed, layout = null, options = {} }) {
       if (grid[Math.floor(y) * W + Math.floor(x)] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
       decor.push({ x, y, kind: ['palm', 'pine', 'bush'].includes(d.kind) ? d.kind : 'bush', seed: Math.floor(rng() * 1e9) });
     }
+  } else if (theme === 'jungle') {
+    extra = jungle({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, round, R, opts: options });
+  } else if (theme === 'desert') {
+    extra = desert({ W, H, grid, zones, objects, decor, rng, turns, roads, round, R });
   } else if (theme === 'winter') {
     extra = winter({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, round, R });
   } else if (theme === 'beach') {
@@ -676,7 +680,7 @@ function beach({ W, H, grid, zones, objects, decor, rng, turns, round, R }) {
 
 // Lanes: one from every army's base to the middle, and one out to the edge between each pair of
 // armies (bends copied round the table too). Returns the cells they cover; the curves go to roads.
-function lanes({ W, H, M, n, rng, rot, zones, roads }) {
+function lanes({ W, H, M, n, rng, rot, zones, roads, side = true }) {
   const cx = W / 2, cy = H / 2;
   const road = new Uint8Array(W * H);
   const bez = (x0, y0, qx, qy, x1, y1) => {
@@ -702,7 +706,7 @@ function lanes({ W, H, M, n, rng, rot, zones, roads }) {
     const mx = (ax + cx) / 2, my = (ay + cy) / 2, px = -(cy - ay), py = cx - ax;
     bez(ax, ay, mx + px * bend, my + py * bend, cx, cy);
     const nx = (bx + cx) / 2, ny = (by + cy) / 2, qx = -(by - cy), qy = bx - cx;
-    bez(cx, cy, nx + qx * bend2 * 0.5, ny + qy * bend2 * 0.5, bx, by);
+    if (side) bez(cx, cy, nx + qx * bend2 * 0.5, ny + qy * bend2 * 0.5, bx, by);
     // the base lane also runs back out behind the army, off the table
     const bxx = ax + (ax - cx) / Math.hypot(ax - cx, ay - cy) * (far - Math.hypot(ax - cx, ay - cy) + 4), byy = ay + (ay - cy) / Math.hypot(ax - cx, ay - cy) * (far - Math.hypot(ax - cx, ay - cy) + 4);
     bez(ax, ay, (ax + bxx) / 2, (ay + byy) / 2, bxx, byy);
@@ -793,4 +797,169 @@ function winter({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, 
     }
   }
   return { margin: M, road, forest: [...forestB] };
+}
+
+// A helper for the scattered battlefields: place a w x h rectangle (given for army 0) once per army,
+// turned round the middle; all its cells must be `need`, with `margin` free cells round it.
+function symPlacer({ W, H, grid, zones, objects, rng, turns, block = null }) {
+  const cx = W / 2, cy = H / 2;
+  const near = (x, y, m) => zones.some(z => x >= z.x - m && x < z.x + z.w + m && y >= z.y - m && y < z.y + z.h + m);
+  const inPlay = (x, y) => x >= 0 && y >= 0 && x < W && y < H && grid[y * W + x] !== T_EDGE;
+  return (x0, y0, w, h, kind, style, { need = T_OPEN, margin = 1, zoneGap = 1, extra = null } = {}) => {
+    const rects = turns.map(({ c, s, swap }) => {
+      const px = x0 + w / 2 - cx, py = y0 + h / 2 - cy, ww = swap ? h : w, hh = swap ? w : h;
+      return { x: Math.round(px * c - py * s + cx - ww / 2), y: Math.round(px * s + py * c + cy - hh / 2), w: ww, h: hh };
+    });
+    const used = new Set();
+    for (const q of rects) for (let yy = q.y - margin; yy < q.y + q.h + margin; yy++) for (let xx = q.x - margin; xx < q.x + q.w + margin; xx++) {
+      const inside = yy >= q.y && yy < q.y + q.h && xx >= q.x && xx < q.x + q.w;
+      if (!inPlay(xx, yy)) { if (inside) return false; continue; }
+      const c = yy * W + xx, g = grid[c];
+      if ((block && block[c]) || near(xx, yy, zoneGap) || (inside ? g !== need || used.has(c) : g !== T_OPEN)) return false;
+      if (inside) used.add(c);
+    }
+    const seed = Math.floor(rng() * 1e9);
+    rects.forEach((q, k) => {
+      for (let yy = q.y; yy < q.y + q.h; yy++) for (let xx = q.x; xx < q.x + q.w; xx++) grid[yy * W + xx] = kind;
+      objects.push({ kind, style, ...q, turn: k, seed, ...(extra || {}) });
+    });
+    return true;
+  };
+}
+
+// ---- The desert (North Africa): open sand and gravel with rocky outcrops, escarpment ridges and
+// dunes, a desert track, an oasis in the middle (palms, a well, mud-brick houses, some in ruins),
+// stone sangars (infantry fight from them), burnt-out tanks, oil drums, minefields behind wire.
+function desert({ W, H, grid, zones, objects, decor, rng, turns, roads, round, R }) {
+  const n = turns.length, cx = W / 2, cy = H / 2, M = 14;
+  const rot = (x, y, k) => { const { c, s } = turns[k], px = x - cx, py = y - cy; return [px * c - py * s + cx, px * s + py * c + cy]; };
+  const road = lanes({ W, H, M, n, rng, rot, zones, roads });
+  const place = symPlacer({ W, H, grid, zones, objects, rng, turns, block: road });
+  let open = 0; for (let c = 0; c < W * H; c++) if (grid[c] === T_OPEN) open++;
+  const per = open / n;
+  const tries = (count, fn) => { for (let i = 0; i < count; i++) fn(Math.floor(rng() * W), Math.floor(rng() * H)); };
+  const dist = (x, y) => Math.hypot(x - cx, y - cy);
+  // the oasis: a pool and palms in the middle, mud-brick houses round it
+  const pool = { x: Math.round(cx - 1.5), y: Math.round(cy - 1.5), w: 3, h: 3 };
+  let ok = true; for (let y = pool.y; y < pool.y + 3; y++) for (let x = pool.x; x < pool.x + 3; x++) if (grid[y * W + x] !== T_OPEN) ok = false;
+  const oasisR = Math.min(9, Math.max(W, H) * 0.12);
+  if (ok) {
+    const cells = [];
+    for (let y = pool.y; y < pool.y + 3; y++) for (let x = pool.x; x < pool.x + 3; x++) { grid[y * W + x] = T_WATER; cells.push(y * W + x); }
+    objects.push({ kind: T_WATER, style: 'pool', ...pool, cells, seed: 9 });
+  }
+  let houses = 0;
+  for (let i = 0; i < 300 && houses < Math.max(2, Math.round(per / 400)); i++) {
+    const a = rng() * 6.283, r = 3 + rng() * (oasisR + 2), ruin = rng() < 0.4;
+    if (place(Math.round(cx + Math.cos(a) * r - 1), Math.round(cy + Math.sin(a) * r - 1), 2, 2, ruin ? T_RUIN : T_SOLID, ruin ? 'adobe_ruin' : 'adobe')) houses++;
+  }
+  for (let i = 0; i < 6 + per / 250; i++) {                               // palms round the oasis (for the eye)
+    const a = rng() * 6.283, r = 2.2 + rng() * oasisR, x0 = cx + Math.cos(a) * r, y0 = cy + Math.sin(a) * r, seed = Math.floor(rng() * 1e9);
+    for (let k = 0; k < n; k++) {
+      const [x, y] = rot(x0, y0, k), gx = Math.floor(x), gy = Math.floor(y);
+      if (gx < 0 || gy < 0 || gx >= W || gy >= H || grid[gy * W + gx] !== T_OPEN) continue;
+      decor.push({ x, y, kind: 'palm', seed: seed + k });
+    }
+  }
+  // rocky outcrops and escarpment ridges (you can shoot over a ridge, not over an outcrop)
+  tries(Math.round(per / 25), (x, y) => { if (dist(x, y) < oasisR + 2) return; const big = rng() < 0.4; place(x, y, big ? 3 : 2, 2, T_SOLID, big ? 'mesa' : 'outcrop'); });
+  tries(Math.round(per / 30), (x, y) => { const len = 3 + Math.floor(rng() * 4), hz = rng() < 0.5; place(x, y, hz ? len : 1, hz ? 1 : len, T_LOW, 'ridge'); });
+  tries(Math.round(per / 30), (x, y) => { const len = 2 + Math.floor(rng() * 3), hz = rng() < 0.5; place(x, y, hz ? len : 1, hz ? 1 : len, T_LOW, 'sanddune'); });
+  // stone sangars, burnt-out tanks, oil drums, minefields behind wire
+  tries(Math.round(per / 70), (x, y) => place(x, y, 1, 1, T_RUIN, 'sangar'));
+  tries(Math.round(per / 70), (x, y) => { const hz = rng() < 0.5; place(x, y, hz ? 2 : 1, hz ? 1 : 2, T_SOLID, 'wreck'); });
+  tries(Math.round(per / 60), (x, y) => place(x, y, 1, 1, T_LOW, 'drums'));
+  tries(Math.round(per / 25), (x, y) => { const len = 3 + Math.floor(rng() * 3), hz = rng() < 0.5; place(x, y, hz ? len : 1, hz ? 1 : len, T_LOW, 'wire', { margin: 0 }); });
+  // scrub, craters, mine signs and telegraph poles along the track (for the eye)
+  const scatter = (count, kind, gap = 1) => {
+    for (let i = 0; i < count; i++) {
+      const x0 = rng() * W, y0 = rng() * H, seed = Math.floor(rng() * 1e9);
+      for (let k = 0; k < n; k++) {
+        const [x, y] = rot(x0, y0, k), gx = Math.floor(x), gy = Math.floor(y);
+        if (gx < 0 || gy < 0 || gx >= W || gy >= H || grid[gy * W + gx] !== T_OPEN || zones.some(z => gx >= z.x - gap && gx < z.x + z.w + gap && gy >= z.y - gap && gy < z.y + z.h + gap)) continue;
+        decor.push({ x, y, kind, seed: seed + k });
+      }
+    }
+  };
+  scatter(Math.round(per / 40), 'scrub', 0);
+  scatter(Math.round(per / 150) + 3, 'crater');
+  scatter(Math.round(per / 250) + 2, 'mines');
+  return { margin: M, road };
+}
+
+// ---- The jungle (the Pacific): dense jungle that soldiers on foot can move and hide in (vehicles
+// keep to the trails and clearings; you cannot see far into it), trails, a river with wooden
+// bridges (only amphibians swim it), a village of stilt huts, log bunkers (infantry fight from
+// them), giant banyan trees, bamboo, swampy pools and a crashed fighter plane.
+function jungle({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, round, R, opts }) {
+  const n = turns.length, cx = W / 2, cy = H / 2, M = 14;
+  const rot = (x, y, k) => { const { c, s } = turns[k], px = x - cx, py = y - cy; return [px * c - py * s + cx, px * s + py * c + cy]; };
+  const near = (x, y, m) => zones.some(z => x >= z.x - m && x < z.x + z.w + m && y >= z.y - m && y < z.y + z.h + m);
+  const hasRiver = opts.river !== undefined ? !!opts.river : true;
+  const road = lanes({ W, H, M, n, rng, rot, zones, roads, side: n > 2 || !hasRiver });
+  // the river: straight through the middle with two armies, a ring round the middle with more
+  const wet = new Uint8Array(W * H), bridges = [];
+  if (hasRiver) {
+    const A = 1.8 + rng() * 1.2, f = 1 + Math.floor(rng() * 2), Rr = R * 0.45;
+    const mid = y => cx + A * sinT((y - cy) / H * 2 * PI * f);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const inRiver = round ? Math.abs(Math.hypot(x + 0.5 - cx, y + 0.5 - cy) - Rr) < 1.6 : Math.abs(x + 0.5 - mid(y + 0.5)) < 1.6;
+      if (inRiver && grid[y * W + x] === T_OPEN && !near(x, y, 1)) wet[y * W + x] = 1;
+    }
+    if (!round) for (const by of [cy, cy - H * 0.3, cy + H * 0.3]) {
+      bridges.push({ x: mid(by), y: by, dx: 1, dy: 0 });
+      for (let y = Math.floor(by - 1); y <= Math.floor(by); y++) for (let x = 0; x < W; x++) if (wet[y * W + x]) { wet[y * W + x] = 0; road[y * W + x] = 1; }
+    } else {
+      // a bridge wherever a trail crosses the ring
+      for (const r of roads) {
+        let inside = false, ex = 0, ey = 0;
+        for (let i = 0; i <= 200; i++) {
+          const t = i / 200, u = 1 - t, x = u * u * r.x0 + 2 * u * t * r.qx + t * t * r.x1, y = u * u * r.y0 + 2 * u * t * r.qy + t * t * r.y1;
+          const w2 = Math.abs(Math.hypot(x - cx, y - cy) - Rr) < 1.6;
+          if (w2 && !inside) { inside = true; ex = x; ey = y; }
+          if (!w2 && inside) { inside = false; const dx = x - ex, dy = y - ey, l = Math.hypot(dx, dy) || 1; bridges.push({ x: (x + ex) / 2, y: (y + ey) / 2, dx: dx / l, dy: dy / l }); }
+        }
+      }
+    }
+    const cells = [];
+    for (let c = 0; c < W * H; c++) if (wet[c] && !road[c]) { grid[c] = T_WATER; cells.push(c); }
+    if (cells.length) objects.push({ kind: T_WATER, style: 'jriver', cells, x: 0, y: 0, w: W, h: H, seed: 2 });
+  }
+  // the jungle itself: a Voronoi diagram, most fields overgrown
+  const { sites, cells } = voronoiSym({ W, H, M, n, rng, rot, per: Math.max(3, Math.round((W + 2 * M) * (H + 2 * M) / 80 / n)) });
+  const hash = (a, b) => { let h = Math.imul(a * 374761393 + b * 668265263, 0x5bd1e995); h ^= h >>> 15; return ((Math.imul(h, 0x27d4eb2d) ^ (h >>> 13)) >>> 0) / 4294967296; };
+  const jungleB = new Set();
+  for (let b = 0; b < sites.length / n; b++) if (hash(b, 23) < 0.62) jungleB.add(b);
+  sites.forEach((st, i) => fields.push({ x: st.x, y: st.y, kind: st.b, k: st.k, forest: jungleB.has(st.b), poly: cells[i].map(([x, y]) => [x, y]) }));
+  const nearest = (x, y) => { let best = 0, bd = Infinity; for (let i = 0; i < sites.length; i++) { const d = (sites[i].x - x) ** 2 + (sites[i].y - y) ** 2; if (d < bd) { bd = d; best = i; } } return sites[best]; };
+  const wood = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const c = y * W + x;
+    if (grid[c] !== T_OPEN || road[c] || near(x, y, 2)) continue;
+    if (jungleB.has(nearest(x + 0.5, y + 0.5).b)) { grid[c] = T_RUIN; wood.push(c); }
+  }
+  if (wood.length) objects.push({ kind: T_RUIN, style: 'forest', cells: wood, x: 0, y: 0, w: W, h: H, seed: 6 });
+  const place = symPlacer({ W, H, grid, zones, objects, rng, turns, block: road });
+  let open = 0; for (let c = 0; c < W * H; c++) if (grid[c] === T_OPEN || grid[c] === T_RUIN) open++;
+  const per = open / n;
+  const tries = (count, fn) => { for (let i = 0; i < count; i++) fn(Math.floor(rng() * W), Math.floor(rng() * H)); };
+  let huts = 0;
+  for (let i = 0; i < 400 && huts < Math.max(2, Math.round(per / 450)); i++) {
+    const a = rng() * 6.283, r = 3 + rng() * Math.min(10, Math.max(W, H) * 0.14);
+    if (place(Math.round(cx + Math.cos(a) * r - 1), Math.round(cy + Math.sin(a) * r - 1), 2, 2, T_SOLID, 'hut')) huts++;
+  }
+  tries(Math.round(per / 90), (x, y) => place(x, y, 2, 2, T_RUIN, 'logbunker', { need: T_OPEN }));
+  tries(Math.round(per / 90), (x, y) => place(x, y, 2, 2, T_RUIN, 'logbunker', { need: T_RUIN, margin: 0 }));
+  tries(Math.round(per / 70), (x, y) => place(x, y, 2, 2, T_SOLID, 'banyan', { need: T_RUIN, margin: 0 }));
+  tries(Math.round(per / 45), (x, y) => place(x, y, 1, 1, T_SOLID, 'bamboo', { need: T_RUIN, margin: 0 }));
+  if (rng() < 0.8) tries(60, (x, y) => { if (objects.some(o => o.style === 'planewreck')) return; const hz = rng() < 0.5; place(x, y, hz ? 3 : 2, hz ? 2 : 3, T_SOLID, 'planewreck'); });
+  for (let i = 0; i < 3 + per / 400; i++) {
+    const x0 = rng() * W, y0 = rng() * H, seed = Math.floor(rng() * 1e9);
+    for (let k = 0; k < n; k++) {
+      const [x, y] = rot(x0, y0, k), gx = Math.floor(x), gy = Math.floor(y);
+      if (gx < 0 || gy < 0 || gx >= W || gy >= H || grid[gy * W + gx] !== T_OPEN || near(gx, gy, 1)) continue;
+      decor.push({ x, y, kind: 'crater', seed: seed + k });
+    }
+  }
+  return { margin: M, road, bridges, river: hasRiver };
 }
