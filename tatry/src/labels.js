@@ -6,7 +6,8 @@ import * as THREE from 'three';
 
 const ICON = { peak: '▲', pass: '⌒', lake: '≈', hut: '⌂', fall: '⇣', trail: '◆' };
 
-export function buildLabels({ meta, terrain, camera, container, extra = [] }) {
+// blockers: [{ x, y, z, tx, tz, nx, nz }] signposts (foot of the pole, trail direction and normal); while near, their boards keep the labels off them
+export function buildLabels({ meta, terrain, camera, container, extra = [], blockers = [] }) {
   const layer = document.createElement('div');
   layer.id = 'labels';
   container.appendChild(layer);
@@ -29,8 +30,10 @@ export function buildLabels({ meta, terrain, camera, container, extra = [] }) {
   const blocked = (p) => {
     const c = camera.position, d = c.distanceTo(p);
     const n = Math.min(48, Math.max(12, Math.round(d / 250)));
-    for (let k = 1; k < n; k++) {
-      const t = k / n;
+    // a few samples close to the camera (rocks beside the path), then evenly along the line
+    const ts = [3, 6, 12, 25, 50, 100].filter((m) => m < d * 0.5).map((m) => m / d);
+    for (let k = 1; k < n; k++) ts.push(k / n);
+    for (const t of ts) {
       const x = c.x + (p.x - c.x) * t, z = c.z + (p.z - c.z) * t, y = c.y + (p.y + 15 - c.y) * t;
       if (terrain.height(x, z) > y + 2) return true;
     }
@@ -39,6 +42,7 @@ export function buildLabels({ meta, terrain, camera, container, extra = [] }) {
 
   function update(dt) {
     if (!enabled) return;
+    camera.updateMatrixWorld();   // the camera may have moved this frame, before the render updates it
     const W = innerWidth, H = innerHeight;
     // occlusion: all labels at the start or after a jump, then a slice per frame
     const moved = !lastCam || camera.position.distanceTo(lastCam) > 150;
@@ -61,12 +65,26 @@ export function buildLabels({ meta, terrain, camera, container, extra = [] }) {
     // importance: rank, nearness
     cand.sort((a, b) => (b.rank - Math.log10(b.d + 100) * 0.8) - (a.rank - Math.log10(a.d + 100) * 0.8));
     const placed = [];
+    for (const b of blockers) {
+      if (camera.position.distanceTo(v.set(b.x, b.y + 2.2, b.z)) > 80) continue;
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, front = false;
+      // the boards reach ~0.8 m either way along the trail, 1.9–2.45 m above the ground
+      for (const [u, h, w] of [[-0.8, 1.9, -0.06], [0.8, 1.9, -0.06], [-0.8, 2.45, -0.06], [0.8, 2.45, -0.06], [-0.8, 1.9, 0.06], [0.8, 1.9, 0.06], [-0.8, 2.45, 0.06], [0.8, 2.45, 0.06]]) {
+        v.set(b.x + b.tx * u + b.nx * w, b.y + h, b.z + b.tz * u + b.nz * w).project(camera);
+        if (v.z >= 1) continue;
+        front = true;
+        const sx = (v.x * 0.5 + 0.5) * W, sy = (-v.y * 0.5 + 0.5) * H;
+        x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+      }
+      if (front) placed.push({ x0, x1, y0, y1 });
+    }
+    const nBlock = placed.length;
     for (const it of cand) {
       if (!it.w) { const r = it.el.firstChild.getBoundingClientRect(); it.w = r.width || 120; it.h = r.height || 28; }
       const pole = 26 + Math.min(40, 400000 / (it.d * it.d + 4000));
       const box = { x0: it.sx - 4, x1: it.sx + it.w + 4, y0: it.sy - pole - it.h - 2, y1: it.sy - pole + 2 };
       const clash = placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
-      if (clash || placed.length >= 26) { if (it.visible) { it.el.classList.remove('on'); it.visible = false; } continue; }
+      if (clash || placed.length - nBlock >= 26) { if (it.visible) { it.el.classList.remove('on'); it.visible = false; } continue; }
       placed.push(box);
       it.el.style.transform = `translate(${it.sx.toFixed(1)}px, ${(it.sy - pole - it.h).toFixed(1)}px)`;
       it.el.lastChild.style.height = `${pole.toFixed(0)}px`;

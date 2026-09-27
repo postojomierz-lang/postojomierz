@@ -606,7 +606,7 @@ async function main() {
   // PTTK signposts at the start, at Czarny Staw, at the Bula and on the summit
   const sCzarny = nearestNamed()[0]?.s ?? LENGTH * 0.45;
   const sBula = (chains.chainRuns[0]?.[0] ?? Math.round(LENGTH * 0.83 / trail.step)) * trail.step - 25;
-  buildSigns({ scene, terrain, trail, profile, shade, posts: [
+  const signs = buildSigns({ scene, terrain, trail, profile, shade, posts: [
     { s: 12, title: 'Morskie Oko', ele: 1395, boards: [{ dest: 'Czarny Staw', toS: sCzarny }, { dest: 'Rysy', toS: LENGTH }] },
     { s: sCzarny + 15, title: 'Czarny Staw pod Rysami', ele: 1583, boards: [{ dest: 'Rysy', toS: LENGTH }, { dest: 'Morskie Oko', toS: 0 }] },
     { s: sBula, title: 'Bula pod Rysami', ele: Math.round(profile[Math.round(sBula / trail.step)]), side: -1,
@@ -615,7 +615,7 @@ async function main() {
   ] });
   // map labels (peaks, passes, lakes, huts, waterfalls) plus the Polish summit of Rysy
   const top = at(LENGTH);
-  const labels = buildLabels({ meta, terrain, camera, container: document.body,
+  const labels = buildLabels({ meta, terrain, camera, container: document.body, blockers: signs.posts.map((p) => p.at),
     extra: [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }] });
 
   const PLACES = [
@@ -841,7 +841,7 @@ async function main() {
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
