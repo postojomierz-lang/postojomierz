@@ -3,6 +3,7 @@ import { CATALOG, GROUPS, TEAM_COLORS, RULES } from './data/catalog.js';
 import { makeMap, MAX_ARMIES, DIORAMAS } from './sim/map.js';
 import { designBattlefield, explainError } from './claude.js';
 import { LIBRARY } from './data/maps.js';
+import { THEATRES, SCENARIOS, scenarioById } from './data/scenarios.js';
 import { exportLayout, downloadLayout, readLayoutFile } from './mapfile.js';
 import { Editor } from './editor.js';
 import { Sim } from './sim/sim.js';
@@ -16,7 +17,7 @@ const $ = id => document.getElementById(id);
 const DT = 1 / RULES.tickRate;
 
 // ---------------------------------------------------------------- settings (per-browser convenience)
-const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal', source: 'normandy', library: LIBRARY[0].id,
+const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal', source: 'normandy', scenario: '', library: LIBRARY[0].id,
   useClaude: false, living: 'toy', apiKey: '', model: 'claude-opus-5', prompt: '' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
 settings.teams = Math.max(2, Math.min(MAX_ARMIES, +settings.teams || 2));   // at most 6 armies
@@ -46,6 +47,8 @@ const busy = (lines) => {
 // Returns everything every player needs to build the very same map: { n, seed, layout, theme }.
 async function prepareMap(files = {}, layout = null, n = +settings.teams) {
   const seed = +new URLSearchParams(location.search).get('seed') || (Math.random() * 2 ** 31) >>> 0;   // ?seed=: a fixed battlefield (testing)
+  const sc = !layout && scenarioById(settings.scenario);
+  if (sc) return { n, seed, layout: null, theme: sc.theme, options: sc.options, scenario: sc.id };
   if (!layout && settings.useClaude) {
     if (!settings.apiKey) toast('Add an Anthropic API key to let Claude design the battlefield — using a random one.', false, true);
     else {
@@ -67,9 +70,11 @@ async function prepareMap(files = {}, layout = null, n = +settings.teams) {
 }
 
 // armies: [{ name, color (index), human }]; me: which of them this browser plays
-async function beginGame({ n, seed, layout, theme, options = {}, armies, me, diff }) {
+async function beginGame({ n, seed, layout, theme, options = {}, scenario = null, armies, me, diff }) {
   await modelsReady;
   const map = makeMap({ teams: n, theme, seed, layout, options });
+  const sc = scenarioById(scenario);
+  if (sc) { map.title = `${sc.name} (${sc.year})`; map.briefing = sc.text; }
   if (DIORAMAS.includes(map.theme)) {
     const done = busy(['Unpacking the battlefield…']);
     const ok = await loadScenery(map.theme) && (!map.fortress || await loadScenery('fortress')); done();
@@ -436,7 +441,7 @@ function openSetup() {
   $('optTeams').value = settings.teams; colorSel.value = settings.color; $('optTheme').value = settings.theme;
   $('optDiff').value = settings.diff; $('optQuality').value = settings.quality; $('optSound').checked = settings.sound;
   $('optSource').value = settings.source; $('optLibrary').value = settings.library; $('optLiving').value = settings.living;
-  $('optUseClaude').checked = settings.useClaude;
+  $('optUseClaude').checked = settings.useClaude; $('optScenario').value = settings.scenario || '';
   $('optKey').value = settings.apiKey; $('optModel').value = settings.model; $('optPrompt').value = settings.prompt;
   if (settings.useClaude) $('advanced').open = true;
   syncSetup();
@@ -446,7 +451,7 @@ function readSetup() {
   settings.teams = +$('optTeams').value; settings.color = colorSel.value; settings.theme = $('optTheme').value;
   settings.diff = $('optDiff').value; settings.quality = $('optQuality').value; settings.sound = $('optSound').checked;
   settings.source = $('optSource').value; settings.library = $('optLibrary').value; settings.living = $('optLiving').value;
-  settings.useClaude = $('optUseClaude').checked;
+  settings.useClaude = $('optUseClaude').checked; settings.scenario = $('optScenario').value;
   settings.apiKey = $('optKey').value.trim(); settings.model = $('optModel').value; settings.prompt = $('optPrompt').value.trim().slice(0, 600);
   save();
 }
@@ -459,14 +464,25 @@ $('dlgSetup').addEventListener('close', () => {
 });
 $('dlgSetup').addEventListener('cancel', e => { if (!game.sim) e.preventDefault(); });
 $('optLibrary').innerHTML = LIBRARY.map(m => `<option value="${m.id}">${m.title}</option>`).join('');
+const BATTLEFIELD_NAMES = { normandy: 'Normandy countryside', town: 'Town in ruins', beach: 'Beach landing', winter: 'Winter forest', desert: 'Desert', jungle: 'Jungle', mountain: 'Mountains' };
+$('optScenario').innerHTML = '<option value="">Free battle — pick the battlefield below</option>' +
+  THEATRES.map(t => `<optgroup label="${t.name}">${SCENARIOS.filter(s => s.theatre === t.id).map(s => `<option value="${s.id}">${s.name} (${s.year})</option>`).join('')}</optgroup>`).join('');
 function syncSetup() {
-  const src = $('optSource').value, claude = $('optUseClaude').checked;
+  const sc = scenarioById($('optScenario').value);
+  $('scenarioText').hidden = !sc;
+  if (sc) {
+    const extra = [sc.options.river ? 'a river' : '', sc.options.fortress ? 'a fortress' : '', sc.options.snow ? 'snow' : '', sc.options.steppe ? 'open steppe' : '', sc.options.tropic ? 'palms' : '', sc.options.sand === 'black' ? 'black volcanic sand' : ''].filter(Boolean);
+    $('scenarioText').innerHTML = `${escapeHtml(sc.text)}<br><span class="muted">Battlefield: ${BATTLEFIELD_NAMES[sc.theme]}${extra.length ? ' with ' + extra.join(', ') : ''}. The battle itself is fair: every army gets the same ground.</span>`;
+  }
+  $('rowSource').hidden = !!sc;
+  $('advanced').hidden = !!sc;
+  const src = sc ? sc.theme : $('optSource').value, claude = !sc && $('optUseClaude').checked;
   $('rowTheme').hidden = claude || src !== 'random';
   $('rowLibrary').hidden = claude || src !== 'library';
   $('rowFile').hidden = claude || src !== 'file';
   $('optSource').disabled = claude;
 }
-for (const id of ['optSource', 'optUseClaude']) $(id).addEventListener('change', syncSetup);
+for (const id of ['optSource', 'optUseClaude', 'optScenario']) $(id).addEventListener('change', syncSetup);
 $('btnSaveMap').onclick = () => {
   const sim = game.mode === 'play' ? game.sim : null;
   if (!sim) return;

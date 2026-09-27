@@ -17,6 +17,12 @@ regular polygon, so every army is equally far from its neighbours, and random ob
 rotationally symmetric. Every round each army gets orders: a main target (or the nearest enemy)
 and Attack or Defend. A battle has at most 6 armies.
 
+Scenarios: the setup screen lists 43 historical battles grouped by front (Western Europe, the
+Eastern Front, Poland, North Africa and the Mediterranean, the Pacific, the Winter War), each with a
+fitting battlefield and options and a short briefing (`src/data/scenarios.js`). The battles stay fair
+and symmetric; a scenario sets the scene rather than replaying history. Air and sea battles are left
+out (the game is fought on land).
+
 Battlefields (all free and offline):
 - **Normandy countryside** (the default): a model-railway style diorama generated from the seed —
   small fields boxed in by bocage hedgerows on earth banks (a Voronoi diagram of fields, copied once
