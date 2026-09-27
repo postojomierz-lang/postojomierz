@@ -1,5 +1,5 @@
 # The Red Army's vehicles, aircraft and headquarters, built with the tools in vehicles.py:
-# GAZ-67, ZiS-5 (ambulance and engineers), BA-64, T-38 (amphibious), T-70, T-34, IS-2, the BM-13
+# GAZ-67, GAZ-55 ambulance, ZiS-5 engineers, BA-64, T-38 (amphibious), T-70, T-34, IS-2, the BM-13
 # "Katyusha" on a ZiS-6, the Kamov A-7 autogyro, Yak-3, Il-2, Pe-2, Li-2 and a log dugout command post.
 # Same keys as the American set, written to .cache/figures/vehicles/su; tools/figures.mjs packs them
 # into public/nation-su.js.
@@ -81,19 +81,33 @@ def jeep():
     m.finish()
 
 def ambulance():
+    """GAZ-55: the GAZ-AA bonnet and radiator in front of a tall wooden bus body that takes in the
+    cab, a row of frosted windows along each side, two mushroom vents on the roof, double doors
+    and a step at the back, red crosses on the sides and the roof."""
     m = Model('ambulance')
     for z in (-0.3, 0.3): m.box('dark', (0, 0.3, z), (1.8, 0.08, 0.08), bevel=0.01)
-    zis_front(m, 0.05)
-    m.loft('main', [(-1.0, 0.5, 1.36, 0.5, 12), (-0.08, 0.5, 1.36, 0.5, 12)], seg=40, bevel=0.01)
-    for z in (-0.506, 0.506):
-        m.box(WHITE, (-0.52, 0.96, z), (0.46, 0.46, 0.012), bevel=0.0)
-        m.box(RED, (-0.52, 0.96, z * 1.004), (0.3, 0.09, 0.012), bevel=0.0); m.box(RED, (-0.52, 0.96, z * 1.004), (0.09, 0.3, 0.012), bevel=0.0)
-        for x in (-0.9, -0.15): m.box('main', (x, 0.94, z), (0.02, 0.8, 0.012), bevel=0.0)
-    m.box(WHITE, (-0.52, 1.362, 0), (0.46, 0.012, 0.46), bevel=0.0)
-    m.box(RED, (-0.52, 1.37, 0), (0.3, 0.012, 0.09), bevel=0.0); m.box(RED, (-0.52, 1.37, 0), (0.09, 0.012, 0.3), bevel=0.0)
-    m.box('dark', (-1.005, 0.94, 0), (0.012, 0.76, 0.01), bevel=0.0)
-    for x in (0.65, -0.6):
-        for z in (-0.46, 0.46): m.tyre((x, 0.27, z), 0.27, 0.18)
+    zis_front(m, 0.0, closed=False)
+    m.loft('main', [(-1.02, 0.46, 1.3, 0.5, 12), (0.3, 0.46, 1.3, 0.5, 12), (0.38, 0.5, 1.26, 0.49, 10)], seg=40, bevel=0.01)
+    m.box('main', (0.4, 1.3, 0), (0.12, 0.03, 0.96), bevel=0.01)                                 # peak over the windscreen
+    for z in (-0.21, 0.21): m.box(GLASS, (0.382, 0.98, z), (0.012, 0.22, 0.36), bevel=0.0)       # split windscreen
+    for z in (-0.495, 0.495):
+        m.box(GLASS, (0.16, 0.98, z), (0.26, 0.2, 0.012), bevel=0.0)                               # cab door window
+        m.box('dark', (0.02, 0.8, z * 1.01), (0.012, 0.6, 0.012), bevel=0.0)                     # door shut line
+        for x in (-0.84, -0.56, -0.28): m.box(WHITE, (x, 1.12, z), (0.2, 0.12, 0.012), bevel=0.0)    # frosted windows
+        m.box(WHITE, (-0.5, 0.78, z), (0.36, 0.36, 0.012), bevel=0.0)
+        m.box(RED, (-0.5, 0.78, z * 1.004), (0.26, 0.08, 0.012), bevel=0.0); m.box(RED, (-0.5, 0.78, z * 1.004), (0.08, 0.26, 0.012), bevel=0.0)
+        m.box('main', (-0.35, 0.47, z * 1.04), (1.3, 0.03, 0.04), bevel=0.005)                   # rubbing strake
+    m.box(WHITE, (-0.4, 1.305, 0), (0.46, 0.012, 0.46), bevel=0.0)
+    m.box(RED, (-0.4, 1.313, 0), (0.32, 0.012, 0.1), bevel=0.0); m.box(RED, (-0.4, 1.313, 0), (0.1, 0.012, 0.32), bevel=0.0)
+    for x in (-0.85, 0.05):                                                                       # roof vents
+        m.cyl('dark', (x, 1.3, 0), (x, 1.38, 0), 0.03, seg=10)
+        m.cyl('dark', (x, 1.38, 0), (x, 1.42, 0), 0.08, seg=14, r2=0.03)
+    m.box('dark', (-1.026, 0.88, 0), (0.012, 0.76, 0.012), bevel=0.0)                              # rear doors
+    for z in (-0.22, 0.22): m.box(WHITE, (-1.026, 1.1, z), (0.012, 0.14, 0.18), bevel=0.0)
+    for z in (-0.4, 0.4): m.box('dark', (-1.035, 0.88, z), (0.02, 0.05, 0.03), bevel=0.0)
+    m.box('dark', (-1.12, 0.4, 0), (0.16, 0.03, 0.5), bevel=0.005)                                 # step
+    for x in (0.6, -0.62):
+        for z in (-0.44, 0.44): m.tyre((x, 0.26, z), 0.26, 0.16)
     m.finish()
 
 def engtruck():
