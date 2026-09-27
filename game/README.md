@@ -44,6 +44,9 @@ Battlefields (all free and offline):
   desert track, an oasis in the middle with palms, a pool and mud-brick houses (some in ruins),
   stone sangars that infantry fight from, burnt-out tanks, oil drums and minefields behind wire
   (`desert()`);
+- **Jungle** (the Pacific): dense jungle that infantry can move and hide in (vehicles keep to the
+  muddy trails and clearings), a river with wooden bridges, a village of stilt huts, coconut-log
+  bunkers that infantry fight from, giant banyans, bamboo and a crashed fighter (`jungle()`);
 - the classic toy room: random floors with household obstacles, the built-in map library
   (`src/data/maps.js`), map files (`*.pfmap.json`: "Save map" in the top bar, "Load a map file" in
   setup; `src/mapfile.js`) and the map editor (setup → Map editor; `src/editor.js`).

@@ -213,19 +213,22 @@ const SCENERY = { hedge0: 700, hedge1: 700, oak0: 1300, oak1: 1300, apple: 900, 
   // winter (tools/blender/winter.py)
   pine0: 300, pine1: 360, chalet: 3500, shed: 800, foxhole: 700, logs: 900, fallen: 500,
   // the desert (tools/blender/desert.py)
-  palm0: 700, palm1: 700, adobe: 2200, adobe_ruin: 2600, outcrop: 1400, mesa: 2200, ridge: 500, sanddune: 400, sangar: 900, wreck: 1600, drums: 600, scrub: 250 };
+  palm0: 700, palm1: 700, adobe: 2200, adobe_ruin: 2600, outcrop: 1400, mesa: 2200, ridge: 500, sanddune: 400, sangar: 900, wreck: 1600, drums: 600, scrub: 250,
+  // the jungle (tools/blender/jungle.py)
+  jtree0: 600, jtree1: 650, fern: 150, bamboo: 700, hut: 2200, logbunker: 1800, banyan: 2200, planewreck: 1500, woodbridge: 1500 };
 // which models each battlefield needs
 const THEME_MODELS = {
   normandy: ['hedge0', 'hedge1', 'oak0', 'oak1', 'apple', 'house', 'barn', 'stonewall', 'hay', 'reeds', 'crater'],
   town: ['house2a', 'house2b', 'house3a', 'house3b', 'house1', 'ruin2', 'ruin3', 'ruin1', 'church', 'monument', 'rubble', 'barricade', 'hedgehog', 'bridge', 'quay', 'lamp', 'crater', 'oak0', 'oak1'],
   winter: ['pine0', 'pine1', 'chalet', 'shed', 'foxhole', 'logs', 'fallen', 'crater'],
   desert: ['palm0', 'palm1', 'adobe', 'adobe_ruin', 'outcrop', 'mesa', 'ridge', 'sanddune', 'sangar', 'wreck', 'drums', 'scrub', 'crater', 'mines', 'wire'],
+  jungle: ['jtree0', 'jtree1', 'fern', 'bamboo', 'hut', 'logbunker', 'banyan', 'planewreck', 'woodbridge', 'palm0', 'palm1', 'crater'],
   beach: ['casemate', 'pillbox', 'tobruk', 'trench', 'wire', 'gate', 'stakes', 'dune', 'lighthouse', 'rocks', 'lcvp', 'mines', 'hedgehog', 'crater', 'house2a', 'house2b', 'ruin2'],
 };
 // buildings are boxes with thin walls and frames: simplify them carefully (a small error bound, so the
 // budget is only a cap) and add a light "far" version for the town beyond the play area
 const FAR = { chalet: 1200, house2a: 1100, house2b: 1100, house3a: 1200, house3b: 1200, house1: 800, ruin2: 1400, ruin3: 1500, ruin1: 1100, church: 1800, house: 1600, barn: 1400 };
-const SOFTKEYS = new Set(['hedge0', 'hedge1', 'oak0', 'oak1', 'apple', 'hay', 'crater', 'rubble', 'reeds', 'dune', 'rocks', 'trench', 'tobruk', 'pine0', 'pine1', 'foxhole', 'fallen', 'logs', 'outcrop', 'mesa', 'ridge', 'sanddune', 'scrub', 'sangar', 'palm0', 'palm1']);
+const SOFTKEYS = new Set(['hedge0', 'hedge1', 'oak0', 'oak1', 'apple', 'hay', 'crater', 'rubble', 'reeds', 'dune', 'rocks', 'trench', 'tobruk', 'pine0', 'pine1', 'foxhole', 'fallen', 'logs', 'outcrop', 'mesa', 'ridge', 'sanddune', 'scrub', 'sangar', 'palm0', 'palm1', 'jtree0', 'jtree1', 'fern', 'bamboo', 'banyan']);
 const sdir = path.join(CACHE, 'scenery'), slines = {}, flines = {};
 const packModel = (meshes, budget, error) => {
   const total = meshes.reduce((a, m) => a + m.idx.length / 3, 0);
