@@ -97,7 +97,11 @@ Ju 87 Stuka, He 111, Ju 52 and a concrete command bunker. Soviet Union: SSh-40 h
 gymnastyorka with the rolled greatcoat over the shoulder and the sidor, kirza boots, Mosin with its
 spike bayonet, DP-28, PTRD and PTRS anti-tank rifles, RGD-33 grenades; GAZ-67, ZiS-5, BA-64, T-38,
 T-70, T-34, IS-2, BM-13 Katyusha on a ZiS-6, the Kamov A-7 autogyro, Yak-3, Il-2, Pe-2, Li-2 and a
-log dugout command post.
+log dugout command post. Great Britain: the Brodie helmet, battledress with '37 webbing and its
+big chest pouches, short anklets, beret for the officers, Lee-Enfield, Bren, PIAT, the Boys
+anti-tank rifle; Universal (Bren) Carrier, Austin K2 ambulance, Bedford truck, Daimler armoured
+car, Terrapin, Tetrarch, Cromwell, Churchill, a Bedford with the Land Mattress launcher, the Cierva
+C.30 autogyro, Spitfire, Typhoon, Lancaster (and the Dakota) and a sandbagged Nissen hut.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)

@@ -25,6 +25,7 @@ NATION = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--nation=')
 if NATION != 'us': OUT = os.path.join(OUT, NATION)
 DE = NATION == 'de'
 SU = NATION == 'su'
+GB = NATION == 'gb'
 
 def P(f, l, u):
     """pose sketch coordinates -> Blender: f forward, l to the figure's left, u up."""
@@ -299,7 +300,7 @@ def leg(fig, hip, ankle, pole=F, toe=F, up=U, knee=None, ground=True):
         boot(fig, ankle, toe, up, ground)
         return knee
     # the legging: from the ankle to half-way up the shin, with its hooks and strap
-    g1 = ankle + (knee - ankle) * 0.45
+    g1 = ankle + (knee - ankle) * (0.24 if GB else 0.45)          # British anklets are short
     fig.cyl(ankle - sh * 0.3, g1, 1.62, seg=18)
     fig.ring(g1, sh, 1.62, 0.2)
     f = toe - sh * toe.dot(sh)
@@ -340,9 +341,15 @@ def torso(fig, T, pack=True, pouches=True, suspenders=True, jacket=True):
     with fig.hard():
         fig.ecyl(T, 1.3, 2.5, 3.45, 2.45, 0.08, seg=32, bevel=0.1)            # web belt
         fig.box(T.at(2.55, 0, 1.9), (1.3, 0.35, 1.05), q, bevel=0.1)          # buckle
+        if pouches and GB:
+            for s in (1, -1):                                                   # the '37 pattern basic pouches, high on the chest
+                c = T.at(2.75, s * 1.75, 5.2)
+                fig.box(c, (1.9, 1.2, 2.3), q, bevel=0.2)
+                fig.box(c + T.u * 1.0 + T.f * 0.08, (2.0, 1.3, 0.55), q, bevel=0.12)
+                fig.sphere(c + T.u * 0.8 + T.f * 0.7, 0.14)
         if pouches:
             for s in (1, -1):
-                for k, a in enumerate((0.6, 1.05) if SU else (0.55, 0.95, 1.35)):
+                for k, a in enumerate(() if GB else (0.6, 1.05) if SU else (0.55, 0.95, 1.35)):
                     d = T.f * math.cos(a) + T.l * (s * math.sin(a))
                     pf = Frame(T.o + d * 1.0, d, T.u)
                     c = T.o + T.f * (math.cos(a) * 2.6) + T.l * (s * math.sin(a) * 3.55) + T.u * 1.7
@@ -370,7 +377,12 @@ def torso(fig, T, pack=True, pouches=True, suspenders=True, jacket=True):
                 pts.append(c)
             for a_, b_ in zip(pts, pts[1:]): fig.cyl(a_, b_, 0.95, seg=12)
             for p_ in pts[1:-1]: fig.sphere(p_, 0.95, seg=12)
-        if pack and DE:
+        if pack and GB:
+            bp = T.at(-3.0, 0, 7.8)                                             # the small pack, high on the back
+            fig.box(bp, (3.6, 1.7, 3.2), q, bevel=0.35)
+            fig.box(bp + T.u * 1.2 - T.f * 0.05, (3.8, 1.9, 1.0), q, bevel=0.25)
+            fig.box(T.at(-2.4, 0, 1.4), (2.0, 1.2, 1.6), q, bevel=0.25)         # the entrenching tool in its carrier
+        elif pack and DE:
             bp = T.at(-3.0, 0, 7.4)
             fig.box(bp, (3.4, 0.5, 4.2), q, bevel=0.1)                        # assault frame
             fig.cyl(bp + T.u * 2.0 - T.f * 0.6 + T.l * 2.6, bp + T.u * 2.0 - T.f * 0.6 - T.l * 2.6, 0.95, seg=16, bevel=0.2)   # rolled Zeltbahn
@@ -408,7 +420,7 @@ def head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
         fig.ball(H.at(2.05, s * 1.45, 3.45), 0.72)                            # cheekbone
         fig.sphere(H.at(0.2, s * 2.3, 4.0), 0.8, scale=(0.45, 0.85, 1.25), q=H.q)   # ear
     fig.limb(H.at(2.55, 0.55, 2.75), H.at(2.55, -0.55, 2.75), 0.2)             # lips
-    if helmet == 'cap':
+    if helmet == 'cap' and not GB:
         peaked_cap(fig, H)
         return H
     if helmet and DE:
@@ -416,6 +428,12 @@ def head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
         return H
     if helmet and SU:
         ssh40(fig, H, net)
+        return H
+    if helmet == 'cap' and GB:
+        beret(fig, H)
+        return H
+    if helmet and GB:
+        brodie(fig, H, net)
         return H
     if helmet:
         tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
@@ -497,6 +515,31 @@ def ssh40(fig, H, net=False):
                 fig.box(p, (0.5, 1.0, 0.12), Frame(p, tip.d(math.cos(a), math.sin(a), 0), tip.u).q, bevel=0.03)
     for s in (1, -1): fig.strap([tip.at(-0.1, s * 3.2, -1.3), H.at(1.3, s * 1.2, 1.6)], 0.15)
 
+def brodie(fig, H, net=False):
+    """the British Mk II 'soup plate': a shallow bowl with a wide flat brim all round."""
+    tip = Frame(H.at(0.0, 0, 5.6), H.d(1, 0, -0.1), H.d(0.1, 0, 1))
+    with fig.hard():
+        fig.dome(tip.o, 3.1, tip.q, squash=0.62, cut=0.0, thick=0.25)
+        fig.cyl(tip.at(0, 0, -0.06), tip.at(0, 0, 0.06), 4.55, seg=40, r2=4.45, bevel=0.05).scale = (1, 1.06, 1)   # the brim
+        fig.ring(tip.at(0, 0, 0.0), tip.u, 4.5, 0.1, seg=40, scale=(1, 1.06, 1))
+        if net:
+            for k in range(-3, 4):
+                fig.ring(tip.o, tip.l, 3.1, 0.08, seg=24, scale=(1, 1.06, 0.62)).rotation_quaternion @= Matrix.Rotation(k * 0.3, 3, 'Z').to_quaternion()
+            rnd = mulberry(80)
+            for i in range(12):
+                a = rnd() * 6.28; e = 0.2 + rnd() * 0.9
+                p = tip.at(math.cos(a) * math.cos(e) * 3.1, math.sin(a) * math.cos(e) * 3.1, math.sin(e) * 1.9)
+                fig.box(p, (0.5, 0.9, 0.12), Frame(p, tip.d(math.cos(a), math.sin(a), 0), tip.u).q, bevel=0.03)
+    for s in (1, -1): fig.strap([tip.at(-0.1, s * 2.9, -0.1), H.at(1.4, s * 1.2, 1.6)], 0.15)
+
+def beret(fig, H):
+    """a beret pulled down to the right, with the cap badge over the left eye."""
+    b = Frame(H.at(0.1, 0, 6.3), H.d(1, 0, 0.0), H.d(0.0, -0.3, 1))
+    with fig.hard():
+        fig.cyl(b.at(0, 0, -0.5), b.at(0, 0, 0.0), 2.95, seg=32, bevel=0.1).scale = (1, 1.08, 1)   # the headband
+        fig.sphere(b.at(0.0, -0.6, 0.35), 3.4, scale=(1.0, 1.1, 0.34), q=b.q)                   # the flopping crown
+        fig.box(b.at(2.7, 1.0, 0.0), (0.8, 0.2, 0.9), b.q, bevel=0.05)                         # badge
+
 def peaked_cap(fig, H):
     """an officer's peaked cap: raised crown, band, cord, shiny visor and badge."""
     c = Frame(H.at(0.0, 0, 6.2), H.d(1, 0, -0.1), H.d(0.1, 0, 1))
@@ -554,11 +597,17 @@ def rifle(fig, butt, muzzle, up=U, scope=False, sling=True, bayonet=False):
         fig.box(at(0.47, 0.0), (0.95, Ln * 0.42, 1.1), q, bevel=0.2)           # fore stock
         fig.box(at(0.62, 0.55), (0.8, Ln * 0.3, 0.5), q, bevel=0.15)           # handguard
         fig.box(at(0.33, 0.45), (0.8, Ln * 0.12, 0.85), q, bevel=0.1)          # receiver
-        if not (DE or SU): fig.box(at(0.28, 0.95), (0.4, 0.4, 0.35), q, bevel=0.05)    # rear sight
+        if not (DE or SU or GB): fig.box(at(0.28, 0.95), (0.4, 0.4, 0.35), q, bevel=0.05)    # rear sight
         fig.box(at(0.35, -0.35), (0.35, 1.0, 0.5), q, bevel=0.05)              # trigger
         fig.ring(at(0.33, -0.45), R.l, 0.55, 0.1, seg=16, scale=(1, 1.3, 1))    # trigger guard
         fig.cyl(at(0.3, 0.4), at(1.0, 0.4), 0.25, seg=10)                       # barrel
-        if SU:
+        if GB:
+            fig.cyl(at(0.26, 0.6, -0.4), at(0.24, 0.35, -1.1), 0.12, seg=8)        # the Lee-Enfield's bolt, set well back
+            fig.sphere(at(0.24, 0.33, -1.15), 0.25)
+            fig.box(at(0.36, -0.95), (0.6, 1.2, 1.4), q, bevel=0.08)               # the box magazine
+            for k in (0.55, 0.76): fig.ring(at(k, 0.25), R.f, 0.56, 0.1, seg=16)
+            fig.box(at(0.93, 0.85), (0.4, 0.5, 0.5), q, bevel=0.05)               # front sight protector
+        elif SU:
             fig.cyl(at(0.3, 0.55, -0.4), at(0.3, 0.55, -1.25), 0.12, seg=8)        # Mosin's straight bolt handle
             fig.sphere(at(0.3, 0.55, -1.3), 0.26)
             for k in (0.6, 0.82): fig.ring(at(k, 0.25), R.f, 0.56, 0.1, seg=16)
@@ -623,7 +672,27 @@ def dp28(fig, butt, muzzle, up=U):
     fig.muzzle = muzzle
     return R
 
+def bren(fig, butt, muzzle, up=U):
+    """Bren gun: skeleton butt, receiver, the curved magazine on top, carrying handle, the
+    barrel with its conical flash hider and the bipod."""
+    R = Frame(butt, muzzle - butt, up, True); Ln = (muzzle - butt).length; q = R.q
+    at = lambda k, u=0.0, l=0.0: R.at(Ln * k, l, u)
+    with fig.hard():
+        fig.box(at(0.1, -0.2), (0.8, Ln * 0.2, 1.5), q, bevel=0.2)
+        fig.box(at(0.38, 0.2), (0.95, Ln * 0.32, 1.2), q, bevel=0.1)
+        fig.box(at(0.3, -1.0), (0.55, 0.8, 1.5), Frame(at(0.3), R.d(1, 0, 0.3), R.u).q, bevel=0.1)
+        for k in range(5):                                                     # the curved magazine
+            t = k / 4
+            fig.box(at(0.4 + t * 0.07, 1.0 + t * 1.6), (0.7, 1.9 - t * 0.2, 0.45), Frame(at(0.4), R.d(1, 0, -0.3 - t * 0.5), R.u).q, bevel=0.06)
+        fig.box(at(0.62, 1.2), (0.25, 1.6, 0.3), q, bevel=0.05)                  # carrying handle
+        fig.cyl(at(0.55, 0.25), at(0.95, 0.25), 0.36, seg=12)
+        fig.cyl(at(0.93, 0.25), at(1.0, 0.25), 0.3, seg=12, r2=0.5)             # flash hider
+        for s in (0.45, -0.45): fig.cyl(at(0.88, 0.0, s), at(0.62, -0.25, s * 1.3), 0.11, seg=6)
+    fig.muzzle = muzzle
+    return R
+
 def smg(fig, butt, muzzle, up=U):
+    if GB: return bren(fig, butt, muzzle, up)
     if DE: return mg42(fig, butt, muzzle, up)
     if SU: return dp28(fig, butt, muzzle, up)
     """Browning Automatic Rifle: stock, long receiver, box magazine, carrying handle, barrel with
@@ -680,6 +749,33 @@ def bazooka_tube(fig, a, b, r=1.25, missile=False):
     unit and a battery instead."""
     R = Frame(a, b - a, U, True); Ln = (b - a).length; q = R.q
     at = lambda k, u=0.0, l=0.0: R.at(Ln * k, l, u)
+    if GB and not missile:
+        # PIAT: the boxy tube with its shoulder pad, the trough in front holding the bomb, the
+        # monopod and the sight
+        with fig.hard():
+            fig.cyl(at(0.08), at(0.62), r * 1.05, seg=20, bevel=0.1)
+            fig.box(at(0.02, -0.2), (1.4, 0.8, 2.4), q, bevel=0.2)                   # shoulder pad
+            fig.box(at(0.75, -0.3), (1.6, Ln * 0.25, 0.3), q, bevel=0.05)           # the trough
+            fig.cyl(at(0.66, 0.3), at(0.88, 0.3), r * 0.62, seg=16)                 # the bomb
+            fig.cyl(at(0.88, 0.3), at(0.98, 0.3), r * 0.62, seg=16, r2=r * 0.15)
+            for k in range(4): fig.box(at(0.62, 0.3) + (R.u * math.cos(k * 1.57) + R.l * math.sin(k * 1.57)) * r * 0.55, (0.5, 0.8, 0.12), q, bevel=0.02)
+            fig.box(at(0.4, -r - 1.2), (0.7, 0.9, 2.0), Frame(at(0.4), R.d(1, 0, 0.3), R.u).q, bevel=0.1)
+            fig.cyl(at(0.62, -r), at(0.66, -r - 4.0), 0.14, seg=6)                   # monopod
+            fig.box(at(0.55, r + 0.9, 0.9), (0.2, 0.3, 1.4), q, bevel=0.03)
+        fig.muzzle = at(0.98, 0.3)
+        return
+    if GB and missile:
+        # the Boys anti-tank rifle with its magazine on top and the big muzzle brake, aimed up
+        with fig.hard():
+            fig.box(at(0.3, -0.2), (1.0, Ln * 0.14, 1.9), q, bevel=0.2)
+            fig.cyl(at(0.38, 0.2), at(0.58, 0.2), 0.7, seg=16)
+            fig.box(at(0.47, 1.4), (0.6, 1.3, 1.6), q, bevel=0.1)                   # magazine on top, offset
+            fig.cyl(at(0.58, 0.2), at(1.08, 0.2), 0.33, seg=12)
+            fig.cyl(at(1.04, 0.2), at(1.12, 0.2), 0.7, seg=12, bevel=0.05)
+            for s in (0.5, -0.5): fig.cyl(at(0.62, 0.0, s), at(0.64, -2.5, s * 2.0), 0.12, seg=6)
+            fig.box(at(0.42, -1.1), (0.6, 0.8, 1.6), q, bevel=0.1)
+        fig.muzzle = at(1.12, 0.2)
+        return
     if SU:
         # PTRD (the long anti-tank rifle with its muzzle brake, bipod and carrying handle); for the AA
         # soldier the semi-automatic PTRS with its magazine, aimed up at the aircraft
@@ -844,7 +940,7 @@ def officer():
     arm(fig, shR, grip, pole=D(0, -0.6, -1), grip_dir=F)
     pistol(fig, grip + F * 0.35, F)
     arm(fig, shL, shL + P(3.5, 3.5, 9.5), pole=D(-0.5, 1, -0.2), grip_dir=U)   # fist up: follow me
-    head(fig, neck, turn(F, 0.15), D(0.05, 0.1, 1), helmet='cap' if (DE or SU) else True)
+    head(fig, neck, turn(F, 0.15), D(0.05, 0.1, 1), helmet='cap' if (DE or SU or GB) else True)
     with fig.hard():
         fig.box(T.at(-0.4, 3.9, -0.4), (0.8, 3.2, 3.4), T.q, bevel=0.2)           # map case
         fig.box(T.at(0.9, -3.3, 0.3), (0.9, 1.8, 2.4), T.q, bevel=0.2)            # holster
