@@ -98,3 +98,17 @@ w poprzek ścieżki, co ~45 cm wysokości. Ogniwa, kotwy i klamry to instancje.
 ścieżki, co ~30 m (98 znaków), zwrócony do idącego w górę. Głaz ma jedną płaską ścianę pod znak,
 reszta jest zaokrąglona i nieregularna (tekstura `mossy_rock`); znak rysowany na płótnie, z
 nierównymi krawędziami i przetarciami.
+
+## Drogowskazy PTTK
+`src/signs.js`: stalowe słupki z białą tabliczką miejsca (nazwa, wysokość) i żółtymi strzałkami
+z kolorem szlaku i czasem przejścia: Morskie Oko, Czarny Staw pod Rysami, Bula pod Rysami i Rysy.
+Czasy liczone z profilu szlaku normami w stylu PTTK (3,5 km/h, +1 min na 10 m podejścia, na
+stromej skale na 6 m, +1 min na 20 m zejścia), zaokrąglone do 5 min: bliskie, ale nie urzędowe.
+Tył strzałki ma własną teksturę, więc napis czyta się z obu stron.
+
+## Etykiety (chorągiewki)
+`src/labels.js` + `tools/prepare_labels.py`: chorągiewki z nazwą i wysokością nad szczytami,
+przełęczami, jeziorami, schroniskami i wodospadami (418 punktów; szczyty i przełęcze z OSM przez
+Overture, polskie nazwy). Włączanie/wyłączanie: klawisz **L** albo przycisk 🏷 (zapamiętywane).
+Etykiety za górami są ukryte (test widoczności po mapie wysokości), a na ekranie zostaje najwyżej
+26 najważniejszych, niezachodzących na siebie.
