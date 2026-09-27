@@ -217,60 +217,66 @@ def tanktrap():
     m.finish()
 
 def hospital():
-    """a field hospital: a ward tent with low side walls, red crosses on the roof and the gable,
-    its door flaps rolled up, stretchers and a medical chest outside, a Red Cross flag on a pole."""
+    """a US Army evacuation hospital ward tent (M1942): long walls under a roof hipped at both
+    ends, window flaps propped out on poles, a sod cloth round the foot, a stove pipe, red
+    crosses on the roof slopes; outside a Lister bag on its tripod, a sign board, a litter and
+    the Red Cross flag."""
     m = Model('hospital')
-    L, W, WH, R = 1.15, 0.8, 0.5, 1.2                     # half length (along z), half width, wall height, ridge
-    m.box('dark', (0, 0.012, 0), (2 * W + 0.2, 0.024, 2 * L + 0.2), bevel=0.01)          # groundsheet
-    m.prism('main', [(-W, 0.02), (W, 0.02), (W, WH), (0, R), (-W, WH)], -L, L, bevel=0.02)
-    # canvas seams on the roof and the walls, eaves line, guy ropes and pegs
-    slope = math.atan2(R - WH, W)
-    for z in (-0.6, 0.0, 0.6):
-        for s in (1, -1):
-            m.box('main', (s * W / 2, (R + WH) / 2 + 0.012, z), (math.hypot(W, R - WH), 0.012, 0.035), bevel=0.0, pitch=-s * slope)
-            m.box('main', (s * (W + 0.008), WH / 2, z), (0.012, WH - 0.04, 0.035), bevel=0.0)
+    hw, hd, wh, rise = 1.15, 0.72, 0.5, 0.68
+    m.box('dark', (0, 0.012, 0), (2 * hw + 0.2, 0.024, 2 * hd + 0.2), bevel=0.01)
+    m.box('main', (0, wh / 2, 0), (2 * hw, wh, 2 * hd), bevel=0.012)
+    m.box('main', (0, 0.05, 0), (2 * hw + 0.03, 0.1, 2 * hd + 0.03), bevel=0.01)                 # sod cloth
+    e, y = 0.05, wh                                                                             # the hipped roof
+    m.loft_poly('main', [(-hw - e, [(y, -hd - e), (y + 0.01, 0.0), (y, hd + e)]), (-hw * 0.45, [(y, -hd - e), (y + rise, 0.0), (y, hd + e)]),
+                         (hw * 0.45, [(y, -hd - e), (y + rise, 0.0), (y, hd + e)]), (hw + e, [(y, -hd - e), (y + 0.01, 0.0), (y, hd + e)])], bevel=0.01)
+    slope = math.atan2(rise, hd + e)
     for s in (1, -1):
-        m.box('main', (s * (W + 0.02), WH + 0.005, 0), (0.05, 0.03, 2 * L + 0.04), bevel=0.008)
-        for z in (-0.9, -0.3, 0.3, 0.9):
-            m.cyl('dark', (s * (W + 0.02), WH, z), (s * (W + 0.42), 0.03, z), 0.006, seg=5)
-            m.cyl('dark', (s * (W + 0.42), 0.0, z), (s * (W + 0.45), 0.09, z), 0.014, seg=6)
-    m.cyl('dark', (0, R + 0.01, -L - 0.06), (0, R + 0.01, L + 0.06), 0.025, seg=10)        # ridge pole
-    for z in (-L - 0.03, L + 0.03):
-        m.cyl('dark', (0, 0, z), (0, R + 0.07, z), 0.03, seg=10)                           # end poles
-        m.sphere('dark', (0, R + 0.09, z), 0.035, seg=10)
-    # red crosses on white panels: both roof slopes and the back gable
-    for s in (1, -1):
-        cx, cy = s * W / 2 + s * 0.012 * math.sin(slope), (R + WH) / 2 + 0.018 * math.cos(slope)
-        m.box(WHITE, (cx, cy, 0.3), (0.5, 0.012, 0.5), bevel=0.0, pitch=-s * slope)
-        m.box(RED, (cx + s * 0.004 * math.sin(slope), cy + 0.004, 0.3), (0.38, 0.012, 0.11), bevel=0.0, pitch=-s * slope)
-        m.box(RED, (cx + s * 0.004 * math.sin(slope), cy + 0.004, 0.3), (0.11, 0.012, 0.38), bevel=0.0, pitch=-s * slope)
-    m.box(WHITE, (0, 0.58, -L - 0.012), (0.42, 0.42, 0.012), bevel=0.0)
-    m.box(RED, (0, 0.58, -L - 0.02), (0.32, 0.09, 0.012), bevel=0.0)
-    m.box(RED, (0, 0.58, -L - 0.02), (0.09, 0.32, 0.012), bevel=0.0)
-    # the entrance at the front: dark doorway, flaps tied back as rolls
-    m.box('dark', (0, 0.4, L + 0.008), (0.52, 0.76, 0.012), bevel=0.0)
-    for s in (1, -1):
-        m.cyl('main', (s * 0.33, 0.06, L + 0.05), (s * 0.33, 0.78, L + 0.05), 0.05, seg=12)
-        m.torus('dark', (s * 0.33, 0.45, L + 0.05), (0, 1, 0), 0.052, 0.008, seg=14)
-    # stretchers along the sides, a medical chest by the door
-    for k, x in enumerate((-1.2, 1.2)):
-        for dx in (-0.11, 0.11): m.cyl('dark', (x + dx, 0.14, -0.55 + k * 0.1), (x + dx, 0.14, 0.55 + k * 0.1), 0.015, seg=6)
-        m.box('main', (x, 0.15, k * 0.1), (0.2, 0.02, 0.9), bevel=0.004)
-        for z in (-0.42, 0.42):
-            for dx in (-0.09, 0.09): m.cyl('dark', (x + dx, 0.0, z + k * 0.1), (x + dx, 0.14, z + k * 0.1), 0.012, seg=5)
-    m.box('main', (0.75, 0.13, L + 0.45), (0.36, 0.26, 0.24), bevel=0.015)                  # chest
-    m.box(WHITE, (0.75, 0.13, L + 0.575), (0.2, 0.2, 0.01), bevel=0.0)
-    m.box(RED, (0.75, 0.13, L + 0.58), (0.14, 0.045, 0.01), bevel=0.0)
-    m.box(RED, (0.75, 0.13, L + 0.58), (0.045, 0.14, 0.01), bevel=0.0)
-    # flag pole with the Red Cross flag at the back corner
-    fx, fz = -1.2, -1.2
+        for x in (-0.55, 0.0, 0.55):                                                          # windows, flaps propped out
+            m.box('dark', (x, 0.3, s * (hd + 0.006)), (0.3, 0.2, 0.012), bevel=0.0)
+            m.box('main', (x, 0.44, s * (hd + 0.1)), (0.34, 0.012, 0.22), bevel=0.004, roll=s * 0.5)
+            m.cyl('dark', (x, 0.0, s * (hd + 0.2)), (x, 0.49, s * (hd + 0.2)), 0.008, seg=5)
+        for x in (-hw * 0.45, hw * 0.45):                                                      # roof seams
+            m.box('main', (x, y + rise / 2 + 0.012, s * (hd + e) / 2), (0.03, 0.012, math.hypot(rise, hd + e)), bevel=0.0, roll=s * slope)
+        cz, cy = s * (hd + e) / 2 + s * 0.008 * math.sin(slope), y + rise / 2 + 0.008 * math.cos(slope)
+        for x in (-0.26, 0.26):                                                               # red crosses on both slopes (clear of the hips)
+            m.box(WHITE, (x, cy, cz), (0.4, 0.012, 0.4), bevel=0.0, roll=s * slope)
+            m.box(RED, (x, cy + 0.004 * math.cos(slope), cz + s * 0.004 * math.sin(slope)), (0.3, 0.012, 0.09), bevel=0.0, roll=s * slope)
+            m.box(RED, (x, cy + 0.004 * math.cos(slope), cz + s * 0.004 * math.sin(slope)), (0.09, 0.012, 0.3), bevel=0.0, roll=s * slope)
+        for x in (-0.9, 0.9):                                                                  # guy ropes and pegs
+            m.cyl('dark', (x, wh, s * hd), (x * 1.05, 0.0, s * (hd + 0.45)), 0.006, seg=5)
+            m.cyl('dark', (x * 1.05, 0.0, s * (hd + 0.45)), (x * 1.05, 0.09, s * (hd + 0.47)), 0.014, seg=6)
+    for x in (-hw * 0.45, hw * 0.45):
+        m.cyl('dark', (x, y + rise - 0.05, 0), (x, y + rise + 0.12, 0), 0.022, seg=8)           # poles through the ridge
+        m.sphere('dark', (x, y + rise + 0.13, 0), 0.03, seg=8)
+    m.cyl('dark', (-0.3, y + 0.3, -0.25), (-0.3, y + rise + 0.25, -0.25), 0.04, seg=10)         # stove pipe
+    m.cyl('dark', (-0.3, y + rise + 0.25, -0.25), (-0.3, y + rise + 0.29, -0.25), 0.08, seg=12, r2=0.03)
+    m.box('dark', (hw + 0.006, 0.34, 0), (0.012, 0.62, 0.42), bevel=0.0)                          # the door, flaps tied back
+    for z in (-0.28, 0.28): m.cyl('main', (hw + 0.05, 0.05, z), (hw + 0.05, 0.6, z), 0.045, seg=10)
+    rc = lambda x, yy, z, sz: (m.box(WHITE, (x, yy, z), (0.012, sz, sz), bevel=0.0),
+                               [m.box(RED, (x + d, yy, z), (0.012, a, b), bevel=0.0) for d in (0.008, -0.008) for a, b in ((sz * 0.24, sz * 0.76), (sz * 0.76, sz * 0.24))])
+    rc(-hw - 0.006, 0.3, 0, 0.34)                                                                  # cross on the far end
+    # Lister bag: the canvas water bag hanging from its tripod, taps round the bottom
+    lx, lz = 1.2, -1.15
+    for a in (0.3, 2.4, 4.5): m.cyl('dark', (lx + 0.26 * math.cos(a), 0.0, lz + 0.26 * math.sin(a)), (lx, 0.95, lz), 0.012, seg=5)
+    m.cyl('dark', (lx, 0.95, lz), (lx, 0.72, lz), 0.006, seg=4)
+    m.sphere('main', (lx, 0.55, lz), 0.14, scale=(1, 1.4, 1), seg=16)
+    for a in (0.0, 2.1, 4.2): m.cyl('dark', (lx + 0.12 * math.cos(a), 0.4, lz + 0.12 * math.sin(a)), (lx + 0.16 * math.cos(a), 0.38, lz + 0.16 * math.sin(a)), 0.012, seg=5)
+    # sign board by the door, a litter, the Red Cross flag
+    for z in (0.95, 1.4): m.cyl('dark', (1.35, 0.0, z), (1.35, 0.72, z), 0.018, seg=6)
+    m.box('main', (1.35, 0.58, 1.175), (0.03, 0.24, 0.52), bevel=0.008)
+    rc(1.37, 0.58, 1.02, 0.16)
+    for k in range(4): m.box('dark', (1.37, 0.58, 1.14 + k * 0.07), (0.012, 0.1, 0.04), bevel=0.0)   # lettering
+    for dz in (-0.11, 0.11): m.cyl('dark', (-1.1, 0.14, 1.2 + dz), (0.0, 0.14, 1.2 + dz), 0.015, seg=6)
+    m.box('main', (-0.55, 0.15, 1.2), (0.9, 0.02, 0.2), bevel=0.004)
+    for x in (-0.97, -0.13):
+        for dz in (-0.09, 0.09): m.cyl('dark', (x, 0.0, 1.2 + dz), (x, 0.14, 1.2 + dz), 0.012, seg=5)
+    fx, fz = -1.3, -1.25
     m.cyl('dark', (fx, 0, fz), (fx, 2.2, fz), 0.022, seg=10)
     m.sphere('dark', (fx, 2.22, fz), 0.035, seg=10)
     m.box(WHITE, (fx + 0.3, 1.95, fz), (0.56, 0.38, 0.012), bevel=0.0)
-    m.box(RED, (fx + 0.3, 1.95, fz + 0.009), (0.36, 0.09, 0.008), bevel=0.0)
-    m.box(RED, (fx + 0.3, 1.95, fz + 0.009), (0.09, 0.3, 0.008), bevel=0.0)
-    m.box(RED, (fx + 0.3, 1.95, fz - 0.009), (0.36, 0.09, 0.008), bevel=0.0)
-    m.box(RED, (fx + 0.3, 1.95, fz - 0.009), (0.09, 0.3, 0.008), bevel=0.0)
+    for dz in (0.009, -0.009):
+        m.box(RED, (fx + 0.3, 1.95, fz + dz), (0.36, 0.09, 0.008), bevel=0.0)
+        m.box(RED, (fx + 0.3, 1.95, fz + dz), (0.09, 0.3, 0.008), bevel=0.0)
     m.finish()
 
 MODELS = {'hq': hq, 'hospital': hospital,
