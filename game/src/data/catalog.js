@@ -69,6 +69,20 @@ export const CATALOG = {
     name: 'Field ambulance', group: 'vehicles', cls: 'vehicle', vehicle: true, medic: true, capacity: 4, cost: 70, hp: 55, armor: 1, speed: 3.6, size: [2, 2], radius: 0.95,
     blurb: 'Picks up wounded soldiers (4 at a time) and brings them home. Saved soldiers fight again next round.',
   },
+  // engineers: an unarmed truck with two sappers drives out in front of the base and lays its load
+  // there (a line across the way the enemy will come), then drives home. Restocked every round.
+  eng_traps: {
+    name: 'Engineers: tank traps', group: 'vehicles', cls: 'vehicle', vehicle: true, engineer: { lay: 'tanktrap', count: 4, gap: 1.6 }, cost: 60, hp: 50, armor: 1, speed: 3.2, size: [2, 2], radius: 0.95,
+    blurb: 'Sets up 4 steel hedgehogs in front of the base. Vehicles cannot pass (they must shoot them away); infantry walks through.',
+  },
+  eng_at: {
+    name: 'Engineers: AT mines', group: 'vehicles', cls: 'vehicle', vehicle: true, engineer: { lay: 'at', count: 5, gap: 1.3 }, cost: 75, hp: 50, armor: 1, speed: 3.2, size: [2, 2], radius: 0.95,
+    blurb: 'Buries 5 anti-tank mines. Hidden from the enemy; they blow up the first enemy vehicle that drives over them.',
+  },
+  eng_ap: {
+    name: 'Engineers: AP mines', group: 'vehicles', cls: 'vehicle', vehicle: true, engineer: { lay: 'ap', count: 6, gap: 1.1 }, cost: 55, hp: 50, armor: 1, speed: 3.2, size: [2, 2], radius: 0.95,
+    blurb: 'Buries 6 anti-personnel mines. Hidden from the enemy; they go off under enemy soldiers.',
+  },
   apc: {
     name: 'Armored car', group: 'vehicles', cls: 'vehicle', vehicle: true, cost: 100, hp: 95, armor: 2, speed: 2.9, size: [2, 2], radius: 1.0,
     weapon: { kind: 'bullet', range: 11, dmg: 2, cd: 0.24, acc: 0.5, air: true },
@@ -152,6 +166,10 @@ export const CATALOG = {
     name: 'Brick wall', group: 'forts', cls: 'fort', static: true, cost: 25, hp: 180, size: [3, 1], blocksLos: true, cover: true,
     blurb: 'Blocks movement and direct fire.',
   },
+  tanktrap: {
+    name: 'Tank trap', group: 'hidden', cls: 'fort', static: true, tankTrap: true, cost: 0, hp: 70, size: [1, 1],
+    blurb: 'Steel hedgehog set up by engineers. Stops vehicles, not infantry.',
+  },
   barrel: {
     name: 'Oil barrel', group: 'forts', cls: 'fort', static: true, cost: 5, hp: 12, size: [1, 1], explodes: { dmg: 30, radius: 2.6 },
     blurb: 'Explodes when shot. Nasty surprise.',
@@ -196,4 +214,9 @@ export const RULES = {
   battleSeconds: 40,
   maxRounds: 10,
   tickRate: 20,
+  mines: {               // engineers' mines: trigger radius, blast radius, damage
+    at: { trigger: 0.5, radius: 1.1, dmg: 130 },
+    ap: { trigger: 0.45, radius: 1.3, dmg: 16 },
+    perTeam: 40,         // at most this many live mines per army (the oldest are lifted)
+  },
 };

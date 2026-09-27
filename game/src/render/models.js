@@ -148,8 +148,8 @@ export function model(type, seed = 0) {
     return m;
   }
   if (FIGURE_FOR[type]) { m = buildFigure(FIGURE_FOR[type]); cache.set(k, m); return m; }
-  // walls and sandbags come in two shapes, picked by the placement seed
-  const vk = type === 'wall' || type === 'sandbags' ? type + (seed % 2) : type;
+  // walls and sandbags come in two shapes, picked by the placement seed; all engineers share one truck
+  const vk = type === 'wall' || type === 'sandbags' ? type + (seed % 2) : type.startsWith('eng_') ? 'engtruck' : type;
   m = buildVehicle(VEHICLES[vk] ? vk : 'barrel');
   cache.set(k, m);
   return m;

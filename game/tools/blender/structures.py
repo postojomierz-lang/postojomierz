@@ -308,9 +308,43 @@ def barrel():
     m.box(WHITE, (0.33, 0.46, 0), (0.012, 0.06, 0.12), bevel=0.0)
     m.finish()
 
+def tanktrap():
+    """a Czech hedgehog: three steel angle beams welded crosswise, on a small concrete pad."""
+    m = Model('tanktrap')
+    m.box('dark', (0, 0.015, 0), (0.8, 0.03, 0.8), bevel=0.01)
+    c = 0.36
+    dirs = [(1, 1, 0), (1, -1, 0), (0, 1, 1), (0, -1, 1), (1, 0, 1), (-1, 0, 1)]
+    for a, b in [((-c, 0.02, -c), (c, 0.74, c)), ((c, 0.02, -c), (-c, 0.74, c)), ((0, 0.02, c * 1.2), (0, 0.74, -c * 1.2))]:
+        # an L-section beam: two thin plates along the line
+        ax, ay, az = a; bx, by, bz = b
+        m.cyl('main', a, b, 0.045, seg=4)
+        m.cyl('main', (ax + 0.03, ay, az), (bx + 0.03, by, bz), 0.02, seg=4)
+        for t in (0.25, 0.75):
+            p = (ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t)
+            m.sphere('dark', p, 0.035, seg=8)                                                    # rivets
+    m.box('dark', (0, 0.38, 0), (0.14, 0.14, 0.14), bevel=0.02)                               # welded gusset
+    m.finish()
+
+def mine_at():
+    """a Teller-type anti-tank mine, half dug in: a flat steel drum with a pressure cap."""
+    m = Model('mine_at')
+    m.cyl('dark', (0, 0.0, 0), (0, 0.06, 0), 0.2, seg=24, bevel=0.01)
+    m.torus('dark', (0, 0.055, 0), (0, 1, 0), 0.19, 0.012, seg=24)
+    m.cyl('main', (0, 0.06, 0), (0, 0.085, 0), 0.08, seg=16, bevel=0.005)
+    m.box('main', (0.21, 0.035, 0), (0.04, 0.02, 0.07), bevel=0.0)                           # carrying handle
+    m.finish()
+
+def mine_ap():
+    """an anti-personnel "S" mine: a small can with its three-pronged fuse sticking out."""
+    m = Model('mine_ap')
+    m.cyl('dark', (0, 0.0, 0), (0, 0.06, 0), 0.08, seg=16, bevel=0.006)
+    m.cyl('main', (0, 0.06, 0), (0, 0.11, 0), 0.015, seg=8)
+    for a in (0, 2.1, 4.2): m.cyl('main', (0, 0.1, 0), (math.cos(a) * 0.035, 0.13, math.sin(a) * 0.035), 0.006, seg=5)
+    m.finish()
+
 MODELS = {'hq': hq, 'mgnest': mgnest, 'fieldgun': fieldgun, 'aa': aa, 'tower': tower,
           'sandbags0': lambda: sandbags(0), 'sandbags1': lambda: sandbags(1), 'wall0': lambda: wall(0), 'wall1': lambda: wall(1),
-          'wire': wire, 'barrel': barrel}
+          'wire': wire, 'barrel': barrel, 'tanktrap': tanktrap, 'mine_at': mine_at, 'mine_ap': mine_ap}
 
 if __name__ == '__main__':
     only = sys.argv[1:]

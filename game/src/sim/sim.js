@@ -26,6 +26,8 @@ export class Sim {
     this.byId = new Map();
     this.nextId = 1;
     this.projectiles = [];
+    this.mines = [];                // engineers' mines: { id, team, kind: 'at' | 'ap', x, z }
+    this.mineId = 1;
     this.events = [];
     this.winner = -1;
     this.occ = new Int32Array(this.W * this.H);   // static entity id per cell (0 = none)
@@ -70,7 +72,7 @@ export class Sim {
   }
   defending(teamId) { return this.teams[teamId].stance === 'defend'; }
   // Stays home this round: everyone when defending; when attacking, every fourth foot soldier guards the HQ.
-  holds(e) { return this.defending(e.team) || (e.def.cls === 'infantry' && !e.free && e.id % 4 === 0); }
+  holds(e) { return this.defending(e.team) || !!e.garrison; }
   // Round orders for a whole army: main target and stance. Recorded with the placements for replays / online.
   setOrders(teamId, { focus, stance } = {}) {
     const t = this.teams[teamId];
@@ -218,6 +220,18 @@ export class Sim {
       if (e.def.cls !== 'plane') continue;
       e.done = false; e.bombs = e.def.bombs || 0; e.wp = e.id % 4; e.sx = undefined;
     }
+    for (const e of this.ents) if (e.def.engineer && !e.dead) { e.load = e.def.engineer.count; e.laid = 0; e.work = 0; e.working = false; e.stuck = 0; e.site = -1; e.siteF = null; }
+    // a small garrison stays with the headquarters: the riflemen standing closest to it (1-3 of them,
+    // only with enough infantry), everybody else goes to fight
+    for (const t of this.teams) {
+      const hq = this.byId.get(t.hq);
+      const inf = this.ents.filter(e => e.team === t.id && !e.dead && !e.down && e.def.cls === 'infantry' && !e.free && !e.def.healer);
+      for (const e of inf) e.garrison = false;
+      if (!hq || inf.length < 6) continue;
+      const d = e => (e.x - hq.x) ** 2 + (e.z - hq.z) ** 2;
+      inf.sort((a, b) => d(a) - d(b) || a.id - b.id);
+      inf.slice(0, Math.min(3, Math.floor(inf.length / 8) + 1)).forEach(e => { e.garrison = true; });
+    }
   }
 
   endBattle() {
@@ -229,7 +243,7 @@ export class Sim {
       else this.die(e, this.attackerOf(e));
     }
     for (const e of this.ents) {
-      e.carrying = 0; e.rescue = 0; e.cargo = []; e.heal = 0; e.healT = 0; e.healing = false; e.medicBy = 0; e.retreat = false;
+      e.carrying = 0; e.rescue = 0; e.cargo = []; e.heal = 0; e.healT = 0; e.healing = false; e.medicBy = 0; e.retreat = false; e.working = false;
       if (e.def.cls === 'plane' && !e.dead) {
         if (e.def.sortie) { e.done = true; continue; }
         // planes land back where they were parked
@@ -240,6 +254,7 @@ export class Sim {
     }
     for (const e of [...this.ents]) if (e.def.cls === 'plane' && e.def.sortie && !e.dead) this.remove(e);
     for (const t of this.teams) t.hurtBy = t.hurtBy.map(v => v * 0.5);
+    this.mines = this.mines.filter(m => this.teams[m.team].alive);
 
     const alive = this.teams.filter(t => t.alive);
     if (alive.length <= 1 || this.round >= RULES.maxRounds) {
@@ -280,6 +295,7 @@ export class Sim {
     const list = this.ents.slice();
     for (const e of list) if (!e.dead) this.think(e);
     this.separate();
+    this.stepMines();
     this.stepProjectiles();
     const alive = this.teams.filter(t => t.alive).length;
     if (alive <= 1 || this.battleTick >= RULES.battleSeconds * RULES.tickRate) this.endBattle();
@@ -307,6 +323,7 @@ export class Sim {
     if (!s) return 1;
     const o = this.byId.get(s);
     if (!o || o.dead) return 1;
+    if (o.def.tankTrap && cls === 'foot') return 1.3;                 // soldiers step between the hedgehogs
     if (o.team === team) {
       if (cls === 'foot' && (o.def.wire || o.type === 'sandbags')) return 3;
       if (cls !== 'foot' && o.def.wire) return 1.5;
@@ -328,6 +345,7 @@ export class Sim {
     const o = this.byId.get(s);
     if (!o || o.dead) return true;
     if (o.def.wire) return cls !== 'foot' || o.team === e.team;
+    if (o.def.tankTrap) return cls === 'foot';
     if (o.type === 'sandbags' && o.team === e.team && cls === 'foot') return true;
     return false;
   }
@@ -538,7 +556,7 @@ export class Sim {
       if (d2 > reach * reach) continue;
       const fall = 1 - 0.5 * Math.sqrt(d2) / reach;
       const cover = o.def.cls === 'infantry' && attacker ? (this.inCover(o, attacker) < 1 ? 0.7 : 1) : 1;
-      this.damage(o, dmg * fall * cover * this.dmgMult(kind === 'barrel' || kind === 'bomb' ? 'shell' : kind, o), attacker);
+      this.damage(o, dmg * fall * cover * this.dmgMult(kind === 'barrel' || kind === 'bomb' || kind === 'mine' ? 'shell' : kind, o), attacker);
     }
   }
 
@@ -550,6 +568,7 @@ export class Sim {
     const def = e.def, w = def.weapon;
     if (def.cls === 'plane') return this.thinkPlane(e);
     if (def.medic) return this.thinkAmbulance(e);
+    if (def.engineer) return this.thinkEngineer(e);
     if (e.cd > 0) e.cd -= DT;
     // salvos (rocket trucks)
     if (e.salvo > 0) {
@@ -797,6 +816,135 @@ export class Sim {
       }
     } else if (e.cargo.length || e.retreat) this.followField(e, home, 1);   // drive the wounded home, or get out of the line of fire
     for (const id of e.cargo) { const d = this.byId.get(id); if (d) { d.x = e.x; d.z = e.z; } }
+  }
+
+  // ---- engineers ------------------------------------------------------------------
+  // Work out the way the enemy will come (the shortest drive from their HQ to our zone), drive to a
+  // spot on it a few cells in front of the zone (just in front when defending; the next truck a
+  // bit further out), and let the two sappers lay the load in a line across it. Lays where it
+  // stands when the enemy is close or the way is blocked. Then drives home.
+  thinkEngineer(e) {
+    const cls = this.moveClass(e), home = this.fields.get(e.team + ':home:' + cls);
+    e.moving = false;
+    if (e.working) {
+      if ((e.work -= DT) > 0) return;
+      this.layOne(e);
+      e.work = 1.3;
+      if (e.load <= 0) e.working = false;
+      return;
+    }
+    if (e.load <= 0) { if (!this.inZone(e.team, e.x, e.z)) this.followField(e, home, 1); return; }
+    if (e.site === undefined || e.site < 0) this.pickSite(e);
+    if (--e.retarget <= 0) { e.retarget = 10; e.retreat = this.danger(e.team, e.x, e.z, 5); }
+    const c = this.cellOf(e.x, e.z);
+    if (!e.siteF || e.siteF[c] <= 1.6 || e.retreat || e.stuck > 60) { this.startLaying(e); return; }
+    const x0 = e.x, z0 = e.z;
+    if (!this.followField(e, e.siteF, 0.9)) { e.stuck += 3; return; }
+    const mx = e.x - x0, mz = e.z - z0;
+    e.stuck = mx * mx + mz * mz < 1e-4 ? e.stuck + 1 : 0;
+  }
+  pickSite(e) {
+    e.siteF = null; e.site = this.cellOf(e.x, e.z); e.siteDX = e.dirX; e.siteDZ = e.dirZ;
+    const home = this.fields.get(e.team + ':home:' + this.moveClass(e)), me = this.byId.get(this.teams[e.team].hq);
+    if (!home || !me) return;
+    // the enemy most likely to come: one that has picked us as its target, else the closest
+    let en = null, bs = INF;
+    for (const t of this.teams) {
+      if (!t.alive || t.id === e.team) continue;
+      const h = this.byId.get(t.hq); if (!h) continue;
+      const s = (h.x - me.x) ** 2 + (h.z - me.z) ** 2 - (this.focusOf(t.id) === e.team ? 1e6 : 0);
+      if (s < bs) { bs = s; en = h; }
+    }
+    if (!en) return;
+    // belts: tank traps closest, anti-tank mines in front of them, anti-personnel mines furthest out;
+    // a second truck of the same kind works a little further out still
+    let n = 0;
+    for (const o of this.ents) if (o.type === e.type && o.team === e.team && !o.dead && o.id < e.id) n++;
+    const lay = e.def.engineer.lay;
+    const depth = (this.defending(e.team) ? 1.5 : 4) + (lay === 'tanktrap' ? 0 : lay === 'at' ? 2 : 3.5) + (n % 3) * 3;
+    // walk the enemy's route back from their HQ towards us, downhill on our zone's distance field
+    let c = this.cellOf(en.x, en.z), px = c, guard = this.W * this.H;
+    while (home[c] > depth && guard-- > 0) {
+      const cx = c % this.W, cy = (c / this.W) | 0;
+      let best = -1, bd = home[c];
+      for (let k = 0; k < 8; k++) {
+        const nx = cx + NX[k], ny = cy + NY[k];
+        if (!this.inside(nx, ny)) continue;
+        const nb = ny * this.W + nx;
+        if (home[nb] < bd) { bd = home[nb]; best = nb; }
+      }
+      if (best < 0) break;
+      px = c; c = best;
+    }
+    if (home[c] >= INF) return;
+    const dx = (c % this.W) - (px % this.W), dz = ((c / this.W) | 0) - ((px / this.W) | 0), l = Math.sqrt(dx * dx + dz * dz) || 1;
+    e.site = c; e.siteDX = dx / l; e.siteDZ = dz / l;
+    e.siteF = this.dijkstra(e.team, this.moveClass(e), [c]);
+  }
+  startLaying(e) {
+    // across the enemy's way at the chosen spot (or right in front of the truck if it had to stop short)
+    const near = e.siteF && e.siteF[this.cellOf(e.x, e.z)] <= 3;
+    const dx = near ? e.siteDX : e.dirX, dz = near ? e.siteDZ : e.dirZ, l = Math.sqrt(dx * dx + dz * dz) || 1;
+    if (near) { e.layX = e.site % this.W + 0.5; e.layZ = ((e.site / this.W) | 0) + 0.5; }
+    else { e.layX = e.x + e.dirX * 1.6; e.layZ = e.z + e.dirZ * 1.6; }
+    e.layPX = -dz / l; e.layPZ = dx / l;
+    e.working = true; e.work = 0.6; e.laid = 0;
+    this.events.push({ t: 'engineers', id: e.id });
+  }
+  layOne(e) {
+    const eng = e.def.engineer, n = eng.count;
+    // spots along the line, from the middle outwards; skip ones that cannot take the item
+    while (e.load > 0) {
+      const k = e.laid++;
+      if (k > n * 3) { e.load = 0; break; }
+      const j = k % 2 ? (k + 1) >> 1 : -(k >> 1);
+      const off = (j - (n % 2 ? 0 : 0.5)) * eng.gap;
+      const x = e.layX + e.layPX * off, z = e.layZ + e.layPZ * off;
+      if (x < 1 || z < 1 || x > this.W - 1 || z > this.H - 1) continue;
+      const c = this.cellOf(x, z);
+      if (this.map.grid[c] !== T_OPEN || this.occ[c]) continue;
+      if (eng.lay === 'tanktrap') {
+        const cx = Math.floor(x), cz = Math.floor(z);
+        const b = this.buckets && this.buckets.get(c);
+        if (b && b.length) continue;                     // somebody is standing there
+        const t = this.spawn(e.team, 'tanktrap', cx, cz, 0);
+        t.placedRound = -1;
+        this.events.push({ t: 'lay', id: e.id, x: cx + 0.5, z: cz + 0.5, kind: 'tanktrap', team: e.team });
+      } else {
+        if (this.mines.some(m => Math.abs(m.x - x) < 0.7 && Math.abs(m.z - z) < 0.7)) continue;
+        const mine = { id: this.mineId++, team: e.team, kind: eng.lay, x, z };
+        this.mines.push(mine);
+        const ours = this.mines.filter(m => m.team === e.team);
+        if (ours.length > RULES.mines.perTeam) this.mines.splice(this.mines.indexOf(ours[0]), 1);
+        this.events.push({ t: 'lay', id: e.id, x, z, kind: eng.lay, team: e.team, mine: mine.id });
+      }
+      e.load--;
+      return;
+    }
+  }
+  // a mine goes off under the first enemy that steps or drives on it (anti-tank: vehicles only)
+  stepMines() {
+    if (!this.mines.length) return;
+    const keep = [];
+    for (const m of this.mines) {
+      const spec = RULES.mines[m.kind];
+      let hit = null;
+      const cx = Math.floor(m.x), cz = Math.floor(m.z);
+      for (let dz = -2; dz <= 2 && !hit; dz++) for (let dx = -2; dx <= 2 && !hit; dx++) {
+        const b = this.buckets.get((cz + dz) * this.W + cx + dx);
+        if (!b) continue;
+        for (const o of b) {
+          if (o.team === m.team || !this.active(o) || !this.teams[o.team].alive) continue;
+          if (m.kind === 'at' ? !o.def.vehicle : o.def.cls !== 'infantry') continue;
+          const r = spec.trigger + (m.kind === 'at' ? o.def.radius * 0.6 : 0), ddx = o.x - m.x, ddz = o.z - m.z;
+          if (ddx * ddx + ddz * ddz < r * r) { hit = o; break; }
+        }
+      }
+      if (!hit) { keep.push(m); continue; }
+      this.events.push({ t: 'mine', kind: m.kind, x: m.x, z: m.z, team: m.team, mine: m.id });
+      this.explode(m.x, m.z, spec.radius, spec.dmg, { id: 0, team: m.team, x: m.x, z: m.z }, 'mine', 0);
+    }
+    this.mines = keep;
   }
 
   // ---- paratroopers --------------------------------------------------------------
@@ -1065,13 +1213,16 @@ export class Sim {
       if (!field) { if (!tgt) return; gx = tgt.x; gz = tgt.z; }
       else {
         const cx = c % this.W, cy = (c / this.W) | 0;
-        let best = -1, bestD = field[c];
+        let best = -1, bestD = field[c], free = -1, freeD = field[c];
         for (let k = 0; k < 8; k++) {
           const nx = cx + NX[k], ny = cy + NY[k];
           if (!this.inside(nx, ny)) continue;
           const n = ny * this.W + nx;
           if (field[n] < bestD - 0.01) { bestD = field[n]; best = n; }
+          if (field[n] < freeD - 0.01 && this.canEnter(e, n) && (k < 4 || (this.canEnter(e, cy * this.W + nx) && this.canEnter(e, ny * this.W + cx)))) { freeD = field[n]; free = n; }
         }
+        // the best cell is blocked by something of our own (a gun, a wall) or a corner: take the next best way
+        if (best >= 0 && !this.canEnter(e, best)) { const o = this.byId.get(this.occ[best]); if ((!o || o.team === e.team) && free >= 0) best = free; }
         if (best < 0) {
           // at a goal or stuck in a local minimum: head straight for the target if we have one
           if (!tgt) return;
@@ -1098,7 +1249,12 @@ export class Sim {
     if (l < 0.02) return;
     if (cls === 'air' && tgt && l < e.def.weapon.range * 0.7) return;
     const k = Math.min(spd, l) / l;
-    this.tryMove(e, dx * k, dz * k);
+    if (this.tryMove(e, dx * k, dz * k)) e.stuck = 0;
+    else if (++e.stuck > 10) {
+      // blocked (a crowd at a gate, a corner): step sideways, alternating sides
+      const side = (e.id + (e.stuck >> 4)) % 2 ? 1 : -1;
+      if (!this.tryMove(e, -dz / l * spd * side, dx / l * spd * side)) this.tryMove(e, dz / l * spd * side, -dx / l * spd * side);
+    }
     e.dirX = dx / l; e.dirZ = dz / l;
     e.moving = true;
   }
@@ -1178,6 +1334,7 @@ export class Sim {
     let h = 2166136261;
     const mix = v => { h ^= Math.round(v * 1000) | 0; h = Math.imul(h, 16777619); };
     for (const e of this.ents) { mix(e.id); mix(e.x); mix(e.z); mix(e.y); mix(e.hp); mix(e.dead ? 1 : 0); mix(e.down ? 1 : 0); }
+    for (const m of this.mines) { mix(m.id); mix(m.x); mix(m.z); }
     for (const t of this.teams) { mix(t.money); mix(t.kills); mix(t.saved); mix(t.alive ? 1 : 0); }
     return (h >>> 0).toString(16);
   }

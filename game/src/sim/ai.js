@@ -67,6 +67,8 @@ export function aiDeploy(sim, teamId, seed) {
   let myInf = 0, myMedic = 0;
   for (const e of sim.ents) if (e.team === teamId && !e.dead) { if (e.def.cls === 'infantry') myInf++; if (e.def.medic) myMedic++; }
   if (!myMedic && (sim.round >= 2 || m > 900) && rng() < 0.6) vehiclePlan.push('ambulance');
+  // engineers: mines and tank traps in front of the base, more often when the enemy has armour
+  if (m > 400 && rng() < (t.stance === 'defend' ? 0.6 : 0.3)) vehiclePlan.push(enemyArmor > 150 && rng() < 0.7 ? (rng() < 0.5 ? 'eng_at' : 'eng_traps') : 'eng_ap');
   for (const v of vehiclePlan.slice(0, RULES.vehiclesPerRound)) {
     if (CATALOG[v].cost > budget() * 0.5) continue;
     const back = v === 'rockets';
