@@ -108,6 +108,8 @@ const CREW_NATION = {
     tank: [['lookout', -0.2, 0.86, 0.15]],
     tank_light: [['lookout', -0.12, 0.6, -0.07]],
     tank_heavy: [['lookout', -0.3, 0.96, 0.18]],
+    amphib: [],
+    heli: [['driver', 0.3, -0.58, 0]],
   },
   fr: {
     jeep: [['driver', -0.1, 0.46, -0.2], ['mgstand', -0.7, 0.45, 0]],
@@ -116,6 +118,7 @@ const CREW_NATION = {
     tank: [['lookout', -0.15, 0.9, 0.2]],
     tank_light: [['lookout', -0.12, 0.66, 0.12]],
     tank_heavy: [['lookout', 0.12, 1.02, 0.16]],
+    amphib: [['driver', 0.09, 0.6, -0.2], ['mgstand', -0.58, 0.72, 0]],
     heli: [['driver', 0.2, -0.2, 0], ['driver', -0.25, -0.2, 0]],
   },
   gb: {
@@ -135,7 +138,8 @@ const ROTORS = { us: { rotors: [[0.3, 0.7, 0, 0, 1]], tail: [-1.85, 0.45, 0.06] 
   su: { rotors: [[0.15, 0.8, 0, 0, 1]], tail: null },                                         // the Kamov autogyro
   gb: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },                                          // the Cierva autogyro
   jp: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },                                          // the Kayaba autogyro
-  fr: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null } };                                        // the LeO-built Cierva
+  fr: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },                                         // the LeO-built Cierva
+  it: { rotors: [[0.0, 0.86, 0, 0, 1], [0.0, 0.98, 0, 0, -1]], tail: null } };                 // D'Ascanio's coaxial pair
 // Toy vehicles and aircraft modelled in Blender (tools/blender/vehicles.py and vehicles_<nation>.py).
 function buildVehicle(key, nation = 'us') {
   const v = vehData(key, nation), g = (p, c) => figureGeometry(p, c, VEHICLE_SCALE, true);

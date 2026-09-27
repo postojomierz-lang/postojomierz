@@ -1,10 +1,10 @@
 # The French Army's vehicles, aircraft and headquarters, built with the tools in vehicles.py:
 # Laffly V15T, Renault trucks with the engine ahead of the radiator (ambulance and engineers),
 # Panhard 178 armoured car, Renault R35, Somua S35, Char B1 bis, the LeO C.30 autogyro (the
-# licence-built Cierva, so the British model is reused), Dewoitine D.520, Breguet 693, LeO 451 and
-# a stone farmhouse. (No amphibian, rocket lorry or transport of their own: the American models
-# are used.) Written to .cache/figures/vehicles/fr; tools/figures.mjs packs them into
-# public/nation-fr.js.
+# licence-built Cierva, so the British model is reused), Dewoitine D.520, Breguet 693, LeO 451,
+# the Potez 650 transport and a stone farmhouse. France fielded no amphibian or rocket lorry, so
+# those two (a Laffly amphibian, a Renault with a rocket rack) are in the style of the time.
+# Written to .cache/figures/vehicles/fr; tools/figures.mjs packs them into public/nation-fr.js.
 #
 #   python tools/blender/vehicles_fr.py [name ...]
 import math, os, sys
@@ -296,8 +296,81 @@ def hq():
     for a in (0.5, 2.6, 4.7): m.cyl('dark', (-1.2, 3.1, -0.8), (-1.2 + math.cos(a) * 1.0, 0.05, -0.8 + math.sin(a) * 1.0), 0.004, seg=4)
     m.finish()
 
-MODELS = {'jeep': jeep, 'ambulance': ambulance, 'engtruck': engtruck, 'apc': apc, 'tank_light': tank_light, 'tank': tank,
-          'tank_heavy': tank_heavy, 'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'hq': hq}
+def amphib():
+    """an amphibian on the Laffly 4x4: a boat hull with the square Laffly nose, four wheels, an open
+    cab behind a folding screen, a Hotchkiss on a ring over the well, propeller and rudder. (France
+    fielded none; this is the kind Laffly might have built.)"""
+    m = Model('amphib')
+    m.loft('main', [(-1.02, 0.38, 0.86, 0.42, 7), (-0.85, 0.3, 0.9, 0.5, 8), (0.55, 0.3, 0.9, 0.5, 8), (0.9, 0.4, 0.9, 0.44, 7), (1.08, 0.58, 0.88, 0.34, 6)], seg=36, bevel=0.01)
+    m.box('main', (1.1, 0.72, 0), (0.03, 0.24, 0.56), bevel=0.01)
+    for k in range(8): m.box('dark', (1.115, 0.72, -0.21 + k * 0.06), (0.012, 0.2, 0.02), bevel=0.0)
+    m.box('dark', (-0.4, 0.905, 0), (1.0, 0.012, 0.86), bevel=0.0)
+    fr = lambda c, sz: m.box('main', c, sz, bevel=0.006, pitch=-0.15)
+    fr((0.4, 1.2, 0), (0.035, 0.035, 0.9))
+    for z in (-0.44, 0.44): fr((0.41, 1.06, z), (0.03, 0.28, 0.03))
+    m.box(GLASS, (0.41, 1.06, 0), (0.01, 0.26, 0.84), bevel=0.0, pitch=-0.15)
+    seat(m, 0.12, 0.94, 0, w=0.84); steering(m, 0.3, 1.08, -0.2)
+    for z in (-0.3, 0.3): m.headlamp((0.98, 0.94, z), 0.04)
+    for z in (-0.5, 0.5): m.torus(WHITE, (-0.6, 0.72, z * 1.03), (0, 0, 1), 0.11, 0.032, seg=20)
+    m.torus('main', (-0.45, 1.28, 0), (0, 1, 0), 0.26, 0.02, seg=32)
+    for a in (0.8, 2.35, 3.9, 5.5): m.cyl('main', (-0.45 + math.cos(a) * 0.26, 0.91, math.sin(a) * 0.26), (-0.45 + math.cos(a) * 0.26, 1.28, math.sin(a) * 0.26), 0.015, seg=6)
+    m.mg((-0.22, 1.34, 0), 0.6)
+    m.cyl('dark', (-0.98, 0.36, 0), (-1.14, 0.36, 0), 0.03)
+    for a in (0.3, 2.4, 4.5): m.box('dark', (-1.15, 0.36 + math.sin(a) * 0.07, math.cos(a) * 0.07), (0.03, 0.12, 0.05), bevel=0.005, roll=a)
+    m.box('dark', (-1.22, 0.38, 0), (0.06, 0.24, 0.02), bevel=0.005)
+    for x in (0.62, -0.55):
+        for z in (-0.48, 0.48): m.tyre((x, 0.23, z), 0.23, 0.15)
+    m.finish()
+
+def rockets():
+    """a Renault lorry carrying a turntable rack of eighteen rocket tubes. (France had no rocket
+    artillery of its own; the rack follows the ones the Free French saw in 1944.)"""
+    m = Model('rockets')
+    for z in (-0.3, 0.3): m.box('dark', (0, 0.34, z), (2.5, 0.1, 0.08), bevel=0.01)
+    renault_front(m, 0.42)
+    m.box('main', (-0.55, 0.5, 0), (1.6, 0.1, 0.96), bevel=0.02)
+    m.cyl('main', (-0.6, 0.55, 0), (-0.6, 0.66, 0), 0.3, seg=28, bevel=0.01)          # turntable
+    tilt = 0.45; ct, st = math.cos(tilt), math.sin(tilt)
+    for r in range(3):
+        for c in range(6):
+            z = -0.3 + c * 0.12; y = 0.9 + r * 0.12
+            m.lathe('main', [(0.05, 0.0), (0.05, 1.0), (0.0, 1.0)], (-1.05, y, z), (ct, st, 0), seg=12)
+            m.cyl('dark', (-1.05, y, z), (-1.04, y + 0.005, z), 0.04, seg=12)
+    for x in (-0.95, -0.55): m.box('main', (x, 1.0 + (x + 1.05) * st / ct, 0), (0.05, 0.4, 0.78), bevel=0.01, pitch=tilt)
+    m.box('main', (-0.6, 0.78, 0), (0.25, 0.26, 0.3), bevel=0.02)
+    for z in (-0.5, 0.5):
+        m.cyl('main', (-1.2, 0.5, z), (-1.3, 0.08, z * 1.12), 0.035)
+        m.cyl('main', (-1.3, 0.06, z * 1.12), (-1.3, 0.02, z * 1.12), 0.08)
+    for x in (0.97, -0.35, -0.85):
+        for z in (-0.5, 0.5): m.tyre((x, 0.28, z), 0.28, 0.19)
+    m.finish()
+
+def transport():
+    """Potez 650: the paratroop version of the Potez 62 airliner - a slim fuselage with square
+    cabin windows under a high wing, two radials in nacelles slung below it, fixed wheels, and
+    twin fins on the tailplane."""
+    m = Model('transport')
+    fuselage(m, [(1.52, -0.06, 0.08, 0.07, 2), (1.3, -0.2, 0.2, 0.18, 2.3), (1.0, -0.26, 0.26, 0.22, 2.6), (0.2, -0.27, 0.28, 0.23, 2.8),
+                 (-0.8, -0.2, 0.25, 0.18, 2.6), (-1.35, -0.02, 0.18, 0.08, 2.2), (-1.6, 0.06, 0.14, 0.03, 2.0)], seg=40)
+    for z in (-0.1, 0.1): m.box(GLASS, (1.28, 0.16, z * 1.2), (0.14, 0.08, 0.1), bevel=0.0, yaw=-z * 3, pitch=-0.5)
+    for s in (1, -1):
+        for k in range(6): m.box(GLASS, (0.72 - k * 0.2, 0.08, s * 0.232), (0.1, 0.09, 0.012), bevel=0.0)
+    m.box('dark', (-0.65, -0.02, -0.21), (0.2, 0.3, 0.012), bevel=0.0)                  # jump door
+    m.wing('main', [(-1.9, 0.3, 0.26, 0.32), (-1.2, 0.42, 0.5, 0.31), (-0.3, 0.5, 0.72, 0.3), (0.0, 0.52, 0.74, 0.3),
+                    (0.3, 0.5, 0.72, 0.3), (1.2, 0.42, 0.5, 0.31), (1.9, 0.3, 0.26, 0.32)], thick=0.13)
+    for z in (-0.66, 0.66):
+        nacelle(m, 0.8, 0.14, z, 0.16, 0.8, 0.42)
+        for dz in (-0.06, 0.06): m.cyl('main', (0.32, 0.02, z + dz), (0.32, -0.34, z + dz * 0.3), 0.018, seg=8)   # the fixed legs
+        m.lathe('dark', [(0.03, -0.04), (0.08, -0.04), (0.09, 0.0), (0.08, 0.04), (0.03, 0.04)], (0.32, -0.35, z), (0, 0, 1), seg=18, closed=True)
+        m.cyl('main', (0.4, 0.3, z * 0.4), (0.32, -0.3, z), 0.012, seg=6)
+    m.wing('main', [(-0.46, -1.24, 0.22, 0.1), (-0.3, -1.2, 0.3, 0.1), (0.0, -1.18, 0.34, 0.1), (0.3, -1.2, 0.3, 0.1), (0.46, -1.24, 0.22, 0.1)], thick=0.1)
+    for z in (-0.47, 0.47):
+        m.wing('main', [(-0.06, -1.24, 0.18, z), (0.08, -1.2, 0.26, z), (0.24, -1.22, 0.22, z), (0.32, -1.27, 0.1, z)], thick=0.1, vertical=True)
+    m.lathe('dark', [(0.02, -0.02), (0.04, -0.02), (0.04, 0.02), (0.02, 0.02)], (-1.45, -0.04, 0), (0, 0, 1), seg=12, closed=True)
+    m.finish()
+
+MODELS = {'jeep': jeep, 'ambulance': ambulance, 'engtruck': engtruck, 'apc': apc, 'amphib': amphib, 'tank_light': tank_light, 'tank': tank,
+          'tank_heavy': tank_heavy, 'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'transport': transport, 'rockets': rockets, 'hq': hq}
 
 if __name__ == '__main__':
     only = sys.argv[1:]

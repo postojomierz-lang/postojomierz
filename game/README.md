@@ -110,14 +110,16 @@ Kayaba Ka-1 autogyro, Zero, Val, Betty (the L2D was a DC-3) and a field headquar
 the Adrian helmet with its crest and badge, puttees, the M1935 pack with its rolled blanket and
 mess tin, kepi for officers, MAS-36 with the spike bayonet, FM 24/29 with its top magazine (and
 American bazookas, as issued to the Free French); Laffly V15T, Renault lorries, Panhard 178,
-R35, Somua S35, Char B1 bis, the LeO C.30 autogyro, Dewoitine D.520, Breguet 693, LeO 451 and
-a stone farmhouse (no amphibian, rocket lorry or transport of their own: the American ones).
+R35, Somua S35, Char B1 bis, the LeO C.30 autogyro, Dewoitine D.520, Breguet 693, LeO 451, the
+Potez 650 paratroop transport and a stone farmhouse, plus a Laffly amphibian and a Renault with a
+rocket rack in the style of the time (France fielded neither).
 Italy: the M33 helmet, the bustina side cap for officers, puttees, the M1939 pack with the telo
 tenda rolled round it, Carcano with its folding bayonet, Breda 30 with the side magazine,
 Solothurn anti-tank rifle, SRCM 'red devil' grenades; Fiat 508 CM, Fiat 626 cab-over lorries,
-AB 41 armoured car, L6/40, M13/40, P26/40, Macchi C.202, Breda Ba.65, the three-engined SM.79
-and a farmhouse with its dovecote tower (the amphibian, rocket lorry, helicopter and transport
-are the American ones).
+AB 41 armoured car, the amphibious L3 prototype, L6/40, M13/40, P26/40, D'Ascanio's D'AT3
+helicopter with its coaxial rotors, Macchi C.202, Breda Ba.65, the three-engined SM.79 and SM.82
+and a farmhouse with its dovecote tower, plus a Fiat 626 with launch rails in the style of the
+time (Italy fielded no rocket lorry).
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
