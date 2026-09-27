@@ -40,7 +40,7 @@ const MUZZLE = {
   'jp:apc': [0.27, 1.12], 'jp:amphib': [0.92, 0.9], 'jp:tank_light': [0.84, 0.92], 'jp:tank': [1.32, 1.06], 'jp:tank_heavy': [2.57, 1.2],
   'jp:rockets': [0.07, 1.42], 'jp:heli': [0.45, -0.08], 'jp:fighter': [0.48, -0.06], 'jp:attacker': [0.3, -0.1], 'jp:bomber': [0.1, -0.27], 'jp:hq': [1.3, 0.8], 'jp:transport': [-0.7, -0.02],
   'su:heli': [0.45, -0.08], 'su:fighter': [0.7, 0.1], 'su:attacker': [0.5, -0.08], 'su:bomber': [0.2, -0.19], 'su:hq': [1.42, 0.62],
-  mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
+  mgnest: [1.0, 0.62], fieldgun: [1.41, 1.12], aa: [1.03, 1.59], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
 // the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)
 const POSE_MUZZLE = { 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
