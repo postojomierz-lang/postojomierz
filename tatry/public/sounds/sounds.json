@@ -1,0 +1,61 @@
+{
+ "stream": [
+  "stream"
+ ],
+ "waterfall": [
+  "waterfall"
+ ],
+ "windForest": [
+  "wind_forest"
+ ],
+ "windOpen": [
+  "wind_open"
+ ],
+ "stepsGravel": [
+  "step_gravel_0",
+  "step_gravel_1",
+  "step_gravel_2",
+  "step_gravel_3",
+  "step_gravel_4",
+  "step_gravel_5"
+ ],
+ "stepsRock": [
+  "step_rock_0",
+  "step_rock_1",
+  "step_rock_2",
+  "step_rock_3",
+  "step_rock_4",
+  "step_rock_5"
+ ],
+ "stepsGrass": [
+  "step_grass_0",
+  "step_grass_1",
+  "step_grass_2",
+  "step_grass_3",
+  "step_grass_4",
+  "step_grass_5"
+ ],
+ "wren": [
+  "wren_0",
+  "wren_1",
+  "wren_2"
+ ],
+ "forest": [
+  "forest_0",
+  "forest_1",
+  "forest_2"
+ ],
+ "redstart": [
+  "redstart_0",
+  "redstart_1"
+ ],
+ "chough": [
+  "chough_0",
+  "chough_1"
+ ],
+ "marmot": [
+  "marmot_0",
+  "marmot_1",
+  "marmot_2"
+ ]
+}
