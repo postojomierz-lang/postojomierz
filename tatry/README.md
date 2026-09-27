@@ -55,10 +55,12 @@ spieniona, a u podnóża unosi się pył wodny. Daleko od kamery teren jest ryso
 przykrywa wąskie koryta, więc woda jest lekko przysuwana do kamery.
 
 ## Dźwięki
-Nagrania z Wikimedia Commons (CC0, CC BY, CC BY-SA; autorzy i licencje w `public/sounds/credits.json`,
-wyświetlane też w oknie pomocy). `python3 tools/prepare_sounds.py <katalog z pobranymi plikami>` tnie
-pętle (potok, wodospad, wiatr), pojedyncze kroki i głosy ptaków oraz świstaków, i zapisuje spis
-`sounds.json`. Silnik (`src/sound.js`, Web Audio) startuje po pierwszym klawiszu lub kliknięciu:
-wiatr zależny od wysokości, lasu i pogody, przestrzenny szum najbliższych potoków i wodospadu, kroki
-(ciszej i głucho poza ścieżką), ptaki według piętra roślinności, gwizdy świstaków na halach. Klawisz N
-lub 🔊 wycisza.
+Nagrania z Freesound (CC0 i CC BY 4.0; autorzy i licencje w `public/sounds/credits.json`, wyświetlane
+też w oknie pomocy). `python3 tools/fetch_freesound.py` pobiera je (wymaga nagłówka
+`Authorization: Token <klucz>` dla freesound.org, np. wstrzykiwanego przez środowisko), a
+`python3 tools/prepare_sounds.py <katalog>` tnie pętle (potok, wodospad, wiatr), pojedyncze kroki
+(żwir, skała, trawa) i głosy ptaków oraz świstaka, i zapisuje spis `sounds.json`. Silnik
+(`src/sound.js`, Web Audio) startuje po pierwszym klawiszu lub kliknięciu: wiatr zależny od wysokości,
+lasu i pogody, przestrzenny szum najbliższych potoków i wodospadu, kroki według podłoża, ptaki według
+piętra (strzyżyk i chór leśny w lesie, kopciuszek przy skałach, wieszczek na graniach), gwizdy
+świstaka na halach. Klawisz N lub 🔊 wycisza.

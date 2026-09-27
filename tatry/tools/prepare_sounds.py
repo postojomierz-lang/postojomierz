@@ -1,4 +1,4 @@
-"""Turns the downloaded Wikimedia Commons recordings into the game's sound files (public/sounds/).
+"""Turns the downloaded recordings (Freesound previews, tools/fetch_freesound.py) into the game's sound files (public/sounds/).
 
 - loops (stream, waterfall, wind): a clean stretch, mono, seamless loop by crossfading the end into
   the start, RMS-normalised;
@@ -88,20 +88,20 @@ def done(name, key, group=None):
 
 for f in os.listdir(OUT):
     if f.endswith('.mp3'): os.remove(os.path.join(OUT, f))
-save(loop(load('stream'), 8, 22, 2.0, 0.12), 'stream'); done('stream', 'stream', 'stream')
-save(loop(load('waterfall'), 2, 24, 2.5, 0.14), 'waterfall'); done('waterfall', 'waterfall', 'waterfall')
-save(loop(load('wind_forest'), 5, 40, 4.0, 0.1), 'wind_forest'); done('wind_forest', 'wind_forest', 'windForest')
-if have('wind_open'):
-    save(loop(load('wind_open'), 3, 36, 4.0, 0.1), 'wind_open'); done('wind_open', 'wind_open', 'windOpen')
-else:  # stand-in: a later stretch of the forest wind
-    save(loop(load('wind_forest'), 20, 36, 4.0, 0.1), 'wind_open'); done('wind_open', 'wind_forest', 'windOpen')
-for k, s in enumerate(steps(load('steps'), 6)): save(s, f'step_{k}', '64k'); done(f'step_{k}', 'steps', 'steps')
-for key, n in (('wren', 3), ('robin', 2), ('nutcracker', 2), ('chough', 2)):
-    if not have(key): continue
-    for k, s in enumerate(phrases(load(key), n, min_len=0.6)): save(s, f'{key}_{k}', '64k'); done(f'{key}_{k}', key, key)
-for k, s in enumerate(phrases(load('marmot'), 3, min_len=0.15, max_len=2.5, gap=0.25)): save(s, f'marmot_{k}', '64k'); done(f'marmot_{k}', 'marmot', 'marmot')
+save(loop(load('stream'), 10, 26, 2.5, 0.12), 'stream'); done('stream', 'stream', 'stream')
+save(loop(load('waterfall'), 20, 30, 3.0, 0.14), 'waterfall'); done('waterfall', 'waterfall', 'waterfall')
+save(loop(load('wind_forest'), 15, 45, 4.0, 0.1), 'wind_forest'); done('wind_forest', 'wind_forest', 'windForest')
+save(loop(load('wind_open'), 40, 50, 5.0, 0.1), 'wind_open'); done('wind_open', 'wind_open', 'windOpen')
+for surf in ('gravel', 'rock', 'grass'):
+    key = 'steps_' + surf
+    for k, x in enumerate(steps(load(key), 6)):
+        save(x, f'step_{surf}_{k}', '64k'); done(f'step_{surf}_{k}', key, 'steps' + surf.capitalize())
+for key, n, ml in (('wren', 3, 0.8), ('forest', 4, 1.2), ('redstart', 2, 0.8), ('chough', 3, 0.5)):
+    for k, x in enumerate(phrases(load(key), n, min_len=ml)): save(x, f'{key}_{k}', '64k'); done(f'{key}_{k}', key, key)
+# alpine marmot (Alps); the hoary marmot recording sounds nothing like the Tatra species
+for k, x in enumerate(phrases(load('marmot'), 3, min_len=0.15, max_len=2.5, gap=0.25)):
+    save(x, f'marmot_{k}', '64k'); done(f'marmot_{k}', 'marmot', 'marmot')
 json.dump(groups, open(os.path.join(OUT, 'sounds.json'), 'w'), indent=1)
-
 credits = json.load(open(os.path.join(raw_dir, 'credits.json')))
 used = sorted(set(made.values()))
 json.dump({k: credits[k] for k in used if k in credits}, open(os.path.join(OUT, 'credits.json'), 'w'), indent=1, ensure_ascii=False)

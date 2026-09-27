@@ -1,38 +1,74 @@
 {
- "marmot": {
-  "title": "Alpine marmot call.wav",
-  "author": "TanguyLoïs",
-  "license": "CC BY-SA 4.0",
-  "url": "https://commons.wikimedia.org/wiki/File:Alpine_marmot_call.wav"
+ "chough": {
+  "title": "20110824_morning.Chough 01.wav",
+  "author": "dobroide",
+  "license": "CC BY 4.0",
+  "url": "https://freesound.org/people/dobroide/sounds/127353/"
  },
- "steps": {
-  "title": "Walking-on-gravel-38827.ogg",
-  "author": "",
+ "forest": {
+  "title": "forest june 1047AM 220617_0403.wav",
+  "author": "klankbeeld",
+  "license": "CC BY 4.0",
+  "url": "https://freesound.org/people/klankbeeld/sounds/658498/"
+ },
+ "marmot": {
+  "title": "Marmotte + Torrent.wav",
+  "author": "FrancoisTJP",
   "license": "CC0",
-  "url": "https://commons.wikimedia.org/wiki/File:Walking-on-gravel-38827.ogg"
+  "url": "https://freesound.org/people/FrancoisTJP/sounds/351664/"
+ },
+ "redstart": {
+  "title": "1165black_ redstart.wav",
+  "author": "reinsamba",
+  "license": "CC BY 4.0",
+  "url": "https://freesound.org/people/reinsamba/sounds/56302/"
+ },
+ "steps_grass": {
+  "title": "passos grama.wav",
+  "author": "AgnesLenz",
+  "license": "CC0",
+  "url": "https://freesound.org/people/AgnesLenz/sounds/580699/"
+ },
+ "steps_gravel": {
+  "title": "Walking On Gravel",
+  "author": "sweetchango",
+  "license": "CC0",
+  "url": "https://freesound.org/people/sweetchango/sounds/609173/"
+ },
+ "steps_rock": {
+  "title": "Footsteps Rock - Dry floor, walk & run",
+  "author": "Vrymaa",
+  "license": "CC0",
+  "url": "https://freesound.org/people/Vrymaa/sounds/770084/"
  },
  "stream": {
-  "title": "433589 jackthemurray stream-river-water-up-close.wav",
-  "author": "jackthemurray",
+  "title": "Stream - Flowing, bubbling",
+  "author": "RealSquink",
   "license": "CC0",
-  "url": "https://commons.wikimedia.org/wiki/File:433589_jackthemurray_stream-river-water-up-close.wav"
+  "url": "https://freesound.org/people/RealSquink/sounds/826443/"
  },
  "waterfall": {
-  "title": "Water fall.ogg",
-  "author": "Benzband",
-  "license": "CC BY-SA 3.0",
-  "url": "https://commons.wikimedia.org/wiki/File:Water_fall.ogg"
+  "title": "Big waterfall in forest.wav",
+  "author": "BonnyOrbit",
+  "license": "CC0",
+  "url": "https://freesound.org/people/BonnyOrbit/sounds/442475/"
  },
  "wind_forest": {
-  "title": "Wind in Swedish pine forest at 25 mps.ogg",
-  "author": "W.carter",
-  "license": "CC BY-SA 4.0",
-  "url": "https://commons.wikimedia.org/wiki/File:Wind_in_Swedish_pine_forest_at_25_mps.ogg"
+  "title": "Strong Wind Through Spruce With Birds",
+  "author": "Sotiris_Laskaris",
+  "license": "CC0",
+  "url": "https://freesound.org/people/Sotiris_Laskaris/sounds/679753/"
+ },
+ "wind_open": {
+  "title": "Wind medium to strong gusts in remote countryside (France)",
+  "author": "michaelperfect",
+  "license": "CC BY 4.0",
+  "url": "https://freesound.org/people/michaelperfect/sounds/578630/"
  },
  "wren": {
-  "title": "Troglodytes troglodytes - Eurasian Wren XC125791.ogg",
-  "author": "Dan Stowell",
-  "license": "CC BY-SA 3.0",
-  "url": "https://commons.wikimedia.org/wiki/File:Troglodytes_troglodytes_-_Eurasian_Wren_XC125791.ogg"
+  "title": "2012_05_16_wren.wav",
+  "author": "reinsamba",
+  "license": "CC BY 4.0",
+  "url": "https://freesound.org/people/reinsamba/sounds/156032/"
  }
 }

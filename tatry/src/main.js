@@ -614,10 +614,11 @@ async function main() {
   $('sources').textContent = meta.sources + '; textures: Poly Haven (CC0)';
   // sound credits (CC BY / CC BY-SA need the authors shown)
   fetch('sounds/credits.json').then((r) => r.json()).then((cr) => {
-    const names = { stream: 'potok', waterfall: 'wodospad', wind_forest: 'wiatr w lesie', wind_open: 'wiatr', steps: 'kroki',
-      marmot: 'świstak', wren: 'strzyżyk', robin: 'rudzik', nutcracker: 'orzechówka', chough: 'wieszczek' };
+    const names = { stream: 'potok', waterfall: 'wodospad', wind_forest: 'wiatr w lesie', wind_open: 'wiatr', steps_gravel: 'kroki na żwirze',
+      steps_rock: 'kroki na skale', steps_grass: 'kroki w trawie', marmot: 'świstak', wren: 'strzyżyk', forest: 'ptaki w lesie',
+      redstart: 'kopciuszek', chough: 'wieszczek' };
     const el = document.createElement('p'); el.className = 'note';
-    el.textContent = 'Dźwięki (Wikimedia Commons): ' + Object.entries(cr).map(([k, c]) =>
+    el.textContent = 'Dźwięki (Freesound): ' + Object.entries(cr).map(([k, c]) =>
       `${names[k] || k}: ${c.author || 'autor nieznany'}, ${c.license}`).join('; ') + '.';
     $('help').insertBefore(el, $('help').lastElementChild);
   }).catch(() => {});

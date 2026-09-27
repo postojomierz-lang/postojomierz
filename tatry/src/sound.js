@@ -1,6 +1,6 @@
 // Sound (Web Audio): wind that depends on altitude, forest and weather; the nearest streams and
 // waterfall as positional sources; footsteps on the trail; birds in the forest and marmots whistling
-// on the alpine meadows. Recordings from Wikimedia Commons (see public/sounds/credits.json).
+// on the alpine meadows. Recordings from Freesound (CC0 / CC BY, see public/sounds/credits.json).
 // Browsers only allow audio after a user gesture, so everything starts on the first key or click.
 
 export class Sound {
@@ -35,11 +35,13 @@ export class Sound {
     const groups = await (await fetch(this.base + 'sounds.json')).json();
     await Promise.all(Object.entries(groups).map(async ([k, names]) => { this.buf[k] = await Promise.all(names.map(load)); }));
     for (const k of ['stream', 'waterfall', 'windForest', 'windOpen']) this.buf[k] = this.buf[k][0];
-    const pick = (...ks) => ks.map((k) => this.buf[k]).find((b) => b && b.length) || null;
+    const g = (k) => (this.buf[k] && this.buf[k].length ? this.buf[k] : null);
+    // who sings where: wren and the mixed forest chorus below the tree line, black redstart around
+    // the hut and on rocks, alpine chough up on the crags
     this.pools = {
-      forest: [pick('wren'), pick('robin'), pick('nutcracker')].filter(Boolean),
-      edge: [pick('nutcracker'), pick('chough'), pick('wren')].filter(Boolean),
-      rock: [pick('chough'), pick('nutcracker')].filter(Boolean),
+      forest: [g('wren'), g('forest'), g('forest')].filter(Boolean),
+      edge: [g('redstart'), g('wren'), g('chough')].filter(Boolean),
+      rock: [g('chough'), g('redstart')].filter(Boolean),
     };
     const loop = (buffer, gain = 0) => {
       const src = ctx.createBufferSource(); src.buffer = buffer; src.loop = true;
@@ -137,11 +139,10 @@ export class Sound {
       this.stepAcc += speed * dt;
       if (this.stepAcc > 0.75) {
         this.stepAcc = 0;
+        // gravel on the path below the dwarf pine, bare rock above it, grass off the path
         const onPath = this.isPath(c.x, c.z);
-        this.stepFilter.frequency.setTargetAtTime(onPath ? 9000 : 2200, now, 0.05);
-        const s = this.buf.steps || [];
-        if (s.length)
-        this.play(s[Math.floor(Math.random() * s.length)], { gain: onPath ? 0.35 : 0.22, rate: 0.9 + Math.random() * 0.2, dest: this.stepFilter });
+        const s = (onPath ? (ground < 1700 ? this.buf.stepsGravel : this.buf.stepsRock) : this.buf.stepsGrass) || this.buf.stepsGravel || [];
+        if (s.length) this.play(s[Math.floor(Math.random() * s.length)], { gain: 0.35, rate: 0.92 + Math.random() * 0.16, dest: this.stepFilter });
       }
     } else this.stepAcc = 0.5;
 
