@@ -101,7 +101,12 @@ log dugout command post. Great Britain: the Brodie helmet, battledress with '37 
 big chest pouches, short anklets, beret for the officers, Lee-Enfield, Bren, PIAT, the Boys
 anti-tank rifle; Universal (Bren) Carrier, Austin K2 ambulance, Bedford truck, Daimler armoured
 car, Terrapin, Tetrarch, Cromwell, Churchill, a Bedford with the Land Mattress launcher, the Cierva
-C.30 autogyro, Spitfire, Typhoon, Lancaster (and the Dakota) and a sandbagged Nissen hut.
+C.30 autogyro, Spitfire, Typhoon, Lancaster (and the Dakota) and a sandbagged Nissen hut. Japan: the
+Type 90 helmet with the star and neck flaps, puttees, the knapsack with its blanket roll, field
+cap and sword for officers, Arisaka with the long Type 30 bayonet, Type 96 LMG, Type 97 anti-tank
+rifle, Type 89 knee mortar, Type 97 grenades; Kurogane, Isuzu Type 94, Ho-Ha half-track, Ka-Mi
+amphibious tank, Ha-Go, Chi-Ha (with its handrail aerial), Chi-To, rocket rails on an Isuzu, the
+Kayaba Ka-1 autogyro, Zero, Val, Betty (the L2D was a DC-3) and a field headquarters house.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)

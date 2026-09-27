@@ -91,6 +91,16 @@ const CREW_NATION = {
     tank_heavy: [['lookout', -0.33, 1.0, -0.3]],
     heli: [['driver', 0.2, -0.2, 0], ['driver', -0.25, -0.2, 0]],
   },
+  jp: {
+    jeep: [['driver', -0.07, 0.44, -0.2], ['mgstand', -0.7, 0.43, 0]],
+    engtruck: [],
+    apc: [['mgstand', -0.6, 0.5, 0]],
+    amphib: [['lookout', -0.12, 0.58, 0.1]],
+    tank: [['lookout', -0.18, 0.77, -0.1]],
+    tank_light: [['lookout', -0.08, 0.6, 0.15]],
+    tank_heavy: [['lookout', -0.52, 0.96, 0.26]],
+    heli: [['driver', 0.2, -0.2, 0], ['driver', -0.25, -0.2, 0]],
+  },
   gb: {
     jeep: [['driver', 0.25, 0.34, 0.2], ['driver', 0.25, 0.34, -0.2]],
     engtruck: [],
@@ -106,7 +116,8 @@ const CREW_NATION = {
 const ROTORS = { us: { rotors: [[0.3, 0.7, 0, 0, 1]], tail: [-1.85, 0.45, 0.06] },
   de: { rotors: [[0.25, 0.72, 0.12, 0.2, 1], [0.25, 0.72, -0.12, -0.2, -1]], tail: null },   // Flettner's intermeshing pair
   su: { rotors: [[0.15, 0.8, 0, 0, 1]], tail: null },
-  gb: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null } };                                          // the Cierva autogyro                                         // the Kamov autogyro
+  gb: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },
+  jp: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null } };                                          // the Kayaba autogyro                                          // the Cierva autogyro                                         // the Kamov autogyro
 // Toy vehicles and aircraft modelled in Blender (tools/blender/vehicles.py and vehicles_<nation>.py).
 function buildVehicle(key, nation = 'us') {
   const v = vehData(key, nation), g = (p, c) => figureGeometry(p, c, VEHICLE_SCALE, true);
