@@ -29,6 +29,10 @@ GB = NATION == 'gb'
 JP = NATION == 'jp'
 FR = NATION == 'fr'
 IT = NATION == 'it'
+US = NATION == 'us'
+
+# the painted insignia (see insignia_*): these parts keep their colours whatever the army's plastic
+INS = {'white': '#f4f1e8', 'red': '#d63a2f', 'blue': '#23408e', 'black': '#1c1c1e', 'yellow': '#e8c21c'}
 
 def P(f, l, u):
     """pose sketch coordinates -> Blender: f forward, l to the figure's left, u up."""
@@ -445,9 +449,17 @@ def torso(fig, T, pack=True, pouches=True, suspenders=True, jacket=True):
     if suspenders and not (SU or JP or IT):
         for s in (1.8, -1.8):
             fig.strap([T.at(2.45, s, 2.6), T.at(2.65, s * 1.05, 7.0), T.at(1.2, s * 1.1, 10.4), T.at(-1.6, s * 0.95, 10.0), T.at(-2.6, s * 0.7, 6.0)], 0.3)
+    fig._T, fig._shL = T, shL                                                 # for the sleeve patch (arm)
+    if IT and jacket: insignia_collar(fig, T)
     return shR, shL, neck
 
 def head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
+    """the head and its headgear (_head), with the national badge painted on it."""
+    H = _head(fig, neck, fwd, up, helmet, net, look_up)
+    if helmet: insignia_head(fig, H, helmet == 'cap')
+    return H
+
+def _head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
     """neck, a face (brow, eyes, nose, cheekbones, mouth, chin, ears) and an M1 helmet."""
     H = Frame(neck, fwd, up)
     fig.limb(neck - H.u * 0.4, H.at(0.15, 0, 1.9), 1.42)
@@ -590,7 +602,7 @@ def type90(fig, H, cap=False, net=False):
         for i in range(5):                                                     # the star on the front
             a = i / 5 * 2 * math.pi
             fig.box(badge + tip.l * (math.sin(a) * 0.3) + tip.u * (math.cos(a) * 0.3), (0.2, 0.2, 0.6),
-                    Frame(badge, tip.f, tip.l * math.sin(a) + tip.u * math.cos(a)).q, bevel=0.02)
+                    Frame(badge, tip.f, tip.l * math.sin(a) + tip.u * math.cos(a)).q, INS['yellow'], bevel=0.02)
         if net and not cap:
             rnd = mulberry(81)
             for i in range(16):
@@ -727,6 +739,66 @@ def peaked_cap(fig, H):
         fig.limb(c.at(2.7, 1.6, -0.8), c.at(2.7, -1.6, -0.8), 0.16)              # chin cord
         fig.sphere(c.at(2.85, 0, -0.55), 0.35); fig.box(c.at(2.9, 0, 0.35), (1.4, 0.2, 0.6), c.q, bevel=0.05)   # cockade and eagle
 
+# ---- national insignia, painted on (their own colour parts)
+def star_badge(fig, c, n, up, r, colour):
+    """a small five-pointed star facing n: five rays from the middle."""
+    F_ = Frame(c, n, up)
+    fig.cyl(c - F_.f * r * 0.12, c + F_.f * r * 0.12, r * 0.36, colour, seg=5)          # the pentagon in the middle
+    for i in range(5):
+        a = i / 5 * 2 * math.pi
+        d = F_.u * math.cos(a) + F_.l * math.sin(a)
+        fig.cyl(c + d * r * 0.2, c + d * r, r * 0.26, colour, seg=4, r2=0.02).scale = (1, 1, 1)   # a tapering point
+
+def insignia_head(fig, H, cap):
+    """the badge on the helmet or cap: the Wehrmacht's tricolour shield on the right of the
+    Stahlhelm, the red star of the Red Army."""
+    if DE and not cap:
+        tip = Frame(H.at(-0.1, 0, 4.9), H.d(1, 0, -0.18), H.d(0.18, 0, 1))
+        d = (-tip.l * 0.94 + tip.u * 0.34 + tip.f * 0.1).normalized()
+        p, fr = tip.o + d * 3.42, Frame(tip.o + d * 3.42, d, tip.u)
+        for k, c in enumerate(('black', 'white', 'red')):
+            fig.box(p + fr.u * (0.32 - k * 0.32), (1.0 - k * 0.12, 0.14, 0.32), fr.q, INS[c], bevel=0.02)
+    if SU and not cap:
+        tip = Frame(H.at(-0.05, 0, 4.7), H.d(1, 0, -0.15), H.d(0.15, 0, 1))
+        d = (tip.f + tip.u * 0.45).normalized()
+        star_badge(fig, tip.o + d * 3.62, d, tip.u, 1.0, INS['red'])
+    if SU and cap:
+        c = Frame(H.at(0.0, 0, 6.2), H.d(1, 0, -0.1), H.d(0.1, 0, 1))
+        star_badge(fig, c.at(3.25, 0, -0.55), c.f, c.u, 0.8, INS['red'])
+
+def insignia_collar(fig, T):
+    """the Italian stellette: a white star on each side of the collar."""
+    for s in (1, -1):
+        d = (T.f * 0.8 + T.l * (s * 0.6)).normalized()
+        star_badge(fig, T.at(1.6, s * 1.35, 10.55) + d * 0.25, d, T.u, 0.7, INS['white'])
+
+def insignia_sleeve(fig, sh, el):
+    """a patch on the left upper arm: the Stars and Stripes as worn in North Africa, the Union
+    flag, or the Free French shield with the cross of Lorraine."""
+    a = (el - sh).normalized()
+    out = fig._T.l - a * fig._T.l.dot(a)
+    if out.length < 0.2: out = fig._T.f - a * fig._T.f.dot(a)
+    out.normalize()
+    p = sh + (el - sh) * 0.3 + out * 1.36
+    P_ = Frame(p, out, -a)
+    q, at = P_.q, lambda l, u, f=0.0: P_.at(f, l, u)
+    if US:
+        fig.box(at(0, 0), (1.4, 0.14, 1.0), q, INS['white'], bevel=0.02)
+        for k in (0.36, 0.0, -0.36): fig.box(at(0, k, 0.03), (1.4, 0.14, 0.15), q, INS['red'], bevel=0.0)
+        fig.box(at(0.4, 0.24, 0.05), (0.6, 0.14, 0.5), q, INS['blue'], bevel=0.0)
+    elif GB:
+        fig.box(at(0, 0), (1.4, 0.14, 0.95), q, INS['blue'], bevel=0.02)
+        for s in (1, -1):                                                   # the white saltire
+            d = (P_.l * 1.4 + P_.u * s * 0.95).normalized()
+            fig.box(at(0, 0, 0.02), (0.14, 0.14, 1.6), Frame(p, out, d).q, INS['white'], bevel=0.0)
+        fig.box(at(0, 0, 0.04), (1.4, 0.14, 0.3), q, INS['white'], bevel=0.0); fig.box(at(0, 0, 0.04), (0.34, 0.14, 0.95), q, INS['white'], bevel=0.0)
+        fig.box(at(0, 0, 0.06), (1.4, 0.14, 0.16), q, INS['red'], bevel=0.0); fig.box(at(0, 0, 0.06), (0.18, 0.14, 0.95), q, INS['red'], bevel=0.0)
+    elif FR:
+        fig.box(at(0, 0), (1.0, 0.14, 1.3), q, INS['blue'], bevel=0.05)
+        fig.box(at(0, -0.05, 0.03), (0.16, 0.14, 1.0), q, INS['red'], bevel=0.0)
+        fig.box(at(0, 0.3, 0.03), (0.46, 0.14, 0.14), q, INS['red'], bevel=0.0)
+        fig.box(at(0, 0.05, 0.03), (0.66, 0.14, 0.14), q, INS['red'], bevel=0.0)
+
 def hand(fig, p, along, grip=None, r=0.95):
     """a fist round a grip: palm, knuckles and thumb. along = the forearm's direction."""
     fig.ball(p, r)
@@ -744,6 +816,8 @@ def arm(fig, sh, grip, pole, grip_dir=None, wave=False):
     fig.limb(sh, el, 1.38, 1.15)
     fig.limb(el, wrist, 1.15, 0.92)
     fig.ball(el, 1.12)
+    if (US or GB or FR) and getattr(fig, '_shL', None) is not None and (sh - fig._shL).length < 1e-6:
+        insignia_sleeve(fig, sh, el)
     up_ = (el - sh).normalized(); fo = (wrist - el).normalized()
     fig.ring(el - up_ * 0.9, up_, 1.12, 0.1)                                  # sleeve crease at the elbow
     fig.ring(wrist - fo * 0.45, fo, 1.0, 0.18)                                # cuff

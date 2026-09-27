@@ -161,6 +161,11 @@ at door height) and jeeps and amphibians on their sides and bonnet: the white st
 broad white edge, the British white-red-white recognition flash, the Imperial Army's yellow star
 (outlined, for the white plastic), the cocarde and an Italian company rectangle. Flags and
 markings are placed on the bare model - tracks, fittings and windows included, the crew left out.
+The soldiers wear their army's insignia, modelled as painted parts in `tools/blender/army_men.py`
+(`insignia_head`, `insignia_sleeve`, `insignia_collar`): the Stars and Stripes on the left sleeve,
+as worn in North Africa; the black-white-red shield on the right of the Stahlhelm; the red star on
+the Soviet helmet and cap; the Union flag on the British sleeve; the Japanese helmet star in
+yellow; the Free French cross of Lorraine on the sleeve; and the Italian stellette on the collar.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
