@@ -9,7 +9,10 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { terrainMaterial, waterMaterial, light, makeEnv, patchShading } from './materials.js';
 import { buildForest } from './vegetation.js';
-import { rng, simplex } from './noise.js';
+import { loadImpostorKinds } from './impostor.js';
+import { buildGroundCover } from './groundcover.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { rng } from './noise.js';
 
 // data and textures are served next to index.html (tatry/public -> rysy/)
 const DATA = 'data/';
@@ -342,31 +345,35 @@ async function main() {
       else if (h < 1950 && terrain.normal(x, z, 4).y > 0.8) pine.push(x, h, z);
     }
   }
-  const forest = buildForest({ renderer, scene, env: shade, spruce, pine, quality: QUALITY });
+  const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern'], shade, {
+    spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3 }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3 },
+    grass: { wind: 2.5, brightness: 2.6, upNormal: 0.7 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
+  });
+  const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds });
+  const landPx = { d: pixels(landBmp), w: landBmp.width, h: landBmp.height };
+  const photoPx = { d: pixels(innerBmp), w: innerBmp.width, h: innerBmp.height };
+  const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
+    masks: { path: trailVisWide, lake: lakeMask }, quality: QUALITY });
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
   {
-    // boulders and scree near the trail
-    // lumpy rock: displacement depends on the vertex position only, so shared corners stay welded
-    const geo = new THREE.IcosahedronGeometry(1, 1);
-    const p = geo.attributes.position;
-    for (let k = 0; k < p.count; k++) {
-      const x = p.getX(k), y = p.getY(k), z = p.getZ(k);
-      const f = 1 + 0.28 * simplex(x * 1.3 + z * 0.7, y * 1.3 - z * 0.9);
-      p.setXYZ(k, x * f, Math.max(y * f * 0.7, -0.35), z * f);
-    }
-    geo.computeVertexNormals();
+    // boulders and scree near the trail: granite rocks with lichen, scanned (Poly Haven, CC0),
+    // simplified in Blender (tools/blender/decimate_rocks.py)
+    const gltf = await new GLTFLoader().loadAsync('models/rocks.glb');
+    const variants = [];
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      o.geometry.computeBoundingBox();
+      const bb = o.geometry.boundingBox, size = new THREE.Vector3(); bb.getSize(size);
+      const src = o.material;
+      const mat = new THREE.MeshLambertMaterial({ map: src.map, normalMap: src.normalMap });
+      patchShading(mat, shade);
+      variants.push({ geo: o.geometry, mat, size: Math.max(size.x, size.y, size.z), items: [] });
+    });
     const count = QUALITY === 'low' ? 5000 : 16000;
-    const rockTex = new THREE.Texture(textures.rock.d); rockTex.colorSpace = THREE.SRGBColorSpace;
-    rockTex.wrapS = rockTex.wrapT = THREE.RepeatWrapping; rockTex.repeat.set(2, 1); rockTex.flipY = false; rockTex.needsUpdate = true;
-    const rockNor = new THREE.Texture(textures.rock.nm); rockNor.wrapS = rockNor.wrapT = THREE.RepeatWrapping;
-    rockNor.repeat.set(2, 1); rockNor.flipY = false; rockNor.needsUpdate = true;
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: rockTex, normalMap: rockNor });
-    patchShading(rockMat, shade);
-    const mesh = new THREE.InstancedMesh(geo, rockMat, count);
-    mesh.castShadow = mesh.receiveShadow = true;
     const ip = pixels(innerBmp), IW = innerBmp.width;
     let k = 0, guard = 0;
+    const up = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion(), qy = new THREE.Quaternion();
     while (k < count && guard++ < count * 20) {
       const i = Math.floor(r() * N);
       const d = 2.5 + Math.pow(r(), 2.6) * 220, a = r() * 6.28;
@@ -375,19 +382,30 @@ async function main() {
       const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * IW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * IW);
       const o = (v * IW + u) * 4, R = ip[o], G = ip[o + 1], B = ip[o + 2];
       if (G > R + 6 && G > B) continue; // green: grass or dwarf pine
-      const ny = terrain.normal(x, z, 3).y;
-      if (ny < 0.55) continue; // no boulders glued to cliffs
-      const s = (0.25 + Math.pow(r(), 3) * (d < 8 ? 0.8 : 2.8)) * Math.min(1, (ny - 0.45) * 2.5);
-      dummy.position.set(x, ground(x, z) - s * 0.25, z);
-      dummy.rotation.set(r() * 6.28, r() * 6.28, r() * 6.28);
-      dummy.scale.set(s * (0.7 + r() * 0.6), s * (0.5 + r() * 0.5), s * (0.7 + r() * 0.6));
-      dummy.updateMatrix(); mesh.setMatrixAt(k, dummy.matrix);
-      const g = 0.8 + r() * 0.35;
-      mesh.setColorAt(k, col.setRGB(g, g * 0.98, g * 0.94));
+      if (R > 200 && G > 200 && B > 200) continue; // snow patches
+      const nrm = terrain.normal(x, z, 3);
+      if (nrm.y < 0.55) continue; // no boulders glued to cliffs
+      const s = (0.3 + Math.pow(r(), 3) * (d < 8 ? 0.8 : 2.8)) * Math.min(1, (nrm.y - 0.45) * 2.5);
+      const vi = Math.floor(r() * variants.length), vr = variants[vi];
+      // rest on the slope: tilt towards the ground normal, random turn, sink a little
+      q.setFromUnitVectors(up, nrm.clone().lerp(up, 0.4).normalize());
+      qy.setFromAxisAngle(up, r() * 6.283);
+      dummy.quaternion.copy(q).multiply(qy);
+      const sc = s / vr.size;
+      dummy.scale.set(sc * (0.8 + r() * 0.4), sc * (0.7 + r() * 0.5), sc * (0.8 + r() * 0.4));
+      dummy.position.set(x, ground(x, z) - s * 0.15, z);
+      dummy.updateMatrix();
+      const g = 0.85 + r() * 0.3;
+      vr.items.push([dummy.matrix.clone(), g]);
       k++;
     }
-    mesh.count = k;
-    scene.add(mesh);
+    for (const vr of variants) {
+      const mesh = new THREE.InstancedMesh(vr.geo, vr.mat, Math.max(1, vr.items.length));
+      vr.items.forEach(([m, g], j) => { mesh.setMatrixAt(j, m); mesh.setColorAt(j, col.setRGB(g, g, g * 0.97)); });
+      mesh.count = vr.items.length;
+      mesh.castShadow = mesh.receiveShadow = true;
+      scene.add(mesh);
+    }
   }
 
   // hiker marker (visible in drone mode)
@@ -743,13 +761,13 @@ async function main() {
     {
       const fx = state.mode === 'walk' ? camera.position.x : hiker.position.x;
       const fz = state.mode === 'walk' ? camera.position.z : hiker.position.z;
-      updatePatch(fx, fz); updateNear(fx, fz);
+      updatePatch(fx, fz); updateNear(fx, fz); cover.update(fx, fz);
     }
     renderReflection();
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
@@ -778,7 +796,7 @@ async function loadTextures() {
     t.needsUpdate = true;
     return t;
   };
-  return { diff: arr(D, true), nor: arr(Nm, false), mean, scale: TEX_SCALE, rock: layers[1] };
+  return { diff: arr(D, true), nor: arr(Nm, false), mean, scale: TEX_SCALE };
 }
 
 function mergeGeos(geos) {

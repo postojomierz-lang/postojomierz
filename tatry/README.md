@@ -26,6 +26,8 @@ Tempo marszu liczone jest wzorem Toblera.
 | las / kosodrzewina | ESA WorldCover 2021 | 10 m |
 | szlak, jeziora | OpenStreetMap przez Overture Maps | wektor |
 | tekstury z bliska | Poly Haven (CC0) | 1K |
+| świerki, młode świerki, trawa, paproć | modele Poly Haven (CC0), wypieczone w Blenderze do impostorów (8 widoków, kolor + normalne) | `public/models/*.webp` |
+| głazy | skany Poly Haven `rock_moss_set_01/02` (CC0), uproszczone w Blenderze do ~1500 trójkątów | `public/models/rocks.glb` |
 
 Przygotowanie: `python3 tools/prepare.py` (panorama, las, szlak), potem `python3 tools/prepare_gugik.py`
 (pobiera z geoportal.gov.pl, pamięć podręczna w `tools/.cache/`; słowacki DMR 5.0 czyta z `zbgis/*.tif`,
@@ -34,3 +36,14 @@ z chmury). Wyniki trafiają do `public/data/`. Zdroj produktov LLS: ÚGKK SR (CC
 
 W silniku: siatka 1,25 m wokół kamery (przebudowywana w ruchu) na siatce 6 m, okno ostrej ortofotomapy
 1×1 km wokół kamery, cienie gór liczone z modelu wysokości.
+
+## Roślinność i kamienie (Blender)
+`pip install bpy OpenImageIO "numpy<2"`, modele glTF 1K z Poly Haven, potem:
+- `python3 tools/blender/bake_impostors.py <model.gltf> <out> <nazwa> <widoki> <szer> <wys>`: widoki z boku
+  (Cycles: Diffuse Color, Normal, alfa);
+- `python3 tools/pack_impostors.py <out> public/models spruce sapling grass fern`: atlasy WebP;
+- `python3 tools/blender/decimate_rocks.py public/models/rocks.glb <rock_set>.gltf ...`.
+
+W silniku (`src/impostor.js`, `src/groundcover.js`): impostor to jedna karta obracana do kamery,
+mieszająca dwa najbliższe widoki, oświetlana normalnymi z Blendera, z cieniem i wiatrem. Trawa i paproć
+rosną w promieniu ~40 m od kamery na siatce z ustalonym losowaniem (kępy nie przeskakują).

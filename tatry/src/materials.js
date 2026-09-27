@@ -48,7 +48,7 @@ export function makeEnv({ inner, outer, quality }) {
   };
 }
 
-const HEIGHTS = /* glsl */`
+export const HEIGHTS = /* glsl */`
 uniform sampler2D hInner; uniform sampler2D hOuter;
 uniform vec4 bInner; uniform vec4 bOuter; uniform vec2 nInner; uniform vec2 nOuter;
 uniform vec3 sunDir; uniform float time; uniform int shSteps;
