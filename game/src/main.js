@@ -9,7 +9,7 @@ import { Editor } from './editor.js';
 import { Sim } from './sim/sim.js';
 import { aiDeploy, aiOrders } from './sim/ai.js';
 import { View, renderThumbnails } from './render/view.js';
-import { modelsReady, loadLiving, loadScenery } from './render/models.js';
+import { modelsReady, loadScenery } from './render/models.js';
 import { Sounds } from './audio.js';
 import { Host, Client, cleanCode, iceConfig } from './net.js';
 
@@ -18,7 +18,7 @@ const DT = 1 / RULES.tickRate;
 
 // ---------------------------------------------------------------- settings (per-browser convenience)
 const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal', source: 'normandy', scenario: '', library: LIBRARY[0].id,
-  useClaude: false, living: 'toy', apiKey: '', model: 'claude-opus-5', prompt: '' };
+  useClaude: false, apiKey: '', model: 'claude-opus-5', prompt: '' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
 settings.teams = Math.max(2, Math.min(MAX_ARMIES, +settings.teams || 2));   // at most 6 armies
 if (!settings.diorama) { settings.diorama = 1; settings.source = 'normandy'; }   // the Normandy diorama is the new default
@@ -84,13 +84,6 @@ async function beginGame({ n, seed, layout, theme, options = {}, scenario = null
   game.sim = new Sim(map, armies, seed);
   game.human = me; game.diff = diff; game.acc = 0; game.undo = []; game.speed = 1;
   view.setQuality(settings.quality);
-  let living = settings.living === 'living';
-  if (living) {
-    const done = busy(['Unpacking the living soldiers…']);
-    living = await loadLiving(); done();
-    if (!living) toast('Could not load Living soldiers (they need the online version) — using toy style.', false, true);
-  }
-  view.setLiving(living);
   view.load(game.sim, me);
   sounds.enabled = settings.sound;
   game.thumbs = renderThumbnails(Object.keys(CATALOG).filter(k => k !== 'hq' && CATALOG[k].group !== 'hidden'), TEAM_COLORS[armies[me].color].id);
@@ -440,7 +433,7 @@ colorSel.innerHTML = TEAM_COLORS.map(c => `<option value="${c.id}">${c.name}</op
 function openSetup() {
   $('optTeams').value = settings.teams; colorSel.value = settings.color; $('optTheme').value = settings.theme;
   $('optDiff').value = settings.diff; $('optQuality').value = settings.quality; $('optSound').checked = settings.sound;
-  $('optSource').value = settings.source; $('optLibrary').value = settings.library; $('optLiving').value = settings.living;
+  $('optSource').value = settings.source; $('optLibrary').value = settings.library;
   $('optUseClaude').checked = settings.useClaude; $('optScenario').value = settings.scenario || '';
   $('optKey').value = settings.apiKey; $('optModel').value = settings.model; $('optPrompt').value = settings.prompt;
   if (settings.useClaude) $('advanced').open = true;
@@ -450,7 +443,7 @@ function openSetup() {
 function readSetup() {
   settings.teams = +$('optTeams').value; settings.color = colorSel.value; settings.theme = $('optTheme').value;
   settings.diff = $('optDiff').value; settings.quality = $('optQuality').value; settings.sound = $('optSound').checked;
-  settings.source = $('optSource').value; settings.library = $('optLibrary').value; settings.living = $('optLiving').value;
+  settings.source = $('optSource').value; settings.library = $('optLibrary').value;
   settings.useClaude = $('optUseClaude').checked; settings.scenario = $('optScenario').value;
   settings.apiKey = $('optKey').value.trim(); settings.model = $('optModel').value; settings.prompt = $('optPrompt').value.trim().slice(0, 600);
   save();
