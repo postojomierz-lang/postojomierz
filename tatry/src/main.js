@@ -297,7 +297,26 @@ async function main() {
   const THs = smoothArr(TH, 6);
   const ground = (x, z) => terrain.height(x, z);
   const EYE = new Float32Array(N);
-  for (let i = 0; i < N; i++) EYE[i] = Math.max(THs[i], ground(trail.X[i], trail.Z[i]) + 0.05);
+  // eye height: a smooth envelope over the ground (1 m lidar has every stone and rock step in it).
+  // The slope itself is taken out first (smoothed trail line), then a running maximum followed by a
+  // box average of the same radius lifts the line over local bumps without kinks and without
+  // floating on steep ground; the eye may pass 0.8 m under a single stone (it is 1.7 m up).
+  {
+    const R = 6;
+    const trend = smoothArr(smoothArr(THs, 15), 15);
+    const c = new Float32Array(N);
+    for (let i = 0; i < N; i++) c[i] = Math.max(THs[i], ground(trail.X[i], trail.Z[i]) - 0.8) - trend[i];
+    const mx = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      let m = -Infinity;
+      for (let k = Math.max(0, i - R); k <= Math.min(N - 1, i + R); k++) m = Math.max(m, c[k]);
+      mx[i] = m;
+    }
+    const env = smoothArr(mx, R);
+    for (let i = 0; i < N; i++) EYE[i] = trend[i] + env[i];
+    // safety: never below the rendered surface by more than 0.8 m
+    for (let i = 0; i < N; i++) EYE[i] = Math.max(EYE[i], ground(trail.X[i], trail.Z[i]) - 0.8);
+  }
   const profile = smoothArr(TH, 30);
 
   // ---------- vegetation and boulders
@@ -670,7 +689,7 @@ async function main() {
     const p = at(state.s);
     const target = headingAt(state.s);
     let d = target - state.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
-    state.yaw += d * Math.min(1, dt * 1.1);
+    state.yaw += d * Math.min(1, dt * 0.7);
     hiker.position.set(p.x, p.y, p.z);
     hiker.rotation.y = state.yaw;
     const beacon = hiker.getObjectByName('beacon');
@@ -678,12 +697,16 @@ async function main() {
     beacon.position.y = 3 + cd * 0.012; beacon.scale.setScalar(Math.max(0.4, cd * 0.006));
 
     if (state.mode === 'walk') {
-      const bob = dir ? Math.sin(state.s * 3.4) * 0.03 : 0;
-      camera.position.set(p.x, p.y + 1.7 + bob, p.z);
+      // steady camera: no step bobbing, height filtered in time as well
+      state.camY = state.camY === undefined || Math.abs(state.camY - p.y) > 20 ? p.y : state.camY + (p.y - state.camY) * Math.min(1, dt * 2.5);
+      camera.position.set(p.x, state.camY + 1.7, p.z);
       const yaw = state.yaw + state.yawOff;
       const along = Math.max(0, Math.cos(state.yawOff)); // follow the slope only when looking along the trail
-      const pitch = state.pitchOff + (Math.atan(Math.max(0, grade)) * 0.6 + Math.atan(Math.min(0, grade)) * 0.2) * along - 0.03;
-      camera.lookAt(p.x + Math.sin(yaw) * Math.cos(pitch), p.y + 1.7 + Math.sin(pitch), p.z + Math.cos(yaw) * Math.cos(pitch));
+      // look slightly up steep climbs only, and change that slowly
+      const want = Math.atan(Math.max(0, grade)) * 0.3 * along;
+      state.gazeP = state.gazeP === undefined ? want : state.gazeP + (want - state.gazeP) * Math.min(1, dt * 0.5);
+      const pitch = state.pitchOff + state.gazeP - 0.03;
+      camera.lookAt(p.x + Math.sin(yaw) * Math.cos(pitch), state.camY + 1.7 + Math.sin(pitch), p.z + Math.cos(yaw) * Math.cos(pitch));
     } else {
       const delta = new THREE.Vector3(p.x, p.y, p.z).sub(orbit.target);
       orbit.target.add(delta); camera.position.add(delta);
