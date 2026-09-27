@@ -120,6 +120,14 @@ AB 41 armoured car, the amphibious L3 prototype, L6/40, M13/40, P26/40, D'Ascani
 helicopter with its coaxial rotors, Macchi C.202, Breda Ba.65, the three-engined SM.79 and SM.82
 and a farmhouse with its dovecote tower, plus a Fiat 626 with launch rails in the style of the
 time (Italy fielded no rocket lorry).
+Each of these armies also mans its own emplacements (`tools/blender/structures_nations.py`):
+Germany a Pak 40, a Flak 38, an MG 42 on its Lafette and a timber watchtower; the Red Army a
+ZiS-3, a 61-K, a Maxim on its Sokolov mount behind logs and a log tower; Britain a 25-pounder on
+its firing platform, a Bofors, a Vickers and a scaffold-tube post; Japan a Type 92 battalion gun,
+the Type 96 twin 25 mm, the Type 92 'woodpecker' behind logs and a bamboo tower; France the 75 mle
+1897, a Hotchkiss 25 mm, the Hotchkiss mle 1914 behind wicker gabions and a Maginot-style concrete
+tower; Italy the 47/32, a Breda 20/65, a Breda 37 behind a dry-stone wall and a stone torretta.
+Walls, sandbags, wire, tank traps, barrels and mines are the same for everyone.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
