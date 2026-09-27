@@ -86,6 +86,15 @@ npm run build   # writes a single self-contained ../plastic-front/index.html
 
 ## Credits
 
+Nations: every army picks a nation on the setup screen (the rules and numbers are the same for
+all). The Americans are built into the game; every other nation's own soldiers, vehicles, aircraft
+and headquarters are a file next to the game (`public/nation-<id>.js`, packed by `npm run figures`
+from `python tools/blender/army_men.py --nation=<id>` and `tools/blender/vehicles_<id>.py`) that is
+downloaded only when that nation takes the field. Germany: Stahlhelms, marching boots, Kar98k,
+MG 42, Panzerschreck, Fliegerfaust, stick grenades and officers' caps; Kuebelwagen, Opel Blitz,
+Sd.Kfz. 222, Schwimmwagen, Panzer II, Panzer IV, Tiger I, Panzerwerfer 42, Flettner Fl 282, Bf 109,
+Ju 87 Stuka, He 111, Ju 52 and a concrete command bunker.
+
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
 were modelled for the game in the free Blender by `tools/blender/army_men.py`: a soft moulded body

@@ -17,6 +17,21 @@ const FIGURE_FOR = {
 // figure data is meshopt-compressed: wait for the (tiny, built-in) decoder before building models
 export const modelsReady = MeshoptDecoder.ready;
 
+// Every nation but the Americans (built into the game) has its own figures, vehicles and aircraft in
+// a file next to the game (public/nation-xx.js), downloaded when one of its armies takes the field.
+// Anything a nation does not have falls back to the American model.
+const PACKS = {};
+export async function loadNation(nation) {
+  if (!nation || nation === 'us' || PACKS[nation]) return true;
+  try {
+    PACKS[nation] = await import(/* @vite-ignore */ new URL(`nation-${nation}.js`, document.baseURI).href);
+    return true;
+  } catch (e) { console.warn('nation models not available:', nation, e); return false; }
+}
+const figData = (key, nation) => (PACKS[nation] && PACKS[nation].FIGURES[key]) || FIGURES[key];
+const vehData = (key, nation) => (PACKS[nation] && PACKS[nation].VEHICLES[key]) || VEHICLES[key];
+const own = (key, nation) => !!(PACKS[nation] && PACKS[nation].VEHICLES[key]);
+
 function b64(s) { const bin = atob(s), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return u8; }
 function figureGeometry(part, colour = null, scale = FIGURE_SCALE, crease = true) {
   const vb = new Uint8Array(part.v * 8), ib = new Uint8Array(part.n * 4);
@@ -54,24 +69,45 @@ const CREW = {
   tank_light: [['lookout', -0.12, 0.6, 0.18]],
   tank_heavy: [['lookout', -0.45, 0.88, 0.3]],
 };
-// Toy vehicles and aircraft modelled in Blender (tools/blender/vehicles.py).
-function buildVehicle(key) {
-  const v = VEHICLES[key], g = (p, c) => figureGeometry(p, c, VEHICLE_SCALE, true);
+// the German vehicles are shaped differently: their crews sit elsewhere
+const CREW_NATION = {
+  de: {
+    jeep: [['driver', -0.07, 0.44, -0.2], ['mgstand', -0.72, 0.43, 0]],
+    engtruck: [],
+    amphib: [['driver', 0.07, 0.6, -0.2], ['mgstand', -0.6, 0.53, 0]],
+    apc: [['lookout', -0.2, 0.62, 0.1]],
+    tank: [['lookout', -0.58, 0.75, 0]],
+    tank_light: [['lookout', -0.12, 0.6, 0.12]],
+    tank_heavy: [['lookout', -0.52, 0.92, 0.34]],
+    heli: [['driver', 0.45, -0.18, 0]],
+  },
+};
+// helicopter rotors: hubs [x, y, z], lean (radians, about the length axis) and spin direction; tail rotor hub
+const ROTORS = { us: { rotors: [[0.3, 0.7, 0, 0, 1]], tail: [-1.85, 0.45, 0.06] },
+  de: { rotors: [[0.25, 0.72, 0.12, 0.2, 1], [0.25, 0.72, -0.12, -0.2, -1]], tail: null } };   // Flettner's intermeshing pair
+// Toy vehicles and aircraft modelled in Blender (tools/blender/vehicles.py and vehicles_<nation>.py).
+function buildVehicle(key, nation = 'us') {
+  const v = vehData(key, nation), g = (p, c) => figureGeometry(p, c, VEHICLE_SCALE, true);
+  const mine = own(key, nation) ? nation : 'us';                      // whose model this is
   const out = { main: g(v.main.near), far: { main: g(v.main.far) } };
   if (v.dark) { out.dark = g(v.dark.near); out.far.dark = g(v.dark.far); }
   if (v.a) out.accent = mergeGeometries(v.a.map(a => g(a, a.c)));
-  if (v.rotor) { out.rotor = g(v.rotor); out.tailRotor = g(v.tail); }
+  if (v.rotor) {
+    out.rotor = g(v.rotor); out.tailRotor = v.tail ? g(v.tail) : null;
+    out.rotors = ROTORS[mine].rotors; out.tailAt = ROTORS[mine].tail;
+  }
   if (v.turret_main) out.turret = { main: g(v.turret_main.near), dark: v.turret_dark ? g(v.turret_dark.near) : undefined };
   // crews: army-men figures placed into the model (the MG gunner turns with his gun)
   const crew = (geo, x, y, z, s = 1) => (geo.index ? geo.toNonIndexed() : geo.clone()).scale(s, s, s).translate(x, y, z);
-  if (CREW[key]) {
-    out.main = mergeGeometries([out.main, ...CREW[key].map(([f, x, y, z]) => crew(figure(f).main, x, y, z, CREW_SCALE))]);
-    out.far.main = mergeGeometries([out.far.main, ...CREW[key].map(([f, x, y, z]) => crew(figure(f).far.main, x, y, z, CREW_SCALE))]);
+  const crews = (CREW_NATION[mine] && CREW_NATION[mine][key]) || CREW[key];
+  if (crews && crews.length) {
+    out.main = mergeGeometries([out.main, ...crews.map(([f, x, y, z]) => crew(figure(f, nation).main, x, y, z, CREW_SCALE))]);
+    out.far.main = mergeGeometries([out.far.main, ...crews.map(([f, x, y, z]) => crew(figure(f, nation).far.main, x, y, z, CREW_SCALE))]);
   }
-  if (key === 'mgnest') out.turret.main = mergeGeometries([out.turret.main, crew(figure('gunner').main, -0.12, 0.04, 0)]);
+  if (key === 'mgnest') out.turret.main = mergeGeometries([out.turret.main, crew(figure('gunner', nation).main, -0.12, 0.04, 0)]);
   if (key === 'tower') {
-    out.main = mergeGeometries([out.main, crew(figure('lookout').main, -0.15, 2.62, 0.25)]);
-    out.far.main = mergeGeometries([out.far.main, crew(figure('lookout').far.main, -0.15, 2.62, 0.25)]);
+    out.main = mergeGeometries([out.main, crew(figure('lookout', nation).main, -0.15, 2.62, 0.25)]);
+    out.far.main = mergeGeometries([out.far.main, crew(figure('lookout', nation).far.main, -0.15, 2.62, 0.25)]);
   }
   return out;
 }
@@ -123,26 +159,26 @@ export function sceneryGeometry(key, part = 'all', far = false) {
 }
 export const hasTint = key => !!SCENERY[key] && SCENERY[key].some(p => p.c === TINT);
 const figs = new Map();
-function figure(key) { if (!figs.has(key)) figs.set(key, buildFigure(key)); return figs.get(key); }
+function figure(key, nation = 'us') { const k = nation + ':' + key; if (!figs.has(k)) figs.set(k, buildFigure(key, nation)); return figs.get(k); }
 
 // near: full detail; far: a light version drawn for figures far from the camera
-function buildFigure(key) {
-  const f = FIGURES[key], out = { main: figureGeometry(f.near), far: { main: figureGeometry(f.far) } };
+function buildFigure(key, nation = 'us') {
+  const f = figData(key, nation), out = { main: figureGeometry(f.near), far: { main: figureGeometry(f.far) } };
   if (f.a) out.accent = mergeGeometries(f.a.map(a => figureGeometry(a, a.c)));   // painted parts (medic's white bag, red crosses)
   return out;
 }
 
 // ---------------------------------------------------------------------------------
 const cache = new Map();
-export function modelKey(type, seed = 0) { return type === 'wall' || type === 'sandbags' ? type + (seed % 4) : type; }
-export function model(type, seed = 0) {
-  const k = modelKey(type, seed);
+export function modelKey(type, seed = 0, nation = 'us') { return nation + ':' + (type === 'wall' || type === 'sandbags' ? type + (seed % 4) : type); }
+export function model(type, seed = 0, nation = 'us') {
+  const k = modelKey(type, seed, nation);
   if (cache.has(k)) return cache.get(k);
   let m;
-  if (FIGURE_FOR[type]) { m = buildFigure(FIGURE_FOR[type]); cache.set(k, m); return m; }
+  if (FIGURE_FOR[type]) { m = figure(FIGURE_FOR[type], nation); cache.set(k, m); return m; }
   // walls and sandbags come in two shapes, picked by the placement seed; all engineers share one truck
   const vk = type === 'wall' || type === 'sandbags' ? type + (seed % 2) : type.startsWith('eng_') ? 'engtruck' : type;
-  m = buildVehicle(VEHICLES[vk] ? vk : 'barrel');
+  m = buildVehicle(VEHICLES[vk] ? vk : 'barrel', nation);
   cache.set(k, m);
   return m;
 }

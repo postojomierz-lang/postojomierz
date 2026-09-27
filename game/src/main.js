@@ -9,7 +9,8 @@ import { Editor } from './editor.js';
 import { Sim } from './sim/sim.js';
 import { aiDeploy, aiOrders } from './sim/ai.js';
 import { View, renderThumbnails } from './render/view.js';
-import { modelsReady, loadScenery } from './render/models.js';
+import { modelsReady, loadScenery, loadNation } from './render/models.js';
+import { NATIONS, nationById, enemyNations } from './data/nations.js';
 import { Sounds } from './audio.js';
 import { Host, Client, cleanCode, iceConfig } from './net.js';
 
@@ -17,7 +18,7 @@ const $ = id => document.getElementById(id);
 const DT = 1 / RULES.tickRate;
 
 // ---------------------------------------------------------------- settings (per-browser convenience)
-const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal', source: 'normandy', scenario: '', library: LIBRARY[0].id,
+const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', nation: 'us', enemyNation: 'auto', theme: '', diff: 'normal', source: 'normandy', scenario: '', library: LIBRARY[0].id,
   useClaude: false, apiKey: '', model: 'claude-opus-5', prompt: '' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
 settings.teams = Math.max(2, Math.min(MAX_ARMIES, +settings.teams || 2));   // at most 6 armies
@@ -80,13 +81,20 @@ async function beginGame({ n, seed, layout, theme, options = {}, scenario = null
     const ok = await loadScenery(map.theme) && (!map.fortress || await loadScenery('fortress')); done();
     if (!ok) toast('Could not load the scenery (it needs the online version) — the battlefield is bare.', false, true);
   }
+  // the nations' own models (a file each, next to the game)
+  const nations = [...new Set(armies.map(a => a.nation || 'us'))].filter(n => n !== 'us');
+  if (nations.length) {
+    const done = busy(['Mustering the armies…']);
+    const ok = await Promise.all(nations.map(loadNation)); done();
+    if (ok.includes(false)) toast('Could not load some armies\' own models (they need the online version) — they look American.', false, true);
+  }
   game.mode = 'play'; game.seed = seed;
   game.sim = new Sim(map, armies, seed);
   game.human = me; game.diff = diff; game.acc = 0; game.undo = []; game.speed = 1;
   view.setQuality(settings.quality);
   view.load(game.sim, me);
   sounds.enabled = settings.sound;
-  game.thumbs = renderThumbnails(Object.keys(CATALOG).filter(k => k !== 'hq' && CATALOG[k].group !== 'hidden'), TEAM_COLORS[armies[me].color].id);
+  game.thumbs = renderThumbnails(Object.keys(CATALOG).filter(k => k !== 'hq' && CATALOG[k].group !== 'hidden'), TEAM_COLORS[armies[me].color].id, armies[me].nation || 'us');
   deployAI();
   markDeploy();
   buildPalette();
@@ -102,7 +110,11 @@ async function newGame(files = {}, layout = null) {
   const setup = await prepareMap(files, layout);
   const humanColor = TEAM_COLORS.findIndex(c => c.id === settings.color);
   const colors = [humanColor, ...TEAM_COLORS.map((_, i) => i).filter(i => i !== humanColor)].slice(0, setup.n);
-  const armies = colors.map((c, i) => ({ name: i === 0 ? 'You' : TEAM_COLORS[c].name + ' army', color: c, human: i === 0 }));
+  const foes = enemyNations(settings.nation, setup.n - 1, settings.enemyNation);
+  const armies = colors.map((c, i) => {
+    const nation = i === 0 ? settings.nation : foes[i - 1];
+    return { name: i === 0 ? 'You' : `${nationById(nation).adj} army (${TEAM_COLORS[c].name.toLowerCase()})`, color: c, nation, human: i === 0 };
+  });
   await beginGame({ ...setup, armies, me: 0, diff: settings.diff });
 }
 
@@ -429,9 +441,12 @@ function showEnd() {
 $('dlgEnd').addEventListener('close', () => openSetup());
 
 const colorSel = $('optColor');
+$('optNation').innerHTML = NATIONS.map(n => `<option value="${n.id}">${n.name}</option>`).join('');
+$('optEnemyNation').innerHTML = '<option value="auto">Other nations</option>' + NATIONS.map(n => `<option value="${n.id}">All ${n.name}</option>`).join('');
 colorSel.innerHTML = TEAM_COLORS.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 function openSetup() {
   $('optTeams').value = settings.teams; colorSel.value = settings.color; $('optTheme').value = settings.theme;
+  $('optNation').value = settings.nation; $('optEnemyNation').value = settings.enemyNation;
   $('optDiff').value = settings.diff; $('optQuality').value = settings.quality; $('optSound').checked = settings.sound;
   $('optSource').value = settings.source; $('optLibrary').value = settings.library;
   $('optUseClaude').checked = settings.useClaude; $('optScenario').value = settings.scenario || '';
@@ -442,6 +457,7 @@ function openSetup() {
 }
 function readSetup() {
   settings.teams = +$('optTeams').value; settings.color = colorSel.value; settings.theme = $('optTheme').value;
+  settings.nation = $('optNation').value; settings.enemyNation = $('optEnemyNation').value;
   settings.diff = $('optDiff').value; settings.quality = $('optQuality').value; settings.sound = $('optSound').checked;
   settings.source = $('optSource').value; settings.library = $('optLibrary').value;
   settings.useClaude = $('optUseClaude').checked; settings.scenario = $('optScenario').value;
@@ -602,7 +618,7 @@ function leaveOnline() {
 function lobbyRender() {
   $('lobby').hidden = !(online.host || online.client);
   $('netPlayers').innerHTML = online.players.map((p, i) => `<div class="army"><span class="sw" style="background:${TEAM_COLORS[p.color].main}"></span>
-    <span class="nm">${escapeHtml(p.name)}${i === 0 ? ' (host)' : ''}${p.me ? ' — you' : ''}</span><span class="v">${p.route === 'relay' ? 'via relay · ' : p.route === 'direct' ? 'direct · ' : ''}army ${i + 1}</span></div>`).join('');
+    <span class="nm">${escapeHtml(p.name)}${i === 0 ? ' (host)' : ''}${p.me ? ' — you' : ''} · ${nationById(p.nation).adj}</span><span class="v">${p.route === 'relay' ? 'via relay · ' : p.route === 'direct' ? 'direct · ' : ''}army ${i + 1}</span></div>`).join('');
   $('btnNetStart').hidden = !online.host;
   $('btnNetStart').disabled = online.players.length < 2;
   const n = Math.max(+settings.teams, online.players.length);
@@ -630,7 +646,7 @@ function makeHost() {
       const net = game.net;
       if (msg.resume && net) return playerResumed(id, msg);
       if (net || online.players.length >= MAX_ARMIES) { host.send(id, { t: 'full' }); host.kick(id); return; }
-      const p = { id, name: String(msg.name || 'Player').slice(0, 16), color: +msg.color || 0, seen: Date.now(), route: '' };
+      const p = { id, name: String(msg.name || 'Player').slice(0, 16), color: +msg.color || 0, nation: nationById(msg.nation).id, seen: Date.now(), route: '' };
       online.players.push(p);
       lobbySync();
       setTimeout(async () => { p.route = await host.route(id); if (!game.net) lobbySync(); }, 2500);   // direct or relayed?
@@ -692,14 +708,14 @@ async function hostGame() {
   try {
     const code = await host.open();
     online.host = host; online.room = code;
-    online.players = [{ id: null, name: myName(), color: preferredColor(), me: true }];
+    online.players = [{ id: null, name: myName(), color: preferredColor(), nation: settings.nation, me: true }];
     $('netRoom').textContent = code;
     $('netStatus').textContent = 'Share the code or the invite link with your friends.';
     lobbyRender();
   } catch (e) { $('netStatus').textContent = 'Could not open a room: ' + (e.message || e.type || e); host.close(); }
 }
 function lobbySync() {
-  online.players.forEach((p, i) => { if (p.id) online.host.send(p.id, { t: 'lobby', players: online.players.map(q => ({ name: q.name, color: q.color, route: q.route })), you: i }); });
+  online.players.forEach((p, i) => { if (p.id) online.host.send(p.id, { t: 'lobby', players: online.players.map(q => ({ name: q.name, color: q.color, nation: q.nation, route: q.route })), you: i }); });
   lobbyRender();
 }
 
@@ -726,7 +742,7 @@ async function joinGame(code) {
   $('netStatus').textContent = 'Connecting…';
   const client = makeClient();
   try {
-    await client.join(code, { name: myName(), color: preferredColor() });
+    await client.join(code, { name: myName(), color: preferredColor(), nation: settings.nation });
     online.client = client; online.room = code;
     clientBeat();
     $('netRoom').textContent = code;
@@ -828,7 +844,7 @@ async function becomeHost(room, cands, oldHost) {
   online.host = host; online.client = null;
   net.role = 'host'; net.pending = new Map(); net.dropped = new Set([...(net.dropped || []), oldHost]);
   net.hostTeam = game.human;
-  online.players = cands.map(c => ({ id: null, team: c.team, name: c.name, color: sim.teams[c.team].color, me: c.team === game.human, seen: Date.now() }));
+  online.players = cands.map(c => ({ id: null, team: c.team, name: c.name, color: sim.teams[c.team].color, nation: sim.teams[c.team].nation, me: c.team === game.human, seen: Date.now() }));
   net.roster = cands.map(c => ({ team: c.team, name: c.name }));
   toast('You are the host now', false, true);
   if (net.sentRound === sim.round && sim.phase === 'deploy' && net.sentOrders) hostOrders(net.sentOrders);
@@ -842,8 +858,12 @@ async function startOnline() {
   const setup = await prepareMap({ mapFile: $('optMapFile').files[0] || null }, null, n);
   // colours: everyone keeps their favourite unless somebody earlier already took it
   const used = new Set(), pick = c => { if (used.has(c)) c = TEAM_COLORS.findIndex((_, i) => !used.has(i)); used.add(c); return c; };
-  const armies = online.players.map((p, i) => { p.team = i; p.seen = Date.now(); return { name: p.name, color: pick(p.color), human: true }; });
-  while (armies.length < n) { const c = pick(0); armies.push({ name: TEAM_COLORS[c].name + ' army (computer)', color: c, human: false }); }
+  const armies = online.players.map((p, i) => { p.team = i; p.seen = Date.now(); return { name: p.name, color: pick(p.color), nation: p.nation || 'us', human: true }; });
+  const foes = enemyNations(settings.nation, n - armies.length, settings.enemyNation);
+  while (armies.length < n) {
+    const c = pick(0), nation = foes[armies.length - online.players.length];
+    armies.push({ name: `${nationById(nation).adj} army (computer)`, color: c, nation, human: false });
+  }
   const full = { ...setup, armies, diff: settings.diff };
   const roster = online.players.map(p => ({ team: p.team, name: p.name }));
   online.players.forEach((p, i) => { if (p.id) host.send(p.id, { t: 'start', setup: full, you: i, roster }); });
