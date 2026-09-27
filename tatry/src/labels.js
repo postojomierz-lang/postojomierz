@@ -6,7 +6,7 @@ import * as THREE from 'three';
 
 const ICON = { peak: '▲', pass: '⌒', lake: '≈', hut: '⌂', fall: '⇣', trail: '◆' };
 
-// blockers: [{ x, y, z }] signposts; while near, their boards keep the labels off them
+// blockers: [{ x, y, z, tx, tz, nx, nz }] signposts (foot of the pole, trail direction and normal); while near, their boards keep the labels off them
 export function buildLabels({ meta, terrain, camera, container, extra = [], blockers = [] }) {
   const layer = document.createElement('div');
   layer.id = 'labels';
@@ -30,8 +30,10 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
   const blocked = (p) => {
     const c = camera.position, d = c.distanceTo(p);
     const n = Math.min(48, Math.max(12, Math.round(d / 250)));
-    for (let k = 1; k < n; k++) {
-      const t = k / n;
+    // a few samples close to the camera (rocks beside the path), then evenly along the line
+    const ts = [3, 6, 12, 25, 50, 100].filter((m) => m < d * 0.5).map((m) => m / d);
+    for (let k = 1; k < n; k++) ts.push(k / n);
+    for (const t of ts) {
       const x = c.x + (p.x - c.x) * t, z = c.z + (p.z - c.z) * t, y = c.y + (p.y + 15 - c.y) * t;
       if (terrain.height(x, z) > y + 2) return true;
     }
@@ -40,6 +42,7 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
 
   function update(dt) {
     if (!enabled) return;
+    camera.updateMatrixWorld();   // the camera may have moved this frame, before the render updates it
     const W = innerWidth, H = innerHeight;
     // occlusion: all labels at the start or after a jump, then a slice per frame
     const moved = !lastCam || camera.position.distanceTo(lastCam) > 150;
@@ -65,8 +68,9 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
     for (const b of blockers) {
       if (camera.position.distanceTo(v.set(b.x, b.y + 2.2, b.z)) > 80) continue;
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, front = false;
-      for (const [dx, dy, dz] of [[-0.9, 1.8, -0.9], [0.9, 1.8, 0.9], [-0.9, 2.6, 0.9], [0.9, 2.6, -0.9], [-0.9, 1.8, 0.9], [0.9, 2.6, 0.9], [-0.9, 2.6, -0.9], [0.9, 1.8, -0.9]]) {
-        v.set(b.x + dx, b.y + dy, b.z + dz).project(camera);
+      // the boards reach ~0.8 m either way along the trail, 1.9–2.45 m above the ground
+      for (const [u, h, w] of [[-0.8, 1.9, -0.06], [0.8, 1.9, -0.06], [-0.8, 2.45, -0.06], [0.8, 2.45, -0.06], [-0.8, 1.9, 0.06], [0.8, 1.9, 0.06], [-0.8, 2.45, 0.06], [0.8, 2.45, 0.06]]) {
+        v.set(b.x + b.tx * u + b.nx * w, b.y + h, b.z + b.tz * u + b.nz * w).project(camera);
         if (v.z >= 1) continue;
         front = true;
         const sx = (v.x * 0.5 + 0.5) * W, sy = (-v.y * 0.5 + 0.5) * H;
