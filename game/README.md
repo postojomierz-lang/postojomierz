@@ -81,5 +81,8 @@ relay: by default the free [Open Relay](https://www.metered.ca/tools/openrelay/)
 (static-auth mode, short-lived credentials computed in the browser, no account needed). "Connection
 settings" in the online dialog can force or disable the relay, or point to your own TURN server or
 Metered account; the lobby shows whether each player is connected directly or through the relay.
-A player who leaves (or stays silent for a minute) is replaced by the computer. For testing on one
+A player who leaves (or stays silent for a minute) is replaced by the computer. If the host leaves,
+the game goes on: the remaining player with the lowest army number opens a new room
+(`<code>-<n>-<army>`), the others reconnect to it automatically and re-send their orders (or the last
+round start they got), so every copy stays identical; the old host's army goes to the computer. For testing on one
 machine add `?localnet` to the URL: tabs of one browser then talk over a BroadcastChannel.

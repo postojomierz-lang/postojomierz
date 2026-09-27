@@ -81,9 +81,10 @@ export class Host {
     Object.assign(this, { onHello, onMessage, onLeave, net });
     this.conns = new Map();   // peer id -> DataConnection
   }
-  async open() {
+  // room: a fixed name (a hand-over host re-opens "<code>-<n>-<team>"), or a fresh random code
+  async open(room = null) {
     if (LOCAL) {
-      this.code = makeCode();
+      this.code = room || makeCode();
       this.ch = new BroadcastChannel('plasticfront-' + this.code);
       this.ch.onmessage = ({ data: d }) => {
         if (d.to !== 'host') return;
@@ -95,9 +96,9 @@ export class Host {
     }
     const config = await iceConfig(this.net);
     for (let attempt = 0; attempt < 4; attempt++) {
-      this.code = makeCode();
+      this.code = room || makeCode();
       try { this.peer = await openPeer(PREFIX + this.code, config); break; }
-      catch (e) { if (e.type !== 'unavailable-id' || attempt === 3) throw e; }
+      catch (e) { if (room || e.type !== 'unavailable-id' || attempt === 3) throw e; }
     }
     this.peer.on('connection', conn => {
       conn.on('data', msg => {
@@ -126,7 +127,7 @@ export class Client {
   async join(code, hello) {
     if (LOCAL) {
       const id = localId();
-      this.ch = new BroadcastChannel('plasticfront-' + cleanCode(code));
+      this.ch = new BroadcastChannel('plasticfront-' + code);
       this.ch.onmessage = ({ data: d }) => {
         if (d.to !== id && d.to !== '*') return;
         if (d.kind === 'bye') this.onClose(); else this.onMessage(d.msg);
@@ -138,7 +139,7 @@ export class Client {
     }
     this.peer = await openPeer(null, await iceConfig(this.net));
     return new Promise((resolve, reject) => {
-      const conn = this.peer.connect(PREFIX + cleanCode(code), { reliable: true });
+      const conn = this.peer.connect(PREFIX + code, { reliable: true });
       const t = setTimeout(() => reject(new Error('no game with that code answered')), 15000);
       conn.on('open', () => { clearTimeout(t); this.conn = conn; conn.send({ t: 'hello', ...hello }); resolve(); });
       conn.on('data', msg => this.onMessage(msg));
