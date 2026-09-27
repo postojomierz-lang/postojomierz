@@ -165,6 +165,10 @@ class Model:
                 ring.append((x, yc + hh * math.copysign(abs(sn) ** e, sn), zc + hw * math.copysign(abs(c) ** e, c)))
             rings.append(ring)
         return self._mesh(part, lambda bm: self._rings(bm, rings), bevel, smooth)
+    def loft_poly(self, part, secs, bevel=0.0):
+        """a faceted body (armour plates): secs = [(x, [(y, z), ...])], same point count in each."""
+        rings = [[(x, y, z) for y, z in pts] for x, pts in secs]
+        return self._mesh(part, lambda bm: self._rings(bm, rings), bevel)
     def lathe(self, part, prof, c, axis, seg=28, closed=False, bevel=0.0):
         """surface of revolution about axis through c: prof = [(radius, offset along the axis)]."""
         ax = Vector(axis).normalized()

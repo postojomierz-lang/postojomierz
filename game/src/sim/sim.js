@@ -33,7 +33,7 @@ export class Sim {
     this.occ = new Int32Array(this.W * this.H);   // static entity id per cell (0 = none)
     this.orders = [];                             // every placement, in order (for replays / online)
     this.teams = teamSpecs.map((t, i) => ({
-      id: i, name: t.name, color: t.color, human: !!t.human, zone: map.zones[i],
+      id: i, name: t.name, color: t.color, nation: t.nation || 'us', human: !!t.human, zone: map.zones[i],
       money: RULES.startBudget, bounty: 0, vehicles: 0, aircraft: 0, alive: true, hq: 0,
       kills: 0, losses: 0, spent: 0, saved: 0, healed: 0, recovered: [],
       focus: -1, stance: 'attack', hurtBy: teamSpecs.map(() => 0),   // orders: main target (-1 = nearest) and attack/defend

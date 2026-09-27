@@ -21,12 +21,16 @@ const MUZZLE = {
   rifleman: [0.82, 0.87], para: [0.82, 0.87], officer: [0.51, 0.9], grenadier: [-0.12, 1.04], bazooka: [0.49, 0.68], manpads: [0.36, 1.09], medic: [0.3, 0.8],
   sniper: [0.88, 0.87], mg: [0.78, 0.81], jeep: [0.26, 1.05], apc: [1.26, 0.98], amphib: [0.4, 1.36], tank: [2.1, 1.09], tank_light: [1.14, 0.98], tank_heavy: [2.7, 1.18], rockets: [0.05, 1.37],
   heli: [0.45, -0.16], fighter: [0.5, -0.08], attacker: [0.24, -0.21], bomber: [0, -0.25], transport: [-0.65, -0.1],
+  // the German models
+  'de:apc': [0.99, 1.04], 'de:amphib': [0.28, 1.15], 'de:tank_light': [0.98, 0.99], 'de:tank': [2.12, 1.08], 'de:tank_heavy': [2.75, 1.22],
+  'de:rockets': [-0.03, 1.86], 'de:heli': [0.45, -0.1], 'de:fighter': [0.7, 0.1], 'de:attacker': [0.3, -0.1], 'de:bomber': [0.05, -0.24],
+  'de:transport': [-0.7, 0.0], 'de:hq': [1.36, 0.72],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
 // the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)
 const POSE_MUZZLE = { 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
 const HEIGHT = { mg: 0.95, tank: 1.5, tank_light: 1.3, tank_heavy: 1.6, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
-const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4 };
+const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4, 'de:attacker': 0.55, 'de:transport': 0.5 };
 const CREW_SCALE = new THREE.Vector3(0.82, 0.82, 0.82);
 const isAir = def => def.cls === 'air' || def.cls === 'plane';
 
@@ -318,20 +322,22 @@ export class View {
   addEnt(e) {
     if (this.ents.has(e.id)) return;
     const inf = e.def.cls === 'infantry';
-    const first = inf ? basePose(e.type) : null;
-    const key = inf ? first : modelKey(e.type, e.id), m = inf ? model(first) : model(e.type, e.id);
+    const first = inf ? basePose(e.type) : null, nation = this.nationOf(e.team);
+    const key = inf ? nation + ':' + first : modelKey(e.type, e.id, nation), m = inf ? model(first, 0, nation) : model(e.type, e.id, nation);
     // transform-only scene graph (never rendered): root -> pivot -> parts
     const g = new THREE.Object3D(), pivot = new THREE.Object3D(); g.add(pivot);
-    let rotor = null, tail = null, chute = null;
+    let rotors = null, tail = null, chute = null;
     if (m.rotor) {
-      rotor = new THREE.Object3D(); rotor.position.set(0.3, 0.7, 0); pivot.add(rotor);
-      tail = new THREE.Object3D(); tail.position.set(-1.85, 0.45, 0.06); pivot.add(tail);
+      rotors = m.rotors.map(([x, y, z, lean, dir]) => {
+        const hub = new THREE.Object3D(); hub.position.set(x, y, z); hub.rotation.x = lean; hub.userData.dir = dir; pivot.add(hub); return hub;
+      });
+      if (m.tailAt) { tail = new THREE.Object3D(); tail.position.set(...m.tailAt); pivot.add(tail); }
     }
     if (e.def.cls === 'infantry') { chute = new THREE.Object3D(); g.add(chute); }
     let turret = null;
     if (m.turret) { turret = new THREE.Object3D(); pivot.add(turret); }
     const yaw = Math.atan2(-e.dirZ, e.dirX);
-    const v = { e, g, pivot, rotor, tail, chute, turret, tyaw: yaw, key, m, yaw, pose: inf ? basePose(e.type) : e.type, poseAt: 0, lastFire: 0, fireAt: 0, lastHit: 0, wobbleAt: 0, throwUntil: 0, celebrate: false, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
+    const v = { e, g, pivot, rotors, tail, chute, turret, tyaw: yaw, key, m, nation, yaw, pose: inf ? basePose(e.type) : e.type, poseAt: 0, lastFire: 0, fireAt: 0, lastHit: 0, wobbleAt: 0, throwUntil: 0, celebrate: false, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
     if (e.def.static && e.def.cls === 'fort') g.rotation.y = e.rot & 1 ? Math.PI / 2 : 0;
     else g.rotation.y = yaw;
     g.position.set(this.wx(e.x), e.y, this.wz(e.z));
@@ -343,7 +349,7 @@ export class View {
   removeEnt(id) { this.ents.delete(id); }
 
   muzzleOf(v) {
-    const [f, h] = POSE_MUZZLE[v.pose] || MUZZLE[v.e.type] || [0.4, 0.7];
+    const [f, h] = POSE_MUZZLE[v.pose] || MUZZLE[v.nation + ':' + v.e.type] || MUZZLE[v.e.type] || [0.4, 0.7];
     const y = v.turret ? v.tyaw : v.g.rotation.y;
     return new THREE.Vector3(v.g.position.x + Math.cos(y) * f, v.g.position.y + h, v.g.position.z - Math.sin(y) * f);
   }
@@ -455,6 +461,8 @@ export class View {
     this.drawOverlay();
   }
 
+  nationOf(team) { const t = this.sim && this.sim.teams[team]; return (t && t.nation) || 'us'; }
+
   hidden(e, deploy) {
     return e.loaded || (deploy && e.team !== this.human && e.placedRound === this.sim.round);
   }
@@ -490,13 +498,14 @@ export class View {
     let variant = 'normal';
     if (air && !e.dead) {
       // parked planes sit on their bellies' height above the table (there is no landing gear)
-      g.position.y = def.cls === 'air' ? y + Math.sin(now * 0.002 + e.id) * 0.12 : Math.max(y, PARKED[e.type] || 0);
+      g.position.y = def.cls === 'air' ? y + Math.sin(now * 0.002 + e.id) * 0.12 : Math.max(y, PARKED[v.nation + ':' + e.type] || PARKED[e.type] || 0);
       if (def.cls === 'plane') {
         // bank into turns, nose up while climbing
         v.roll += (Math.max(-0.9, Math.min(0.9, -dyaw * 0.45)) - v.roll) * Math.min(1, dt * 4);
         v.pivot.rotation.set(v.roll, 0, y < def.alt - 0.3 && e.moving ? 0.12 : 0);
       } else {
-        v.rotor.rotation.y += dt * 28; v.tail.rotation.z += dt * 40;
+        for (const r of v.rotors) r.rotation.y += dt * 28 * r.userData.dir;
+        if (v.tail) v.tail.rotation.z += dt * 40;
         v.pivot.rotation.z = e.moving ? -0.12 : 0;
       }
     } else if (def.cls === 'infantry' && !e.dead && !e.down) {
@@ -514,7 +523,7 @@ export class View {
     // toy-style animation
     if (def.cls === 'infantry' && !e.dead && !e.down && !e.falling) {
       const pose = poseFor(v, now, this.sim.phase === 'battle');
-      if (pose !== v.pose) { v.pose = pose; v.poseAt = now; v.key = pose; v.m = model(pose); }
+      if (pose !== v.pose) { v.pose = pose; v.poseAt = now; v.key = v.nation + ':' + pose; v.m = model(pose, 0, v.nation); }
       const hk = (now - v.poseAt) / 180;
       if (hk < 1) g.position.y += Math.sin(hk * Math.PI) * 0.15;
       if (v.celebrate) g.position.y = Math.abs(Math.sin(now * 0.011 + e.id * 1.7)) * 0.45;
@@ -590,7 +599,7 @@ export class View {
   // the engineers' two sappers: riding in the back of the truck, or kneeling in front of it at work
   emitCrew(v, pm, color) {
     const e = v.e, work = e.working && !e.dead;
-    const f = model(work ? 'pose-sapper' : 'pose-driver');
+    const pose = work ? 'pose-sapper' : 'pose-driver', f = model(pose, 0, v.nation);
     for (let i = 0; i < 2; i++) {
       const s = i ? 1 : -1;
       if (work) {
@@ -599,7 +608,7 @@ export class View {
         this.legM.makeRotationY(s * 0.4).scale(CREW_SCALE).setPosition(reach, 0, s * (0.5 + i * 0.2));
       } else this.legM.makeRotationY(0).scale(CREW_SCALE).setPosition(-0.5 - i * 0.28, 0.45, s * 0.2);
       this.tmpM.multiplyMatrices(pm, this.legM);
-      this.batches.push(this.batches.get((work ? 'pose-sapper' : 'pose-driver') + ':m', f.main, this.plasticMat), this.tmpM, color, e.id);
+      this.batches.push(this.batches.get(v.nation + ':' + pose + ':m', f.main, this.plasticMat), this.tmpM, color, e.id);
     }
   }
 
@@ -623,9 +632,9 @@ export class View {
       if (m.turret.dark) this.batches.push(this.batches.get(v.key + ':td', m.turret.dark, this.plasticMat), tm, darkC, id);
     }
     if (v.e.def.engineer && !v.e.dead) this.emitCrew(v, pm, mainC);
-    if (v.rotor && !v.e.dead) {
-      this.batches.push(this.batches.get(v.key + ':r', m.rotor, this.plasticMat), v.rotor.matrixWorld, darkC, id);
-      this.batches.push(this.batches.get(v.key + ':t', m.tailRotor, this.plasticMat), v.tail.matrixWorld, darkC, id);
+    if (v.rotors && !v.e.dead) {
+      for (const r of v.rotors) this.batches.push(this.batches.get(v.key + ':r', m.rotor, this.plasticMat), r.matrixWorld, darkC, id);
+      if (v.tail) this.batches.push(this.batches.get(v.key + ':t', m.tailRotor, this.plasticMat), v.tail.matrixWorld, darkC, id);
     }
     if (v.chute && v.chuteT > 0) {
       const c = model('chute');
@@ -770,7 +779,7 @@ export class View {
     if (!type) { if (this.ghost) this.ghost.g.visible = false; return; }
     if (!this.ghost || this.ghost.type !== type) {
       if (this.ghost) this.world.remove(this.ghost.g);
-      const m = model(type, 1), g = new THREE.Group();
+      const m = model(type, 1, this.nationOf(teamId)), g = new THREE.Group();
       const mat = new THREE.MeshStandardMaterial({ color: 0x9fe06a, transparent: true, opacity: 0.55, depthWrite: false });
       g.add(new THREE.Mesh(m.main, mat)); if (m.dark) g.add(new THREE.Mesh(m.dark, mat)); if (m.accent) g.add(new THREE.Mesh(m.accent, mat));
       if (m.turret) { g.add(new THREE.Mesh(m.turret.main, mat)); if (m.turret.dark) g.add(new THREE.Mesh(m.turret.dark, mat)); }
@@ -799,7 +808,7 @@ export class View {
 }
 
 // Small renders of each catalogue item for the build palette.
-export function renderThumbnails(types, color) {
+export function renderThumbnails(types, color, nation = 'us') {
   const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   r.setSize(160, 120); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.6;
   const scene = new THREE.Scene();
@@ -809,12 +818,12 @@ export function renderThumbnails(types, color) {
   const out = {};
   const col = TEAM_COLORS.find(c => c.id === color) || TEAM_COLORS[0];
   for (const type of types) {
-    const m = model(type, 1), g = new THREE.Group();
+    const m = model(type, 1, nation), g = new THREE.Group();
     g.add(new THREE.Mesh(m.main, plastic(col.main)));
     if (m.dark) g.add(new THREE.Mesh(m.dark, plastic(col.dark, 'dark')));
     if (m.accent) g.add(new THREE.Mesh(m.accent, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 })));
     if (m.turret) { g.add(new THREE.Mesh(m.turret.main, plastic(col.main))); if (m.turret.dark) g.add(new THREE.Mesh(m.turret.dark, plastic(col.dark, 'dark'))); }
-    if (m.rotor) { const ro = new THREE.Mesh(m.rotor, plastic(col.dark, 'dark')); ro.position.set(0.3, 0.7, 0); g.add(ro); }
+    if (m.rotor) for (const [x, y, z, lean] of m.rotors) { const ro = new THREE.Mesh(m.rotor, plastic(col.dark, 'dark')); ro.position.set(x, y, z); ro.rotation.x = lean; g.add(ro); }
     g.rotation.y = -0.6;
     scene.add(g);
     const box = new THREE.Box3().setFromObject(g), c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()).length();
