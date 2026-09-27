@@ -3,6 +3,7 @@
 // geometries - "main" in the army colour, "dark", painted parts - so each is a handful of draw calls.
 import { FIGURES, FIGURE_SCALE } from '../data/figures.js';
 import { VEHICLES, VEHICLE_SCALE } from '../data/vehicles.js';
+import { SCENERY, SCENERY_SCALE } from '../data/scenery.js';
 import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three';
@@ -75,6 +76,32 @@ function buildVehicle(key) {
     out.far.main = mergeGeometries([out.far.main, crew(figure('lookout').far.main, -0.15, 2.62, 0.25)]);
   }
   return out;
+}
+const SOFT = new Set(['#4f6b35', '#6a8a42', '#3f5a2e', '#5c6d38', '#cfae5e', '#6e5b41']);
+const LEAVES = new Set(['#4f6b35', '#6a8a42', '#3f5a2e', '#5c6d38']);
+// painted foam foliage: sunlit tops lighter and yellower, undersides dark, blotchy in between
+function shadeFoliage(g) {
+  const pos = g.attributes.position.array, nor = g.attributes.normal.array, col = g.attributes.color.array;
+  const h = (x, y, z) => { const v = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453; return v - Math.floor(v); };
+  const blot = (x, y, z) => { const s = 3.2, fx = x * s, fy = y * s, fz = z * s, ix = Math.floor(fx), iy = Math.floor(fy), iz = Math.floor(fz);
+    let a = 0; for (let k = 0; k < 8; k++) { const dx = k & 1, dy = (k >> 1) & 1, dz = k >> 2;
+      a += h(ix + dx, iy + dy, iz + dz) * (dx ? fx - ix : 1 - fx + ix) * (dy ? fy - iy : 1 - fy + iy) * (dz ? fz - iz : 1 - fz + iz); }
+    return a; };
+  for (let i = 0; i < pos.length; i += 3) {
+    const up = nor[i + 1] * 0.5 + 0.5, n = blot(pos[i], pos[i + 1], pos[i + 2]);
+    const k = 0.62 + up * 0.42 + (n - 0.5) * 0.35 + Math.min(0.15, pos[i + 1] * 0.04);
+    col[i] *= k * (1 + up * 0.12); col[i + 1] *= k * (1 + up * 0.06); col[i + 2] *= k * 0.92;
+  }
+}
+// Diorama scenery (tools/blender/scenery.py): all painted parts merged into one geometry
+const scenery = new Map();
+export function sceneryGeometry(key) {
+  if (!scenery.has(key)) scenery.set(key, mergeGeometries(SCENERY[key].map(p => {
+    const g = figureGeometry(p, p.c, SCENERY_SCALE, !SOFT.has(p.c));   // foliage and earth: smooth; buildings: crisp
+    if (LEAVES.has(p.c)) shadeFoliage(g);
+    return g.index ? g.toNonIndexed() : g;
+  })));
+  return scenery.get(key);
 }
 const figs = new Map();
 function figure(key) { if (!figs.has(key)) figs.set(key, buildFigure(key)); return figs.get(key); }

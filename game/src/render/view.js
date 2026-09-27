@@ -11,6 +11,7 @@ import { VerticalTiltShiftShader } from 'three/addons/shaders/VerticalTiltShiftS
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { model, modelKey, plastic } from './models.js';
 import { buildTerrain, floorTexture, FLOOR, buildTape } from './terrain.js';
+import { buildDiorama } from './diorama.js';
 import { Fx } from './fx.js';
 import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 
@@ -235,14 +236,20 @@ export class View {
     this.sunDir.set(...st.sun).normalize();
     this.span = span; this.shadowHalf = 0;
 
-    const tex = floorTexture(map.theme, map.seed, map.tint);
-    const FS = map.W + 160, FD = map.H + 160;
-    tex.repeat.set(FS / 8, FD / 8);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(FS, FD), new THREE.MeshStandardMaterial({ map: tex, roughness: map.theme === 'kitchen' ? 0.35 : 0.85 }));
-    floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
-    this.world.add(floor);
-    this.world.add(buildTerrain(map));
-    this.world.add(buildTape(map));
+    this.groundPicture = null;
+    if (map.theme === 'normandy') {
+      const d = buildDiorama(map, this.quality);
+      this.world.add(d.group); this.groundPicture = d.minimap;
+    } else {
+      const tex = floorTexture(map.theme, map.seed, map.tint);
+      const FS = map.W + 160, FD = map.H + 160;
+      tex.repeat.set(FS / 8, FD / 8);
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(FS, FD), new THREE.MeshStandardMaterial({ map: tex, roughness: map.theme === 'kitchen' ? 0.35 : 0.85 }));
+      floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
+      this.world.add(floor);
+      this.world.add(buildTerrain(map));
+      this.world.add(buildTape(map));
+    }
     this.zones = new THREE.Group(); this.world.add(this.zones);
     for (const t of sim.teams) {
       const z = t.zone, col = TEAM_COLORS[t.color].main, own = t.id === human;
@@ -654,6 +661,7 @@ export class View {
     c.width = map.W * S; c.height = map.H * S;
     const g = c.getContext('2d');
     g.fillStyle = FLOOR[map.theme].base; g.fillRect(0, 0, c.width, c.height);
+    if (this.groundPicture) g.drawImage(this.groundPicture, 0, 0, c.width, c.height);
     for (let y = 0; y < map.H; y++) for (let x = 0; x < map.W; x++) {
       const t = map.grid[y * map.W + x];
       if (!t) continue;

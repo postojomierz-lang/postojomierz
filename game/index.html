@@ -67,7 +67,6 @@
   <div class="build-head">
     <span class="hint">Drag on the floor to draw (size = drag). Click for a default size. Right-click removes. Army zones must stay clear.</span>
     <div class="grow"></div>
-    <button type="button" id="edDrawing" class="ghost">Import drawing</button><input type="file" id="edDrawingFile" accept="image/*" hidden>
     <button type="button" id="edOpen" class="ghost">Open file</button><input type="file" id="edOpenFile" accept=".json,application/json" hidden>
     <button type="button" id="edSave" class="ghost">Save file</button>
     <button type="button" id="edClear" class="ghost">Clear</button>
@@ -99,10 +98,10 @@
       </label>
       <label>Battlefield
         <select id="optSource">
-          <option value="random">Random battlefield</option>
-          <option value="library">From the map library</option>
-          <option value="file">Load a map file</option>
-          <option value="drawing">From a hand-drawn map (photo)</option>
+          <option value="normandy">Normandy countryside (diorama)</option>
+          <option value="random">Toy room (classic) — random floor</option>
+          <option value="library">Toy room — from the map library</option>
+          <option value="file">Toy room — load a map file</option>
         </select>
       </label>
       <label id="rowTheme">Floor
@@ -121,9 +120,6 @@
       </label>
       <label id="rowFile">Map file (.pfmap.json)
         <input type="file" id="optMapFile" accept=".json,application/json">
-      </label>
-      <label id="rowDrawing">Photo of your drawing
-        <input type="file" id="optDrawing" accept="image/*">
       </label>
       <label>Enemy commanders
         <select id="optDiff">
@@ -147,23 +143,10 @@
       </label>
       <label class="check"><input type="checkbox" id="optSound" checked> Sound effects</label>
     </div>
-    <div id="drawingHelp" class="claude" hidden>
-      <p class="note">Draw on white paper with markers: <b>black</b> = books, boxes and walls · <b>red</b> = LEGO bricks · <b>blue</b> = spills · <b>green</b> lines = low cover (pencils). Keep the army zones empty, then photograph just the sheet from above. Everything is read on your device; nothing is uploaded.</p>
-      <div><button type="button" id="btnBlank" class="ghost">Download a blank sheet to print</button></div>
-    </div>
     <details id="advanced" class="claude">
-      <summary>Advanced: let Claude design the battlefield (needs your own Anthropic API key)</summary>
+      <summary>Advanced: let Claude design a toy-room battlefield (needs your own Anthropic API key)</summary>
       <label class="check"><input type="checkbox" id="optUseClaude"> Use Claude for this battlefield</label>
-      <label>Claude designs it from
-        <select id="optClaudeMode">
-          <option value="text">A description</option>
-          <option value="photo">A photo of a real floor, table or desk</option>
-        </select>
-      </label>
-      <label id="photoRow">Photo
-        <input type="file" id="optPhoto" accept="image/*">
-      </label>
-      <label>Description <span class="muted" id="promptHint">(optional with a photo)</span>
+      <label>Description
         <textarea id="optPrompt" rows="2" placeholder="e.g. Breakfast table: cereal box fortress, spilled milk river, spoons as bridges"></textarea>
       </label>
       <div class="grid2">
@@ -178,7 +161,7 @@
           </select>
         </label>
       </div>
-      <p class="note">Your description or photo is sent to Anthropic's Claude API and billed to your key. The key is saved only in this browser; use one with a spending limit. If anything fails you get a random battlefield instead.</p>
+      <p class="note">Your description is sent to Anthropic's Claude API and billed to your key. The key is saved only in this browser; use one with a spending limit. If anything fails you get a random battlefield instead.</p>
     </details>
     <p class="note">Online battles against other players come in a later stage. Right now the other armies are commanded by the computer.</p>
     <div class="actions"><button value="editor" class="ghost">🛠 Map editor</button><button value="online" class="ghost">🌐 Play online</button><button value="go" class="go">Tip out the toy box ▶</button></div>

@@ -1,9 +1,8 @@
 // Map editor: place household obstacles by dragging on the floor, then save to a file or play.
-import { makeMap, STYLES, THEMES } from './sim/map.js';
+import { makeMap, STYLES, ROOM_THEMES } from './sim/map.js';
 import { Sim } from './sim/sim.js';
 import { TEAM_COLORS } from './data/catalog.js';
 import { exportLayout, downloadLayout, readLayoutFile } from './mapfile.js';
-import { recognizeDrawing } from './drawn.js';
 
 const $ = id => document.getElementById(id);
 
@@ -32,7 +31,7 @@ export class Editor {
     this.tab = 'tall'; this.tool = 'books'; this.active = false; this.drag = null;
     $('edTabs').onclick = e => { const t = e.target.dataset.tab; if (t) { this.tab = t; this.tool = TABS.find(x => x.id === t).items[0]; this.paint(); } };
     $('edCards').onclick = e => { const c = e.target.closest('[data-tool]'); if (c) { this.tool = c.dataset.tool; this.paint(); } };
-    $('edTheme').innerHTML = THEMES.map(t => `<option value="${t}">${t[0].toUpperCase() + t.slice(1)}</option>`).join('');
+    $('edTheme').innerHTML = ROOM_THEMES.map(t => `<option value="${t}">${t[0].toUpperCase() + t.slice(1)}</option>`).join('');
     $('edTheme').onchange = () => { this.layout.theme = $('edTheme').value; this.layout.floorColor = ''; this.rebuild(); };
     $('edColor').oninput = () => { this.layout.floorColor = $('edColor').value; this.rebuild(); };
     $('edTitle').oninput = () => { this.layout.title = $('edTitle').value.slice(0, 80); };
@@ -42,16 +41,6 @@ export class Editor {
       const f = $('edOpenFile').files[0]; $('edOpenFile').value = '';
       if (!f) return;
       try { this.load(await readLayoutFile(f)); this.toast('Map loaded'); } catch (e) { this.toast('Could not open the map: ' + e.message, false, true); }
-    };
-    $('edDrawing').onclick = () => $('edDrawingFile').click();
-    $('edDrawingFile').onchange = async () => {
-      const f = $('edDrawingFile').files[0]; $('edDrawingFile').value = '';
-      if (!f) return;
-      try {
-        const lay = await recognizeDrawing(f, this.map.W, this.map.H);
-        this.load({ ...lay, theme: this.layout.theme });
-        this.toast(`Drawing read: ${lay.objects.length} objects`);
-      } catch (e) { this.toast('Could not read the drawing: ' + e.message, false, true); }
     };
     $('edClear').onclick = () => { this.layout.objects = []; this.layout.decor = []; this.rebuild(); };
     $('edPlay').onclick = () => { this.sync(); this.close(); this.onPlay(this.layout); };
