@@ -22,7 +22,7 @@ Tempo marszu liczone jest wzorem Toblera.
 | wysokości w okolicy | GUGiK NMT; Słowacja: DMR 5.0 ÚGKK SR (lidar, `zbgis/`) | 4 m |
 | panorama | Copernicus DEM GLO-30 | ~58 m |
 | zdjęcie przy szlaku | ortofotomapa GUGiK (rocznik ~2012: wysokie słońce, mało cieni) | 0,5 m |
-| zdjęcie w okolicy | ortofotomapa GUGiK; Słowacja: Sentinel-2 (2.07.2025) | 2 m / 10 m |
+| zdjęcie w okolicy | ortofotomapa GUGiK; Słowacja: ortofotomozaika GKÚ Bratislava, NLC (2025, `zbgis_orto/`) | 2 m |
 | las / kosodrzewina | ESA WorldCover 2021 | 10 m |
 | szlak, jeziora | OpenStreetMap przez Overture Maps | wektor |
 | tekstury z bliska | Poly Haven (CC0) | 1K |
@@ -30,7 +30,7 @@ Tempo marszu liczone jest wzorem Toblera.
 Przygotowanie: `python3 tools/prepare.py` (panorama, las, szlak), potem `python3 tools/prepare_gugik.py`
 (pobiera z geoportal.gov.pl, pamięć podręczna w `tools/.cache/`; słowacki DMR 5.0 czyta z `zbgis/*.tif`,
 pobranych ręcznie z https://zbgis.skgeodesy.sk/mapka/sk/teren/export, bo serwery ÚGKK odrzucają połączenia
-z chmury). Wyniki trafiają do `public/data/`. Zdroj produktov LLS: ÚGKK SR (CC BY 4.0).
+z chmury). Wyniki trafiają do `public/data/`. Zdroj produktov LLS: ÚGKK SR (CC BY 4.0). Ortofotomozaika SR: GKÚ Bratislava, NLC.
 
 W silniku: siatka 1,25 m wokół kamery (przebudowywana w ruchu) na siatce 6 m, okno ostrej ortofotomapy
 1×1 km wokół kamery, cienie gór liczone z modelu wysokości.

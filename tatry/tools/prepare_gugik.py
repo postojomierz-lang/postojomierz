@@ -9,7 +9,8 @@ Writes into ../public/data/:
   tiles/h_i_j.bin deflate: u16 heights (dm), 257x257 samples, 1 m, per 256 m tile near the trail
   tiles/o_i_j.jpg 512x512 orthophoto, 0.5 m, per tile
 and adds the grid/tile description to meta.json.
-Slovak side: terrain from DMR 5.0 (ÚGKK SR, 1 m) placed in ../zbgis/*.tif; imagery stays Sentinel-2.
+Slovak side: terrain from DMR 5.0 (ÚGKK SR, 1 m) in ../zbgis/*.tif, orthophoto (GKÚ Bratislava, NLC,
+2025, ~1.3 m) in ../zbgis_orto/*.tif; Sentinel-2 only where neither photo exists.
 Copernicus DEM only fills what neither lidar covers, blended at the border.
 """
 import io, json, math, os, zlib, urllib.request, concurrent.futures as cf
@@ -100,6 +101,25 @@ def zbgis_mosaic():
     a[(a > 10000) | (a < 100)] = 0
     print('zbgis mosaic', a.shape, 'coverage', round(float((a > 0).mean()), 3))
     return a, t
+
+def sk_ortho(bounds_ll, w, h):
+    """Slovak orthophoto mosaic (S-JTSK, EPSG:5514, .tif + .tfw) resampled to a lon/lat pixel grid."""
+    import glob
+    from rasterio.merge import merge
+    files = sorted(glob.glob(os.path.join(ROOT, 'zbgis_orto', '*.tif')))
+    if not files: return None
+    srcs = [rasterio.open(f) for f in files]
+    mos, t = merge(srcs, nodata=0)
+    t_dst = from_bounds(*bounds_ll, w, h)
+    out = np.zeros((3, h, w), dtype=np.float32)
+    for b in range(3):
+        reproject(mos[b].astype(np.float32), out[b], src_transform=t, src_crs='EPSG:5514', dst_transform=t_dst,
+                  dst_crs='EPSG:4326', resampling=Resampling.lanczos, src_nodata=0, dst_nodata=0)
+    o = np.moveaxis(out, 0, -1)
+    # white (Poland) and black (missing) mean no data; erode a little to drop resampled edges
+    from scipy.ndimage import binary_erosion
+    v = binary_erosion(is_valid(o), iterations=2)
+    return o, v
 
 def to_local_grid(src, src_t, bounds_ll, w, h, resampling, pixel_is_point=True, crs='EPSG:2180', nodata=0):
     """Resample a projected array onto a lon/lat grid of w x h samples (samples on the bounds)."""
@@ -269,6 +289,20 @@ def main():
         a = sv.std() * 1.15 / o.std()
         cmap.append((a, sv.mean() - a * o.mean()))
         ortho[..., c] = ortho[..., c] * a + cmap[-1][1]
+    # Slovak orthophoto (ÚGKK SR / GKÚ Bratislava, 2025, uploaded to ../zbgis_orto) replaces Sentinel-2
+    sk = sk_ortho(ll, ow, oh)
+    if sk is not None:
+        so, sv_ = sk
+        sv_ &= ~valid
+        if sv_.sum() > 1000:
+            # same kind of mapping as the Polish photo: towards Sentinel-2 colours, slightly more contrast
+            for c in range(3):
+                o, t = so[..., c][sv_], sen[..., c][sv_]
+                a = t.std() * 1.15 / o.std()
+                so[..., c] = so[..., c] * a + (t.mean() - a * o.mean())
+            ortho = np.where(sv_[..., None], so, ortho)
+            valid = valid | sv_
+            print('slovak orthophoto on', round(float(sv_.mean()), 3), 'of the area')
     ortho = np.where(valid[..., None], ortho, sen)
     dist = distance_transform_edt(~valid) * ORTHO_BASE
     wgt = np.clip(1 - dist / 60, 0, 1)[..., None]
@@ -320,6 +354,7 @@ def main():
     meta['tiles'] = {'size': TILE, 'origin': ib[:2], 'list': tiles, 'samples': TILE + 1, 'orthoPx': 512}
     if 'GUGiK' not in meta['sources']: meta['sources'] += '; GUGiK: NMT 1 m, ortofotomapa (geoportal.gov.pl)'
     if zb is not None and 'ÚGKK' not in meta['sources']: meta['sources'] += '; Zdroj produktov LLS: ÚGKK SR (DMR 5.0, CC BY 4.0)'
+    if sk is not None and 'NLC' not in meta['sources']: meta['sources'] += '; ortofotomozaika SR: GKÚ Bratislava, NLC'
     json.dump(meta, open(os.path.join(DATA, 'meta.json'), 'w'), separators=(',', ':'), ensure_ascii=False)
     print('done')
 
