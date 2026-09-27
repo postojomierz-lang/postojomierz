@@ -433,7 +433,7 @@ async function main() {
       dummy.scale.set(sc * (0.8 + r() * 0.4), sc * (0.7 + r() * 0.5), sc * (0.8 + r() * 0.4));
       dummy.position.set(x, ground(x, z) - s * 0.15, z);
       dummy.updateMatrix();
-      const g = 0.85 + r() * 0.3;
+      const g = 1.2 + r() * 0.35;   // light Tatra granite (the scans are dark)
       vr.items.push([dummy.matrix.clone(), g]);
       k++;
     }
@@ -787,6 +787,9 @@ async function main() {
     if (state.mode === 'walk') {
       // steady camera: no step bobbing, height filtered in time as well
       state.camY = state.camY === undefined || Math.abs(state.camY - p.y) > 20 ? p.y : state.camY + (p.y - state.camY) * Math.min(1, dt * 2.5);
+      // at high speed on steep ground the filter lags behind: keep it close to the eye line and the eye
+      // always well above the drawn surface
+      state.camY = Math.min(p.y + 0.6, Math.max(p.y - 0.25, state.camY, drawnHeight(p.x, p.z) - 0.5));
       camera.position.set(p.x, state.camY + 1.7, p.z);
       const yaw = state.yaw + state.yawOff;
       const along = Math.max(0, Math.cos(state.yawOff)); // follow the slope only when looking along the trail
