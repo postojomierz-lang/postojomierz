@@ -128,7 +128,11 @@ its firing platform, a Bofors, a Vickers and a scaffold-tube post; Japan a Type 
 the Type 96 twin 25 mm, the Type 92 'woodpecker' behind logs and a bamboo tower; France the 75 mle
 1897, a Hotchkiss 25 mm, the Hotchkiss mle 1914 behind wicker gabions and a Maginot-style concrete
 tower; Italy the 47/32, a Breda 20/65, a Breda 37 behind a dry-stone wall and a stone torretta.
-Walls, sandbags, wire, tank traps, barrels and mines are the same for everyone.
+Their walls and wire are their own too: Atlantic Wall concrete and a knife rest; a log palisade
+or cribbed log wall and a double-apron fence; a corrugated-iron revetment and triple Dannert
+concertina; a bamboo palisade and sharpened bamboo stakes; a village stone wall and the réseau
+Brun; a tufa-block wall and a cavallo di Frisia (the Americans keep the brick wall and concertina).
+Sandbags, tank traps, barrels and mines are the same for everyone.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)

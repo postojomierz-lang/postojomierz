@@ -1,11 +1,12 @@
-# Each army's own gun emplacements and lookout tower, in the style of structures.py: the field
-# gun, the anti-aircraft gun, the machine-gun nest and the watchtower of the Americans, the
-# Germans, the Red Army, the British, the Japanese, the French and the Italians. Walls, sandbags,
-# wire, tank traps, barrels and mines (structures.py) look the same in every army. The American
+# Each army's own gun emplacements, lookout tower, walls and wire, in the style of structures.py:
+# the field gun, the anti-aircraft gun, the machine-gun nest and the watchtower of the Americans,
+# the Germans, the Red Army, the British, the Japanese, the French and the Italians, and the walls
+# and wire of all but the Americans (whose brick wall and concertina are in structures.py).
+# Sandbags, tank traps, barrels and mines (structures.py) look the same in every army. The American
 # ones are written to .cache/figures/vehicles (the default models, packed into src/data/vehicles.js),
 # the others to .cache/figures/vehicles/<nation> (packed into public/nation-<nation>.js).
 #
-#   python tools/blender/structures_nations.py [nation ...] [--only=fieldgun,aa,mgnest,tower]
+#   python tools/blender/structures_nations.py [nation ...] [--only=fieldgun,aa,mgnest,tower,wall0,wall1,wire]
 #
 # All kept to one layout, so the game's crews and muzzle flashes fit: the MG sits
 # about 0.6 up with its gunner behind it at the origin, the AA gun turns about the origin
@@ -740,14 +741,276 @@ def it_tower():
     ladder(m, 0.9, H)
     m.finish()
 
+# =========================================================================================
+# Walls (two shapes each, picked by the placement seed) and wire obstacles: 2.9 long, up to 1.5
+# high and about 0.4 thick for a wall, 1.9 long for the wire, all along x.
+L, WH = 2.9, 1.5
+
+def barbed(m, a, b, barbs=18, r=0.009):
+    """a strand of barbed wire from a to b with its barbs."""
+    m.cyl('dark', a, b, r, seg=5)
+    for k in range(barbs):
+        t = (k + 0.5) / barbs
+        p = tuple(a[i] + (b[i] - a[i]) * t for i in range(3))
+        for s in (1, -1): m.cyl('dark', p, (p[0] + 0.02, p[1] + 0.025 * s, p[2] + 0.025 * s), 0.005, seg=4)
+
+def coil(m, x0, x1, y, z, r, turns, squash=1.0, part='dark'):
+    pts = []
+    N = int(turns * 18)
+    for i in range(N + 1):
+        t = i / N; a = t * 2 * math.pi * turns
+        pts.append((x0 + (x1 - x0) * t, y + math.sin(a) * r * squash, z + math.cos(a) * r))
+    for a_, b_ in zip(pts, pts[1:]): m.cyl(part, a_, b_, 0.009, seg=5)
+
+def rubble(m, rnd, n=8, big=0.08):
+    for k in range(n):
+        s = big + rnd() * big
+        m.box('main', (-L / 2 + rnd() * L, 0.06 + s / 3, (1 if rnd() < 0.5 else -1) * (0.3 + rnd() * 0.25)), (s * 2, s, s * 1.2), bevel=0.012, yaw=rnd() * 3, pitch=(rnd() - 0.5) * 0.6)
+
+def de_wall(variant):
+    """Atlantic Wall concrete: cast panels showing the lines of their board shuttering, a firing
+    embrasure (or a shell-bitten top with the reinforcing bars sticking out) and a thick footing."""
+    m = Model(f'wall{variant}'); rnd = mulberry(210 + variant)
+    T = 0.42
+    m.box('main', (0, 0.08, 0), (L + 0.2, 0.16, T + 0.24), bevel=0.03)
+    panels = 4
+    for i in range(panels):
+        x = -L / 2 + (i + 0.5) * L / panels
+        h = WH if variant == 0 or i in (0, 3) else WH * (0.62 if i == 1 else 0.8)
+        if variant == 0 and i in (1, 2):
+            m.box('main', (x, 0.16 + 0.3, 0), (L / panels - 0.02, 0.6, T), bevel=0.02)
+            m.box('main', (x, h - 0.25, 0), (L / panels - 0.02, 0.5, T), bevel=0.02)
+            m.box('main', (x + (0.18 if i == 1 else -0.18), 0.93, 0), (L / panels * 0.55, 0.28, T), bevel=0.02)
+        else:
+            m.box('main', (x, 0.16 + (h - 0.16) / 2, 0), (L / panels - 0.02, h - 0.16, T), bevel=0.02)
+        for k in range(int(h / 0.16)):                                                    # shuttering lines
+            for sz in (1, -1): m.box('dark', (x, 0.3 + k * 0.16, sz * (T / 2 + 0.002)), (L / panels - 0.06, 0.008, 0.004), bevel=0.0)
+        if variant == 1 and i in (1, 2):
+            for k in range(4): m.cyl('dark', (x - 0.2 + k * 0.13, h - 0.05, 0.1 * (k % 2) - 0.05), (x - 0.22 + k * 0.13 + rnd() * 0.05, h + 0.2 + rnd() * 0.1, 0.12 * (k % 2) - 0.06), 0.012, seg=5)
+    if variant == 0:
+        m.box('dark', (0, 0.92, 0), (0.3, 0.16, T + 0.01), bevel=0.0)                         # the embrasure's mouth
+    rubble(m, rnd, 6 + 6 * variant)
+    m.finish()
+
+def de_wire():
+    """a knife rest ('Spanish rider'): a timber beam on X-shaped legs at both ends and the middle,
+    wound round with barbed wire."""
+    m = Model('wire')
+    m.cyl('main', (-0.95, 0.4, 0), (0.95, 0.4, 0), 0.04, seg=10)
+    for x in (-0.85, 0.0, 0.85):
+        for s in (1, -1): m.cyl('main', (x, 0.4, 0), (x, 0.02, s * 0.42), 0.03, seg=8)
+        for s in (1, -1): m.cyl('main', (x, 0.4, 0), (x, 0.74, s * 0.34), 0.03, seg=8)
+    for zz, y in ((0.36, 0.05), (-0.36, 0.05), (0.3, 0.7), (-0.3, 0.7), (0.0, 0.42)):
+        barbed(m, (-0.95, y, zz), (0.95, y, zz))
+    for x in (-0.6, -0.2, 0.2, 0.6):                                                            # the wire wound across
+        barbed(m, (x, 0.05, 0.36), (x + 0.1, 0.7, -0.3), barbs=6)
+        barbed(m, (x, 0.05, -0.36), (x + 0.1, 0.7, 0.3), barbs=6)
+    m.finish()
+
+def su_wall(variant):
+    """a log palisade: a row of sharpened logs held by two rails (or a cribbed wall of logs laid
+    lengthwise between posts, with the earth fill showing at the top)."""
+    m = Model(f'wall{variant}'); rnd = mulberry(220 + variant)
+    if variant == 0:
+        n = 19
+        for i in range(n):
+            x = -L / 2 + (i + 0.5) * L / n; h = WH * (0.85 + rnd() * 0.15)
+            m.cyl('main', (x, 0.0, 0), (x, h, 0), 0.075, seg=10)
+            m.cyl('main', (x, h, 0), (x, h + 0.14, 0), 0.075, seg=10, r2=0.01)                 # the sharpened point
+        for y in (0.4, 1.0):
+            for sz in (1, -1): m.cyl('main', (-L / 2, y, sz * 0.1), (L / 2, y, sz * 0.1), 0.05, seg=10)
+    else:
+        for k in range(8):
+            y = 0.09 + k * 0.155
+            for sz in (1, -1): m.cyl('main', (-L / 2 + 0.05, y, sz * 0.16), (L / 2 - 0.05, y, sz * 0.16), 0.078, seg=12)
+            for sz in (1, -1):
+                for x in (-L / 2 + 0.05, L / 2 - 0.05): m.cyl('dark', (x, y, sz * 0.16), (x + (0.01 if x > 0 else -0.01), y, sz * 0.16), 0.07, seg=12)   # log ends
+        m.box('dark', (0, 1.3, 0), (L - 0.2, 0.06, 0.26), bevel=0.02)                          # earth fill
+        for x in (-1.1, 0.0, 1.1):
+            for sz in (1, -1): m.cyl('main', (x, 0.0, sz * 0.26), (x, 1.4, sz * 0.26), 0.06, seg=10)
+    rubble(m, rnd, 4, 0.06)
+    m.finish()
+
+def su_wire():
+    """a double-apron fence: a row of pickets with barbed strands along it and guy strands running
+    down to anchor stakes on both sides."""
+    m = Model('wire')
+    for x in (-0.85, 0.0, 0.85):
+        m.cyl('main', (x, 0.0, 0), (x, 0.75, 0), 0.03, seg=8)
+        for s in (1, -1):
+            m.cyl('main', (x, 0.0, s * 0.55), (x, 0.12, s * 0.55), 0.025, seg=8)
+            barbed(m, (x, 0.72, 0), (x, 0.1, s * 0.55), barbs=8)
+    for y in (0.2, 0.45, 0.7): barbed(m, (-0.95, y, 0), (0.95, y, 0))
+    for s in (1, -1):
+        for k in (0.35, 0.7): barbed(m, (-0.95, 0.72 - (0.62 * k), s * 0.55 * k), (0.95, 0.72 - (0.62 * k), s * 0.55 * k))
+    m.finish()
+
+def gb_wall(variant):
+    """a revetment of corrugated iron held by angle-iron pickets and wire ties, a row of sandbags
+    along the top (or a sheet bent over where a shell landed)."""
+    m = Model(f'wall{variant}'); rnd = mulberry(230 + variant)
+    sheets = 5
+    for i in range(sheets):
+        x = -L / 2 + (i + 0.5) * L / sheets
+        h = 1.2 if not (variant == 1 and i == 2) else 0.75
+        for k in range(10):                                                                     # the corrugations
+            m.cyl('main', (x - L / sheets / 2 + 0.03 + k * (L / sheets - 0.06) / 9, 0.0, 0.15 + (0.012 if k % 2 else 0)),
+                  (x - L / sheets / 2 + 0.03 + k * (L / sheets - 0.06) / 9, h, 0.15 + (0.012 if k % 2 else 0)), 0.03, seg=6)
+        m.box('main', (x, h / 2, 0.14), (L / sheets - 0.02, h, 0.03), bevel=0.0)
+        if variant == 1 and i == 2:
+            m.box('main', (x, 0.95, 0.3), (L / sheets - 0.04, 0.5, 0.03), bevel=0.0, roll=0.9)   # the bent-over sheet
+    for x in (-1.45, -0.87, -0.29, 0.29, 0.87, 1.45):
+        m.box('dark', (x, 0.65, 0.19), (0.04, 1.3, 0.04), bevel=0.0)                             # pickets
+    m.box('main', (0, 0.35, -0.08), (L - 0.1, 0.7, 0.4), bevel=0.05)                              # earth piled behind
+    if variant == 0:
+        for k in range(7): sandbag(m, 'main', (-1.25 + k * 0.42, 1.28, 0.05), 0.0, L=0.42, W=0.28, rnd=rnd)
+    else:
+        for k in (0, 1, 5, 6): sandbag(m, 'main', (-1.25 + k * 0.42, 1.28, 0.05), 0.0, L=0.42, W=0.28, rnd=rnd)
+    rubble(m, rnd, 3, 0.06)
+    m.finish()
+
+def gb_wire():
+    """triple Dannert concertina: two coils side by side on the ground and a third on top, held by
+    screw pickets."""
+    m = Model('wire')
+    for z in (-0.24, 0.24): coil(m, -0.95, 0.95, 0.24, z, 0.23, 12)
+    coil(m, -0.95, 0.95, 0.62, 0.0, 0.2, 11)
+    for x in (-0.9, 0.0, 0.9):
+        m.cyl('main', (x, 0.0, 0.5), (x, 0.8, 0.48), 0.018, seg=6)
+        barbed(m, (x, 0.78, 0.48), (x, 0.84, 0.0), barbs=3)
+    barbed(m, (-0.95, 0.8, 0.0), (0.95, 0.8, 0.0))
+    m.finish()
+
+def jp_wall(variant):
+    """a bamboo palisade: bundles of canes lashed to rails between posts (or a panel of split bamboo
+    woven between uprights)."""
+    m = Model(f'wall{variant}'); rnd = mulberry(240 + variant)
+    for x in (-1.4, -0.47, 0.47, 1.4): m.cyl('main', (x, 0.0, 0), (x, WH + 0.08, 0), 0.06, seg=10)
+    for y in (0.3, 0.8, 1.25):
+        for sz in (1, -1):
+            m.cyl('main', (-L / 2, y, sz * 0.08), (L / 2, y, sz * 0.08), 0.035, seg=8)
+    if variant == 0:
+        n = 30
+        for i in range(n):
+            x = -L / 2 + (i + 0.5) * L / n; h = WH * (0.88 + rnd() * 0.12)
+            m.cyl('main', (x, 0.0, 0), (x, h, 0), 0.042, seg=8)
+            m.cyl('main', (x, h, 0), (x, h + 0.08, 0.02), 0.042, seg=8, r2=0.006)              # cut on the slant
+            for y in (0.5, 1.0): m.torus('main', (x, y, 0), (0, 1, 0), 0.044, 0.008, seg=10)   # nodes
+    else:
+        for k in range(14):                                                                     # woven strips
+            y = 0.1 + k * 0.095
+            m.box('main', (0, y, 0.015 * (1 if k % 2 else -1)), (L - 0.1, 0.07, 0.02), bevel=0.0)
+        for i in range(12): m.box('main', (-L / 2 + 0.12 + i * 0.24, 0.72, 0), (0.07, 1.4, 0.03), bevel=0.0)
+    for x in (-1.4, -0.47, 0.47, 1.4):
+        for y in (0.3, 0.8, 1.25): m.torus('dark', (x, y, 0), (0, 1, 0), 0.075, 0.014, seg=12)   # lashings
+    m.finish()
+
+def jp_wire():
+    """sharpened bamboo stakes leaning out towards the enemy, with a strand of barbed wire through
+    them."""
+    m = Model('wire'); rnd = mulberry(241)
+    for i in range(11):
+        x = -0.9 + i * 0.18
+        for s in (1, -1):
+            lean = 0.35 + rnd() * 0.15
+            top = (x + (rnd() - 0.5) * 0.05, 0.62 + rnd() * 0.12, s * lean)
+            m.cyl('main', (x, 0.0, s * 0.05), top, 0.022, seg=6)
+            m.cyl('main', top, (top[0], top[1] + 0.08, top[2] * 1.12), 0.022, seg=6, r2=0.003)
+    for s in (1, -1): barbed(m, (-0.95, 0.3, s * 0.2), (0.95, 0.3, s * 0.2))
+    barbed(m, (-0.95, 0.12, 0.0), (0.95, 0.12, 0.0))
+    m.finish()
+
+def fr_wall(variant):
+    """a village wall of dressed stone under a rounded coping, with a loophole knocked through it
+    (or half fallen, the stones lying at its foot)."""
+    m = Model(f'wall{variant}'); rnd = mulberry(250 + variant)
+    T = 0.4
+    m.box('main', (0, 0.06, 0), (L + 0.1, 0.12, T + 0.12), bevel=0.03)
+    rows = 9
+    for r in range(rows):
+        y = 0.12 + r * 0.15 + 0.075
+        x = -L / 2
+        while x < L / 2 - 0.02:
+            w = min(0.28 + rnd() * 0.22, L / 2 - x)
+            top = WH if variant == 0 else (WH if abs(x) > 0.9 else 0.7 + rnd() * 0.3)
+            if y < top - 0.05 and not (variant == 0 and 0.72 < y < 1.0 and -0.1 < x + w / 2 < 0.16):
+                m.box('main', (x + w / 2, y, (rnd() - 0.5) * 0.02), (w - 0.02, 0.135, T), bevel=0.02)
+            x += w
+    if variant == 0: m.cyl('main', (-L / 2, 1.5, 0), (L / 2, 1.5, 0), 0.22, seg=16)             # coping
+    else:
+        for x0, x1 in ((-L / 2, -0.9), (0.9, L / 2)): m.cyl('main', (x0, 1.5, 0), (x1, 1.5, 0), 0.22, seg=16)
+    rubble(m, rnd, 4 + 10 * variant, 0.08)
+    m.finish()
+
+def fr_wire():
+    """the réseau Brun: a flattened roll of barbed wire mesh strung between corkscrew iron pickets."""
+    m = Model('wire')
+    coil(m, -0.95, 0.95, 0.3, 0.0, 0.34, 9, squash=0.8)
+    for x in (-0.9, 0.0, 0.9):
+        m.cyl('main', (x, 0.1, 0.36), (x, 0.8, 0.36), 0.016, seg=6)
+        pts = [(x + math.cos(a) * 0.03, 0.1 - a * 0.012, 0.36 + math.sin(a) * 0.03) for a in [k * 0.6 for k in range(12)]]
+        for a_, b_ in zip(pts, pts[1:]): m.cyl('main', a_, b_, 0.012, seg=5)                   # the corkscrew foot
+        m.torus('main', (x, 0.8, 0.36), (1, 0, 0), 0.03, 0.008, seg=10)
+    for y in (0.2, 0.62): barbed(m, (-0.95, y, 0.36), (0.95, y, 0.36))
+    m.finish()
+
+def it_wall(variant):
+    """a wall of big tufa blocks under a coping of curved tiles (or broken
+    down to a few courses, the blocks tumbled in front)."""
+    m = Model(f'wall{variant}'); rnd = mulberry(260 + variant)
+    T = 0.44
+    rows = 5 if variant == 0 else 3
+    for r in range(rows):
+        y = 0.13 + r * 0.26
+        off = (r % 2) * 0.2
+        x = -L / 2
+        while x < L / 2 - 0.02:
+            w = min((0.4 if x > -L / 2 else 0.2 + off) + rnd() * 0.08, L / 2 - x)
+            m.box('main', (x + w / 2, y, 0), (w - 0.025, 0.24, T), bevel=0.025)
+            x += w
+    top = 0.13 + rows * 0.26 - 0.13
+    if variant == 0:
+        m.box('main', (0, top + 0.03, 0), (L + 0.06, 0.06, T + 0.1), bevel=0.01)
+        for i in range(14): m.cyl('main', (-L / 2 + 0.1 + i * 0.2, top + 0.1, -T / 2 - 0.06), (-L / 2 + 0.1 + i * 0.2, top + 0.14, T / 2 + 0.06), 0.07, seg=10)   # curved tiles
+    else:
+        for k in range(6):
+            s = 0.16 + rnd() * 0.06
+            m.box('main', (-1.2 + rnd() * 2.4, s / 2 + 0.02, (1 if rnd() < 0.5 else -1) * (0.45 + rnd() * 0.2)), (s * 2.2, s, s * 1.8), bevel=0.02, yaw=rnd() * 3, pitch=(rnd() - 0.5) * 0.5)
+    m.finish()
+
+def it_wire():
+    """a cavallo di Frisia: a squared beam with stakes driven through it crosswise, the points
+    sticking out on all sides, and barbed wire wound from point to point."""
+    m = Model('wire')
+    m.box('main', (0, 0.36, 0), (1.9, 0.09, 0.09), bevel=0.01)
+    ends = []
+    for i in range(6):
+        x = -0.8 + i * 0.32
+        a = (math.pi / 4) if i % 2 else (-math.pi / 4)
+        for b in (a, a + math.pi / 2):
+            d = (0.0, math.sin(b) * 0.4, math.cos(b) * 0.4)
+            p0 = (x, 0.36 - d[1], -d[2]); p1 = (x, 0.36 + d[1], d[2])
+            m.cyl('main', p0, p1, 0.024, seg=6)
+            for p, q in ((p1, d), (p0, tuple(-v for v in d))):
+                m.cyl('main', p, (p[0], p[1] + q[1] * 0.15, p[2] + q[2] * 0.15), 0.024, seg=6, r2=0.003)
+            ends += [p0, p1]
+    for k in range(0, len(ends) - 4, 2): barbed(m, ends[k], ends[k + 4], barbs=5)
+    m.finish()
+
 NATIONS = {
     'us': {'fieldgun': us_fieldgun, 'aa': us_aa, 'mgnest': us_mgnest, 'tower': us_tower},
-    'de': {'fieldgun': de_fieldgun, 'aa': de_aa, 'mgnest': de_mgnest, 'tower': de_tower},
-    'su': {'fieldgun': su_fieldgun, 'aa': su_aa, 'mgnest': su_mgnest, 'tower': su_tower},
-    'gb': {'fieldgun': gb_fieldgun, 'aa': gb_aa, 'mgnest': gb_mgnest, 'tower': gb_tower},
-    'jp': {'fieldgun': jp_fieldgun, 'aa': jp_aa, 'mgnest': jp_mgnest, 'tower': jp_tower},
-    'fr': {'fieldgun': fr_fieldgun, 'aa': fr_aa, 'mgnest': fr_mgnest, 'tower': fr_tower},
-    'it': {'fieldgun': it_fieldgun, 'aa': it_aa, 'mgnest': it_mgnest, 'tower': it_tower},
+    'de': {'fieldgun': de_fieldgun, 'aa': de_aa, 'mgnest': de_mgnest, 'tower': de_tower,
+           'wall0': lambda: de_wall(0), 'wall1': lambda: de_wall(1), 'wire': de_wire},
+    'su': {'fieldgun': su_fieldgun, 'aa': su_aa, 'mgnest': su_mgnest, 'tower': su_tower,
+           'wall0': lambda: su_wall(0), 'wall1': lambda: su_wall(1), 'wire': su_wire},
+    'gb': {'fieldgun': gb_fieldgun, 'aa': gb_aa, 'mgnest': gb_mgnest, 'tower': gb_tower,
+           'wall0': lambda: gb_wall(0), 'wall1': lambda: gb_wall(1), 'wire': gb_wire},
+    'jp': {'fieldgun': jp_fieldgun, 'aa': jp_aa, 'mgnest': jp_mgnest, 'tower': jp_tower,
+           'wall0': lambda: jp_wall(0), 'wall1': lambda: jp_wall(1), 'wire': jp_wire},
+    'fr': {'fieldgun': fr_fieldgun, 'aa': fr_aa, 'mgnest': fr_mgnest, 'tower': fr_tower,
+           'wall0': lambda: fr_wall(0), 'wall1': lambda: fr_wall(1), 'wire': fr_wire},
+    'it': {'fieldgun': it_fieldgun, 'aa': it_aa, 'mgnest': it_mgnest, 'tower': it_tower,
+           'wall0': lambda: it_wall(0), 'wall1': lambda: it_wall(1), 'wire': it_wire},
 }
 
 if __name__ == '__main__':
