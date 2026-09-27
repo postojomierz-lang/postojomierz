@@ -174,7 +174,61 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           nw = normalize(N + wx * bw.x + wy * bw.y + wz * bw.z);
           return c;
         }
-        ${HEIGHTS}`)
+        ${HEIGHTS}
+        // relief normal from the 4 m height texture: sharper ridges and gullies than the mesh normals
+        vec3 hNormal(vec2 p, float e) {
+          float hx = hAt(p + vec2(e, 0.0)) - hAt(p - vec2(e, 0.0));
+          float hz = hAt(p + vec2(0.0, e)) - hAt(p - vec2(0.0, e));
+          return normalize(vec3(-hx, 2.0 * e, -hz));
+        }
+        // fall-line detail on steep ground: ribs and couloirs running down the slope, which the height
+        // data is too coarse to hold. Noise stretched along the slope direction; each octave fades out
+        // before it would alias. Returns the change of brightness, bends N in place.
+        float fallLine(vec3 w, inout vec3 N, vec3 Ns, float amount) {
+          float st = smoothstep(0.22, 0.6, 1.0 - Ns.y) * amount;
+          if (st < 0.01) return 0.0;
+          vec2 dn = normalize(Ns.xz + vec2(1e-4, 0.0)), ac = vec2(-dn.y, dn.x);
+          float s = dot(w.xz, ac), t = dot(w.xz, dn);
+          float warp = vnoise(w.xz / 90.0) * 3.0;
+          float bright = 0.0; vec2 bend = vec2(0.0);
+          float P = 7.0, a = 1.0;
+          for (int o = 0; o < 3; o++) {
+            float fw = fwidth(s) / P;
+            float k = (1.0 - smoothstep(0.07, 0.16, fw)) * a;     // fade out below ~8 px per period
+            if (k > 0.01) {
+              vec2 q = vec2(s / P + warp, t / (P * 5.0) + float(o) * 7.3);
+              float e = 0.08;
+              float n0 = vnoise(q), n1 = vnoise(q + vec2(e, 0.0)), n2 = vnoise(q + vec2(0.0, e * 3.0));
+              // ridged: ribs with rounded gullies (a softened abs, so the creases do not draw thin lines)
+              float r0 = 1.0 - sqrt(pow(n0 * 2.0 - 1.0, 2.0) + 0.03);
+              float r1 = 1.0 - sqrt(pow(n1 * 2.0 - 1.0, 2.0) + 0.03), r2 = 1.0 - sqrt(pow(n2 * 2.0 - 1.0, 2.0) + 0.03);
+              bright += (r0 - 0.58) * k;                            // ridged noise sits above 0.5 on average
+              bend += vec2((r1 - r0) / e, (r2 - r0) / (e * 3.0) * 0.2) * k;
+            }
+            P *= 2.9; a *= 0.8;
+          }
+          vec3 acW = vec3(ac.x, 0.0, ac.y), dnW = vec3(dn.x, 0.0, dn.y);
+          float wall = smoothstep(0.45, 0.8, 1.0 - Ns.y);
+          N = normalize(N - (acW * bend.x + dnW * bend.y) * (0.16 + 0.14 * wall) * st);
+          // granite walls: broken horizontal ledges whose tops face up and catch the light
+          float lv = w.y / 11.0 + vnoise(w.xz / 23.0) * 1.7 + vnoise(vec2(s / 40.0, 3.1)) * 0.8;
+          float lk = (1.0 - smoothstep(0.05, 0.12, fwidth(lv))) * wall * st;
+          if (lk > 0.01) {
+            float fr = fract(lv);
+            float top = smoothstep(0.6, 0.9, fr) * (1.0 - smoothstep(0.9, 1.0, fr));
+            top *= smoothstep(0.45, 0.65, vnoise(vec2(s / 16.0, floor(lv) * 1.7)));   // ledges break off
+            N = normalize(N + vec3(0.0, 0.7 * top * lk, 0.0));
+            bright += top * 0.25 * lk / max(st, 0.01);
+          }
+          return bright * st;
+        }
+        // unsharp mask relative to the level of detail actually shown: local contrast of the photo
+        vec3 sharpen(sampler2D tex, vec2 uv, vec3 c, float amount) {
+          vec2 sz = vec2(textureSize(tex, 0));
+          float lod = log2(max(max(length(dFdx(uv * sz)), length(dFdy(uv * sz))), 1.0));
+          vec3 b = textureLod(tex, uv, lod + 1.6).rgb;
+          return max(c + (c - b) * amount, vec3(0.0));
+        }`)
       .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0;
       {
         vec2 uv = (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy);
@@ -187,11 +241,20 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
             sat = mix(sat, texture2D(nearMap, nuv).rgb, smoothstep(0.0, 0.06, e));
           }
         }
-        // lift the baked-in satellite shadows a bit, real-time light adds relief back
-        sat = sat * 1.55 + 0.01;
+        float dist = length(cameraPosition - vWorld);
+        sat = sharpen(satMap, uv, sat, detail > 0.5 ? 0.9 * smoothstep(150.0, 600.0, dist) : 0.8);
         vec3 N = normalize(vWN);
         float slope = 1.0 - N.y;
-        float dist = length(cameraPosition - vWorld);
+        // lift the baked-in satellite shadows a bit, real-time light adds relief back; less on walls,
+        // which the sun lights head-on while the photo (taken from above) already shows them bright
+        sat = sat * (1.55 - 0.3 * smoothstep(0.35, 0.75, slope)) + 0.01;
+        // relief normal: from the 4 m heights past the 1 m patch; the panorama keeps its mesh normals
+        vec3 Nr = N;
+        if (detail > 0.5) Nr = normalize(mix(N, hNormal(vWorld.xz, 4.0), smoothstep(60.0, 200.0, dist)));
+        vec3 Nsm = Nr;                                              // slope direction for the fall lines
+        // ribs and gullies belong to rock and scree, not to grass and dwarf pine
+        float greenish = clamp((sat.g - max(sat.r, sat.b)) * 9.0 - 0.25, 0.0, 1.0);
+        float fl = fallLine(vWorld, Nr, Nsm, (detail > 0.5 ? 1.0 : 0.8) * (1.0 - 0.9 * greenish));
         vec3 col = sat;
         if (detail > 0.5) {
           float mid = 1.0 - smoothstep(1500.0, 6000.0, dist);
@@ -205,7 +268,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float strata = 0.88 + 0.12 * sin(w.y * 0.7 + t1 * 9.0);
           float glum = dot(satBlur, vec3(0.3, 0.45, 0.25));
           vec3 rock = vec3(glum) * vec3(1.02, 1.0, 0.95) * (0.55 + 0.9 * t1) * (0.82 + 0.36 * t2) * strata;
-          float steep = smoothstep(0.32, 0.7, slope) * (1.0 - green * 0.6);
+          float steep = smoothstep(0.32, 0.7, slope) * (1.0 - green * 0.6 * (1.0 - smoothstep(0.5, 0.72, slope)));
           col = mix(sat, rock, steep * mid);
 
           // close range: photo textures (Poly Haven), coloured by the satellite image
@@ -240,18 +303,26 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
             if (wsum > 0.0) {
               tc /= wsum; tm /= wsum; tn = normalize(tn);
               // top-down photos smear on walls: there, take their colour from a blurred level
-              vec3 satLow = textureLod(satMap, uv, 3.0).rgb * 1.55 + 0.01;
+              vec3 satLow = textureLod(satMap, uv, 3.0).rgb * (1.55 - 0.3 * smoothstep(0.35, 0.75, slope)) + 0.01;
               vec3 baseC = mix(col, satLow * (0.8 + 0.4 * nBig), wCliff * 0.85);
               float lt = dot(tm, vec3(0.3, 0.55, 0.15)), ls = dot(baseC, vec3(0.3, 0.55, 0.15));
               vec3 byRatio = baseC * (tc / max(tm, vec3(0.02)));
               vec3 photo = tc * (ls / max(lt, 0.02));
               vec3 nearCol = mix(byRatio, photo, 0.45 + 0.35 * wTrail);
+              // walls: the granite texture once more at ~9x its scale, as blocks and cracks of 20-40 m
+              // that the fine texture (averaged away past ~80 m) and the blurred photo lack
+              if (wCliff > 0.05) {
+                vec3 nm;
+                vec3 mc = texTri(w, N, 0.0, texScale[0] * 9.0, nm);
+                float ml = dot(mc, vec3(0.3, 0.55, 0.15)) / max(dot(texMean[0], vec3(0.3, 0.55, 0.15)), 0.02);
+                nearCol *= mix(1.0, clamp(ml, 0.55, 1.45), wCliff * 0.85);
+                tn = normalize(tn + (nm - N) * wCliff * 0.7);
+              }
               // tame the lime tint of sunlit grass in the satellite image
               nearCol = mix(nearCol, vec3(dot(nearCol, vec3(0.3, 0.55, 0.15))), 0.22 * wGreen);
               col = mix(col, nearCol, near);
-              vec3 Ng = normalize(vWN);
               // tn is already a world normal here; exaggerate its tilt on rock faces
-              detN = normalize(mix(Ng, tn, 1.0 + 0.8 * wCliff));
+              detN = normalize(Nr + (tn - N) * (1.0 + 0.8 * wCliff));
               detW = near * 0.9;
             }
           }
@@ -259,7 +330,10 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float tr = texture2D(trailMap, uv).r;
           col = mix(col, vec3(0.4, 0.38, 0.35), smoothstep(0.2, 0.75, tr) * 0.6);
         }
+        col *= clamp(1.0 + fl * 1.1, 0.45, 1.5);
         diffuseColor.rgb = col;
+        if (detW <= 0.0) { detN = Nr; detW = 1.0; }
+        else { detN = normalize(mix(Nr, detN, detW)); detW = 1.0; }
       }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         if (detW > 0.0) {
