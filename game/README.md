@@ -165,7 +165,11 @@ The soldiers wear their army's insignia, modelled as painted parts in `tools/ble
 (`insignia_head`, `insignia_sleeve`, `insignia_collar`): the Stars and Stripes on the left sleeve,
 as worn in North Africa; the black-white-red shield on the right of the Stahlhelm; the red star on
 the Soviet helmet and cap; the Union flag on the British sleeve; the Japanese helmet star in
-yellow; the Free French cross of Lorraine on the sleeve; and the Italian stellette on the collar.
+yellow; the Free French cross of Lorraine on the sleeve; and the Italian stellette on the collar. The
+officers' caps carry their badges too: the Reich's cockade and a silver eagle on the German
+peaked cap, the red star on the Soviet one, a gold badge on the British beret and the Italian
+bustina, the French kepi's gold badge and rank stripes; the American officer, in his helmet,
+wears a captain's two silver bars on it.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
