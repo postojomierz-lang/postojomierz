@@ -40,6 +40,10 @@ Battlefields (all free and offline):
 - **Winter forest** (the Ardennes): snowy spruce forests between clearings and lanes, a small village
   of stone farmhouses, foxholes, log piles, fallen trees and frozen ponds. Soldiers on foot can move
   and take cover among the trees; vehicles keep to the lanes and clearings (`winter()`);
+- **Desert** (North Africa): sand and gravel with rocky outcrops, escarpment ridges and dunes, a
+  desert track, an oasis in the middle with palms, a pool and mud-brick houses (some in ruins),
+  stone sangars that infantry fight from, burnt-out tanks, oil drums and minefields behind wire
+  (`desert()`);
 - the classic toy room: random floors with household obstacles, the built-in map library
   (`src/data/maps.js`), map files (`*.pfmap.json`: "Save map" in the top bar, "Load a map file" in
   setup; `src/mapfile.js`) and the map editor (setup → Map editor; `src/editor.js`).

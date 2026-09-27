@@ -78,6 +78,7 @@ export function buildDiorama(map, quality = 'medium') {
   if (town) paintTown({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, bcell });
   else if (beachy) paintBeach({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, coast });
   else if (map.theme === 'winter') paintWinter({ map, c, b, X, Y, px, rng, W, H, M, BW, BH });
+  else if (map.theme === 'desert') paintDesert({ map, c, b, X, Y, px, rng, W, H, M, BW, BH });
   else {
   c.fillStyle = FIELDS[0].base; c.fillRect(0, 0, cv.width, cv.height);
   for (const f of map.fields) {
@@ -242,6 +243,7 @@ export function buildDiorama(map, quality = 'medium') {
   if (town) placeTown({ map, put, onBoard, W, H, M, BW, bcell, g, wx, wz, quality });
   else if (beachy) placeBeach({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, coast, RB, round });
   else if (map.theme === 'winter') placeWinter({ map, put, onBoard, W, H, M, quality, outDist });
+  else if (map.theme === 'desert') placeDesert({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, outDist });
   else {
   const hedgePiece = (x, y, yaw, seed) => {
     const r = mulberry(seed);
@@ -330,6 +332,7 @@ export function buildDiorama(map, quality = 'medium') {
       if (town) { const v = bcell(x, y); if ((v !== 0 && v !== 6) || r() < 0.5 || x < 0 || y < 0 || x >= W || y >= H) continue; }
       else if (beachy) { if (inland(x, y) < 6 + r() * 3) continue; }
       else if (map.theme === 'winter') continue;
+      else if (map.theme === 'desert') { const dd = Math.hypot(x - W / 2, y - H / 2); if (dd > Math.min(11, Math.max(W, H) * 0.14) || r() < 0.3) continue; }
       else if (nearLane(x, y) && r() < 0.85) continue;
       pts.push([x, y, r() * 6, 0.7 + r() * 0.8, 0.8 + r() * 0.35]);
     }
@@ -365,7 +368,7 @@ function tuftGeometry() {
 }
 
 // a farm pond: murky green water with a soft outline over its cells
-function pondMesh(map, o, wx, wz) {
+function pondMesh(map, o, wx, wz, color = '#46604c') {
   const rng = mulberry(o.seed), pxs = 32, pad = 1, cw = (o.w + pad * 2) * pxs, ch = (o.h + pad * 2) * pxs;
   const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
   const c2 = cv.getContext('2d');
@@ -378,7 +381,7 @@ function pondMesh(map, o, wx, wz) {
   const img = c2.getImageData(0, 0, cw, ch), d = img.data;
   for (let i = 3; i < d.length; i += 4) { const a = d[i] / 255; const v = Math.max(0, Math.min(1, (a - 0.45) * 6)); d[i - 3] = d[i - 2] = d[i - 1] = 255; d[i] = v * 255; }
   c2.putImageData(img, 0, 0);
-  const m = new THREE.MeshStandardMaterial({ color: '#46604c', alphaMap: new THREE.CanvasTexture(cv), transparent: true, opacity: 0.92, roughness: 0.05, metalness: 0.2, depthWrite: false });
+  const m = new THREE.MeshStandardMaterial({ color, alphaMap: new THREE.CanvasTexture(cv), transparent: true, opacity: 0.92, roughness: 0.05, metalness: 0.2, depthWrite: false });
   const water = new THREE.Mesh(new THREE.PlaneGeometry(o.w + pad * 2, o.h + pad * 2), m);
   water.rotation.x = -Math.PI / 2; water.position.set(wx(o.x + o.w / 2), 0.03, wz(o.y + o.h / 2)); water.renderOrder = 2; water.receiveShadow = true;
   return water;
@@ -722,4 +725,89 @@ function placeWinter({ map, put, onBoard, W, H, M, quality, outDist }) {
     else if (o.style === 'foxhole') put('foxhole', cx, cy, q() * 6);
   }
   for (const d of map.decor) if (d.kind === 'crater' && onBoard(d.x, d.y, 1.2)) { const q = mulberry(d.seed); put('crater', d.x, d.y, q() * 6, 0.8 + q() * 0.4, 0.7 + q() * 0.3); }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The desert: painted sand and gravel
+function paintDesert({ map, c, b, X, Y, px, rng, W, H, M, BW, BH }) {
+  c.fillStyle = '#d6b680'; c.fillRect(0, 0, c.canvas.width, c.canvas.height);
+  for (let i = 0; i < BW * BH * 0.35; i++) {                           // gravel plains and paler sand
+    const x = rng() * c.canvas.width, y = rng() * c.canvas.height, r = px * (1 + rng() * 3.5);
+    c.fillStyle = rng() < 0.5 ? `rgba(170,140,100,${0.08 + rng() * 0.1})` : `rgba(235,210,160,${0.1 + rng() * 0.1})`;
+    c.beginPath(); c.ellipse(x, y, r * 1.8, r, rng() * 0.6 - 0.3, 0, 7); c.fill();
+  }
+  for (let i = 0; i < BW * BH * px * 0.35; i++) {                      // pebbles
+    c.fillStyle = ['#b89a70', '#9c805c', '#e2c898', '#8d7658'][Math.floor(rng() * 4)];
+    c.fillRect(rng() * c.canvas.width, rng() * c.canvas.height, 1 + rng() * 1.5, 1 + rng() * 1.5);
+  }
+  // wind ripples in the sand (bump) and pale streaks (colour)
+  b.strokeStyle = 'rgba(90,90,90,.45)'; b.lineWidth = Math.max(1, px * 0.08);
+  c.strokeStyle = 'rgba(245,225,185,.25)'; c.lineWidth = Math.max(1, px * 0.1);
+  for (let i = 0; i < BW * BH / 2.5; i++) {
+    const x = rng() * c.canvas.width, y = rng() * c.canvas.height, l = px * (0.6 + rng());
+    b.beginPath(); b.moveTo(x, y); b.quadraticCurveTo(x + l / 2, y - px * 0.12, x + l, y + px * 0.05); b.stroke();
+    if (i % 3 === 0) { c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + l / 2, y - px * 0.12, x + l, y + px * 0.05); c.stroke(); }
+  }
+  // the desert track: two faint wheel ruts
+  for (const r of map.roads) {
+    const L = Math.hypot(r.x1 - r.x0, r.y1 - r.y0), steps = Math.max(8, Math.ceil(L * 2)), pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps, u = 1 - t;
+      const x = u * u * r.x0 + 2 * u * t * r.qx + t * t * r.x1, y = u * u * r.y0 + 2 * u * t * r.qy + t * t * r.y1;
+      const dx = 2 * u * (r.qx - r.x0) + 2 * t * (r.x1 - r.qx), dy = 2 * u * (r.qy - r.y0) + 2 * t * (r.y1 - r.qy), l = Math.hypot(dx, dy) || 1;
+      pts.push([x, y, -dy / l, dx / l]);
+    }
+    for (const o of [-0.4, 0.4]) {
+      c.beginPath(); pts.forEach(([x, y, nx, ny], i) => (i ? c.lineTo(X(x + nx * o), Y(y + ny * o)) : c.moveTo(X(x + nx * o), Y(y + ny * o))));
+      c.strokeStyle = 'rgba(150,120,85,.55)'; c.lineWidth = px * 0.3; c.lineCap = 'round'; c.stroke();
+    }
+  }
+  // the oasis: green round the pool
+  const gr = c.createRadialGradient(X(W / 2), Y(H / 2), 0, X(W / 2), Y(H / 2), px * Math.min(11, Math.max(W, H) * 0.14));
+  gr.addColorStop(0, 'rgba(120,140,70,.9)'); gr.addColorStop(0.5, 'rgba(150,150,85,.6)'); gr.addColorStop(1, 'rgba(180,160,100,0)');
+  c.fillStyle = gr; c.beginPath(); c.arc(X(W / 2), Y(H / 2), px * Math.min(11, Math.max(W, H) * 0.14), 0, 7); c.fill();
+  // scorched sand round the wrecks
+  for (const o of map.objects) if (o.style === 'wreck') {
+    const g2 = c.createRadialGradient(X(o.x + o.w / 2), Y(o.y + o.h / 2), 0, X(o.x + o.w / 2), Y(o.y + o.h / 2), px * 2);
+    g2.addColorStop(0, 'rgba(40,32,26,.6)'); g2.addColorStop(1, 'rgba(40,32,26,0)');
+    c.fillStyle = g2; c.fillRect(X(o.x - 2), Y(o.y - 2), (o.w + 4) * px, (o.h + 4) * px);
+  }
+}
+
+// The desert: rocks, ridges, the oasis with its houses and palms, sangars, wrecks, drums
+function placeDesert({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, outDist }) {
+  for (const o of map.objects) {
+    const r = mulberry(o.seed + (o.turn || 0) * 977), cx = o.x + o.w / 2, cy = o.y + o.h / 2, along = o.w >= o.h;
+    const yaw = (along ? 0 : Math.PI / 2) + (r() < 0.5 ? Math.PI : 0);
+    switch (o.style) {
+      case 'adobe': case 'adobe_ruin': put(o.style, cx, cy, Math.floor(r() * 4) * Math.PI / 2, 1, 0.9 + r() * 0.2, 1, 0.9 + r() * 0.15); break;
+      case 'outcrop': case 'mesa': put(o.style, cx, cy, o.style === 'mesa' ? yaw : r() * 6, 0.95 + r() * 0.15, 0.8 + r() * 0.5, 0.95 + r() * 0.15, 0.9 + r() * 0.15); break;
+      case 'sangar': put('sangar', cx, cy, r() * 6); break;
+      case 'wreck': put('wreck', cx, cy, yaw + (r() - 0.5) * 0.4); break;
+      case 'drums': put('drums', cx, cy, r() * 6); break;
+      case 'ridge': case 'sanddune': case 'wire':
+        for (let k = 0; k < Math.max(o.w, o.h); k++) {
+          const x = along ? o.x + k + 0.5 : cx, y = along ? cy : o.y + k + 0.5;
+          put(o.style, x, y, (along ? 0 : Math.PI / 2) + (r() < 0.5 ? Math.PI : 0) + (r() - 0.5) * 0.2, 1.05, 0.8 + r() * 0.4, 1 + r() * 0.2, 0.9 + r() * 0.15);
+        }
+        break;
+      case 'pool': g.add(pondMesh(map, o, wx, wz, '#3f8c86')); break;
+    }
+  }
+  for (const d of map.decor) {
+    if (!onBoard(d.x, d.y, 1.2)) continue;
+    const r = mulberry(d.seed);
+    if (d.kind === 'palm') put(r() < 0.5 ? 'palm0' : 'palm1', d.x, d.y, r() * 6, 0.85 + r() * 0.3, 0.8 + r() * 0.4, 0.85 + r() * 0.3, 0.9 + r() * 0.15, (r() - 0.5) * 0.04);
+    else if (d.kind === 'scrub') put('scrub', d.x, d.y, r() * 6, 0.7 + r() * 0.6);
+    else if (d.kind === 'crater') put('crater', d.x, d.y, r() * 6, 0.8 + r() * 0.4, 0.7 + r() * 0.3);
+    else if (d.kind === 'mines') put('mines', d.x, d.y, r() * 6);
+  }
+  // beyond the play area: dunes (the ground rises) with scrub and rocks
+  const r = mulberry(map.seed ^ 0xde5e);
+  for (let i = 0; i < BW * BH / 40; i++) {
+    const x = -M + r() * BW, y = -M + r() * BH;
+    if (outDist(x, y) < 1.5 || !onBoard(x, y, 1)) continue;
+    if (r() < 0.75) put('scrub', x, y, r() * 6, 0.6 + r() * 0.6);
+    else put('outcrop', x, y, r() * 6, 0.4 + r() * 0.5, 0.3 + r() * 0.5, 0.4 + r() * 0.5);
+  }
 }
