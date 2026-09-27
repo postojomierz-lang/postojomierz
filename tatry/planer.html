@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planer tras – Tatry</title>
+<style>
+  :root { --bg: #f6f5f1; --panel: #ffffff; --ink: #1d2327; --muted: #6a7178; --line: #e2e0da; --accent: #c8201c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--ink); background: var(--bg); }
+  #app { display: flex; height: 100%; }
+  #side { width: 360px; flex: none; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); overflow: auto; z-index: 2; }
+  #map { flex: 1; min-width: 0; }
+  header { padding: 14px 16px 8px; }
+  h1 { font-size: 18px; margin: 0; }
+  h1 small { color: var(--muted); font-weight: 400; }
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px; }
+  button, label.btn { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fbfaf8; color: var(--ink); cursor: pointer; }
+  button:hover, label.btn:hover { background: #f0eee9; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:disabled { background: #d9a8a6; border-color: #d9a8a6; cursor: default; }
+  button:disabled { opacity: .5; cursor: default; }
+  #summary { padding: 4px 16px 10px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0; }
+  .stat { background: var(--bg); border-radius: 8px; padding: 6px 8px; }
+  .stat b { display: block; font-size: 16px; }
+  .stat span { color: var(--muted); font-size: 11px; }
+  #profile { width: 100%; height: 130px; display: block; background: var(--bg); border-radius: 8px; cursor: crosshair; }
+  #sections { list-style: none; margin: 8px 0 0; padding: 0; }
+  #sections li { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .blaze { width: 22px; height: 14px; flex: none; border-radius: 2px; background: linear-gradient(#fff 0 30%, var(--c) 30% 70%, #fff 70%); border: 1px solid #bbb; }
+  #sections .km { margin-left: auto; color: var(--muted); white-space: nowrap; }
+  #go { margin: 4px 16px 12px; padding: 10px; font-size: 15px; }
+  #go-note { margin: -4px 16px 12px; color: var(--muted); font-size: 12px; }
+  #msg { margin: 0 16px 8px; color: #9a4b00; font-size: 13px; min-height: 1em; }
+  footer { margin-top: auto; padding: 10px 16px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
+  .wp { background: var(--accent); color: #fff; border: 2px solid #fff; border-radius: 50%; width: 22px !important; height: 22px !important; margin: -11px 0 0 -11px !important;
+        display: flex; align-items: center; justify-content: center; font: 700 11px system-ui; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  .wp.start { background: #1f9a3a; } .wp.end { background: #222; }
+  .poi { font: 600 11px system-ui; color: #333; text-shadow: 0 0 3px #fff, 0 0 3px #fff; white-space: nowrap; }
+  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(246,245,241,.9); z-index: 1000; font-size: 15px; }
+  @media (max-width: 760px) {
+    #app { flex-direction: column-reverse; }
+    #side { width: 100%; height: 48%; border-right: 0; border-top: 1px solid var(--line); }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <header>
+      <h1>Planer tras <small>· polskie Tatry Wysokie</small></h1>
+      <p class="hint">Kliknij na mapie start, potem cel i ewentualnie punkty pośrednie. Trasa prowadzi tylko znakowanymi szlakami. Punkty można przeciągać, kliknięcie punktu go usuwa.</p>
+    </header>
+    <div class="tools">
+      <button id="b-loc" title="Start w miejscu, w którym jesteś (GPS telefonu)">📍 Moja lokalizacja</button>
+      <button id="b-rev">⇄ Odwróć</button>
+      <button id="b-undo">↶ Cofnij</button>
+      <button id="b-clear">✕ Wyczyść</button>
+      <label class="btn" title="Wczytaj ślad GPX, np. z mapy turystycznej">⤓ Import GPX<input id="f-gpx" type="file" accept=".gpx,application/gpx+xml" hidden></label>
+      <button id="b-gpx">⤒ Eksport GPX</button>
+    </div>
+    <div id="msg"></div>
+    <section id="summary" hidden>
+      <div class="stats">
+        <div class="stat"><b id="s-dist">–</b><span>długość</span></div>
+        <div class="stat"><b id="s-time">–</b><span>czas (normy PTTK)</span></div>
+        <div class="stat"><b id="s-up">–</b><span>podejścia</span></div>
+        <div class="stat"><b id="s-down">–</b><span>zejścia</span></div>
+      </div>
+      <canvas id="profile"></canvas>
+      <ul id="sections"></ul>
+    </section>
+    <button id="go" class="primary" disabled>▶ Idź w 3D</button>
+    <p id="go-note" hidden></p>
+    <footer>Szlaki i punkty: © autorzy OpenStreetMap (ODbL). Wysokości: GUGiK NMT, Copernicus DEM. Podkład: OpenTopoMap (CC-BY-SA). Czasy liczone normami w stylu PTTK, orientacyjne.</footer>
+  </aside>
+  <div id="map"></div>
+</div>
+<div id="loading">Wczytywanie sieci szlaków…</div>
+<script type="module" src="/src/planner/main.js"></script>
+</body>
+</html>
