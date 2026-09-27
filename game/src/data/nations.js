@@ -6,6 +6,7 @@ export const NATIONS = [
   { id: 'su', name: 'Soviet Union', adj: 'Soviet' },
   { id: 'gb', name: 'Great Britain', adj: 'British' },
   { id: 'jp', name: 'Japan', adj: 'Japanese' },
+  { id: 'fr', name: 'France', adj: 'French' },
 ];
 export const nationById = id => NATIONS.find(n => n.id === id) || NATIONS[0];
 // opponents for an army of `mine`: the other nations in turn (or the same one if it is the only one)

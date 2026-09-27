@@ -106,7 +106,12 @@ Type 90 helmet with the star and neck flaps, puttees, the knapsack with its blan
 cap and sword for officers, Arisaka with the long Type 30 bayonet, Type 96 LMG, Type 97 anti-tank
 rifle, Type 89 knee mortar, Type 97 grenades; Kurogane, Isuzu Type 94, Ho-Ha half-track, Ka-Mi
 amphibious tank, Ha-Go, Chi-Ha (with its handrail aerial), Chi-To, rocket rails on an Isuzu, the
-Kayaba Ka-1 autogyro, Zero, Val, Betty (the L2D was a DC-3) and a field headquarters house.
+Kayaba Ka-1 autogyro, Zero, Val, Betty (the L2D was a DC-3) and a field headquarters house. France:
+the Adrian helmet with its crest and badge, puttees, the M1935 pack with its rolled blanket and
+mess tin, kepi for officers, MAS-36 with the spike bayonet, FM 24/29 with its top magazine (and
+American bazookas, as issued to the Free French); Laffly V15T, Renault lorries, Panhard 178,
+R35, Somua S35, Char B1 bis, the LeO C.30 autogyro, Dewoitine D.520, Breguet 693, LeO 451 and
+a stone farmhouse (no amphibian, rocket lorry or transport of their own: the American ones).
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
