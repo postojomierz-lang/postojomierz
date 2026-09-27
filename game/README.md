@@ -136,7 +136,11 @@ So are their sandbags and tank traps: sandbags behind a wattle revetment and dra
 sandbags under a log and the rail hedgehog of Moscow; a header-and-stretcher breastwork and a 1940
 concrete cube; rice-straw bales and a lashed log obstacle; fascines under sandbags and Maginot
 rails in concrete; a stone wall topped with sandbags and a concrete tetrahedron (the Americans keep
-their sandbags and the Czech hedgehog). Only barrels and mines are the same for everyone.
+their sandbags and the Czech hedgehog). Their fuel stores and mines too: a drum with two jerrycans,
+the Tellermine and the S-mine; a wooden barrel, the TM-41 and the PMD-6 box mine; a crate of
+flimsies, the Mk V and a shrapnel mine; two drums on chocks, the Type 99 magnetic mine and the Type
+93 'tape measure'; a wine barrel on its trestle, the mle 1936 box mine and a stake mine; a drum with
+its hand pump, the B2 and the B4 (the Americans: the oil drum, the M1A1 and the M2 bounding mine).
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
@@ -148,9 +152,9 @@ The vehicles and aircraft are WW2 machines modelled the same way by `tools/blend
 ambulance, GMC engineer truck, M8 Greyhound armoured car, DUKW amphibian, the M5 Stuart, M4 Sherman and M26 Pershing (light, medium and heavy tanks), Studebaker
 with a Katyusha launcher, a Sikorsky-style helicopter, P-51 Mustang, P-47 Thunderbolt, B-25
 Mitchell and C-47 Dakota; drivers, gunners and commanders ride in them, the headquarters and
-fortifications (sandbags, brick walls, barbed wire, oil drums, tank traps, mines) are made by
+fortifications (sandbags, brick walls, barbed wire, oil drum, tank trap) are made by
 `tools/blender/structures.py` and the emplacements (MG nest with its gunner, field gun, AA gun,
-watchtower with a lookout) by `tools/blender/structures_nations.py`; all of them are packed into
+watchtower with a lookout) and the mines by `tools/blender/structures_nations.py`; all of them are packed into
 `src/data/vehicles.js`.
 The diorama scenery is Blender-made as well: `tools/blender/scenery.py` (Normandy: hedgerows, oaks,
 apple trees, farmhouse, barn, walls, hay, reeds, craters) and `tools/blender/town.py` (town houses,

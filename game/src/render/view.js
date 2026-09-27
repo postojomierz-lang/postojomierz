@@ -605,10 +605,11 @@ export class View {
   emitMines() {
     for (const mn of this.sim.mines) {
       if (this.human != null && this.human >= 0 && mn.team !== this.human) continue;
-      const m = model('mine_' + mn.kind), p = this.palettes[mn.team];
+      const nation = this.nationOf(mn.team), m = model('mine_' + mn.kind, 0, nation), p = this.palettes[mn.team];
+      const key = nation + ':mine_' + mn.kind;                    // each army lays its own kind
       this.tmpM.makeRotationY(mn.id * 1.7).setPosition(this.wx(mn.x), -0.02, this.wz(mn.z));
-      this.batches.push(this.batches.get('mine_' + mn.kind + ':m', m.main, this.plasticMat), this.tmpM, p.main, 0);
-      this.batches.push(this.batches.get('mine_' + mn.kind + ':d', m.dark, this.plasticMat), this.tmpM, p.dark, 0);
+      this.batches.push(this.batches.get(key + ':m', m.main, this.plasticMat), this.tmpM, p.main, 0);
+      if (m.dark) this.batches.push(this.batches.get(key + ':d', m.dark, this.plasticMat), this.tmpM, p.dark, 0);
     }
   }
   // the engineers' two sappers: riding in the back of the truck, or kneeling in front of it at work

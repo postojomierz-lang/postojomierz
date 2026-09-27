@@ -1,11 +1,11 @@
 # Each army's own gun emplacements, lookout tower and fortifications, in the style of
 # structures.py: the field gun, the anti-aircraft gun, the machine-gun nest and the watchtower of
 # the Americans, the Germans, the Red Army, the British, the Japanese, the French and the
-# Italians, and the walls, wire, sandbags and tank traps of all but the Americans (whose brick
-# wall, concertina, sandbags and Czech hedgehog are in structures.py). Barrels and mines
-# (structures.py) look the same in every army. The American
-# ones are written to .cache/figures/vehicles (the default models, packed into src/data/vehicles.js),
-# the others to .cache/figures/vehicles/<nation> (packed into public/nation-<nation>.js).
+# Italians, and their mines; and the walls, wire, sandbags, tank traps and fuel stores of all but
+# the Americans (whose brick wall, concertina, sandbags, Czech hedgehog and oil drum are in
+# structures.py). The American ones are written to .cache/figures/vehicles (the default models,
+# packed into src/data/vehicles.js), the others to .cache/figures/vehicles/<nation> (packed into
+# public/nation-<nation>.js).
 #
 #   python tools/blender/structures_nations.py [nation ...] [--only=fieldgun,aa,mgnest,tower,wall0,wall1,wire,...]
 #
@@ -1162,26 +1162,253 @@ def it_tanktrap():
     m.torus('dark', (0.0, h + 0.03, 0.0), (1, 0, 0), 0.05, 0.012, seg=12)
     m.finish()
 
+# =========================================================================================
+# Drums and mines. A fuel store about 0.7 across and 0.9 high; an anti-tank mine about 0.4 across
+# and an anti-personnel one about 0.16, half dug in (both with main and dark parts).
+def drum(m, c, r=0.3, h=0.86, lying=False):
+    x, y, z = c
+    if lying:
+        a, b = (x, y, z - h / 2), (x, y, z + h / 2); ax = (0, 0, 1)
+    else:
+        a, b = (x, y, z), (x, y + h, z); ax = (0, 1, 0)
+    m.cyl('main', a, b, r, seg=32)
+    for t in (0.0, 1.0): m.torus('main', tuple(a[i] + (b[i] - a[i]) * t for i in range(3)), ax, r - 0.005, 0.022, seg=32)
+    for t in (0.33, 0.66): m.torus('main', tuple(a[i] + (b[i] - a[i]) * t for i in range(3)), ax, r + 0.006, 0.016, seg=32)
+    return a, b
+
+def jerrycan(m, c, yaw=0.0, lean=0.0):
+    x, y, z = c
+    m.box('main', (x, y + 0.2, z), (0.34, 0.4, 0.14), bevel=0.02, yaw=yaw, roll=lean)
+    m.box('dark', (x, y + 0.2, z), (0.3, 0.02, 0.146), bevel=0.0, yaw=yaw, roll=lean)       # the welded X seen as a rib
+    m.box('main', (x - 0.1 * math.cos(yaw), y + 0.43, z + 0.1 * math.sin(yaw)), (0.14, 0.05, 0.1), bevel=0.01, yaw=yaw, roll=lean)   # the three handles
+
+def de_barrel():
+    """a Wehrmacht fuel drum with a pair of the pressed-steel cans that the Allies later called
+    'jerrycans' leaning against it."""
+    m = Model('barrel')
+    drum(m, (-0.1, 0.0, 0.0), 0.28, 0.86)
+    m.cyl('dark', (-0.1, 0.86, 0), (-0.1, 0.866, 0), 0.26, seg=32)
+    m.cyl('main', (0.0, 0.86, 0.06), (0.0, 0.9, 0.06), 0.045, seg=14)
+    jerrycan(m, (0.34, 0.0, 0.1), yaw=0.3); jerrycan(m, (0.3, 0.0, -0.18), yaw=-0.2, lean=0.15)
+    m.finish()
+
+def su_barrel():
+    """a wooden barrel of staves held by iron hoops, with its bung."""
+    m = Model('barrel')
+    prof = [(0.26, 0.0), (0.31, 0.2), (0.33, 0.45), (0.31, 0.7), (0.26, 0.9)]
+    m.lathe('main', [(0.0, 0.0)] + prof + [(0.0, 0.9)], (0, 0, 0), (0, 1, 0), seg=24)
+    for k in range(24):                                                                          # the staves' joints
+        a = k / 24 * 2 * math.pi
+        m.cyl('dark', (math.cos(a) * 0.262, 0.02, math.sin(a) * 0.262), (math.cos(a) * 0.331, 0.45, math.sin(a) * 0.331), 0.004, seg=4)
+        m.cyl('dark', (math.cos(a) * 0.331, 0.45, math.sin(a) * 0.331), (math.cos(a) * 0.262, 0.88, math.sin(a) * 0.262), 0.004, seg=4)
+    for y, r in ((0.08, 0.28), (0.25, 0.315), (0.65, 0.315), (0.82, 0.28)): m.torus('dark', (0, y, 0), (0, 1, 0), r, 0.014, seg=32)
+    m.cyl('main', (0.1, 0.9, 0.05), (0.1, 0.94, 0.05), 0.04, seg=12)
+    m.finish()
+
+def gb_barrel():
+    """a dump of 'flimsies', the square four-gallon petrol tins, stacked two high in their crates."""
+    m = Model('barrel'); rnd = mulberry(360)
+    for l in range(2):
+        for i in range(3 if l == 0 else 2):
+            for j in range(2):
+                x = -0.26 + i * 0.26 + l * 0.13; z = -0.13 + j * 0.26
+                y = 0.02 + l * 0.38
+                m.box('main', (x, y + 0.17, z), (0.24, 0.34, 0.24), bevel=0.012, yaw=(rnd() - 0.5) * 0.06)
+                m.cyl('main', (x + 0.05, y + 0.34, z + 0.05), (x + 0.05, y + 0.38, z + 0.05), 0.03, seg=10)
+                m.box('dark', (x, y + 0.17, z + 0.121), (0.2, 0.012, 0.004), bevel=0.0)
+    m.box('main', (0, 0.01, 0), (0.86, 0.02, 0.6), bevel=0.0)                                  # the crate floor
+    m.finish()
+
+def jp_barrel():
+    """two fuel drums: one standing, one lying on wooden chocks beside it."""
+    m = Model('barrel')
+    drum(m, (-0.2, 0.0, -0.1), 0.25, 0.8)
+    m.cyl('dark', (-0.2, 0.8, -0.1), (-0.2, 0.806, -0.1), 0.23, seg=32)
+    for z in (-0.25, 0.25): m.box('main', (0.26, 0.05, z), (0.38, 0.1, 0.08), bevel=0.01)
+    drum(m, (0.26, 0.33, 0.0), 0.25, 0.8, lying=True)
+    m.cyl('main', (0.26, 0.58, 0.1), (0.26, 0.61, 0.1), 0.04, seg=12)
+    m.finish()
+
+def fr_barrel():
+    """a wine barrel on its side on a wooden trestle, with its tap."""
+    m = Model('barrel')
+    for x in (-0.25, 0.25):
+        for s in (1, -1): m.cyl('main', (x, 0.0, s * 0.35), (x, 0.36, s * 0.05), 0.03, seg=8)
+    for s in (1, -1): m.cyl('main', (-0.3, 0.3, s * 0.12), (0.3, 0.3, s * 0.12), 0.03, seg=8)
+    prof = [(0.22, -0.4), (0.27, -0.2), (0.29, 0.0), (0.27, 0.2), (0.22, 0.4)]
+    m.lathe('main', [(0.0, -0.4)] + prof + [(0.0, 0.4)], (0, 0.58, 0), (1, 0, 0), seg=24)
+    for t, r in ((-0.33, 0.24), (-0.14, 0.28), (0.14, 0.28), (0.33, 0.24)): m.torus('dark', (t, 0.58, 0), (1, 0, 0), r, 0.012, seg=28)
+    m.cyl('main', (0.4, 0.46, 0), (0.48, 0.46, 0), 0.02, seg=8)                                  # the tap
+    m.cyl('main', (0.47, 0.46, 0), (0.47, 0.4, 0), 0.015, seg=8)
+    m.finish()
+
+def it_barrel():
+    """a fuel drum with a rotary hand pump screwed into its bung, the hose hanging down, and a
+    small square can beside it."""
+    m = Model('barrel')
+    drum(m, (-0.05, 0.0, 0.0), 0.28, 0.86)
+    m.cyl('dark', (-0.05, 0.86, 0), (-0.05, 0.866, 0), 0.26, seg=32)
+    m.cyl('main', (0.05, 0.86, 0.0), (0.05, 1.05, 0.0), 0.03, seg=10)                           # the pump
+    m.cyl('main', (0.05, 1.05, -0.06), (0.05, 1.05, 0.06), 0.07, seg=18)
+    m.cyl('main', (0.05, 1.05, 0.06), (0.05, 1.18, 0.16), 0.012, seg=6)                          # its crank
+    m.cyl('dark', (0.09, 1.0, 0.0), (0.3, 0.9, 0.0), 0.02, seg=8)                                # the hose
+    m.cyl('dark', (0.3, 0.9, 0.0), (0.36, 0.3, 0.05), 0.02, seg=8)
+    m.box('main', (0.38, 0.14, -0.2), (0.22, 0.28, 0.22), bevel=0.015)
+    m.finish()
+
+# ---- mines
+def plate_mine(m, r, h, cap_r, cap_h, ribs=0):
+    m.cyl('dark', (0, 0.0, 0), (0, h, 0), r, seg=28, bevel=0.01)
+    m.torus('dark', (0, h - 0.005, 0), (0, 1, 0), r - 0.01, 0.012, seg=28)
+    for k in range(ribs):                                                                        # stiffening ribs on the top plate
+        a = k / ribs * 2 * math.pi
+        m.box('dark', (math.cos(a) * r * 0.6, h + 0.004, math.sin(a) * r * 0.6), (r * 0.5, 0.01, 0.02), bevel=0.0, yaw=-a)
+    m.cyl('main', (0, h, 0), (0, h + cap_h, 0), cap_r, seg=18, bevel=0.005)
+
+def us_mine_at():
+    """the M1A1 anti-tank mine: a round steel case with the fuze standing up in the middle and the
+    carrying handle folded down the side."""
+    m = Model('mine_at')
+    plate_mine(m, 0.19, 0.06, 0.05, 0.035)
+    m.cyl('main', (0, 0.095, 0), (0, 0.11, 0), 0.03, seg=12)
+    m.torus('main', (0.19, 0.03, 0), (1, 0, 0), 0.04, 0.01, seg=12)
+    m.finish()
+
+def us_mine_ap():
+    """the M2 bounding mine: the projector tube with its fuze screwed in beside it, the three prongs
+    sticking up."""
+    m = Model('mine_ap')
+    m.cyl('dark', (0, 0.0, 0), (0, 0.07, 0), 0.05, seg=16, bevel=0.005)
+    m.cyl('dark', (0.06, 0.0, 0), (0.06, 0.05, 0), 0.02, seg=10)
+    m.cyl('main', (0.06, 0.05, 0), (0.06, 0.1, 0), 0.012, seg=8)
+    for a in (0, 2.1, 4.2): m.cyl('main', (0.06, 0.1, 0), (0.06 + math.cos(a) * 0.025, 0.125, math.sin(a) * 0.025), 0.005, seg=5)
+    m.finish()
+
+def de_mine_at():
+    """the Tellermine 42: a flat drum with a ribbed top, the pressure plate in the middle and the
+    carrying handle on the side."""
+    m = Model('mine_at')
+    plate_mine(m, 0.2, 0.06, 0.09, 0.02, ribs=8)
+    m.cyl('main', (0, 0.08, 0), (0, 0.095, 0), 0.035, seg=12)
+    m.box('main', (0.21, 0.035, 0), (0.04, 0.02, 0.07), bevel=0.0)
+    m.finish()
+
+def de_mine_ap():
+    """the S-mine: a small can with its three-pronged fuze sticking out of the ground."""
+    m = Model('mine_ap')
+    m.cyl('dark', (0, 0.0, 0), (0, 0.06, 0), 0.08, seg=16, bevel=0.006)
+    m.cyl('main', (0, 0.06, 0), (0, 0.11, 0), 0.015, seg=8)
+    for a in (0, 2.1, 4.2): m.cyl('main', (0, 0.1, 0), (math.cos(a) * 0.035, 0.13, math.sin(a) * 0.035), 0.006, seg=5)
+    m.finish()
+
+def su_mine_at():
+    """the TM-41: a tall round case with a stepped, domed top and the fuze in the middle."""
+    m = Model('mine_at')
+    m.cyl('dark', (0, 0.0, 0), (0, 0.08, 0), 0.16, seg=28, bevel=0.01)
+    m.lathe('dark', [(0.16, 0.0), (0.12, 0.02), (0.08, 0.035), (0.0, 0.04)], (0, 0.08, 0), (0, 1, 0), seg=28)
+    m.cyl('main', (0, 0.11, 0), (0, 0.14, 0), 0.03, seg=12)
+    m.finish()
+
+def su_mine_ap():
+    """the PMD-6: a small wooden box mine with its hinged lid resting on the fuze."""
+    m = Model('mine_ap')
+    m.box('dark', (0, 0.035, 0), (0.18, 0.07, 0.1), bevel=0.005)
+    m.box('main', (0.0, 0.08, 0), (0.19, 0.012, 0.11), bevel=0.0, roll=0.08)                     # the lid, propped open
+    m.cyl('main', (0.07, 0.07, 0), (0.07, 0.085, 0), 0.008, seg=6)
+    m.finish()
+
+def gb_mine_at():
+    """the Mk V anti-tank mine: a round case under a big domed pressure plate."""
+    m = Model('mine_at')
+    m.cyl('dark', (0, 0.0, 0), (0, 0.06, 0), 0.19, seg=28, bevel=0.01)
+    m.lathe('main', [(0.15, 0.0), (0.12, 0.03), (0.06, 0.05), (0.0, 0.055)], (0, 0.06, 0), (0, 1, 0), seg=28)
+    m.box('main', (0.2, 0.03, 0), (0.03, 0.02, 0.06), bevel=0.0)
+    m.finish()
+
+def gb_mine_ap():
+    """the shrapnel mine: a canister with its fuze and the tripwire's catch."""
+    m = Model('mine_ap')
+    m.cyl('dark', (0, 0.0, 0), (0, 0.08, 0), 0.06, seg=16, bevel=0.005)
+    m.cyl('main', (0, 0.08, 0), (0, 0.12, 0), 0.014, seg=8)
+    m.torus('main', (0, 0.125, 0), (1, 0, 0), 0.015, 0.004, seg=10)
+    m.cyl('dark', (0, 0.12, 0), (0.25, 0.01, 0.0), 0.003, seg=4)                                   # the tripwire
+    m.finish()
+
+def jp_mine_at():
+    """the Type 99 magnetic mine: a canvas-covered charge ringed by four magnets."""
+    m = Model('mine_at')
+    m.cyl('dark', (0, 0.0, 0), (0, 0.07, 0), 0.14, seg=24, bevel=0.012)
+    for k in range(4):
+        a = k * math.pi / 2
+        m.box('main', (math.cos(a) * 0.16, 0.03, math.sin(a) * 0.16), (0.06, 0.05, 0.08), bevel=0.008, yaw=-a)
+    m.cyl('main', (0, 0.07, 0), (0, 0.1, 0), 0.025, seg=12)
+    m.finish()
+
+def jp_mine_ap():
+    """the Type 93 'tape measure' mine: a small flat disc with the fuze on top."""
+    m = Model('mine_ap')
+    m.cyl('dark', (0, 0.0, 0), (0, 0.04, 0), 0.08, seg=18, bevel=0.006)
+    m.cyl('main', (0, 0.04, 0), (0, 0.065, 0), 0.018, seg=10)
+    m.finish()
+
+def fr_mine_at():
+    """the mle 1936 anti-tank mine: a long steel box with the pressure bar along its top."""
+    m = Model('mine_at')
+    m.box('dark', (0, 0.04, 0), (0.44, 0.08, 0.2), bevel=0.01)
+    m.box('main', (0, 0.09, 0), (0.4, 0.02, 0.05), bevel=0.005)
+    for x in (-0.15, 0.15): m.cyl('main', (x, 0.08, 0), (x, 0.095, 0), 0.02, seg=10)
+    m.finish()
+
+def fr_mine_ap():
+    """a stake mine: a ribbed charge on a wooden stake with the pull fuze on top."""
+    m = Model('mine_ap')
+    m.cyl('main', (0, 0.0, 0), (0, 0.1, 0), 0.012, seg=6)
+    m.cyl('dark', (0, 0.1, 0), (0, 0.17, 0), 0.035, seg=12, bevel=0.004)
+    for y in (0.115, 0.135, 0.155): m.torus('dark', (0, y, 0), (0, 1, 0), 0.036, 0.004, seg=12)
+    m.cyl('main', (0, 0.17, 0), (0, 0.2, 0), 0.008, seg=6)
+    m.cyl('dark', (0, 0.19, 0), (0.25, 0.01, 0.0), 0.003, seg=4)
+    m.finish()
+
+def it_mine_at():
+    """the B2 anti-tank mine: a long sheet-steel box with a ridge running down its lid."""
+    m = Model('mine_at')
+    m.box('dark', (0, 0.04, 0), (0.4, 0.08, 0.22), bevel=0.01)
+    m.loft_poly('main', [(-0.19, [(0.08, -0.1), (0.12, 0.0), (0.08, 0.1)]), (0.19, [(0.08, -0.1), (0.12, 0.0), (0.08, 0.1)])], bevel=0.004)
+    m.finish()
+
+def it_mine_ap():
+    """the B4: a length of pipe lying in the ground with the fuze on top."""
+    m = Model('mine_ap')
+    m.cyl('dark', (-0.09, 0.035, 0), (0.09, 0.035, 0), 0.035, seg=14, bevel=0.004)
+    m.cyl('main', (0, 0.06, 0), (0, 0.1, 0), 0.012, seg=8)
+    m.finish()
+
 NATIONS = {
-    'us': {'fieldgun': us_fieldgun, 'aa': us_aa, 'mgnest': us_mgnest, 'tower': us_tower},
+    'us': {'fieldgun': us_fieldgun, 'aa': us_aa, 'mgnest': us_mgnest, 'tower': us_tower, 'mine_at': us_mine_at, 'mine_ap': us_mine_ap},
     'de': {'fieldgun': de_fieldgun, 'aa': de_aa, 'mgnest': de_mgnest, 'tower': de_tower,
            'wall0': lambda: de_wall(0), 'wall1': lambda: de_wall(1), 'wire': de_wire,
-           'sandbags0': lambda: de_sandbags(0), 'sandbags1': lambda: de_sandbags(1), 'tanktrap': de_tanktrap},
+           'sandbags0': lambda: de_sandbags(0), 'sandbags1': lambda: de_sandbags(1), 'tanktrap': de_tanktrap,
+           'barrel': de_barrel, 'mine_at': de_mine_at, 'mine_ap': de_mine_ap},
     'su': {'fieldgun': su_fieldgun, 'aa': su_aa, 'mgnest': su_mgnest, 'tower': su_tower,
            'wall0': lambda: su_wall(0), 'wall1': lambda: su_wall(1), 'wire': su_wire,
-           'sandbags0': lambda: su_sandbags(0), 'sandbags1': lambda: su_sandbags(1), 'tanktrap': su_tanktrap},
+           'sandbags0': lambda: su_sandbags(0), 'sandbags1': lambda: su_sandbags(1), 'tanktrap': su_tanktrap,
+           'barrel': su_barrel, 'mine_at': su_mine_at, 'mine_ap': su_mine_ap},
     'gb': {'fieldgun': gb_fieldgun, 'aa': gb_aa, 'mgnest': gb_mgnest, 'tower': gb_tower,
            'wall0': lambda: gb_wall(0), 'wall1': lambda: gb_wall(1), 'wire': gb_wire,
-           'sandbags0': lambda: gb_sandbags(0), 'sandbags1': lambda: gb_sandbags(1), 'tanktrap': gb_tanktrap},
+           'sandbags0': lambda: gb_sandbags(0), 'sandbags1': lambda: gb_sandbags(1), 'tanktrap': gb_tanktrap,
+           'barrel': gb_barrel, 'mine_at': gb_mine_at, 'mine_ap': gb_mine_ap},
     'jp': {'fieldgun': jp_fieldgun, 'aa': jp_aa, 'mgnest': jp_mgnest, 'tower': jp_tower,
            'wall0': lambda: jp_wall(0), 'wall1': lambda: jp_wall(1), 'wire': jp_wire,
-           'sandbags0': lambda: jp_sandbags(0), 'sandbags1': lambda: jp_sandbags(1), 'tanktrap': jp_tanktrap},
+           'sandbags0': lambda: jp_sandbags(0), 'sandbags1': lambda: jp_sandbags(1), 'tanktrap': jp_tanktrap,
+           'barrel': jp_barrel, 'mine_at': jp_mine_at, 'mine_ap': jp_mine_ap},
     'fr': {'fieldgun': fr_fieldgun, 'aa': fr_aa, 'mgnest': fr_mgnest, 'tower': fr_tower,
            'wall0': lambda: fr_wall(0), 'wall1': lambda: fr_wall(1), 'wire': fr_wire,
-           'sandbags0': lambda: fr_sandbags(0), 'sandbags1': lambda: fr_sandbags(1), 'tanktrap': fr_tanktrap},
+           'sandbags0': lambda: fr_sandbags(0), 'sandbags1': lambda: fr_sandbags(1), 'tanktrap': fr_tanktrap,
+           'barrel': fr_barrel, 'mine_at': fr_mine_at, 'mine_ap': fr_mine_ap},
     'it': {'fieldgun': it_fieldgun, 'aa': it_aa, 'mgnest': it_mgnest, 'tower': it_tower,
            'wall0': lambda: it_wall(0), 'wall1': lambda: it_wall(1), 'wire': it_wire,
-           'sandbags0': lambda: it_sandbags(0), 'sandbags1': lambda: it_sandbags(1), 'tanktrap': it_tanktrap},
+           'sandbags0': lambda: it_sandbags(0), 'sandbags1': lambda: it_sandbags(1), 'tanktrap': it_tanktrap,
+           'barrel': it_barrel, 'mine_at': it_mine_at, 'mine_ap': it_mine_ap},
 }
 
 if __name__ == '__main__':
