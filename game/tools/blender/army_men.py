@@ -32,7 +32,7 @@ IT = NATION == 'it'
 US = NATION == 'us'
 
 # the painted insignia (see insignia_*): these parts keep their colours whatever the army's plastic
-INS = {'white': '#f4f1e8', 'red': '#d63a2f', 'blue': '#23408e', 'black': '#1c1c1e', 'yellow': '#e8c21c'}
+INS = {'white': '#f4f1e8', 'red': '#d63a2f', 'blue': '#23408e', 'black': '#1c1c1e', 'yellow': '#e8c21c', 'gold': '#d9a931', 'silver': '#c9ccd0'}
 
 def P(f, l, u):
     """pose sketch coordinates -> Blender: f forward, l to the figure's left, u up."""
@@ -662,7 +662,7 @@ def bustina(fig, H):
         fig.cyl(b.at(0, 0, -0.6), b.at(0, 0, 0.35), 2.9, seg=32, r2=2.4, bevel=0.1).scale = (0.92, 1.12, 1)   # the folded curtain
         fig.sphere(b.at(0, 0, 0.35), 2.4, scale=(0.35, 1.2, 0.55), q=b.q)       # the narrow crown
         fig.sphere(b.at(2.6, 0, 0.5), 0.55, scale=(0.5, 1, 1), q=b.q)           # its front peak
-        fig.box(b.at(2.2, 2.2, -0.1), (0.2, 0.7, 0.8), Frame(b.o, b.f + b.l * 0.8, b.u).q, bevel=0.05)   # badge
+        fig.box(b.at(2.2, 2.2, -0.1), (0.2, 0.7, 0.8), Frame(b.o, b.f + b.l * 0.8, b.u).q, INS['gold'], bevel=0.05)   # badge
 
 def adrian(fig, H, net=False):
     """the French Adrian helmet (M26): a round skull with the crest along the top, a peaked visor
@@ -699,7 +699,10 @@ def kepi(fig, H):
         vz = Frame(c.at(2.6, 0, -0.55), c.d(1, 0, -0.2), c.u)
         fig.box(vz.o, (3.8, 1.8, 0.16), vz.q, bevel=0.06)                       # visor
         fig.limb(c.at(2.8, 1.6, -0.2), c.at(2.8, -1.6, -0.2), 0.15)              # chin strap
-        fig.sphere(c.at(2.95, 0, 1.1), 0.3)                                      # badge
+        fig.sphere(c.at(2.95, 0, 1.1), 0.3, INS['gold'])                         # badge
+        for z in (0.55, 0.85):                                                   # the officer's gold rank stripes
+            t = (z + 0.6) / 3.2                                                  # where the tapering crown is at that height
+            fig.ring(c.at(-0.2 * t, 0, z), c.u, 2.95 - 0.3 * t + 0.04, 0.06, INS['gold'], seg=32, scale=(1, 1.1, 1))
 
 def brodie(fig, H, net=False):
     """the British Mk II 'soup plate': a shallow bowl with a wide flat brim all round."""
@@ -724,7 +727,7 @@ def beret(fig, H):
     with fig.hard():
         fig.cyl(b.at(0, 0, -0.5), b.at(0, 0, 0.0), 2.95, seg=32, bevel=0.1).scale = (1, 1.08, 1)   # the headband
         fig.sphere(b.at(0.0, -0.6, 0.35), 3.4, scale=(1.0, 1.1, 0.34), q=b.q)                   # the flopping crown
-        fig.box(b.at(2.7, 1.0, 0.0), (0.8, 0.2, 0.9), b.q, bevel=0.05)                         # badge
+        fig.box(b.at(2.7, 1.0, 0.0), (0.8, 0.2, 0.9), b.q, INS['gold'], bevel=0.05)             # badge
 
 def peaked_cap(fig, H):
     """an officer's peaked cap: raised crown, band, cord, shiny visor and badge."""
@@ -737,7 +740,10 @@ def peaked_cap(fig, H):
         vz = Frame(c.at(2.3, 0, -1.25), c.d(1, 0, -0.45), c.u)
         fig.box(vz.o, (3.8, 1.8, 0.16), vz.q, bevel=0.06)                      # visor
         fig.limb(c.at(2.7, 1.6, -0.8), c.at(2.7, -1.6, -0.8), 0.16)              # chin cord
-        fig.sphere(c.at(2.85, 0, -0.55), 0.35); fig.box(c.at(2.9, 0, 0.35), (1.4, 0.2, 0.6), c.q, bevel=0.05)   # cockade and eagle
+        fig.sphere(c.at(2.85, 0, -0.55), 0.35); fig.box(c.at(2.9, 0, 0.35), (1.4, 0.2, 0.6), c.q, INS['silver'] if DE else None, bevel=0.05)   # cockade and eagle
+        if DE:                                                                  # the Reich's cockade: black, white, red
+            for r, col, k in ((0.4, 'black', 0.0), (0.28, 'white', 0.04), (0.15, 'red', 0.08)):
+                fig.cyl(c.at(3.12 + k, 0, -0.55), c.at(3.17 + k, 0, -0.55), r, INS[col], seg=16)
 
 # ---- national insignia, painted on (their own colour parts)
 def star_badge(fig, c, n, up, r, colour):
@@ -1277,6 +1283,11 @@ def officer():
     pistol(fig, grip + F * 0.35, F)
     arm(fig, shL, shL + P(3.5, 3.5, 9.5), pole=D(-0.5, 1, -0.2), grip_dir=U)   # fist up: follow me
     head(fig, neck, turn(F, 0.15), D(0.05, 0.1, 1), helmet='cap' if (DE or SU or GB or JP or FR or IT) else True)
+    if US:                                                                       # a captain's two silver bars on the front of his helmet
+        H = Frame(neck, turn(F, 0.15), D(0.05, 0.1, 1))
+        tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
+        d = (tip.f + tip.u * 0.4).normalized(); p = tip.o + d * 3.5; B = Frame(p, d, tip.u)
+        for s_ in (1, -1): fig.box(B.at(0, s_ * 0.3, 0), (0.28, 0.14, 0.9), B.q, INS['silver'], bevel=0.03)
     if JP:
         with fig.hard():                                                         # the officer's sword at his hip
             hilt = T.at(1.2, 3.6, 2.2)
