@@ -27,6 +27,8 @@ const MUZZLE = {
   'de:transport': [-0.7, 0.0], 'de:hq': [1.36, 0.72],
   // the Soviet ones
   'su:apc': [0.55, 1.05], 'su:amphib': [0.45, 0.93], 'su:tank_light': [1.04, 0.94], 'su:tank': [1.64, 1.09], 'su:tank_heavy': [2.86, 1.17],
+  'gb:jeep': [1.08, 0.82], 'gb:apc': [1.0, 0.92], 'gb:amphib': [0.92, 1.16], 'gb:tank_light': [1.04, 0.88], 'gb:tank': [1.7, 1.08], 'gb:tank_heavy': [1.78, 1.26],
+  'gb:rockets': [-0.17, 1.58], 'gb:heli': [0.45, -0.08], 'gb:fighter': [0.45, -0.07], 'gb:attacker': [0.2, -0.2], 'gb:bomber': [0.2, -0.24], 'gb:hq': [1.55, 0.5],
   'su:heli': [0.45, -0.08], 'su:fighter': [0.7, 0.1], 'su:attacker': [0.5, -0.08], 'su:bomber': [0.2, -0.19], 'su:hq': [1.42, 0.62],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
