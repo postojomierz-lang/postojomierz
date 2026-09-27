@@ -19,13 +19,14 @@ import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
   rifleman: [0.82, 0.87], para: [0.82, 0.87], officer: [0.51, 0.9], grenadier: [-0.12, 1.04], bazooka: [0.49, 0.68], manpads: [0.36, 1.09], medic: [0.3, 0.8],
-  sniper: [0.88, 0.87], mg: [0.78, 0.81], jeep: [0.3, 1.1], apc: [0.78, 1.08], amphib: [0.14, 1.47], tank: [2.05, 1.05], rockets: [0.2, 1.8],
-  heli: [0.8, -0.25], fighter: [1.0, -0.1], attacker: [0.4, -0.2], bomber: [0, -0.35], transport: [-1, -0.35],
+  sniper: [0.88, 0.87], mg: [0.78, 0.81], jeep: [0.26, 1.05], apc: [1.26, 0.98], amphib: [0.4, 1.36], tank: [2.1, 1.09], rockets: [0.05, 1.37],
+  heli: [0.45, -0.16], fighter: [0.5, -0.08], attacker: [0.24, -0.21], bomber: [0, -0.25], transport: [-0.65, -0.1],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
 // the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)
 const POSE_MUZZLE = { 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
 const HEIGHT = { mg: 0.95, tank: 1.5, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
+const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4 };
 const CREW_SCALE = new THREE.Vector3(0.82, 0.82, 0.82);
 const isAir = def => def.cls === 'air' || def.cls === 'plane';
 
@@ -488,7 +489,8 @@ export class View {
     v.lastX = x; v.lastZ = z;
     let variant = 'normal';
     if (air && !e.dead) {
-      g.position.y = def.cls === 'air' ? y + Math.sin(now * 0.002 + e.id) * 0.12 : y;
+      // parked planes sit on their bellies' height above the table (there is no landing gear)
+      g.position.y = def.cls === 'air' ? y + Math.sin(now * 0.002 + e.id) * 0.12 : Math.max(y, PARKED[e.type] || 0);
       if (def.cls === 'plane') {
         // bank into turns, nose up while climbing
         v.roll += (Math.max(-0.9, Math.min(0.9, -dyaw * 0.45)) - v.roll) * Math.min(1, dt * 4);
@@ -588,16 +590,16 @@ export class View {
   // the engineers' two sappers: riding in the back of the truck, or kneeling in front of it at work
   emitCrew(v, pm, color) {
     const e = v.e, work = e.working && !e.dead;
-    const f = model(work ? 'pose-sapper' : 'rifleman');
+    const f = model(work ? 'pose-sapper' : 'pose-driver');
     for (let i = 0; i < 2; i++) {
       const s = i ? 1 : -1;
       if (work) {
         // they take turns walking out to the line and back
         const t = ((this.now * 0.0009 + i * 0.5) % 1), reach = 1.0 + Math.sin(t * Math.PI) * 0.9;
         this.legM.makeRotationY(s * 0.4).scale(CREW_SCALE).setPosition(reach, 0, s * (0.5 + i * 0.2));
-      } else this.legM.makeRotationY(0).scale(CREW_SCALE).setPosition(-0.45 - i * 0.28, 0.56, s * 0.2);
+      } else this.legM.makeRotationY(0).scale(CREW_SCALE).setPosition(-0.5 - i * 0.28, 0.45, s * 0.2);
       this.tmpM.multiplyMatrices(pm, this.legM);
-      this.batches.push(this.batches.get((work ? 'pose-sapper' : 'rifleman') + ':m', f.main, this.plasticMat), this.tmpM, color, e.id);
+      this.batches.push(this.batches.get((work ? 'pose-sapper' : 'pose-driver') + ':m', f.main, this.plasticMat), this.tmpM, color, e.id);
     }
   }
 

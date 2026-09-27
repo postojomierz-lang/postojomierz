@@ -774,11 +774,34 @@ def sapper():
     fig.ground(m + P(3.2, 0, 0), m + P(-3.2, 0, 0), m + P(0, 3.2, 0), m + P(0, -3.2, 0))
     fig.finish()
 
+def driver():
+    """vehicle crew: sits, hands on the steering wheel (legs and seat hidden in the vehicle)."""
+    fig = Fig('driver', base=False)
+    pel = P(0, 0, 10.0)
+    for s in (1, -1):
+        hip = pel + P(0.3, s * 2.0, -0.2)
+        leg(fig, hip, P(9.5, s * 2.4, 1.95), knee=P(8.2, s * 2.3, 10.4), toe=F, ground=False)
+    T = Frame(pel, F, D(-0.12, 0, 1))
+    shR, shL, neck = torso(fig, T, pack=False, pouches=False)
+    for s, sh in ((1, shL), (-1, shR)): arm(fig, sh, P(9.0, s * 2.6, 19.5), pole=D(0, s, -1), grip_dir=L)
+    head(fig, neck, F, D(0.05, 0, 1))
+    fig.finish()
+
+def mgstand():
+    """vehicle crew: stands behind a pintle-mounted machine gun, both hands on the grips."""
+    fig = Fig('mgstand', base=False)
+    pel = standing(fig, stride=2.6, stance=2.6, lean=0.4)
+    T = Frame(pel, F, D(0.08, 0, 1))
+    shR, shL, neck = torso(fig, T, pack=False)
+    for s, sh in ((1, shL), (-1, shR)): arm(fig, sh, P(8.5, s * 1.3, 25.5), pole=D(0, s, -1), grip_dir=F)
+    head(fig, neck, F, D(0.25, 0, 1))
+    fig.finish()
+
 POSES = {'rifleman': rifleman, 'kneel': kneel, 'prone': prone, 'officer': officer, 'mg': mg, 'sniper': sniper,
          'bazooka': lambda: bazooka(False), 'bazooka-stand': lambda: bazooka(True), 'manpads': lambda: manpads(False),
          'manpads-kneel': lambda: manpads(True), 'grenadier': lambda: grenadier(True), 'grenadier-idle': lambda: grenadier(False),
          'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag, 'gunner': gunner, 'lookout': lookout,
-         'sapper': sapper}
+         'sapper': sapper, 'driver': driver, 'mgstand': mgstand}
 
 if __name__ == '__main__':
     only = [a for a in sys.argv[1:] if not a.startswith('--')]
