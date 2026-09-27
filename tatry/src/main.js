@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { Grid, Terrain, gridGeometry } from './terrain.js';
+import { Grid, Terrain, gridGeometry, meshHeight } from './terrain.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -13,6 +13,7 @@ import { loadImpostorKinds } from './impostor.js';
 import { buildGroundCover } from './groundcover.js';
 import { buildStreams } from './streams.js';
 import { Sound } from './sound.js';
+import { buildAnimals } from './animals.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -366,6 +367,14 @@ async function main() {
     },
     isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.2,
   });
+  status('Wypuszczanie zwierząt…'); await frame();
+  // height of the surface actually drawn at (x, z): the 1 m patch near the camera, the 6 m mesh elsewhere
+  const drawnHeight = (x, z) => {
+    const pr = near.patch.value;
+    if (x > pr.x + 2 && x < pr.z - 2 && z > pr.y + 2 && z < pr.w - 2) return terrain.height(x, z);
+    return inner.inside(x, z) ? meshHeight(innerGeo, x, z) : terrain.base(x, z);
+  };
+  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
     masks: { path: trailVisWide, lake: lakeMask }, quality: QUALITY });
   const dummy = new THREE.Object3D();
@@ -616,7 +625,7 @@ async function main() {
   fetch('sounds/credits.json').then((r) => r.json()).then((cr) => {
     const names = { stream: 'potok', waterfall: 'wodospad', wind_forest: 'wiatr w lesie', wind_open: 'wiatr', steps_gravel: 'kroki na żwirze',
       steps_rock: 'kroki na skale', steps_grass: 'kroki w trawie', marmot: 'świstak', wren: 'strzyżyk', forest: 'ptaki w lesie',
-      redstart: 'kopciuszek', chough: 'wieszczek' };
+      redstart: 'kopciuszek', chough: 'wieszczek', deer_bark: 'jeleń', roe_bark: 'sarna', bear: 'niedźwiedź' };
     const el = document.createElement('p'); el.className = 'note';
     el.textContent = 'Dźwięki (Freesound): ' + Object.entries(cr).map(([k, c]) =>
       `${names[k] || k}: ${c.author || 'autor nieznany'}, ${c.license}`).join('; ') + '.';
@@ -760,6 +769,7 @@ async function main() {
       if (camera.position.y < gy) camera.position.y = gy;
     }
 
+    if (state.freeCam) { camera.position.copy(state.freeCam.pos); camera.lookAt(state.freeCam.at); } // debug / screenshots
     hudT -= dt;
     if (hudT <= 0) {
       hudT = 0.2;
@@ -786,16 +796,17 @@ async function main() {
     }
     forest.update(camera);
     {
-      const fx = state.mode === 'walk' ? camera.position.x : hiker.position.x;
-      const fz = state.mode === 'walk' ? camera.position.z : hiker.position.z;
+      const fx = state.mode === 'walk' || state.freeCam ? camera.position.x : hiker.position.x;
+      const fz = state.mode === 'walk' || state.freeCam ? camera.position.z : hiker.position.z;
       updatePatch(fx, fz); updateNear(fx, fz); cover.update(fx, fz);
     }
+    wildlife.update(dt, camera);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });
     renderReflection();
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 

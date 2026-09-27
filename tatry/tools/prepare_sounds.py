@@ -101,6 +101,10 @@ for key, n, ml in (('wren', 3, 0.8), ('forest', 4, 1.2), ('redstart', 2, 0.8), (
 # alpine marmot (Alps); the hoary marmot recording sounds nothing like the Tatra species
 for k, x in enumerate(phrases(load('marmot'), 3, min_len=0.15, max_len=2.5, gap=0.25)):
     save(x, f'marmot_{k}', '64k'); done(f'marmot_{k}', 'marmot', 'marmot')
+# large animals: red deer and roe deer alarm barks, brown bear growls
+for key, grp, n, ml, mx in (('deer_bark', 'deerBark', 2, 0.25, 2.0), ('roe_bark', 'roeBark', 2, 0.25, 2.0), ('bear', 'bear', 3, 0.6, 3.5)):
+    for k, x in enumerate(phrases(load(key), n, min_len=ml, max_len=mx, gap=0.2)):
+        save(x, f'{key}_{k}', '64k'); done(f'{key}_{k}', key, grp)
 json.dump(groups, open(os.path.join(OUT, 'sounds.json'), 'w'), indent=1)
 credits = json.load(open(os.path.join(raw_dir, 'credits.json')))
 used = sorted(set(made.values()))
