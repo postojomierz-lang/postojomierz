@@ -19,6 +19,7 @@ import { buildChains } from './chains.js';
 import { buildTrailMarks } from './trailmarks.js';
 import { buildSigns } from './signs.js';
 import { buildLabels } from './labels.js';
+import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -183,6 +184,12 @@ async function main() {
   });
   const terrain = new Terrain(inner, outer, trailWide, lakeMask, { size: TS, origin: TO, grids: tileGrids }, base.mask);
   terrain.setFlats(buildingFlats(meta, terrain));   // level terraces under the huts before the meshes are built
+  {
+    // the paved path is a bench, level across; the bare rock above the Bula is left as scanned
+    const H = new Float32Array(N), half = new Float32Array(N), str = new Float32Array(N);
+    for (let i = 0; i < N; i++) { H[i] = terrain.height(trail.X[i], trail.Z[i]); const sec = sectionAt(i * trail.step); half[i] = sec.width / 2 + 0.2; str[i] = Math.min(1, sec.paved * 1.6); }
+    terrain.setBench({ X: trail.X, Z: trail.Z, H: smoothArr(H, 2), half, str });
+  }
 
   // ---------- renderer / scene
   const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
@@ -229,10 +236,14 @@ async function main() {
   const nearTex = new THREE.CanvasTexture(nearCanvas);
   nearTex.colorSpace = THREE.SRGBColorSpace; nearTex.flipY = false; nearTex.anisotropy = aniso;
   nearTex.minFilter = THREE.LinearMipmapLinearFilter;
+  // sharp path mask around the camera (width and surface per section of the trail)
+  const trailWin = makeTrailWindow({ trail, px: QUALITY === 'low' ? 1024 : 2048, size: 256 });
   const near = {
     map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: { value: new THREE.Vector4(0, 0, 0, 0) },
+    trail: trailWin.map, trailRect: trailWin.rect,
   };
-  const noNear = { map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: near.patch };
+  const noNear = { map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: near.patch,
+    trail: trailWin.map, trailRect: { value: new THREE.Vector4(0, 0, 0, 0) } };
   const step = QUALITY === 'low' ? 12 : 6;
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
@@ -381,6 +392,7 @@ async function main() {
   const blazes = buildTrailMarks({ scene, terrain, trail, shade,
     rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso),
     blocked: (x, z) => houses.inside(x, z, 1) || terrain.maskAt(lakeMask, x, z) > 0.05 });
+  const steps = buildSteps({ scene, terrain, trail, TH, shade, rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso) });
   const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6 });
   status('Wypuszczanie zwierząt…'); await frame();
   // height of the surface actually drawn at (x, z): the 1 m patch near the camera, the 6 m mesh elsewhere
@@ -835,7 +847,7 @@ async function main() {
     {
       const fx = state.mode === 'walk' || state.freeCam ? camera.position.x : hiker.position.x;
       const fz = state.mode === 'walk' || state.freeCam ? camera.position.z : hiker.position.z;
-      updatePatch(fx, fz); updateNear(fx, fz); cover.update(fx, fz);
+      updatePatch(fx, fz); updateNear(fx, fz); trailWin.update(fx, fz); cover.update(fx, fz);
     }
     wildlife.update(dt, camera);
     labels.update(dt);
@@ -844,7 +856,7 @@ async function main() {
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
