@@ -1475,32 +1475,239 @@ def it_chute():
     risers(m)
     m.finish()
 
+# =========================================================================================
+# Field hospitals (the American ward tent is in structures.py). Every one keeps to the 3x3 cells
+# about the origin and shows the red cross from above and from the sides.
+def rc_panel(m, c, face, size=0.4):
+    """a white panel with a red cross on a vertical face ('+x', '-x', '+z', '-z')."""
+    x, y, z = c; t = 0.012
+    fx, fz = {'+x': (1, 0), '-x': (-1, 0), '+z': (0, 1), '-z': (0, -1)}[face]
+    dims = lambda a, b: (t, b, a) if fx else (a, b, t)
+    m.box(WHITE, (x, y, z), dims(size, size), bevel=0.0)
+    o = (x + fx * 0.008, y, z + fz * 0.008)
+    m.box(RED, o, dims(size * 0.76, size * 0.22), bevel=0.0); m.box(RED, o, dims(size * 0.22, size * 0.76), bevel=0.0)
+
+def rc_flat(m, c, size=0.5, white=True):
+    """a red cross lying flat (on a roof top or spread on the ground for the airmen)."""
+    x, y, z = c
+    if white: m.box(WHITE, (x, y, z), (size, 0.012, size), bevel=0.0)
+    m.box(RED, (x, y + 0.008, z), (size * 0.76, 0.012, size * 0.22), bevel=0.0)
+    m.box(RED, (x, y + 0.008, z), (size * 0.22, 0.012, size * 0.76), bevel=0.0)
+
+def rc_slope(m, s, W, y0, y1, z, size=0.46):
+    """a red cross on the roof slope that falls from the ridge (x=0, y1) to the eaves (x=s*W, y0)."""
+    slope = math.atan2(y1 - y0, W)
+    cx, cy = s * W / 2 + s * 0.012 * math.sin(slope), (y0 + y1) / 2 + 0.018 * math.cos(slope)
+    m.box(WHITE, (cx, cy, z), (size, 0.012, size), bevel=0.0, pitch=-s * slope)
+    o = (cx + s * 0.004 * math.sin(slope), cy + 0.004, z)
+    m.box(RED, o, (size * 0.76, 0.012, size * 0.22), bevel=0.0, pitch=-s * slope)
+    m.box(RED, o, (size * 0.22, 0.012, size * 0.76), bevel=0.0, pitch=-s * slope)
+
+def rc_flag(m, x, z, h=2.1, part='dark'):
+    m.cyl(part, (x, 0, z), (x, h, z), 0.022, seg=10)
+    m.sphere(part, (x, h + 0.02, z), 0.035, seg=10)
+    m.box(WHITE, (x + 0.3, h - 0.25, z), (0.56, 0.38, 0.012), bevel=0.0)
+    for dz in (0.009, -0.009):
+        m.box(RED, (x + 0.3, h - 0.25, z + dz), (0.36, 0.09, 0.008), bevel=0.0)
+        m.box(RED, (x + 0.3, h - 0.25, z + dz), (0.09, 0.3, 0.008), bevel=0.0)
+
+def stretcher(m, x, z, y=0.14, legs=True, along_x=False):
+    """a canvas stretcher on its poles, along z (or x)."""
+    P = (lambda a, b: (x + a, y, z + b)) if not along_x else (lambda a, b: (x + b, y, z + a))
+    for d in (-0.11, 0.11): m.cyl('dark', P(d, -0.55), P(d, 0.55), 0.015, seg=6)
+    m.box('main', (x, y + 0.01, z), (0.2, 0.02, 0.9) if not along_x else (0.9, 0.02, 0.2), bevel=0.004)
+    if legs:
+        for b in (-0.42, 0.42):
+            for d in (-0.09, 0.09):
+                px, _, pz = P(d, b); m.cyl('dark', (px, 0.0, pz), (px, y, pz), 0.012, seg=5)
+
+def med_chest(m, x, z, yaw=0.0):
+    m.box('main', (x, 0.13, z), (0.36, 0.26, 0.24), bevel=0.015, yaw=yaw)
+    rc_flat(m, (x, 0.265, z), 0.16)
+
+def guys(m, pts):
+    for a, b in pts:
+        m.cyl('dark', a, b, 0.006, seg=5)
+        m.cyl('dark', (b[0], 0.0, b[2]), (b[0] * 1.02, 0.09, b[2] * 1.02), 0.014, seg=6)
+
+def de_hospital():
+    """a Wehrmacht Sanitätszelt: a box tent with a hipped roof of buttoned Zeltbahn panels, crosses
+    on the walls, a Red Cross sheet pegged out on the grass for the airmen."""
+    m = Model('hospital')
+    hw, hd, wh = 1.05, 0.72, 0.55
+    m.box('dark', (0, 0.012, -0.1), (2 * hw + 0.2, 0.024, 2 * hd + 0.2), bevel=0.01)
+    m.box('main', (0, wh / 2, -0.1), (2 * hw, wh, 2 * hd), bevel=0.015)
+    m.loft_poly('main', [(-hw - 0.06, [(wh, -0.1 - hd - 0.06), (wh + 0.01, -0.1), (wh, -0.1 + hd + 0.06)]), (-hw * 0.2, [(wh, -0.1 - hd - 0.06), (wh + 0.75, -0.1), (wh, -0.1 + hd + 0.06)]),
+                          (hw * 0.2, [(wh, -0.1 - hd - 0.06), (wh + 0.75, -0.1), (wh, -0.1 + hd + 0.06)]), (hw + 0.06, [(wh, -0.1 - hd - 0.06), (wh + 0.01, -0.1), (wh, -0.1 + hd + 0.06)])], bevel=0.01)
+    for x in (-0.7, -0.35, 0.0, 0.35, 0.7):                                                 # Zeltbahn button seams on the walls
+        for s in (1, -1): m.box('dark', (x, wh / 2, -0.1 + s * (hd + 0.006)), (0.012, wh - 0.06, 0.012), bevel=0.0)
+    for x in (-0.6, 0.6): m.cyl('dark', (x, wh + 0.5, -0.1), (x, wh + 0.83, -0.1), 0.022, seg=8)   # poles through the roof
+    m.box('dark', (hw + 0.006, 0.36, -0.1), (0.012, 0.66, 0.44), bevel=0.0)                        # doorway
+    for s in (1, -1): m.box('main', (hw + 0.03, 0.4, -0.1 + s * 0.28), (0.05, 0.74, 0.1), bevel=0.02, yaw=s * 0.4)
+    rc_panel(m, (-0.35, 0.3, -0.1 + hd + 0.006), '+z', 0.36); rc_panel(m, (0.35, 0.3, -0.1 - hd - 0.006), '-z', 0.36)
+    rc_panel(m, (-hw - 0.006, 0.3, -0.1), '-x', 0.36)
+    guys(m, [((s * hw, wh, -0.1 + t * hd), (s * (hw + 0.3), 0.0, -0.1 + t * (hd + 0.3))) for s in (1, -1) for t in (1, -1)])
+    rc_flat(m, (0.5, 0.013, 1.05), 0.62)                                                    # the air-recognition sheet
+    for x in (0.2, 0.8):
+        for z in (0.75, 1.35): m.cyl('dark', (x, 0.0, z), (x, 0.05, z), 0.012, seg=5)
+    stretcher(m, -0.6, 1.1, along_x=True)
+    med_chest(m, 1.3, 0.5)
+    rc_flag(m, -1.3, -1.2)
+    m.finish()
+
+def su_hospital():
+    """a Red Army medical dugout: the tent roof over a pit lined with logs, the spoil banked up
+    round it, a stove pipe smoking through the canvas, a red cross on the roof and the flag."""
+    m = Model('hospital')
+    W, L, wh, R = 0.85, 1.05, 0.38, 1.05
+    for s in (1, -1):                                                                        # earth bank
+        m.prism('dark', [(s * (W + 0.02), 0.0), (s * (W + 0.35), 0.0), (s * (W + 0.02), wh + 0.02)], -L - 0.2, L + 0.2, bevel=0.03)
+    m.prism('dark', [(-W - 0.2, 0.0), (W + 0.2, 0.0), (W + 0.02, wh + 0.02), (-W - 0.02, wh + 0.02)], -L - 0.35, -L - 0.02, bevel=0.03)
+    for s in (1, -1):                                                                        # log walls
+        for k in range(3): m.cyl('main', (s * W, 0.07 + k * 0.12, -L - 0.08), (s * W, 0.07 + k * 0.12, L + 0.08), 0.06, seg=10)
+    for k in range(3): m.cyl('main', (-W - 0.08, 0.07 + k * 0.12, -L), (W + 0.08, 0.07 + k * 0.12, -L), 0.06, seg=10)
+    m.prism('main', [(-W - 0.08, wh), (W + 0.08, wh), (0, R)], -L - 0.05, L + 0.05, bevel=0.015)
+    for z in (-0.6, 0.0, 0.6):
+        for s in (1, -1): m.box('main', (s * (W + 0.08) / 2, (wh + R) / 2 + 0.01, z), (math.hypot(W + 0.08, R - wh), 0.012, 0.03), bevel=0.0, pitch=-s * math.atan2(R - wh, W + 0.08))
+    rc_slope(m, 1, W + 0.08, wh, R, 0.25, 0.4); rc_slope(m, -1, W + 0.08, wh, R, 0.25, 0.4)
+    m.box('dark', (0, 0.3, L + 0.05), (0.5, 0.6, 0.012), bevel=0.0)                           # doorway and steps down
+    for k in range(3): m.box('main', (0, 0.05 + k * 0.1, L + 0.3 - k * 0.1), (0.5, 0.05, 0.12), bevel=0.01)
+    m.box('main', (0, 0.62, L + 0.08), (0.62, 0.05, 0.08), bevel=0.01)                        # lintel log
+    m.cyl('dark', (-0.4, R - 0.3, -0.5), (-0.4, R + 0.25, -0.5), 0.05, seg=12)                # stove pipe
+    m.cyl('dark', (-0.4, R + 0.25, -0.5), (-0.4, R + 0.29, -0.5), 0.09, seg=12)
+    for k in range(4): m.cyl('main', (1.05 + k * 0.0, 0.06 + (k % 2) * 0.11, 0.3 + (k // 2) * 0.13), (1.05, 0.06 + (k % 2) * 0.11, -0.7 + (k // 2) * 0.13), 0.055, seg=8)   # log pile
+    stretcher(m, -1.25, 0.5)
+    med_chest(m, 0.75, L + 0.5)
+    rc_flag(m, 1.3, -1.25)
+    m.finish()
+
+def gb_hospital():
+    """an RAMC hospital marquee: walls under a hipped roof held up by two king poles with pennants,
+    a scalloped valance round the eaves, the flaps looped up."""
+    m = Model('hospital')
+    hw, hd, wh = 1.15, 0.78, 0.6
+    m.box('dark', (0, 0.012, 0), (2 * hw + 0.2, 0.024, 2 * hd + 0.2), bevel=0.01)
+    m.box('main', (0, wh / 2, 0), (2 * hw, wh, 2 * hd), bevel=0.015)
+    hip_roof(m, wh, hw + 0.05, hd + 0.05, 0.62)
+    for x in (-0.55, 0.55):                                                                    # king poles, pennants
+        m.cyl('dark', (x, wh + 0.4, 0), (x, wh + 1.0, 0), 0.025, seg=8)
+        m.sphere('dark', (x, wh + 1.02, 0), 0.035, seg=8)
+        m.fin(WHITE, [(x, wh + 0.95), (x + 0.28, wh + 0.9), (x, wh + 0.84)], 0.0, 0.01)
+    for s in (1, -1):                                                                          # the valance
+        for k in range(12): m.cyl('main', (-hw + 0.1 + k * (2 * hw - 0.2) / 11, wh - 0.02, s * (hd + 0.06)), (-hw + 0.1 + k * (2 * hw - 0.2) / 11, wh - 0.02, s * (hd + 0.065)), 0.095, seg=12)
+        for k in range(8): m.cyl('main', (s * (hw + 0.06), wh - 0.02, -hd + 0.1 + k * (2 * hd - 0.2) / 7), (s * (hw + 0.065), wh - 0.02, -hd + 0.1 + k * (2 * hd - 0.2) / 7), 0.095, seg=12)
+    for x in (-0.8, -0.4, 0.0, 0.4, 0.8):                                                      # wall poles
+        for s in (1, -1): m.cyl('dark', (x, 0, s * (hd + 0.01)), (x, wh, s * (hd + 0.01)), 0.014, seg=6)
+    m.box('dark', (0.2, 0.3, hd + 0.006), (0.5, 0.56, 0.012), bevel=0.0)                        # door flaps looped up
+    for dx in (-0.3, 0.3): m.cyl('main', (0.2 + dx, 0.08, hd + 0.04), (0.2 + dx, wh - 0.05, hd + 0.04), 0.045, seg=10)
+    rc_panel(m, (-0.55, 0.32, hd + 0.006), '+z', 0.36); rc_panel(m, (0.0, 0.32, -hd - 0.006), '-z', 0.36)
+    rc_panel(m, (hw + 0.006, 0.32, 0), '+x', 0.36)
+    guys(m, [((s * hw, wh, t * hd), (s * (hw + 0.28), 0.0, t * (hd + 0.28))) for s in (1, -1) for t in (1, -1)])
+    stretcher(m, 0.9, 1.25, along_x=True)
+    med_chest(m, -0.6, 1.25)
+    rc_flag(m, -1.3, -1.25)
+    m.finish()
+
+def jp_hospital():
+    """a Japanese field dressing station: a steep roof of matting on lashed bamboo, open at the
+    sides, cots under it, a curtain with the red cross at the back."""
+    m = Model('hospital')
+    W, L, eave, R = 1.0, 1.05, 0.75, 1.6
+    for z in (-L + 0.05, 0.0, L - 0.05):
+        for s in (1, -1):
+            m.cyl('main', (s * (W - 0.12), 0.0, z), (s * (W - 0.12), eave + 0.05, z), 0.035, seg=8)
+            m.torus('main', (s * (W - 0.12), eave - 0.03, z), (0, 1, 0), 0.045, 0.012, seg=10)
+        m.cyl('main', (0, 0.0, z), (0, R, z), 0.04, seg=8)
+    for s in (1, -1): m.cyl('main', (s * (W - 0.12), eave, -L - 0.05), (s * (W - 0.12), eave, L + 0.05), 0.03, seg=8)
+    m.cyl('main', (0, R, -L - 0.12), (0, R, L + 0.12), 0.035, seg=8)
+    m.prism('main', [(-W, eave - 0.1), (-W + 0.04, eave - 0.14), (0, R - 0.04), (W - 0.04, eave - 0.14), (W, eave - 0.1), (0, R + 0.03)], -L - 0.1, L + 0.1, bevel=0.01)
+    for k in range(6):                                                                          # matting courses
+        y = eave - 0.08 + k * (R - eave) / 6; x = W * (1 - k / 6)
+        for s in (1, -1): m.cyl('dark', (s * x, y, -L - 0.1), (s * x, y, L + 0.1), 0.008, seg=5)
+    rc_slope(m, 1, W, eave - 0.1, R + 0.03, 0.2, 0.46); rc_slope(m, -1, W, eave - 0.1, R + 0.03, 0.2, 0.46)
+    m.box(WHITE, (0, 0.5, -L + 0.02), (1.5, 0.9, 0.012), bevel=0.0)                              # curtain at the back
+    m.box(RED, (0, 0.55, -L + 0.03), (0.34, 0.1, 0.012), bevel=0.0); m.box(RED, (0, 0.55, -L + 0.03), (0.1, 0.34, 0.012), bevel=0.0)
+    for x in (-0.45, 0.45): stretcher(m, x, 0.1, y=0.3)                                          # cots
+    med_chest(m, 0.0, 0.85)
+    for k in range(3): m.cyl('dark', (1.2, 0.0, -0.3 + k * 0.2), (1.2, 0.3, -0.3 + k * 0.2), 0.05, seg=10)   # water buckets
+    rc_flag(m, -1.3, 1.25)
+    m.finish()
+
+def fr_hospital():
+    """a French ambulance tent: canvas over iron hoops, round-backed like a tortoise, a big red
+    cross on its crown, the end wall buttoned back at the door."""
+    m = Model('hospital')
+    Rr, L = 0.92, 1.1
+    m.cyl('main', (0, 0.0, -L), (0, 0.0, L), Rr, seg=40)
+    for z in (-L + 0.02, -0.55, 0.0, 0.55, L - 0.02): m.torus('dark', (0, 0.0, z), (0, 0, 1), Rr + 0.005, 0.014, seg=28)
+    for a in (0.5, 1.0):                                                                        # seams along
+        for s in (1, -1): m.cyl('main', (s * Rr * math.cos(a), Rr * math.sin(a), -L), (s * Rr * math.cos(a), Rr * math.sin(a), L), 0.01, seg=5)
+    rc_flat(m, (0, Rr + 0.004, 0.0), 0.5)
+    m.box('dark', (0, 0.36, L + 0.006), (0.5, 0.7, 0.012), bevel=0.0)
+    for s in (1, -1): m.box('main', (s * 0.32, 0.35, L + 0.07), (0.14, 0.66, 0.05), bevel=0.02, yaw=s * 0.5)
+    rc_panel(m, (0, 0.5, -L - 0.006), '-z', 0.4)
+    guys(m, [((s * Rr * 0.7, Rr * 0.7, z), (s * (Rr + 0.35), 0.0, z)) for s in (1, -1) for z in (-0.55, 0.55)])
+    stretcher(m, -0.7, 1.3, along_x=True)
+    med_chest(m, 0.8, 1.3)
+    rc_flag(m, 1.3, -1.25)
+    m.finish()
+
+def it_hospital():
+    """a Croce Rossa Italiana post: a big conical tent on a low wall, a banner with the red cross
+    stretched between two poles in front, a sheet for the airmen on the grass."""
+    m = Model('hospital')
+    c = (-0.2, -0.2)
+    m.cyl('main', (c[0], 0.0, c[1]), (c[0], 0.35, c[1]), 1.0, seg=32)
+    m.cyl('main', (c[0], 0.35, c[1]), (c[0], 1.55, c[1]), 1.06, seg=32, r2=0.06)
+    m.torus('main', (c[0], 0.36, c[1]), (0, 1, 0), 1.04, 0.025, seg=32)
+    for k in range(8):                                                                          # panel seams
+        a = k * math.pi / 4
+        m.cyl('dark', (c[0] + 1.04 * math.cos(a), 0.37, c[1] + 1.04 * math.sin(a)), (c[0] + 0.1 * math.cos(a), 1.5, c[1] + 0.1 * math.sin(a)), 0.008, seg=5)
+    m.cyl('dark', (c[0], 1.5, c[1]), (c[0], 1.78, c[1]), 0.022, seg=8); m.sphere('dark', (c[0], 1.8, c[1]), 0.04, seg=8)
+    m.box('dark', (c[0] + 1.0, 0.3, c[1]), (0.012, 0.58, 0.42), bevel=0.0)                        # doorway, facing +x
+    guys(m, [((c[0] + 1.02 * math.cos(a), 0.4, c[1] + 1.02 * math.sin(a)), (c[0] + 1.3 * math.cos(a), 0.0, c[1] + 1.3 * math.sin(a))) for a in (0.8, 2.4, 3.9, 5.5)])
+    for z in (0.75, 1.35): m.cyl('dark', (1.25, 0.0, z), (1.25, 0.95, z), 0.02, seg=8)           # the banner
+    m.box(WHITE, (1.25, 0.72, 1.05), (0.012, 0.36, 0.56), bevel=0.0)
+    for dx in (0.008, -0.008):
+        m.box(RED, (1.25 + dx, 0.72, 1.05), (0.008, 0.08, 0.28), bevel=0.0); m.box(RED, (1.25 + dx, 0.72, 1.05), (0.008, 0.28, 0.08), bevel=0.0)
+    rc_flat(m, (0.35, 0.013, 1.2), 0.5)
+    stretcher(m, 1.2, -0.7)
+    med_chest(m, -1.2, 1.2)
+    rc_flag(m, -1.3, -1.3)
+    m.finish()
+
 NATIONS = {
     'us': {'fieldgun': us_fieldgun, 'aa': us_aa, 'mgnest': us_mgnest, 'tower': us_tower, 'mine_at': us_mine_at, 'mine_ap': us_mine_ap},
     'de': {'fieldgun': de_fieldgun, 'aa': de_aa, 'mgnest': de_mgnest, 'tower': de_tower,
            'wall0': lambda: de_wall(0), 'wall1': lambda: de_wall(1), 'wire': de_wire,
            'sandbags0': lambda: de_sandbags(0), 'sandbags1': lambda: de_sandbags(1), 'tanktrap': de_tanktrap,
-           'barrel': de_barrel, 'mine_at': de_mine_at, 'mine_ap': de_mine_ap, 'chute': de_chute},
+           'barrel': de_barrel, 'mine_at': de_mine_at, 'mine_ap': de_mine_ap, 'chute': de_chute,
+           'hospital': de_hospital},
     'su': {'fieldgun': su_fieldgun, 'aa': su_aa, 'mgnest': su_mgnest, 'tower': su_tower,
            'wall0': lambda: su_wall(0), 'wall1': lambda: su_wall(1), 'wire': su_wire,
            'sandbags0': lambda: su_sandbags(0), 'sandbags1': lambda: su_sandbags(1), 'tanktrap': su_tanktrap,
-           'barrel': su_barrel, 'mine_at': su_mine_at, 'mine_ap': su_mine_ap, 'chute': su_chute},
+           'barrel': su_barrel, 'mine_at': su_mine_at, 'mine_ap': su_mine_ap, 'chute': su_chute,
+           'hospital': su_hospital},
     'gb': {'fieldgun': gb_fieldgun, 'aa': gb_aa, 'mgnest': gb_mgnest, 'tower': gb_tower,
            'wall0': lambda: gb_wall(0), 'wall1': lambda: gb_wall(1), 'wire': gb_wire,
            'sandbags0': lambda: gb_sandbags(0), 'sandbags1': lambda: gb_sandbags(1), 'tanktrap': gb_tanktrap,
-           'barrel': gb_barrel, 'mine_at': gb_mine_at, 'mine_ap': gb_mine_ap, 'chute': gb_chute},
+           'barrel': gb_barrel, 'mine_at': gb_mine_at, 'mine_ap': gb_mine_ap, 'chute': gb_chute,
+           'hospital': gb_hospital},
     'jp': {'fieldgun': jp_fieldgun, 'aa': jp_aa, 'mgnest': jp_mgnest, 'tower': jp_tower,
            'wall0': lambda: jp_wall(0), 'wall1': lambda: jp_wall(1), 'wire': jp_wire,
            'sandbags0': lambda: jp_sandbags(0), 'sandbags1': lambda: jp_sandbags(1), 'tanktrap': jp_tanktrap,
-           'barrel': jp_barrel, 'mine_at': jp_mine_at, 'mine_ap': jp_mine_ap, 'chute': jp_chute},
+           'barrel': jp_barrel, 'mine_at': jp_mine_at, 'mine_ap': jp_mine_ap, 'chute': jp_chute,
+           'hospital': jp_hospital},
     'fr': {'fieldgun': fr_fieldgun, 'aa': fr_aa, 'mgnest': fr_mgnest, 'tower': fr_tower,
            'wall0': lambda: fr_wall(0), 'wall1': lambda: fr_wall(1), 'wire': fr_wire,
            'sandbags0': lambda: fr_sandbags(0), 'sandbags1': lambda: fr_sandbags(1), 'tanktrap': fr_tanktrap,
-           'barrel': fr_barrel, 'mine_at': fr_mine_at, 'mine_ap': fr_mine_ap, 'chute': fr_chute},
+           'barrel': fr_barrel, 'mine_at': fr_mine_at, 'mine_ap': fr_mine_ap, 'chute': fr_chute,
+           'hospital': fr_hospital},
     'it': {'fieldgun': it_fieldgun, 'aa': it_aa, 'mgnest': it_mgnest, 'tower': it_tower,
            'wall0': lambda: it_wall(0), 'wall1': lambda: it_wall(1), 'wire': it_wire,
            'sandbags0': lambda: it_sandbags(0), 'sandbags1': lambda: it_sandbags(1), 'tanktrap': it_tanktrap,
-           'barrel': it_barrel, 'mine_at': it_mine_at, 'mine_ap': it_mine_ap, 'chute': it_chute},
+           'barrel': it_barrel, 'mine_at': it_mine_at, 'mine_ap': it_mine_ap, 'chute': it_chute,
+           'hospital': it_hospital},
 }
 
 if __name__ == '__main__':
