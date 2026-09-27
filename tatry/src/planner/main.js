@@ -35,16 +35,21 @@ for (const ed of data.e) {
   L.polyline(pts, { color: c0, weight: 3.5, opacity: 0.95, interactive: false }).addTo(trails);
   if (ed.c[1]) L.polyline(pts, { color: C[ed.c[1]], weight: 3.5, dashArray: '8 8', interactive: false }).addTo(trails);
 }
-// huts and peaks
-const pois = L.layerGroup().addTo(map);
+// huts, peaks and passes, more of them as you zoom in: huts and the high peaks first, all peaks at 14,
+// passes at 15
+const layersAt = { 12: L.layerGroup(), 14: L.layerGroup(), 15: L.layerGroup() };
 for (const p of data.poi) {
   if (p.k === 'sign') continue;
   const icon = p.k === 'hut' ? '⌂' : p.k === 'peak' ? '▲' : '⌒';
   const label = `${icon} ${p.n}${p.e ? ' ' + p.e + ' m' : ''}`;
-  L.marker([p.p[1], p.p[0]], { interactive: false, icon: L.divIcon({ className: 'poi', html: label, iconSize: null, iconAnchor: [4, 8] }) })
-    .addTo(pois);
+  const z = p.k === 'hut' || (p.k === 'peak' && p.e >= 2150) ? 12 : p.k === 'peak' ? 14 : 15;
+  L.marker([p.p[1], p.p[0]], { interactive: false, icon: L.divIcon({ className: 'poi' + (p.k === 'hut' ? ' hut' : ''), html: label, iconSize: null, iconAnchor: [4, 8] }) })
+    .addTo(layersAt[z]);
 }
-const togglePois = () => { const z = map.getZoom(); if (z >= 13 && !map.hasLayer(pois)) pois.addTo(map); if (z < 13 && map.hasLayer(pois)) pois.remove(); };
+const togglePois = () => {
+  const zoom = map.getZoom();
+  for (const [z, l] of Object.entries(layersAt)) { if (zoom >= +z && !map.hasLayer(l)) l.addTo(map); if (zoom < +z && map.hasLayer(l)) l.remove(); }
+};
 map.on('zoomend', togglePois); togglePois();
 
 // ---------------------------------------------------------------- route state
@@ -110,8 +115,18 @@ function showSummary() {
   $('s-up').textContent = '↗ ' + Math.round(S.up) + ' m';
   $('s-down').textContent = '↘ ' + Math.round(S.down) + ' m';
   const ul = $('sections'); ul.innerHTML = '';
+  // one entry per stretch of the same colour: "from – to" out of the first and last section names
+  const merged = [];
   for (const sec of S.sections) {
-    if (sec.to - sec.from < 30) continue;
+    if (sec.to - sec.from < 100) continue;          // junction crossings
+    const last = merged[merged.length - 1];
+    if (last && last.colour === sec.colour) { last.to = sec.to; last.names.push(sec.name); }
+    else merged.push({ ...sec, names: [sec.name] });
+  }
+  for (const sec of merged) {
+    const parts = sec.names.filter(Boolean).map((n) => n.split(/\s+[-–]\s+/));
+    if (parts.length) sec.name = parts.length === 1 || parts[0].length < 2 ? sec.names.filter(Boolean)[0]
+      : `${parts[0][0]} – ${parts[parts.length - 1][parts[parts.length - 1].length - 1]}`;
     const li = document.createElement('li');
     li.innerHTML = `<span class="blaze" style="--c:${C[sec.colour] || '#999'}"></span><span>${COLOUR_PL[sec.colour] || sec.colour}${sec.name ? ' · ' + sec.name : ''}</span><span class="km">${(sec.from / 1000).toFixed(1)}–${(sec.to / 1000).toFixed(1)} km</span>`;
     ul.appendChild(li);

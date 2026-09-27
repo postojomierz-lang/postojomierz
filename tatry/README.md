@@ -141,3 +141,18 @@ kamienna ścieżka, powyżej Buli goła skała i słabo wydeptany ślad).
   łączy kilka modeli w jeden atlas).
 - Martwe drewno: zwalone pnie i pniaki (Poly Haven, uproszczone do ~1500 trójkątów) w lesie przy szlaku
   (`src/deadwood.js`).
+
+## Planer tras (polskie Tatry Wysokie)
+`rysy/planer.html` (źródła: `planer.html`, `src/planner/`, budowany drugim przebiegiem Vite:
+`vite.planer.config.js`). Mapa (Leaflet, podkład OpenTopoMap) z siecią znakowanych szlaków w ich
+kolorach; klikasz start, cel i punkty pośrednie, trasa idzie tylko szlakami, wybierana jest najszybsza.
+Długość, podejścia, zejścia, czas, profil pokolorowany szlakami, lista odcinków; import GPX
+(dopasowany do szlaków), eksport GPX, start z lokalizacji telefonu, trasa zapisana w adresie strony.
+- Dane: `tools/prepare_trails.py` → `public/data/region/trails.json`: relacje szlaków pieszych z
+  OpenStreetMap (Overpass, kolor z `osmc:symbol`), punkty co ~10 m z wysokością z GUGiK NMT 1 m
+  (Copernicus 30 m po słowackiej stronie), schroniska, szczyty, przełęcze, drogowskazy.
+- Czas: 5 km/h po płaskim, +1 min na 10 m podejścia (na 6 m powyżej 35 %), +1 min na 25 m zejścia
+  (na 10 m poniżej −30 %), wysokości wygładzone na ~60 m. Sprawdzone z tablicami PTTK (Kuźnice–Kasprowy
+  3:00, Czarny Staw–Rysy 2:55 wobec 3:00, Zawrat–Pięć Stawów 1:20 wobec 1:15...); te same normy mają
+  drogowskazy w 3D.
+- Widok 3D jest na razie tylko dla Morskie Oko → Rysy; dowolne trasy regionu to następny etap.
