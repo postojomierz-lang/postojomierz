@@ -11,6 +11,7 @@ import { terrainMaterial, waterMaterial, light, makeEnv, patchShading } from './
 import { buildForest } from './vegetation.js';
 import { loadImpostorKinds } from './impostor.js';
 import { buildGroundCover } from './groundcover.js';
+import { buildStreams } from './streams.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -293,6 +294,10 @@ async function main() {
     m.position.y = l.level;
     scene.add(m);
   }
+
+  // ---------- streams and waterfalls
+  const streams = buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol: water.uniforms.skyCol, quality: QUALITY });
+  streams.setPixelRatio(renderer.getPixelRatio(), innerHeight);
 
   // ---------- trail heights (smoothed, never under the rendered surface)
   const TH = new Float32Array(N);
@@ -603,7 +608,7 @@ async function main() {
   // ---------------------------------------------------------------- loop
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); sizeRefl(); drawProfile();
+    renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); sizeRefl(); streams.setPixelRatio(renderer.getPixelRatio(), innerHeight); drawProfile();
   });
   // ---------- post-processing: bloom on sun glints, filmic grade, vignette
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 0 : 4 }));
@@ -767,7 +772,7 @@ async function main() {
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
