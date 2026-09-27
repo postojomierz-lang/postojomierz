@@ -52,8 +52,12 @@ export function buildDiorama(map, quality = 'medium') {
   // the beach: land at the play level, sloping under the sea beyond the shore
   const beachy = map.theme === 'beach';
   const coast = (x, y) => round ? R + 1.5 - Math.hypot(x - W / 2, y - H / 2) : Math.min(x + 1, W + 1 - x);   // < 0: in the sea
+  // the jungle river (it also runs on beyond the play area)
+  const rs = map.riverShape, bridgeAt = (x, y) => (map.bridges || []).some(b => Math.abs((x - b.x) * b.dy - (y - b.y) * b.dx) < 1.3 && Math.abs((x - b.x) * b.dx + (y - b.y) * b.dy) < 2.6);
+  const inRiver = (x, y, w = 1.6) => !!rs && (rs.ring ? Math.abs(Math.hypot(x - W / 2, y - H / 2) - rs.ring) < w : Math.abs(x - (W / 2 + rs.A * Math.sin((y - H / 2) / H * 2 * Math.PI * rs.f))) < w);
   const height = (x, y) => {
     if (town) return townHeight(x, y);
+    if (rs && inRiver(x, y, 1.1)) return -0.7;
     if (beachy) {
       const cd = coast(x, y);
       if (cd < 0) return Math.max(-1.1, cd * 0.4);
@@ -79,6 +83,7 @@ export function buildDiorama(map, quality = 'medium') {
   else if (beachy) paintBeach({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, coast });
   else if (map.theme === 'winter') paintWinter({ map, c, b, X, Y, px, rng, W, H, M, BW, BH });
   else if (map.theme === 'desert') paintDesert({ map, c, b, X, Y, px, rng, W, H, M, BW, BH });
+  else if (map.theme === 'jungle') paintJungle({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, inRiver });
   else {
   c.fillStyle = FIELDS[0].base; c.fillRect(0, 0, cv.width, cv.height);
   for (const f of map.fields) {
@@ -244,6 +249,7 @@ export function buildDiorama(map, quality = 'medium') {
   else if (beachy) placeBeach({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, coast, RB, round });
   else if (map.theme === 'winter') placeWinter({ map, put, onBoard, W, H, M, quality, outDist });
   else if (map.theme === 'desert') placeDesert({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, outDist });
+  else if (map.theme === 'jungle') placeJungle({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, outDist, quality, inRiver });
   else {
   const hedgePiece = (x, y, yaw, seed) => {
     const r = mulberry(seed);
@@ -332,6 +338,7 @@ export function buildDiorama(map, quality = 'medium') {
       if (town) { const v = bcell(x, y); if ((v !== 0 && v !== 6) || r() < 0.5 || x < 0 || y < 0 || x >= W || y >= H) continue; }
       else if (beachy) { if (inland(x, y) < 6 + r() * 3) continue; }
       else if (map.theme === 'winter') continue;
+      else if (map.theme === 'jungle') { const gx = Math.floor(x), gy = Math.floor(y); if (inRiver(x, y) || (gx >= 0 && gy >= 0 && gx < W && gy < H && map.grid[gy * W + gx] !== 0)) continue; }
       else if (map.theme === 'desert') { const dd = Math.hypot(x - W / 2, y - H / 2); if (dd > Math.min(11, Math.max(W, H) * 0.14) || r() < 0.3) continue; }
       else if (nearLane(x, y) && r() < 0.85) continue;
       pts.push([x, y, r() * 6, 0.7 + r() * 0.8, 0.8 + r() * 0.35]);
@@ -809,5 +816,87 @@ function placeDesert({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, outDist })
     if (outDist(x, y) < 1.5 || !onBoard(x, y, 1)) continue;
     if (r() < 0.75) put('scrub', x, y, r() * 6, 0.6 + r() * 0.6);
     else put('outcrop', x, y, r() * 6, 0.4 + r() * 0.5, 0.3 + r() * 0.5, 0.4 + r() * 0.5);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The jungle: painted floor
+function paintJungle({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, inRiver }) {
+  c.fillStyle = '#6f7f3f'; c.fillRect(0, 0, c.canvas.width, c.canvas.height);          // clearings: tall kunai grass
+  for (let i = 0; i < BW * BH * px * 0.4; i++) {
+    c.fillStyle = ['#7f9147', '#63733a', '#8d9c52', '#5b6a35'][Math.floor(rng() * 4)];
+    c.fillRect(rng() * c.canvas.width, rng() * c.canvas.height, 1 + rng() * 2, 1 + rng() * 2);
+  }
+  for (const f of map.fields) {                                                     // under the trees: dark leaf litter
+    if (!f.forest || f.poly.length < 3) continue;
+    c.beginPath(); f.poly.forEach(([x, y], i) => (i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y)))); c.closePath();
+    c.fillStyle = '#3f4a2a'; c.fill();
+    c.save(); c.clip();
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of f.poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    for (let i = 0; i < (x1 - x0) * (y1 - y0) * px * 0.5; i++) {
+      c.fillStyle = ['#5b4a30', '#4a5a2e', '#6b5836', '#2f3a22'][Math.floor(rng() * 4)];
+      c.fillRect(X(x0 + rng() * (x1 - x0)), Y(y0 + rng() * (y1 - y0)), 1 + rng() * 2, 1 + rng() * 2);
+    }
+    c.restore();
+  }
+  // muddy trails
+  for (const r of map.roads) {
+    const L = Math.hypot(r.x1 - r.x0, r.y1 - r.y0), steps = Math.max(8, Math.ceil(L * 2));
+    c.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps, u = 1 - t, x = u * u * r.x0 + 2 * u * t * r.qx + t * t * r.x1, y = u * u * r.y0 + 2 * u * t * r.qy + t * t * r.y1;
+      i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y));
+    }
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    c.strokeStyle = 'rgba(90,70,45,.6)'; c.lineWidth = px * 2.1; c.stroke();
+    c.strokeStyle = '#7d5c3b'; c.lineWidth = px * 1.5; c.stroke();
+  }
+  // the river: muddy banks and a dark bed
+  if (map.riverShape) for (let y = -M; y < H + M; y += 0.25) for (let x = -M; x < W + M; x += 0.25) {
+    if (inRiver(x, y, 2.2)) { c.fillStyle = inRiver(x, y, 1.3) ? '#3a3a26' : '#6e5a3a'; c.fillRect(X(x), Y(y), px / 4 + 1, px / 4 + 1); }
+  }
+}
+
+// The jungle: trees, ferns, bamboo, the village, bunkers, banyans, the wreck, bridges, the river
+function placeJungle({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, outDist, quality, inRiver }) {
+  const r = mulberry(map.seed ^ 0x7a9e), dense = quality === 'low' ? 0.5 : 0.8;
+  const tree = (x, y) => put(r() < 0.5 ? 'jtree0' : 'jtree1', x, y, r() * 6, 0.7 + r() * 0.45, 0.7 + r() * 0.5, 0.7 + r() * 0.45, 0.85 + r() * 0.25, (r() - 0.5) * 0.05);
+  const under = (x, y) => put('fern', x, y, r() * 6, 0.8 + r() * 0.8, 0.7 + r() * 0.8, 0.8 + r() * 0.8, 0.85 + r() * 0.3, (r() - 0.5) * 0.06);
+  for (const o of map.objects) if (o.style === 'forest') for (const c of o.cells) {
+    if (map.grid[c] !== 5) continue;
+    const x = c % W, y = Math.floor(c / W);
+    if (r() < dense) tree(x + 0.2 + r() * 0.6, y + 0.2 + r() * 0.6);
+    under(x + r(), y + r());
+    if (r() < 0.3) put('palm' + (r() < 0.5 ? 0 : 1), x + r(), y + r(), r() * 6, 0.8 + r() * 0.3);
+  }
+  // beyond the play area the jungle carries on
+  const forestAt = (x, y) => { let best = null, bd = Infinity; for (const f of map.fields) { const d = (f.x - x) ** 2 + (f.y - y) ** 2; if (d < bd) { bd = d; best = f; } } return best && best.forest; };
+  for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) {
+    if (outDist(x + 0.5, y + 0.5) < 1.2 || !onBoard(x + 0.5, y + 0.5, 1) || inRiver(x + 0.5, y + 0.5, 2) || !forestAt(x + 0.5, y + 0.5)) continue;
+    if (r() < 0.6) tree(x + r(), y + r());
+    if (r() < 0.5) under(x + r(), y + r());
+  }
+  for (const o of map.objects) {
+    const q = mulberry(o.seed + (o.turn || 0) * 977), cx = o.x + o.w / 2, cy = o.y + o.h / 2, along = o.w >= o.h;
+    const yaw = (along ? 0 : Math.PI / 2) + (q() < 0.5 ? Math.PI : 0);
+    switch (o.style) {
+      case 'hut': case 'logbunker': put(o.style, cx, cy, Math.floor(q() * 4) * Math.PI / 2, 1, 0.9 + q() * 0.2, 1, 0.9 + q() * 0.15); break;
+      case 'banyan': put('banyan', cx, cy, q() * 6, 0.9 + q() * 0.25, 0.9 + q() * 0.3, 0.9 + q() * 0.25); break;
+      case 'bamboo': put('bamboo', cx, cy, q() * 6, 0.8 + q() * 0.3, 0.8 + q() * 0.4); break;
+      case 'planewreck': put('planewreck', cx, cy, yaw + (q() - 0.5) * 0.5); break;
+    }
+  }
+  for (const d of map.decor) if (d.kind === 'crater' && onBoard(d.x, d.y, 1.2)) { const q = mulberry(d.seed); put('crater', d.x, d.y, q() * 6, 0.8 + q() * 0.4, 0.7 + q() * 0.3); }
+  for (const b of map.bridges || []) put('woodbridge', b.x, b.y, -Math.atan2(b.dy, b.dx), 1, 1, 0.9, 1, 0, null, 0.02);
+  // the river water over the whole board, cut out by a mask
+  if (map.riverShape) {
+    const s = 8, cv = document.createElement('canvas'); cv.width = BW * s; cv.height = BH * s;
+    const c2 = cv.getContext('2d'); c2.fillStyle = '#000'; c2.fillRect(0, 0, cv.width, cv.height); c2.fillStyle = '#fff';
+    for (let y = 0; y < BH * s; y++) for (let x = 0; x < BW * s; x++) if (inRiver(x / s - M, y / s - M, 1.5)) c2.fillRect(x, y, 1, 1);
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH),
+      new THREE.MeshStandardMaterial({ color: '#4d5a3a', alphaMap: new THREE.CanvasTexture(cv), transparent: true, opacity: 0.9, roughness: 0.25, metalness: 0, envMapIntensity: 0.3, depthWrite: false }));
+    water.rotation.x = -Math.PI / 2; water.position.set(wx(W / 2), -0.2, wz(H / 2)); water.receiveShadow = true; water.renderOrder = 2;
+    g.add(water);
   }
 }

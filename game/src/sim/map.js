@@ -899,8 +899,10 @@ function jungle({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, 
   const road = lanes({ W, H, M, n, rng, rot, zones, roads, side: n > 2 || !hasRiver });
   // the river: straight through the middle with two armies, a ring round the middle with more
   const wet = new Uint8Array(W * H), bridges = [];
+  let riverA = 0, riverF = 1;
   if (hasRiver) {
     const A = 1.8 + rng() * 1.2, f = 1 + Math.floor(rng() * 2), Rr = R * 0.45;
+    riverA = A; riverF = f;
     const mid = y => cx + A * sinT((y - cy) / H * 2 * PI * f);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const inRiver = round ? Math.abs(Math.hypot(x + 0.5 - cx, y + 0.5 - cy) - Rr) < 1.6 : Math.abs(x + 0.5 - mid(y + 0.5)) < 1.6;
@@ -961,5 +963,5 @@ function jungle({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, 
       decor.push({ x, y, kind: 'crater', seed: seed + k });
     }
   }
-  return { margin: M, road, bridges, river: hasRiver };
+  return { margin: M, road, bridges, river: hasRiver, riverShape: hasRiver ? (round ? { ring: R * 0.45 } : { A: riverA, f: riverF }) : null };
 }

@@ -14,6 +14,7 @@ export const FLOOR = {
   grass:   { base: '#6d9c45', a: '#84b456', b: '#57843a', bg: '#9ec7e8', sun: [-0.58, 0.45, 0.4], sunColor: '#fff0c8', sky: '#e6f4ff', ground: '#3f5f2a' },
   // the Normandy diorama: a board on a table in a dim room, lit by a warm summer "sun"
   normandy: { base: '#6c8c42', a: '#7b9a4a', b: '#5d7c38', bg: '#2b2723', sun: [-0.55, 0.55, 0.36], sunColor: '#fff0d4', sky: '#e4edf5', ground: '#4f5a36' },
+  jungle:   { base: '#5f6f38', a: '#6f7f3f', b: '#4a5a2e', bg: '#262521', sun: [-0.35, 0.72, 0.3], sunColor: '#fff2d8', sky: '#e2ead8', ground: '#4a5a2e' },
   desert:   { base: '#d6b680', a: '#e0c38f', b: '#c4a26f', bg: '#2b2723', sun: [-0.4, 0.7, 0.35], sunColor: '#fff0d0', sky: '#f2eadb', ground: '#9c8058' },
   winter:   { base: '#edf1f6', a: '#f6f8fb', b: '#dfe6ee', bg: '#2b2723', sun: [-0.5, 0.42, 0.42], sunColor: '#fff3e8', sky: '#e3ebf5', ground: '#9fb0c2' },
   beach:    { base: '#d9c796', a: '#e0cfa0', b: '#cdb987', bg: '#2b2723', sun: [-0.45, 0.62, 0.42], sunColor: '#fff4e0', sky: '#dde9f3', ground: '#7d7458' },
