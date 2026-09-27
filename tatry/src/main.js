@@ -17,6 +17,8 @@ import { buildAnimals } from './animals.js';
 import { buildBuildings, buildingFlats } from './buildings.js';
 import { buildChains } from './chains.js';
 import { buildTrailMarks } from './trailmarks.js';
+import { buildSigns } from './signs.js';
+import { buildLabels } from './labels.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -535,6 +537,7 @@ async function main() {
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') setSpeed(-1);
     if (e.code === 'KeyH') $('help').classList.toggle('hidden');
     if (e.code === 'KeyN') { sound.setEnabled(!sound.enabled); updateButtons(); }
+    if (e.code === 'KeyL') { labels.setEnabled(!labels.enabled); updateButtons(); }
     if (e.code === 'Home') state.s = 0;
     if (e.code === 'End') state.s = LENGTH;
   });
@@ -600,6 +603,21 @@ async function main() {
   }
   pc.addEventListener('click', (e) => { const b = pc.getBoundingClientRect(); state.s = (e.clientX - b.left) / b.width * LENGTH; });
 
+  // PTTK signposts at the start, at Czarny Staw, at the Bula and on the summit
+  const sCzarny = nearestNamed()[0]?.s ?? LENGTH * 0.45;
+  const sBula = (chains.chainRuns[0]?.[0] ?? Math.round(LENGTH * 0.83 / trail.step)) * trail.step - 25;
+  buildSigns({ scene, terrain, trail, profile, shade, posts: [
+    { s: 12, title: 'Morskie Oko', ele: 1395, boards: [{ dest: 'Czarny Staw', toS: sCzarny }, { dest: 'Rysy', toS: LENGTH }] },
+    { s: sCzarny + 15, title: 'Czarny Staw pod Rysami', ele: 1583, boards: [{ dest: 'Rysy', toS: LENGTH }, { dest: 'Morskie Oko', toS: 0 }] },
+    { s: sBula, title: 'Bula pod Rysami', ele: Math.round(profile[Math.round(sBula / trail.step)]), side: -1,
+      boards: [{ dest: 'Rysy', toS: LENGTH }, { dest: 'Czarny Staw', toS: sCzarny }] },
+    { s: LENGTH - 6, title: 'Rysy', ele: 2499, side: -1, boards: [{ dest: 'Morskie Oko', toS: 0 }] },
+  ] });
+  // map labels (peaks, passes, lakes, huts, waterfalls) plus the Polish summit of Rysy
+  const top = at(LENGTH);
+  const labels = buildLabels({ meta, terrain, camera, container: document.body,
+    extra: [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }] });
+
   const PLACES = [
     { s: 0, name: 'Schronisko nad Morskim Okiem' },
     ...nearestNamed(),
@@ -621,6 +639,7 @@ async function main() {
 
   function updateButtons() {
     $('btn-sound').textContent = sound.enabled ? '🔊' : '🔇';
+    $('btn-labels').classList.toggle('on', labels.enabled);
     $('btn-auto').textContent = state.auto ? '⏸ Stop' : '▶ Idź sam';
     $('btn-auto').classList.toggle('on', state.auto);
     $('btn-mode').textContent = state.mode === 'walk' ? '🚁 Dron' : '🥾 Spacer';
@@ -634,6 +653,7 @@ async function main() {
   $('weather').onchange = (e) => { env.weather = e.target.value; applyEnv(); };
   $('btn-help').onclick = () => $('help').classList.toggle('hidden');
   $('btn-sound').onclick = () => { sound.setEnabled(!sound.enabled); updateButtons(); };
+  $('btn-labels').onclick = () => { labels.setEnabled(!labels.enabled); updateButtons(); };
   $('sources').textContent = meta.sources + '; textures: Poly Haven (CC0)';
   // sound credits (CC BY / CC BY-SA need the authors shown)
   fetch('sounds/credits.json').then((r) => r.json()).then((cr) => {
@@ -815,12 +835,13 @@ async function main() {
       updatePatch(fx, fz); updateNear(fx, fz); cover.update(fx, fz);
     }
     wildlife.update(dt, camera);
+    labels.update(dt);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });
     renderReflection();
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
