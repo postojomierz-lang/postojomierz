@@ -76,5 +76,10 @@ Browsers connect peer-to-peer over WebRTC ([PeerJS](https://peerjs.com); its fre
 introduces the players). Because the simulation is deterministic, players only exchange their
 deployment orders: each round everyone deploys, presses **Ready**, the host collects the orders and
 sends the full set back, every browser rebuilds the same deployment and plays the same battle.
+When a network blocks direct browser-to-browser connections, the messages go through a TURN
+relay: by default the free [Open Relay](https://www.metered.ca/tools/openrelay/) by Metered
+(static-auth mode, short-lived credentials computed in the browser, no account needed). "Connection
+settings" in the online dialog can force or disable the relay, or point to your own TURN server or
+Metered account; the lobby shows whether each player is connected directly or through the relay.
 A player who leaves (or stays silent for a minute) is replaced by the computer. For testing on one
 machine add `?localnet` to the URL: tabs of one browser then talk over a BroadcastChannel.
