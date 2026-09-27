@@ -77,6 +77,7 @@ export function buildDiorama(map, quality = 'medium') {
   const lanePts = [];
   if (town) paintTown({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, bcell });
   else if (beachy) paintBeach({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, coast });
+  else if (map.theme === 'winter') paintWinter({ map, c, b, X, Y, px, rng, W, H, M, BW, BH });
   else {
   c.fillStyle = FIELDS[0].base; c.fillRect(0, 0, cv.width, cv.height);
   for (const f of map.fields) {
@@ -240,6 +241,7 @@ export function buildDiorama(map, quality = 'medium') {
   })();
   if (town) placeTown({ map, put, onBoard, W, H, M, BW, bcell, g, wx, wz, quality });
   else if (beachy) placeBeach({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, coast, RB, round });
+  else if (map.theme === 'winter') placeWinter({ map, put, onBoard, W, H, M, quality, outDist });
   else {
   const hedgePiece = (x, y, yaw, seed) => {
     const r = mulberry(seed);
@@ -296,7 +298,9 @@ export function buildDiorama(map, quality = 'medium') {
     const [key, farTag] = lkey.split('|'), far = !!farTag || quality === 'low';
     // houses: the plaster is a separate mesh so every house gets its own colour
     for (const part of hasTint(key) ? ['rest', 'tint'] : ['all']) {
-      const im = new THREE.InstancedMesh(sceneryGeometry(key, part, far), mat, list.length);
+      const geo = sceneryGeometry(key, part, far);
+      if (!geo) continue;                                       // not downloaded (opened from disk)
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
       im.userData.shared = true;   // the geometry is cached: keep it when the battlefield is rebuilt
       list.forEach((it, i) => {
         p.set(wx(it.x), (town ? 0 : height(it.x, it.y)) - 0.02 + (it.dy || 0), wz(it.y)); q.setFromEuler(e.set(0, it.yaw, 0)); s3.set(it.sx, it.sy, it.sz);
@@ -315,7 +319,7 @@ export function buildDiorama(map, quality = 'medium') {
   const zoneBand = map.frame ? (round ? R + 1.5 - map.frame.Tc : map.frame.T0 + 1) : 0;
   const inland = (x, y) => coast(x, y) - zoneBand;
   // ---------------------------------------------------------------- grass tufts
-  const per = quality === 'low' ? 0 : quality === 'high' ? 1.6 : 0.7;
+  const per = quality === 'low' || map.theme === 'winter' ? 0 : quality === 'high' ? 1.6 : 0.7;
   if (per) {
     const tuft = tuftGeometry(), pts = [], r = mulberry(map.seed ^ 0x7a11);
     const count = Math.round(BW * BH * per);
@@ -325,6 +329,7 @@ export function buildDiorama(map, quality = 'medium') {
       if (x >= 0 && y >= 0 && x < W && y < H && map.grid[Math.floor(y) * W + Math.floor(x)] !== 0 && map.grid[Math.floor(y) * W + Math.floor(x)] !== 4) continue;
       if (town) { const v = bcell(x, y); if ((v !== 0 && v !== 6) || r() < 0.5 || x < 0 || y < 0 || x >= W || y >= H) continue; }
       else if (beachy) { if (inland(x, y) < 6 + r() * 3) continue; }
+      else if (map.theme === 'winter') continue;
       else if (nearLane(x, y) && r() < 0.85) continue;
       pts.push([x, y, r() * 6, 0.7 + r() * 0.8, 0.8 + r() * 0.35]);
     }
@@ -634,4 +639,87 @@ function placeBeach({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, coast, RB, 
     new THREE.MeshStandardMaterial({ color: '#3e6f78', transparent: true, opacity: 0.82, roughness: 0.18, metalness: 0, envMapIntensity: 0.4, depthWrite: false }));
   sea.rotation.x = -Math.PI / 2; sea.position.set(wx(W / 2), -0.24, wz(H / 2)); sea.receiveShadow = true; sea.renderOrder = 2;
   g.add(sea);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Winter: painted snow
+function paintWinter({ map, c, b, X, Y, px, rng, W, H, M, BW, BH }) {
+  c.fillStyle = '#edf1f6'; c.fillRect(0, 0, c.canvas.width, c.canvas.height);
+  for (let i = 0; i < BW * BH * 0.5; i++) {                            // soft blue shadows in the drifts
+    const gr = c.createRadialGradient(0, 0, 0, 0, 0, 1), x = rng() * c.canvas.width, y = rng() * c.canvas.height, r = px * (0.8 + rng() * 2.5);
+    c.fillStyle = `rgba(${170 + rng() * 30},${190 + rng() * 20},${220},${0.08 + rng() * 0.08})`;
+    c.beginPath(); c.ellipse(x, y, r * 1.6, r, rng() * 3, 0, 7); c.fill();
+  }
+  // under the trees: trodden, darker snow with needles
+  for (const f of map.fields) {
+    if (!f.forest || f.poly.length < 3) continue;
+    c.beginPath(); f.poly.forEach(([x, y], i) => (i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y)))); c.closePath();
+    c.fillStyle = '#d3dae2'; c.fill();
+    c.save(); c.clip();
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of f.poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    for (let i = 0; i < (x1 - x0) * (y1 - y0) * px * 0.4; i++) {
+      c.fillStyle = ['#8d8474', '#6e7a66', '#b8c1cb', '#a59a86'][Math.floor(rng() * 4)];
+      c.fillRect(X(x0 + rng() * (x1 - x0)), Y(y0 + rng() * (y1 - y0)), 1 + rng() * 1.5, 1 + rng() * 1.5);
+    }
+    c.restore();
+  }
+  // lanes: churned slush with two dark ruts
+  for (const r of map.roads) {
+    const L = Math.hypot(r.x1 - r.x0, r.y1 - r.y0), steps = Math.max(8, Math.ceil(L * 2)), pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps, u = 1 - t;
+      const x = u * u * r.x0 + 2 * u * t * r.qx + t * t * r.x1, y = u * u * r.y0 + 2 * u * t * r.qy + t * t * r.y1;
+      const dx = 2 * u * (r.qx - r.x0) + 2 * t * (r.x1 - r.qx), dy = 2 * u * (r.qy - r.y0) + 2 * t * (r.y1 - r.qy), l = Math.hypot(dx, dy) || 1;
+      pts.push([x, y, -dy / l, dx / l]);
+    }
+    const line = (ctx, off, width, style) => {
+      ctx.beginPath(); pts.forEach(([x, y, nx, ny], i) => (i ? ctx.lineTo(X(x + nx * off), Y(y + ny * off)) : ctx.moveTo(X(x + nx * off), Y(y + ny * off))));
+      ctx.strokeStyle = style; ctx.lineWidth = width * px; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+    };
+    line(c, 0, 1.9, 'rgba(160,165,170,.5)'); line(c, 0, 1.5, '#b9b6ad');
+    for (const o of [-0.38, 0.38]) { line(c, o, 0.3, '#7f786b'); line(b, o, 0.3, '#404040'); }
+  }
+  // frozen ponds
+  for (const d of map.decor) if (d.kind === 'ice') {
+    const gr = c.createRadialGradient(X(d.x), Y(d.y), 0, X(d.x), Y(d.y), px * d.r);
+    gr.addColorStop(0, '#a9c8dc'); gr.addColorStop(0.85, '#c3d9e7'); gr.addColorStop(1, 'rgba(230,238,245,0)');
+    c.fillStyle = gr; c.beginPath(); c.ellipse(X(d.x), Y(d.y), px * d.r * 1.3, px * d.r, (d.seed % 7) * 0.4, 0, 7); c.fill();
+    c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 1;
+    const r = mulberry(d.seed);
+    for (let k = 0; k < 6; k++) { c.beginPath(); c.moveTo(X(d.x + (r() - 0.5) * d.r), Y(d.y + (r() - 0.5) * d.r)); c.lineTo(X(d.x + (r() - 0.5) * d.r * 1.6), Y(d.y + (r() - 0.5) * d.r * 1.2)); c.stroke(); }
+  }
+  // dark earth thrown up round foxholes, drifts in the bump map
+  for (const o of map.objects) if (o.style === 'foxhole') { c.fillStyle = 'rgba(110,95,75,.45)'; c.beginPath(); c.arc(X(o.x + 0.5), Y(o.y + 0.5), px * 0.9, 0, 7); c.fill(); }
+  b.strokeStyle = 'rgba(150,150,150,.35)'; b.lineWidth = px * 0.3;
+  for (let i = 0; i < BW * BH / 12; i++) { const x = rng() * b.canvas.width, y = rng() * b.canvas.height; b.beginPath(); b.moveTo(x, y); b.quadraticCurveTo(x + px, y - px * 0.4, x + px * 2, y); b.stroke(); }
+}
+
+// Winter: spruces in the forests (inside and beyond the play area), the village, foxholes, logs
+function placeWinter({ map, put, onBoard, W, H, M, quality, outDist }) {
+  const r = mulberry(map.seed ^ 0x51ee), dense = quality === 'low' ? 1 : 1.4;
+  const tree = (x, y) => put(r() < 0.55 ? 'pine0' : 'pine1', x, y, r() * 6, 0.7 + r() * 0.35, 0.65 + r() * 0.45, 0.7 + r() * 0.35, 0.85 + r() * 0.25, (r() - 0.5) * 0.03);
+  const isWood = new Uint8Array(W * H);
+  for (const o of map.objects) if (o.style === 'forest') for (const c of o.cells) isWood[c] = 1;
+  for (let c = 0; c < W * H; c++) if (isWood[c] && map.grid[c] === 5) {
+    const x = c % W, y = Math.floor(c / W);
+    const edge = !isWood[c - 1] || !isWood[c + 1] || !isWood[c - W] || !isWood[c + W];
+    const k = edge ? 1 : dense;
+    for (let i = 0; i < k; i++) if (i < 1 || r() < k - 1) tree(x + 0.15 + r() * 0.7, y + 0.15 + r() * 0.7);
+  }
+  // the forest carries on beyond the play area
+  const sites = map.fields;
+  const forestAt = (x, y) => { let best = null, bd = Infinity; for (const f of sites) { const d = (f.x - x) ** 2 + (f.y - y) ** 2; if (d < bd) { bd = d; best = f; } } return best && best.forest; };
+  for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) {
+    if (outDist(x + 0.5, y + 0.5) < 1.2 || !onBoard(x + 0.5, y + 0.5, 1) || !forestAt(x + 0.5, y + 0.5)) continue;
+    if (r() < 0.8) tree(x + r(), y + r());
+  }
+  for (const o of map.objects) {
+    const q = mulberry(o.seed + (o.turn || 0) * 977), cx = o.x + o.w / 2, cy = o.y + o.h / 2, along = o.w >= o.h;
+    const yaw = (along ? 0 : Math.PI / 2) + (q() < 0.5 ? Math.PI : 0);
+    if (o.style === 'chalet' || o.style === 'shed' || o.style === 'logs') put(o.style, cx, cy, yaw + (o.style === 'logs' ? (q() - 0.5) * 0.3 : 0), 1, 0.95 + q() * 0.1, 1, 0.95 + q() * 0.08);
+    else if (o.style === 'fallen') put('fallen', cx, cy, yaw + (q() - 0.5) * 0.3, 1, 1, 1, 0.9 + q() * 0.1);
+    else if (o.style === 'foxhole') put('foxhole', cx, cy, q() * 6);
+  }
+  for (const d of map.decor) if (d.kind === 'crater' && onBoard(d.x, d.y, 1.2)) { const q = mulberry(d.seed); put('crater', d.x, d.y, q() * 6, 0.8 + q() * 0.4, 0.7 + q() * 0.3); }
 }

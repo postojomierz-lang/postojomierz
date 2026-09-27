@@ -6,7 +6,7 @@ export const T_EDGE = 4; // off the edge of the round table: nobody walks there,
 export const T_RUIN = 5; // a ruined building: soldiers on foot can get in and fight from it (good cover), vehicles can't
 
 // diorama battlefields ('normandy': see normandy(), 'town': see town(), 'beach': see beach()); the rest are the classic toy-room floors
-export const DIORAMAS = ['normandy', 'town', 'beach'];
+export const DIORAMAS = ['normandy', 'town', 'beach', 'winter'];
 export const ROOM_THEMES = ['wood', 'carpet', 'kitchen', 'sand', 'grass', 'snow'];
 export const THEMES = [...DIORAMAS, ...ROOM_THEMES];
 
@@ -191,6 +191,8 @@ export function makeMap({ teams, theme, seed, layout = null, options = {} }) {
       if (grid[Math.floor(y) * W + Math.floor(x)] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
       decor.push({ x, y, kind: ['palm', 'pine', 'bush'].includes(d.kind) ? d.kind : 'bush', seed: Math.floor(rng() * 1e9) });
     }
+  } else if (theme === 'winter') {
+    extra = winter({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, round, R });
   } else if (theme === 'beach') {
     extra = beach({ W, H, grid, zones, objects, decor, rng, turns, round, R });
   } else if (theme === 'town') {
@@ -270,36 +272,7 @@ function normandy({ W, H, grid, zones, objects, decor, rng, inZone, turns, place
   const inside = (x, y) => x >= 1 && y >= 1 && x < W - 1 && y < H - 1 && grid[(y | 0) * W + (x | 0)] !== T_EDGE;
   const near = (x, y, m) => zones.some(z => x >= z.x - m && x < z.x + z.w + m && y >= z.y - m && y < z.y + z.h + m);
 
-  // lanes: one from every army's base to the middle, and one out to the edge between each pair of armies
-  const road = new Uint8Array(W * H);
-  const bez = (x0, y0, qx, qy, x1, y1) => {
-    roads.push({ x0, y0, qx, qy, x1, y1 });
-    const L = Math.hypot(x1 - x0, y1 - y0), steps = Math.ceil(L * 3);
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps, u = 1 - t;
-      const x = u * u * x0 + 2 * u * t * qx + t * t * x1, y = u * u * y0 + 2 * u * t * qy + t * t * y1;
-      for (let yy = Math.floor(y - 1.2); yy <= y + 1.2; yy++) for (let xx = Math.floor(x - 1.2); xx <= x + 1.2; xx++) {
-        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
-        const dx = xx + 0.5 - x, dy = yy + 0.5 - y;
-        if (dx * dx + dy * dy <= 1.3) road[yy * W + xx] = 1;
-      }
-    }
-  };
-  const z0 = zones[0], zx = z0.x + z0.w / 2, zy = z0.y + z0.h / 2;
-  const bend = (rng() - 0.5) * 0.5, bend2 = (rng() - 0.5) * 0.6;
-  // the side lane leaves the middle between army 0 and the next one (or straight up/down with two armies)
-  const far = Math.max(W, H) / 2 + M;
-  const [ex, ey] = n === 2 ? [cx, cy - far] : (() => { const [ax, ay] = rot(zx, zy, 1), mx = (zx + ax) / 2 - cx, my = (zy + ay) / 2 - cy, l = Math.hypot(mx, my) || 1; return [cx + mx / l * far, cy + my / l * far]; })();
-  for (let k = 0; k < n; k++) {
-    const [ax, ay] = rot(zx, zy, k), [bx, by] = rot(ex, ey, k);
-    const mx = (ax + cx) / 2, my = (ay + cy) / 2, px = -(cy - ay), py = cx - ax;
-    bez(ax, ay, mx + px * bend, my + py * bend, cx, cy);
-    const nx = (bx + cx) / 2, ny = (by + cy) / 2, qx = -(by - cy), qy = bx - cx;
-    bez(cx, cy, nx + qx * bend2 * 0.5, ny + qy * bend2 * 0.5, bx, by);
-    // the base lane also runs back out behind the army, off the table
-    const bxx = ax + (ax - cx) / Math.hypot(ax - cx, ay - cy) * (far - Math.hypot(ax - cx, ay - cy) + 4), byy = ay + (ay - cy) / Math.hypot(ax - cx, ay - cy) * (far - Math.hypot(ax - cx, ay - cy) + 4);
-    bez(ax, ay, (ax + bxx) / 2, (ay + byy) / 2, bxx, byy);
-  }
+  const road = lanes({ W, H, M, n, rng, rot, zones, roads });
 
   // field sites, copied round the table
   const { sites, cells } = voronoiSym({ W, H, M, n, rng, rot, per: Math.max(3, Math.round((W + 2 * M) * (H + 2 * M) / 120 / n)) });
@@ -699,4 +672,125 @@ function beach({ W, H, grid, zones, objects, decor, rng, turns, round, R }) {
   // how far each point of the board is from the sea (negative: in the sea) - for the painter
   const shore = round ? { round: true, r: R + 1.5 } : { round: false };
   return { margin: M, shore, frame: { T0, Tc, round } };
+}
+
+// Lanes: one from every army's base to the middle, and one out to the edge between each pair of
+// armies (bends copied round the table too). Returns the cells they cover; the curves go to roads.
+function lanes({ W, H, M, n, rng, rot, zones, roads }) {
+  const cx = W / 2, cy = H / 2;
+  const road = new Uint8Array(W * H);
+  const bez = (x0, y0, qx, qy, x1, y1) => {
+    roads.push({ x0, y0, qx, qy, x1, y1 });
+    const L = Math.hypot(x1 - x0, y1 - y0), steps = Math.ceil(L * 3);
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps, u = 1 - t;
+      const x = u * u * x0 + 2 * u * t * qx + t * t * x1, y = u * u * y0 + 2 * u * t * qy + t * t * y1;
+      for (let yy = Math.floor(y - 1.2); yy <= y + 1.2; yy++) for (let xx = Math.floor(x - 1.2); xx <= x + 1.2; xx++) {
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+        const dx = xx + 0.5 - x, dy = yy + 0.5 - y;
+        if (dx * dx + dy * dy <= 1.3) road[yy * W + xx] = 1;
+      }
+    }
+  };
+  const z0 = zones[0], zx = z0.x + z0.w / 2, zy = z0.y + z0.h / 2;
+  const bend = (rng() - 0.5) * 0.5, bend2 = (rng() - 0.5) * 0.6;
+  // the side lane leaves the middle between army 0 and the next one (or straight up/down with two armies)
+  const far = Math.max(W, H) / 2 + M;
+  const [ex, ey] = n === 2 ? [cx, cy - far] : (() => { const [ax, ay] = rot(zx, zy, 1), mx = (zx + ax) / 2 - cx, my = (zy + ay) / 2 - cy, l = Math.hypot(mx, my) || 1; return [cx + mx / l * far, cy + my / l * far]; })();
+  for (let k = 0; k < n; k++) {
+    const [ax, ay] = rot(zx, zy, k), [bx, by] = rot(ex, ey, k);
+    const mx = (ax + cx) / 2, my = (ay + cy) / 2, px = -(cy - ay), py = cx - ax;
+    bez(ax, ay, mx + px * bend, my + py * bend, cx, cy);
+    const nx = (bx + cx) / 2, ny = (by + cy) / 2, qx = -(by - cy), qy = bx - cx;
+    bez(cx, cy, nx + qx * bend2 * 0.5, ny + qy * bend2 * 0.5, bx, by);
+    // the base lane also runs back out behind the army, off the table
+    const bxx = ax + (ax - cx) / Math.hypot(ax - cx, ay - cy) * (far - Math.hypot(ax - cx, ay - cy) + 4), byy = ay + (ay - cy) / Math.hypot(ax - cx, ay - cy) * (far - Math.hypot(ax - cx, ay - cy) + 4);
+    bez(ax, ay, (ax + bxx) / 2, (ay + byy) / 2, bxx, byy);
+  }
+
+  return road;
+}
+
+// ---- Winter in the Ardennes: snowy pine forests (soldiers on foot can move and hide among the
+// trees, vehicles keep to the lanes and clearings; you cannot see through more than a little
+// forest), clearings, lanes, a small village, foxholes, log piles, fallen trees, frozen ponds.
+function winter({ W, H, grid, zones, objects, decor, rng, turns, roads, fields, round, R }) {
+  const n = turns.length, cx = W / 2, cy = H / 2, M = 14;
+  const rot = (x, y, k) => { const { c, s } = turns[k], px = x - cx, py = y - cy; return [px * c - py * s + cx, px * s + py * c + cy]; };
+  const near = (x, y, m) => zones.some(z => x >= z.x - m && x < z.x + z.w + m && y >= z.y - m && y < z.y + z.h + m);
+  const inPlay = (x, y) => x >= 0 && y >= 0 && x < W && y < H && grid[y * W + x] !== T_EDGE;
+  const road = lanes({ W, H, M, n, rng, rot, zones, roads });
+  // forests: a Voronoi diagram again; a field is forest or a clearing, the same for every army
+  const { sites, cells } = voronoiSym({ W, H, M, n, rng, rot, per: Math.max(3, Math.round((W + 2 * M) * (H + 2 * M) / 90 / n)) });
+  const hash = (a, b) => { let h = Math.imul(a * 374761393 + b * 668265263, 0x5bd1e995); h ^= h >>> 15; return ((Math.imul(h, 0x27d4eb2d) ^ (h >>> 13)) >>> 0) / 4294967296; };
+  const forestB = new Set();
+  for (let b = 0; b < sites.length / n; b++) if (hash(b, 11) < 0.5) forestB.add(b);
+  sites.forEach((st, i) => fields.push({ x: st.x, y: st.y, kind: st.b, k: st.k, forest: forestB.has(st.b), poly: cells[i].map(([x, y]) => [x, y]) }));
+  const nearest = (x, y) => { let best = 0, bd = Infinity; for (let i = 0; i < sites.length; i++) { const d = (sites[i].x - x) ** 2 + (sites[i].y - y) ** 2; if (d < bd) { bd = d; best = i; } } return sites[best]; };
+  const wood = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const c = y * W + x;
+    if (grid[c] !== T_OPEN || road[c] || near(x, y, 2)) continue;
+    if (forestB.has(nearest(x + 0.5, y + 0.5).b)) { grid[c] = T_RUIN; wood.push(c); }
+  }
+  if (wood.length) objects.push({ kind: T_RUIN, style: 'forest', cells: wood, x: 0, y: 0, w: W, h: H, seed: 5 });
+  // the rest is laid out for army 0 and copied round the table
+  const place = (x0, y0, w, h, kind, style, need = T_OPEN, margin = 1) => {
+    const rects = turns.map(({ c, s, swap }) => {
+      const px = x0 + w / 2 - cx, py = y0 + h / 2 - cy, ww = swap ? h : w, hh = swap ? w : h;
+      return { x: Math.round(px * c - py * s + cx - ww / 2), y: Math.round(px * s + py * c + cy - hh / 2), w: ww, h: hh };
+    });
+    const used = new Set();
+    for (const q of rects) for (let yy = q.y - margin; yy < q.y + q.h + margin; yy++) for (let xx = q.x - margin; xx < q.x + q.w + margin; xx++) {
+      const inside = yy >= q.y && yy < q.y + q.h && xx >= q.x && xx < q.x + q.w;
+      if (!inPlay(xx, yy)) return false;
+      const g = grid[yy * W + xx];
+      if (road[yy * W + xx] || near(xx, yy, 1) || (inside ? g !== need || used.has(yy * W + xx) : g !== T_OPEN && g !== T_RUIN)) return false;
+      if (inside) used.add(yy * W + xx);
+    }
+    const seed = Math.floor(rng() * 1e9);
+    rects.forEach((q, k) => {
+      for (let yy = q.y; yy < q.y + q.h; yy++) for (let xx = q.x; xx < q.x + q.w; xx++) {
+        const c = yy * W + xx;
+        if (grid[c] === T_RUIN) { const f = objects.find(o => o.style === 'forest'); if (f) f.cells.splice(f.cells.indexOf(c), 1); }
+        grid[c] = kind;
+      }
+      objects.push({ kind, style, ...q, turn: k, seed });
+    });
+    return true;
+  };
+  let open = 0; for (let c = 0; c < W * H; c++) if (grid[c] === T_OPEN) open++;
+  const per = open / n;
+  const tries = (count, fn) => { for (let i = 0; i < count; i++) fn(Math.floor(rng() * W), Math.floor(rng() * H)); };
+  // a village near the middle: stone farmhouses with snow on the roofs, sheds
+  let houses = 0;
+  tries(400, (x, y) => {
+    if (houses >= Math.max(2, Math.round(per / 500))) return;
+    if (Math.hypot(x - cx, y - cy) > Math.max(W, H) * 0.3) return;
+    const hz = rng() < 0.5;
+    if (place(x, y, hz ? 3 : 2, hz ? 2 : 3, T_SOLID, 'chalet')) houses++;
+  });
+  tries(Math.round(per / 60), (x, y) => { const hz = rng() < 0.5; place(x, y, hz ? 2 : 1, hz ? 1 : 2, T_SOLID, 'shed'); });
+  // foxholes dug in at the forest edges, log piles, fallen trees across the clearings
+  tries(Math.round(per / 25), (x, y) => place(x, y, 1, 1, T_RUIN, 'foxhole', T_OPEN, 0));
+  tries(Math.round(per / 60), (x, y) => { const hz = rng() < 0.5; place(x, y, hz ? 2 : 1, hz ? 1 : 2, T_LOW, 'logs'); });
+  tries(Math.round(per / 45), (x, y) => { const hz = rng() < 0.5; place(x, y, hz ? 3 : 1, hz ? 1 : 3, T_LOW, 'fallen', T_RUIN, 0); });
+  // frozen ponds (you can walk on the ice) and shell craters in the snow: for the eye
+  for (let i = 0; i < 2 + per / 700; i++) {
+    const x0 = rng() * W, y0 = rng() * H, r = 1.5 + rng() * 2, seed = Math.floor(rng() * 1e9);
+    for (let k = 0; k < n; k++) {
+      const [x, y] = rot(x0, y0, k), gx = Math.floor(x), gy = Math.floor(y);
+      if (!inPlay(gx, gy) || grid[gy * W + gx] !== T_OPEN || near(gx, gy, 3)) continue;
+      decor.push({ x, y, kind: 'ice', r, seed: seed + k });
+    }
+  }
+  for (let i = 0; i < 4 + per / 250; i++) {
+    const x0 = rng() * W, y0 = rng() * H, seed = Math.floor(rng() * 1e9);
+    for (let k = 0; k < n; k++) {
+      const [x, y] = rot(x0, y0, k), gx = Math.floor(x), gy = Math.floor(y);
+      if (!inPlay(gx, gy) || grid[gy * W + gx] !== T_OPEN || near(gx, gy, 1)) continue;
+      decor.push({ x, y, kind: 'crater', seed: seed + k });
+    }
+  }
+  return { margin: M, road, forest: [...forestB] };
 }

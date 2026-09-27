@@ -422,11 +422,14 @@ export class Sim {
     if (w.kind === 'arty' || w.kind === 'grenade' || isAir(e) || isAir(o)) return true;
     const dx = o.x - e.x, dz = o.z - e.z;
     const d = Math.sqrt(dx * dx + dz * dz);
-    const n = Math.ceil(d * 2);
+    const n = Math.ceil(d * 2), c0 = this.cellOf(e.x, e.z), c1 = this.cellOf(o.x, o.z);
+    let thick = 0, last = -1;                         // woods and ruins: you can see a little way in, not through
     for (let i = 1; i < n; i++) {
       const x = e.x + dx * i / n, z = e.z + dz * i / n;
       const c = this.cellOf(x, z);
       if (this.map.grid[c] === T_SOLID) return false;
+      if (c !== last && c !== c0 && c !== c1 && this.map.grid[c] === T_RUIN && ++thick >= 3) return false;
+      last = c;
       const s = this.occ[c];
       if (s && s !== o.id && s !== e.id) {
         const b = this.byId.get(s);
