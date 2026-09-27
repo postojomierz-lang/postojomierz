@@ -156,3 +156,18 @@ Długość, podejścia, zejścia, czas, profil pokolorowany szlakami, lista odci
   3:00, Czarny Staw–Rysy 2:55 wobec 3:00, Zawrat–Pięć Stawów 1:20 wobec 1:15...); te same normy mają
   drogowskazy w 3D.
 - Widok 3D jest na razie tylko dla Morskie Oko → Rysy; dowolne trasy regionu to następny etap.
+
+## Widok 3D dowolnej trasy (region)
+Planer otwiera `index.html?trasa#r=lat,lon;...`: silnik wyznacza trasę po szlakach tak jak planer
+(`src/region.js`) i wczytuje tylko dane wokół niej z katalogu `region/` w katalogu głównym
+repozytorium (serwowanego obok `rysy/`, nie kopiowanego do builda):
+- bloki 1024 m: wysokości 4 m (`region/base/h_i_j.bin`, z maską lidaru) i ortofotomapa 2 m
+  (`region/photo/o_i_j.jpg`), kafle 256 m z lidarem 1 m i zdjęciem 0,5 m w pasie 200 m od każdego
+  szlaku (`region/tiles/`), pokrycie terenu, jeziora, potoki, wodospady, budynki i etykiety regionu;
+- przygotowanie: te same skrypty z `AREA=region`
+  (`prepare.py`, `prepare_gugik.py`, `prepare_water.py`, `prepare_buildings.py`, `prepare_labels.py`).
+`src/routeinfo.js` wyprowadza z tagów OSM: szerokość i nawierzchnię ścieżki (asfalt, droga, bruk,
+schody, skała), kolor znaków na kamieniach, łańcuchy na trudnych odcinkach (`sac_scale` ≥ 3, powyżej
+1650 m), drogowskazy w miejscach drogowskazów z OSM oraz na starcie i mecie (nazwy mijanych schronisk,
+przełęczy, szczytów i jezior, czasy z norm), nazwy miejsc w HUD i tytuł trasy. Bez parametru `trasa`
+aplikacja działa jak dotąd (Morskie Oko → Rysy z `public/data`).
