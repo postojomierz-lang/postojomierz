@@ -25,6 +25,9 @@ const MUZZLE = {
   'de:apc': [0.99, 1.04], 'de:amphib': [0.28, 1.15], 'de:tank_light': [0.98, 0.99], 'de:tank': [2.12, 1.08], 'de:tank_heavy': [2.75, 1.22],
   'de:rockets': [-0.03, 1.86], 'de:heli': [0.45, -0.1], 'de:fighter': [0.7, 0.1], 'de:attacker': [0.3, -0.1], 'de:bomber': [0.05, -0.24],
   'de:transport': [-0.7, 0.0], 'de:hq': [1.36, 0.72],
+  // the Soviet ones
+  'su:apc': [0.55, 1.05], 'su:amphib': [0.45, 0.93], 'su:tank_light': [1.04, 0.94], 'su:tank': [1.64, 1.09], 'su:tank_heavy': [2.86, 1.17],
+  'su:heli': [0.45, -0.08], 'su:fighter': [0.7, 0.1], 'su:attacker': [0.5, -0.08], 'su:bomber': [0.2, -0.19], 'su:hq': [1.42, 0.62],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
 // the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)

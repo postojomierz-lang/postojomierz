@@ -93,7 +93,11 @@ from `python tools/blender/army_men.py --nation=<id>` and `tools/blender/vehicle
 downloaded only when that nation takes the field. Germany: Stahlhelms, marching boots, Kar98k,
 MG 42, Panzerschreck, Fliegerfaust, stick grenades and officers' caps; Kuebelwagen, Opel Blitz,
 Sd.Kfz. 222, Schwimmwagen, Panzer II, Panzer IV, Tiger I, Panzerwerfer 42, Flettner Fl 282, Bf 109,
-Ju 87 Stuka, He 111, Ju 52 and a concrete command bunker.
+Ju 87 Stuka, He 111, Ju 52 and a concrete command bunker. Soviet Union: SSh-40 helmets, the
+gymnastyorka with the rolled greatcoat over the shoulder and the sidor, kirza boots, Mosin with its
+spike bayonet, DP-28, PTRD and PTRS anti-tank rifles, RGD-33 grenades; GAZ-67, ZiS-5, BA-64, T-38,
+T-70, T-34, IS-2, BM-13 Katyusha on a ZiS-6, the Kamov A-7 autogyro, Yak-3, Il-2, Pe-2, Li-2 and a
+log dugout command post.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
