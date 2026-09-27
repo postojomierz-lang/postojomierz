@@ -141,6 +141,10 @@ the Tellermine and the S-mine; a wooden barrel, the TM-41 and the PMD-6 box mine
 flimsies, the Mk V and a shrapnel mine; two drums on chocks, the Type 99 magnetic mine and the Type
 93 'tape measure'; a wine barrel on its trestle, the mle 1936 box mine and a stake mine; a drum with
 its hand pump, the B2 and the B4 (the Americans: the oil drum, the M1A1 and the M2 bounding mine).
+And their paratroopers come down under their own canopies: the Germans' flat RZ 20 with every line
+gathered behind the back, the Soviet PD-6 with its wide vent and tapes, the British X-type in 28
+gores, the Japanese Type 1 with its scalloped skirt, a French canopy of light and dark panels and
+the Italian Salvator with its crown pulled down (the Americans keep the T-5).
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)

@@ -653,9 +653,9 @@ export class View {
       if (v.tail) this.batches.push(this.batches.get(v.key + ':t', m.tailRotor, this.plasticMat), v.tail.matrixWorld, darkC, id);
     }
     if (v.chute && v.chuteT > 0) {
-      const c = model('chute');
-      this.batches.push(this.batches.get('chute:m', c.main, this.plasticMat), v.chute.matrixWorld, WHITE, id);
-      this.batches.push(this.batches.get('chute:d', c.dark, this.plasticMat), v.chute.matrixWorld, darkC, id);
+      const c = model('chute', 0, v.nation);                          // each army's own canopy
+      this.batches.push(this.batches.get(v.nation + ':chute:m', c.main, this.plasticMat), v.chute.matrixWorld, WHITE, id);
+      if (c.dark) this.batches.push(this.batches.get(v.nation + ':chute:d', c.dark, this.plasticMat), v.chute.matrixWorld, darkC, id);
     }
   }
 
