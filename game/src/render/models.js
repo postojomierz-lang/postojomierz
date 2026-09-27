@@ -51,6 +51,8 @@ const CREW = {
   amphib: [['driver', 0.09, 0.62, -0.2], ['mgstand', -0.58, 0.74, 0]],
   apc: [['lookout', -0.25, 0.55, 0.12]],
   tank: [['lookout', -0.35, 0.81, 0.2]],
+  tank_light: [['lookout', -0.12, 0.6, 0.18]],
+  tank_heavy: [['lookout', -0.45, 0.88, 0.3]],
 };
 // Toy vehicles and aircraft modelled in Blender (tools/blender/vehicles.py).
 function buildVehicle(key) {

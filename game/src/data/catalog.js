@@ -93,10 +93,21 @@ export const CATALOG = {
     weapon: { kind: 'bullet', range: 10, dmg: 2, cd: 0.25, acc: 0.5, air: true },
     blurb: 'Drives straight through spills and puddles.',
   },
+  // tanks: light (fast, cheap, a small gun), medium (the all-rounder), heavy (slow, very tough, a big gun)
+  tank_light: {
+    name: 'Light tank', group: 'vehicles', cls: 'vehicle', vehicle: true, tracked: 0.46, cost: 100, hp: 105, armor: 2, speed: 3.0, size: [2, 2], radius: 1.0,
+    weapon: { kind: 'shell', range: 12, dmg: 15, cd: 1.5, acc: 0.8, splash: 0.8, projSpeed: 22 },
+    blurb: 'M5 Stuart. Fast and cheap, a quick-firing 37 mm gun. Good against infantry and cars, thin armour.',
+  },
   tank: {
-    name: 'Tank', group: 'vehicles', cls: 'vehicle', vehicle: true, cost: 160, hp: 170, armor: 3, speed: 2.0, size: [2, 3], radius: 1.3,
+    name: 'Medium tank', group: 'vehicles', cls: 'vehicle', vehicle: true, tracked: 0.62, cost: 160, hp: 170, armor: 3, speed: 2.0, size: [2, 3], radius: 1.3,
     weapon: { kind: 'shell', range: 14, dmg: 28, cd: 2.6, acc: 0.8, splash: 1.2, projSpeed: 20 },
-    blurb: 'Heavy armour and a big gun. Crushes barbed wire.',
+    blurb: 'M4 Sherman. Solid armour and a 75 mm gun: the all-rounder. Crushes barbed wire.',
+  },
+  tank_heavy: {
+    name: 'Heavy tank', group: 'vehicles', cls: 'vehicle', vehicle: true, tracked: 0.8, cost: 260, hp: 310, armor: 4, speed: 1.4, size: [3, 3], radius: 1.5,
+    weapon: { kind: 'shell', range: 17, dmg: 46, cd: 3.4, acc: 0.85, splash: 1.5, projSpeed: 26 },
+    blurb: 'M26 Pershing. Slow, very tough, a long 90 mm gun that outranges other tanks. Crushes barbed wire.',
   },
   rockets: {
     name: 'Rocket launcher', group: 'vehicles', cls: 'vehicle', vehicle: true, cost: 180, hp: 60, armor: 1, speed: 2.2, size: [2, 3], radius: 1.2,

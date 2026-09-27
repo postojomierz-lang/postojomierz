@@ -112,12 +112,12 @@ console.log('wrote', OUT, fs.statSync(OUT).size, 'bytes');
 
 // ---- vehicles and aircraft (tools/blender/vehicles.py): already in game units, Z-up -> Y-up
 const VQ = 8000;
-const VEHICLES = ['jeep', 'ambulance', 'engtruck', 'apc', 'amphib', 'tank', 'rockets', 'heli', 'fighter', 'attacker', 'bomber', 'transport',
+const VEHICLES = ['jeep', 'ambulance', 'engtruck', 'apc', 'amphib', 'tank', 'tank_light', 'tank_heavy', 'rockets', 'heli', 'fighter', 'attacker', 'bomber', 'transport',
   // headquarters, emplacements and fortifications (tools/blender/structures.py)
   'hq', 'mgnest', 'fieldgun', 'aa', 'tower', 'sandbags0', 'sandbags1', 'wall0', 'wall1', 'wire', 'barrel', 'tanktrap', 'mine_at', 'mine_ap', 'chute'];
 const BUDGET = { main: [7000, 1800], dark: [4500, 1000], turret_main: [2500, 1000], turret_dark: [1200, 600] };
 // structures are made of many small pieces (bricks, sacks): smaller budgets keep the download light
-const OVERRIDE = { tank: { main: [11000, 2500] }, apc: { main: [8000, 2000] }, hq: { main: [6000, 1800] }, mgnest: { main: [3000, 900] }, tower: { main: [4000, 1200] }, aa: { main: [3000, 900] },
+const OVERRIDE = { tank: { main: [11000, 2500] }, tank_light: { main: [9000, 2200] }, tank_heavy: { main: [12000, 2800] }, apc: { main: [8000, 2000] }, hq: { main: [6000, 1800] }, mgnest: { main: [3000, 900] }, tower: { main: [4000, 1200] }, aa: { main: [3000, 900] },
   sandbags0: { main: [1800, 600] }, sandbags1: { main: [1800, 600] }, wall0: { main: [3500, 1000] }, wall1: { main: [3500, 1000] },
   wire: { dark: [1800, 700] }, barrel: { main: [1500, 500] },
   tanktrap: { main: [700, 250], dark: [400, 150] }, mine_at: { main: [200, 80], dark: [400, 120] }, mine_ap: { main: [150, 60], dark: [150, 60] } };
