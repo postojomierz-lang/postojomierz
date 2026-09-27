@@ -5,8 +5,8 @@ export const T_OPEN = 0, T_SOLID = 1, T_WATER = 2, T_LOW = 3; // LOW = solid but
 export const T_EDGE = 4; // off the edge of the round table: nobody walks there, but you can see and shoot across
 export const T_RUIN = 5; // a ruined building: soldiers on foot can get in and fight from it (good cover), vehicles can't
 
-// diorama battlefields ('normandy': see normandy(), 'town': see town()); the rest are the classic toy-room floors
-export const DIORAMAS = ['normandy', 'town'];
+// diorama battlefields ('normandy': see normandy(), 'town': see town(), 'beach': see beach()); the rest are the classic toy-room floors
+export const DIORAMAS = ['normandy', 'town', 'beach'];
 export const ROOM_THEMES = ['wood', 'carpet', 'kitchen', 'sand', 'grass', 'snow'];
 export const THEMES = [...DIORAMAS, ...ROOM_THEMES];
 
@@ -191,6 +191,8 @@ export function makeMap({ teams, theme, seed, layout = null, options = {} }) {
       if (grid[Math.floor(y) * W + Math.floor(x)] !== T_OPEN || inZone(Math.floor(x), Math.floor(y))) continue;
       decor.push({ x, y, kind: ['palm', 'pine', 'bush'].includes(d.kind) ? d.kind : 'bush', seed: Math.floor(rng() * 1e9) });
     }
+  } else if (theme === 'beach') {
+    extra = beach({ W, H, grid, zones, objects, decor, rng, turns, round, R });
   } else if (theme === 'town') {
     extra = town({ W, H, grid, zones, objects, decor, rng, turns, roads, round, R, opts: options });
   } else if (theme === 'normandy') {
@@ -596,4 +598,105 @@ function town({ W, H, grid, zones, objects, decor, rng, turns, roads, round, R, 
     outer.push({ style: (ruin ? 'ruin' : 'house') + (w === h ? 2 : 3), ...rr, seed: Math.floor(rng() * 1e9), ...facing(rr) });
   }
   return { margin: M, streets, board: B, outer, river: hasRiver ? river : null, square: SQ };
+}
+
+// ---- The beach landing: every army comes ashore on its own beach with the sea behind it (two
+// armies: the sea is beyond both short edges; more: the board is an island). In front of each
+// beach: obstacles (Czech hedgehogs, Belgian gates, stakes with mines), barbed wire and dunes;
+// in the middle a belt of fortifications round a lighthouse on the rocks: gun casemates (solid),
+// pillboxes, Tobruk pits and trenches (infantry can get into those and fight from them).
+// Everything is laid out for army 0 and copied round the table, so it is fair.
+function beach({ W, H, grid, zones, objects, decor, rng, turns, round, R }) {
+  const n = turns.length, cx = W / 2, cy = H / 2, M = 14, z0 = zones[0];
+  // army 0's frame: t = inland from the front edge of its zone, a = sideways from its middle line
+  const T0 = round ? z0.y : z0.x + z0.w;                                    // the zone's front edge
+  const Tc = round ? T0 - cy : cx - T0;                                     // from there to the middle
+  const frect = (t0, a0, dt, da) => round ? { x: Math.round(cx + a0), y: Math.round(T0 - t0 - dt), w: da, h: dt } : { x: Math.round(T0 + t0), y: Math.round(cy + a0), w: dt, h: da };
+  const near = (x, y, m) => zones.some(z => x >= z.x - m && x < z.x + z.w + m && y >= z.y - m && y < z.y + z.h + m);
+  const inPlay = (x, y) => x >= 0 && y >= 0 && x < W && y < H && grid[y * W + x] !== T_EDGE;
+  const copiesOf = r => turns.map(({ c, s, swap }) => {
+    const px = r.x + r.w / 2 - cx, py = r.y + r.h / 2 - cy, ww = swap ? r.h : r.w, hh = swap ? r.w : r.h;
+    return { x: Math.round(px * c - py * s + cx - ww / 2), y: Math.round(px * s + py * c + cy - hh / 2), w: ww, h: hh };
+  });
+  // the direction each army's beach lies in (things face it: gun slits, the fronts of pillboxes)
+  const ux = round ? 0 : -1, uy = round ? 1 : 0;
+  const place = (r, kind, style, margin = 0) => {
+    const rects = copiesOf(r), used = new Set();
+    for (const q of rects) for (let yy = q.y - margin; yy < q.y + q.h + margin; yy++) for (let xx = q.x - margin; xx < q.x + q.w + margin; xx++) {
+      const inside = yy >= q.y && yy < q.y + q.h && xx >= q.x && xx < q.x + q.w;
+      if (!inPlay(xx, yy)) { if (inside) return false; continue; }
+      if (grid[yy * W + xx] !== T_OPEN || near(xx, yy, 1) || (inside && used.has(yy * W + xx))) return false;
+      if (inside) used.add(yy * W + xx);
+    }
+    const seed = Math.floor(rng() * 1e9);
+    rects.forEach((q, k) => {
+      for (let yy = q.y; yy < q.y + q.h; yy++) for (let xx = q.x; xx < q.x + q.w; xx++) grid[yy * W + xx] = kind;
+      const { c, s } = turns[k];
+      objects.push({ kind, style, ...q, turn: k, seed, fx: Math.round(ux * c - uy * s), fy: Math.round(ux * s + uy * c) });
+    });
+    return true;
+  };
+  const A = round ? Math.max(Math.floor(z0.w / 2) + 3, Math.floor(Tc * sinT(PI / n) * 0.95)) : Math.floor(z0.h / 2);   // how wide each army's beach is
+  const lateral = (i, count) => -A + (i + 0.5) * 2 * A / count;
+
+  // the lighthouse on its rocks in the middle
+  const lh = { x: Math.round(cx - 1), y: Math.round(cy - 1), w: 2, h: 2 };
+  let lok = true; for (let y = lh.y - 1; y < lh.y + 3; y++) for (let x = lh.x - 1; x < lh.x + 3; x++) if (!inPlay(x, y) || grid[y * W + x] !== T_OPEN) lok = false;
+  if (lok) {
+    for (let y = lh.y; y < lh.y + 2; y++) for (let x = lh.x; x < lh.x + 2; x++) grid[y * W + x] = T_SOLID;
+    objects.push({ kind: T_SOLID, style: 'lighthouse', ...lh, seed: 3, fx: 0, fy: 1 });
+  }
+  // the fortified belt round it
+  const belt = round ? Math.max(6, Math.min(10, Tc * 0.3)) : 1;           // its inner edge, from the middle
+  const bt = Tc - belt - 4;                                                // ...in army 0's frame
+  const L = round ? Math.max(4, Math.round((belt + 4) * sinT(PI / n) / cosT(PI / n))) : A;
+  // trenches along the front of the belt (a zigzag, with gaps to walk through)
+  for (let a = -L; a < L; a++) {
+    if (((a + L) % 7) >= 5) continue;
+    const t = bt - 1 - (Math.floor((a + L) / 2) % 2);
+    place(frect(t, a, 1, 1), T_RUIN, 'trench');
+  }
+  // casemates with a gun, pillboxes, Tobruk pits
+  const guns = round ? 1 : 2, boxes = round ? 2 : 3;
+  for (let i = 0; i < guns; i++) for (let k = 0; k < 20; k++) if (place(frect(bt + 1 + Math.floor(rng() * 2), Math.round(lateral(i, guns) + (rng() - 0.5) * 4) - 1, 3, 3), T_SOLID, 'casemate', 1)) break;
+  for (let i = 0; i < boxes; i++) for (let k = 0; k < 20; k++) if (place(frect(bt + Math.floor(rng() * 3), Math.round(lateral(i, boxes) + (rng() - 0.5) * 5), 2, 2), T_RUIN, 'pillbox', 1)) break;
+  for (let i = 0; i < boxes + 1; i++) for (let k = 0; k < 20; k++) if (place(frect(bt - 3 + Math.floor(rng() * 5), Math.round(lateral(i, boxes + 1) + (rng() - 0.5) * 4), 1, 1), T_RUIN, 'tobruk', 1)) break;
+  // barbed wire in front of the belt
+  for (let a = -L - 1; a < L + 1;) {
+    const len = 3 + Math.floor(rng() * 3);
+    place(frect(bt - 4, a, 1, len), T_LOW, 'wire');
+    a += len + 2 + Math.floor(rng() * 2);
+  }
+  // dunes above each beach, with gaps
+  for (let a = -A; a < A;) {
+    const len = 2 + Math.floor(rng() * 3);
+    place(frect(7 + Math.floor(rng() * 2), a, 1, len), T_LOW, 'dune');
+    a += len + 2 + Math.floor(rng() * 3);
+  }
+  // beach obstacles
+  for (let i = 0; i < A * 1.6; i++) {
+    const r = rng(), t = 1 + Math.floor(rng() * 5), a = Math.round((rng() - 0.5) * 2 * A);
+    if (r < 0.45) place(frect(t, a, 1, 1), T_LOW, 'hedgehog', 1);
+    else if (r < 0.7) place(frect(t, a, 1, 2), T_LOW, 'gate', 1);
+    else place(frect(t, a, 1, 1), T_LOW, 'stakes', 1);
+  }
+  // rocks here and there, seaside villas between the dunes and the belt (when there is room)
+  for (let i = 0; i < 2 + A / 8; i++) place(frect(9 + Math.floor(rng() * Math.max(1, bt - 12)), Math.round((rng() - 0.5) * 2 * A), 2, 2), T_SOLID, 'rocks', 1);
+  if (bt - 10 >= 4) for (let i = 0; i < 2 + A / 6; i++) {
+    const ruin = rng() < 0.5;
+    place(frect(10 + Math.floor(rng() * (bt - 13)), Math.round((rng() - 0.5) * 2 * A), 2, 2), ruin ? T_RUIN : T_SOLID, ruin ? 'ruin2' : 'house2', 1);
+  }
+  // shell craters and mine warning signs (for the eye)
+  for (let i = 0; i < 6 + A / 3; i++) {
+    const t = 1 + rng() * (bt - 2), a = (rng() - 0.5) * 2 * A, r = frect(t, a, 0, 0), seed = Math.floor(rng() * 1e9), kind = i % 3 ? 'crater' : 'mines';
+    for (let k = 0; k < n; k++) {
+      const { c, s } = turns[k], px = r.x - cx, py = r.y - cy, x = px * c - py * s + cx, y = px * s + py * c + cy;
+      const gx = Math.floor(x), gy = Math.floor(y);
+      if (!inPlay(gx, gy) || grid[gy * W + gx] !== T_OPEN || near(gx, gy, 1)) continue;
+      decor.push({ x, y, kind, seed: seed + k });
+    }
+  }
+  // how far each point of the board is from the sea (negative: in the sea) - for the painter
+  const shore = round ? { round: true, r: R + 1.5 } : { round: false };
+  return { margin: M, shore, frame: { T0, Tc, round } };
 }

@@ -203,15 +203,17 @@ ${vlines.join('\n')}
 `);
 console.log('wrote', OUT_VEH, fs.statSync(OUT_VEH).size, 'bytes');
 
-// ---- diorama scenery (tools/blender/scenery.py, town.py): painted parts only, one budget per model
+// ---- diorama scenery (tools/blender/scenery.py, town.py, beach.py): painted parts only, one budget per model
 const SCENERY = { hedge0: 700, hedge1: 700, oak0: 1300, oak1: 1300, apple: 900, house: 4200, barn: 3800, stonewall: 700, hay: 900, reeds: 250, crater: 500,
   // the ruined town (tools/blender/town.py)
   house2a: 2600, house2b: 2600, house3a: 3000, house3b: 3000, house1: 1600, ruin2: 2800, ruin3: 3200, ruin1: 2000, church: 5000,
-  monument: 1500, rubble: 700, barricade: 1500, hedgehog: 200, bridge: 2500, quay: 400, lamp: 200 };
+  monument: 1500, rubble: 700, barricade: 1500, hedgehog: 200, bridge: 2500, quay: 400, lamp: 200,
+  // the beach landing (tools/blender/beach.py)
+  casemate: 3000, pillbox: 2000, tobruk: 600, trench: 900, wire: 300, gate: 400, stakes: 300, dune: 500, lighthouse: 2500, rocks: 800, lcvp: 1800, mines: 100 };
 // buildings are boxes with thin walls and frames: simplify them carefully (a small error bound, so the
 // budget is only a cap) and add a light "far" version for the town beyond the play area
 const FAR = { house2a: 1100, house2b: 1100, house3a: 1200, house3b: 1200, house1: 800, ruin2: 1400, ruin3: 1500, ruin1: 1100, church: 1800, house: 1600, barn: 1400 };
-const SOFTKEYS = new Set(['hedge0', 'hedge1', 'oak0', 'oak1', 'apple', 'hay', 'crater', 'rubble', 'reeds']);
+const SOFTKEYS = new Set(['hedge0', 'hedge1', 'oak0', 'oak1', 'apple', 'hay', 'crater', 'rubble', 'reeds', 'dune', 'rocks', 'trench', 'tobruk']);
 const sdir = path.join(CACHE, 'scenery'), slines = [], flines = [];
 const packModel = (meshes, budget, error) => {
   const total = meshes.reduce((a, m) => a + m.idx.length / 3, 0);

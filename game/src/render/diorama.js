@@ -49,8 +49,17 @@ export function buildDiorama(map, quality = 'medium') {
   const wet = (x, y) => { const v = bcell(x, y); return v === 4 || v === 5; };
   // the town is flat except for the river bed (a board corner sinks when all four cells round it are water)
   const townHeight = (x, y) => (Number.isInteger(x) && Number.isInteger(y) ? wet(x, y) && wet(x - 1, y) && wet(x, y - 1) && wet(x - 1, y - 1) : wet(x, y)) ? -0.8 : 0;
+  // the beach: land at the play level, sloping under the sea beyond the shore
+  const beachy = map.theme === 'beach';
+  const coast = (x, y) => round ? R + 1.5 - Math.hypot(x - W / 2, y - H / 2) : Math.min(x + 1, W + 1 - x);   // < 0: in the sea
   const height = (x, y) => {
     if (town) return townHeight(x, y);
+    if (beachy) {
+      const cd = coast(x, y);
+      if (cd < 0) return Math.max(-1.1, cd * 0.4);
+      if (!round && (y < 0 || y > H)) return noise(x / 6, y / 6) * 0.9 * ss(0, 5, Math.max(-y, y - H)) * ss(0.5, 4, edgeDist(x, y)) * ss(0, 3, cd);   // dunes inland
+      return 0;
+    }
     const o = outDist(x, y); if (o <= 1) return 0;
     const hills = noise(x / 9, y / 9) * 1.6 + noise(x / 4, y / 4) * 0.4;
     return hills * ss(1, 6, o) * ss(0.5, 4, edgeDist(x, y));
@@ -67,6 +76,7 @@ export function buildDiorama(map, quality = 'medium') {
   const n = Math.max(1, map.zones.length);
   const lanePts = [];
   if (town) paintTown({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, bcell });
+  else if (beachy) paintBeach({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, coast });
   else {
   c.fillStyle = FIELDS[0].base; c.fillRect(0, 0, cv.width, cv.height);
   for (const f of map.fields) {
@@ -215,9 +225,9 @@ export function buildDiorama(map, quality = 'medium') {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86 });
   const lists = new Map();
   // tint: brightness; hue: a small hue shift; paint: the plaster colour of a town house
-  const put = (key, x, y, yaw, sx = 1, sy = sx, sz = sx, tint = 1, hue = 0, paint = null) => {
+  const put = (key, x, y, yaw, sx = 1, sy = sx, sz = sx, tint = 1, hue = 0, paint = null, dy = 0) => {
     if (!lists.has(key)) lists.set(key, []);
-    lists.get(key).push({ x, y, yaw, sx, sy, sz, tint, hue, paint });
+    lists.get(key).push({ x, y, yaw, sx, sy, sz, tint, hue, paint, dy });
   };
   const nearLane = (() => {
     const cell = new Set(lanePts.map(([x, y]) => Math.round(x) + ',' + Math.round(y)));
@@ -229,6 +239,7 @@ export function buildDiorama(map, quality = 'medium') {
     };
   })();
   if (town) placeTown({ map, put, onBoard, W, H, M, BW, bcell, g, wx, wz, quality });
+  else if (beachy) placeBeach({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, coast, RB, round });
   else {
   const hedgePiece = (x, y, yaw, seed) => {
     const r = mulberry(seed);
@@ -288,7 +299,7 @@ export function buildDiorama(map, quality = 'medium') {
       const im = new THREE.InstancedMesh(sceneryGeometry(key, part, far), mat, list.length);
       im.userData.shared = true;   // the geometry is cached: keep it when the battlefield is rebuilt
       list.forEach((it, i) => {
-        p.set(wx(it.x), (town ? 0 : height(it.x, it.y)) - 0.02, wz(it.y)); q.setFromEuler(e.set(0, it.yaw, 0)); s3.set(it.sx, it.sy, it.sz);
+        p.set(wx(it.x), (town ? 0 : height(it.x, it.y)) - 0.02 + (it.dy || 0), wz(it.y)); q.setFromEuler(e.set(0, it.yaw, 0)); s3.set(it.sx, it.sy, it.sz);
         im.setMatrixAt(i, m4.compose(p, q, s3));
         col.setRGB(it.tint, it.tint, it.tint); if (it.hue) col.offsetHSL(it.hue, 0, 0);
         if (part === 'tint' && it.paint) col.multiply(pc.set(it.paint));
@@ -300,6 +311,9 @@ export function buildDiorama(map, quality = 'medium') {
     }
   }
 
+  // how far inland from the front of the landing beaches (the armies' zones)
+  const zoneBand = map.frame ? (round ? R + 1.5 - map.frame.Tc : map.frame.T0 + 1) : 0;
+  const inland = (x, y) => coast(x, y) - zoneBand;
   // ---------------------------------------------------------------- grass tufts
   const per = quality === 'low' ? 0 : quality === 'high' ? 1.6 : 0.7;
   if (per) {
@@ -310,6 +324,7 @@ export function buildDiorama(map, quality = 'medium') {
       if (!onBoard(x, y, 0.5)) continue;
       if (x >= 0 && y >= 0 && x < W && y < H && map.grid[Math.floor(y) * W + Math.floor(x)] !== 0 && map.grid[Math.floor(y) * W + Math.floor(x)] !== 4) continue;
       if (town) { const v = bcell(x, y); if ((v !== 0 && v !== 6) || r() < 0.5 || x < 0 || y < 0 || x >= W || y >= H) continue; }
+      else if (beachy) { if (inland(x, y) < 6 + r() * 3) continue; }
       else if (nearLane(x, y) && r() < 0.85) continue;
       pts.push([x, y, r() * 6, 0.7 + r() * 0.8, 0.8 + r() * 0.35]);
     }
@@ -510,4 +525,113 @@ function placeTown({ map, put, onBoard, W, H, M, BW, bcell, g, wx, wz, quality }
       put('lamp', x, y, Math.atan2(-nx * side, -ny * side) - Math.PI / 2);
     }
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The beach: painted ground
+function paintBeach({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, coast }) {
+  const { round, R } = map, zoneBand = round ? R + 1.5 - map.frame.Tc : map.frame.T0 + 1;
+  // colour by distance from the sea: sea bed, wet sand, foam, dry sand, sandy grass further inland
+  const step = Math.max(2, Math.floor(px / 4)), img = c.createImageData(BW * px, BH * px), d = img.data;
+  const mix = (a, b2, t) => a.map((v, i) => v + (b2[i] - v) * Math.max(0, Math.min(1, t)));
+  const SEA = [92, 110, 96], WET = [176, 155, 112], DRY = [219, 199, 150], GRASS = [150, 152, 92];
+  for (let py = 0; py < BH * px; py += step) for (let pxx = 0; pxx < BW * px; pxx += step) {
+    const x = pxx / px - M, y = py / px - M, cd = coast(x, y), grain = (Math.sin(x * 12.9 + y * 78.2) * 43758.5 % 1 + 1) % 1;
+    let col;
+    if (cd < -1.2) col = mix(SEA, WET, (cd + 3) / 1.8);
+    else if (cd < 0.6) col = mix(WET, DRY, (cd + 1.2) / 1.8);
+    else col = mix(DRY, GRASS, (cd - zoneBand - 7) / 6 + (grain - 0.5) * 0.6);
+    const j = (grain - 0.5) * 14;
+    for (let yy = py; yy < Math.min(py + step, BH * px); yy++) for (let xx = pxx; xx < Math.min(pxx + step, BW * px); xx++) {
+      const o = (yy * BW * px + xx) * 4; d[o] = col[0] + j; d[o + 1] = col[1] + j; d[o + 2] = col[2] + j * 0.8; d[o + 3] = 255;
+    }
+  }
+  c.putImageData(img, 0, 0);
+  // foam lines along the water's edge, ripples in the wet sand
+  for (const [off, a, w] of [[-0.7, 0.75, 0.22], [-1.3, 0.45, 0.14], [-2.1, 0.3, 0.1]]) {
+    c.strokeStyle = `rgba(250,248,240,${a})`; c.lineWidth = px * w; c.beginPath();
+    if (round) { c.arc(X(W / 2), Y(H / 2), (R + 1.5 - off) * px, 0, 7); }
+    else for (const side of [-1, 1]) {
+      const x0 = side < 0 ? -1 + off : W + 1 - off;
+      c.moveTo(X(x0), Y(-M)); for (let y = -M; y <= H + M; y += 0.5) c.lineTo(X(x0 + Math.sin(y * 0.9 + side) * 0.18), Y(y));
+    }
+    c.stroke();
+  }
+  // tank tracks and footprints churned into the sand, from the sea inland
+  for (let i = 0; i < (round ? 18 : 8); i++) {
+    const a = rng() * Math.PI * 2, len = 6 + rng() * 10;
+    let x0, y0, dx, dy;
+    if (round) { const r0 = R + 1; x0 = W / 2 + Math.cos(a) * r0; y0 = H / 2 + Math.sin(a) * r0; dx = -Math.cos(a); dy = -Math.sin(a); }
+    else { const side = i % 2 ? 1 : -1; x0 = side < 0 ? -1 : W + 1; y0 = rng() * H; dx = -side; dy = (rng() - 0.5) * 0.6; }
+    for (const o of [-0.35, 0.35]) {
+      c.strokeStyle = 'rgba(120,100,70,.35)'; c.lineWidth = px * 0.22; c.beginPath();
+      c.moveTo(X(x0 - dy * o), Y(y0 + dx * o)); c.quadraticCurveTo(X(x0 + dx * len / 2 + (rng() - 0.5) * 3), Y(y0 + dy * len / 2 + (rng() - 0.5) * 3), X(x0 + dx * len - dy * o), Y(y0 + dy * len + dx * o)); c.stroke();
+    }
+  }
+  // dark churned earth under trenches and round the bunkers
+  for (const o of map.objects) {
+    if (o.style === 'trench' || o.style === 'tobruk') { c.fillStyle = 'rgba(95,78,55,.85)'; c.fillRect(X(o.x - 0.2), Y(o.y - 0.2), (o.w + 0.4) * px, (o.h + 0.4) * px); }
+    else if (o.style === 'casemate' || o.style === 'pillbox') {
+      const gr = c.createRadialGradient(X(o.x + o.w / 2), Y(o.y + o.h / 2), 0, X(o.x + o.w / 2), Y(o.y + o.h / 2), px * (o.w / 2 + 1.5));
+      gr.addColorStop(0, 'rgba(110,95,70,.8)'); gr.addColorStop(1, 'rgba(110,95,70,0)');
+      c.fillStyle = gr; c.fillRect(X(o.x - 2), Y(o.y - 2), (o.w + 4) * px, (o.h + 4) * px);
+    }
+  }
+  // wind ripples in the dry sand (bump)
+  b.strokeStyle = 'rgba(100,100,100,.5)'; b.lineWidth = 1;
+  for (let i = 0; i < BW * BH / 3; i++) { const x = rng() * BW * px, y = rng() * BH * px; b.beginPath(); b.moveTo(x, y); b.quadraticCurveTo(x + px * 0.3, y - px * 0.1, x + px * 0.6, y); b.stroke(); }
+}
+
+// The beach: fortifications, obstacles, dunes, the lighthouse, landing craft and the sea
+function placeBeach({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, coast, RB, round }) {
+  const face = o => Math.atan2(o.fx || 0, o.fy || 1);
+  for (const o of map.objects) {
+    const r = mulberry(o.seed + (o.turn || 0) * 977), cx = o.x + o.w / 2, cy = o.y + o.h / 2, along = o.w >= o.h;
+    switch (o.style) {
+      case 'casemate': case 'pillbox': case 'tobruk': case 'lighthouse': put(o.style, cx, cy, face(o), 1, 1, 1, 0.92 + r() * 0.1); break;
+      case 'rocks': put('rocks', cx, cy, r() * 6, 0.9 + r() * 0.3, 0.8 + r() * 0.4); break;
+      case 'house2': case 'ruin2': put(o.style === 'house2' ? (r() < 0.5 ? 'house2a' : 'house2b') : 'ruin2', cx, cy, face(o), 1, 1, 1, o.style === 'ruin2' ? 0.82 : 1, 0, ['#f0ece2', '#e9dcc0', '#dfe4e6', '#efe4d2'][Math.floor(r() * 4)]); break;
+      case 'trench': put('trench', cx, cy, face(o) + Math.PI / 2); break;
+      case 'hedgehog': put('hedgehog', cx, cy, r() * 6, 0.9 + r() * 0.2); break;
+      case 'stakes': put('stakes', cx, cy, face(o) + Math.PI + (r() - 0.5) * 0.4, 0.9 + r() * 0.2); break;
+      case 'gate': put('gate', cx, cy, (along ? 0 : Math.PI / 2) + (r() - 0.5) * 0.15, 1, 0.9 + r() * 0.2, 1, 0.9 + r() * 0.15); break;
+      case 'wire': case 'dune':
+        for (let k = 0; k < Math.max(o.w, o.h); k++) {
+          const x = along ? o.x + k + 0.5 : cx, y = along ? cy : o.y + k + 0.5;
+          put(o.style, x, y, (along ? 0 : Math.PI / 2) + (r() < 0.5 ? Math.PI : 0) + (r() - 0.5) * 0.15, 1.05, 0.85 + r() * 0.35, 1 + r() * 0.2, 0.9 + r() * 0.15);
+        }
+        break;
+    }
+  }
+  for (const d of map.decor) {
+    if (!onBoard(d.x, d.y, 1.2)) continue;
+    const r = mulberry(d.seed);
+    if (d.kind === 'crater') put('crater', d.x, d.y, r() * 6, 0.8 + r() * 0.4, 0.7 + r() * 0.3, 0.8 + r() * 0.4, 1.1);
+    else if (d.kind === 'mines') put('mines', d.x, d.y, r() * 6, 1);
+  }
+  // landing craft run up on every army's beach, and a few more further along
+  const r = mulberry(map.seed ^ 0x1c1f);
+  for (const z of map.zones) {
+    const zx = z.x + z.w / 2, zy = z.y + z.h / 2;
+    let dx, dy, x0, y0;
+    if (round) { const l = Math.hypot(zx - W / 2, zy - H / 2); dx = (zx - W / 2) / l; dy = (zy - H / 2) / l; x0 = W / 2 + dx * (map.R + 2.6); y0 = H / 2 + dy * (map.R + 2.6); }
+    else { dx = zx < W / 2 ? -1 : 1; dy = 0; x0 = zx < W / 2 ? -2.2 : W + 2.2; y0 = zy; }
+    for (let k = -2; k <= 2; k++) {
+      if (r() < 0.3) continue;
+      const lat = k * 3.4 + (r() - 0.5) * 1.2, x = x0 - dy * lat + dx * (r() - 0.5) * 1.2, y = y0 + dx * lat + dy * (r() - 0.5) * 1.2;
+      if (!onBoard(x, y, 2)) continue;
+      put('lcvp', x, y, Math.atan2(dy, -dx) + (r() - 0.5) * 0.35, 1, 1, 1, 0.9 + r() * 0.15, 0, null, 0.12);
+    }
+  }
+  // rocks along the shore beyond the play area
+  for (let i = 0; i < BW * BH / 250; i++) {
+    const x = -M + r() * BW, y = -M + r() * BH, cd = coast(x, y);
+    if (cd > 0.5 || cd < -3 || !onBoard(x, y, 1.5)) continue;
+    put('rocks', x, y, r() * 6, 0.6 + r() * 0.5, 0.4 + r() * 0.4, 0.6 + r() * 0.5);
+  }
+  // the sea: one sheet over the whole board (the land hides it)
+  const sea = new THREE.Mesh(round ? new THREE.CircleGeometry(RB, 96) : new THREE.PlaneGeometry(BW, BH),
+    new THREE.MeshStandardMaterial({ color: '#3e6f78', transparent: true, opacity: 0.82, roughness: 0.18, metalness: 0, envMapIntensity: 0.4, depthWrite: false }));
+  sea.rotation.x = -Math.PI / 2; sea.position.set(wx(W / 2), -0.24, wz(H / 2)); sea.receiveShadow = true; sea.renderOrder = 2;
+  g.add(sea);
 }
