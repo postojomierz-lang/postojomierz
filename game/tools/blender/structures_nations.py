@@ -1,12 +1,13 @@
 # Each army's own gun emplacements and lookout tower, in the style of structures.py: the field
-# gun, the anti-aircraft gun, the machine-gun nest and the watchtower of the Germans, the Red Army,
-# the British, the Japanese, the French and the Italians. The American ones are in structures.py;
-# walls, sandbags, wire, tank traps, barrels and mines look the same in every army. Written to
-# .cache/figures/vehicles/<nation>; tools/figures.mjs packs them into public/nation-<nation>.js.
+# gun, the anti-aircraft gun, the machine-gun nest and the watchtower of the Americans, the
+# Germans, the Red Army, the British, the Japanese, the French and the Italians. Walls, sandbags,
+# wire, tank traps, barrels and mines (structures.py) look the same in every army. The American
+# ones are written to .cache/figures/vehicles (the default models, packed into src/data/vehicles.js),
+# the others to .cache/figures/vehicles/<nation> (packed into public/nation-<nation>.js).
 #
 #   python tools/blender/structures_nations.py [nation ...] [--only=fieldgun,aa,mgnest,tower]
 #
-# Kept to the American models' layout, so the game's crews and muzzle flashes fit: the MG sits
+# All kept to one layout, so the game's crews and muzzle flashes fit: the MG sits
 # about 0.6 up with its gunner behind it at the origin, the AA gun turns about the origin
 # (turret parts), the tower's lookout stands on a platform 2.6 up.
 import math, os, sys
@@ -107,6 +108,101 @@ def ladder(m, x, H, z=0.0):
 def hip_roof(m, y, hw, hd, rise, part='main'):
     m.loft_poly(part, [(-hw, [(y, -hd), (y + 0.01, 0.0), (y, hd)]), (-hw * 0.2, [(y, -hd), (y + rise, 0.0), (y, hd)]),
                        (hw * 0.2, [(y, -hd), (y + rise, 0.0), (y, hd)]), (hw, [(y, -hd), (y + 0.01, 0.0), (y, hd)])], bevel=0.01)
+
+# =========================================================================================
+# United States
+def us_fieldgun():
+    """the 105 mm M2A1 howitzer: the shield with its angled top, the barrel over the long
+    recuperator, the breech block, pneumatic tyres and the long split trail with its spades."""
+    m = Model('fieldgun')
+    m.box('main', (0.3, 0.64, 0), (0.04, 0.56, 1.08), bevel=0.01, pitch=-0.12)
+    for s in (1, -1): m.box('main', (0.27, 0.96, s * 0.34), (0.04, 0.12, 0.4), bevel=0.01, pitch=-0.12, roll=s * 0.2)
+    m.box('dark', (0.32, 0.74, 0.24), (0.02, 0.1, 0.14), bevel=0.0, pitch=-0.12)             # sight port
+    m.box('main', (0.0, 0.6, 0), (0.6, 0.16, 0.28), bevel=0.03)
+    m.box('main', (-0.18, 0.84, 0), (0.3, 0.22, 0.26), bevel=0.03)                           # the breech block
+    m.cyl('main', (-0.1, 0.76, 0), (1.0, 0.92, 0), 0.075, seg=16)                            # recuperator
+    tip = barrel(m, 'main', (-0.05, 0.9, 0), 0.15, 1.45, 0.075, 0.065)
+    m.lathe('main', [(0.0, 1.38), (0.08, 1.38), (0.08, 1.45), (0.0, 1.45)], (-0.05, 0.9, 0), along(0, 0.15), seg=18)   # the muzzle collar
+    m.box('dark', (0.0, 1.04, 0.2), (0.14, 0.08, 0.06), bevel=0.01)
+    m.torus('dark', (-0.1, 0.62, 0.2), (0, 0, 1), 0.08, 0.012, seg=16)
+    for s in (1, -1): disc_wheel(m, (0.05, 0.38, s * 0.6), 0.38, 0.15)
+    m.cyl('main', (0.05, 0.38, -0.6), (0.05, 0.38, 0.6), 0.035, seg=10)
+    split_trail(m, 0.48, 1.4, 0.64)
+    shell_box(m, -0.6, 0.0)
+    m.finish()
+    return tip
+
+def us_aa():
+    """the M45 Quadmount: four .50 cal Brownings in two pairs either side of the gunner's armoured
+    seat, the big ammunition chests beside them and the reflex sight, in a sandbagged pit."""
+    m = Model('aa'); rnd = mulberry(20)
+    m.cyl('main', (0, 0, 0), (0, 0.16, 0), 0.85, seg=8, bevel=0.03)                          # octagonal platform
+    for k in range(8):
+        a = k / 8 * 2 * math.pi + math.pi / 8
+        m.box('dark', (math.cos(a) * 0.8, 0.16, math.sin(a) * 0.8), (0.08, 0.02, 0.08), bevel=0.0)
+    sandbag_ring(m, 'main', 1.02, 0, 2 * math.pi, 1, 16, rnd, y0=0.0)
+    t = 'turret_main'
+    m.cyl(t, (0, 0.16, 0), (0, 0.38, 0), 0.4, seg=28, bevel=0.02)
+    m.box(t, (-0.15, 0.62, 0), (0.3, 0.4, 0.34), bevel=0.03)                                # the gunner's armoured box
+    for s in (1, -1): m.box(t, (0.02, 0.84, s * 0.2), (0.03, 0.34, 0.2), bevel=0.01, yaw=s * 0.4)   # its shield wings
+    m.box('turret_dark', (-0.32, 0.56, 0), (0.16, 0.05, 0.22), bevel=0.02)                   # seat
+    tip = None
+    for s in (1, -1):
+        m.box(t, (0.1, 0.72, s * 0.34), (0.3, 0.3, 0.14), bevel=0.02)                         # the gun cradle
+        m.box(t, (-0.02, 0.62, s * 0.5), (0.3, 0.3, 0.14), bevel=0.02)                        # ammunition chest
+        for k in (-1, 1):
+            tip = barrel(m, t, (0.18, 0.76 + k * 0.08, s * 0.34), 0.72, 1.1, 0.026, 0.022, jacket=[(0.0, 0.4, 0.04)])
+    m.torus(t, (0.15, 1.02, 0), (1, 1, 0), 0.07, 0.008, seg=16)                              # reflex sight
+    m.finish()
+    return tip
+
+def us_mgnest():
+    """a water-cooled Browning M1917A1 on its tripod - the jacket, the condenser hose down to the
+    can, the pistol grip and the belt from the ammunition box - in a sandbagged pit."""
+    m = Model('mgnest'); rnd = mulberry(11)
+    pit(m)
+    sandbag_ring(m, 'main', 0.82, -math.pi * 0.66, math.pi * 0.66, 3, 10, rnd)
+    ammo_tins(m)
+    m.cyl('main', (0.3, 0.04, 0.42), (0.3, 0.22, 0.42), 0.07, seg=14)                           # condenser can
+    t = 'turret_main'
+    tripod(m, t, (0.3, 0.46, 0), [(0.7, 0.04, 0), (0.0, 0.04, 0.3), (0.0, 0.04, -0.3)], r=0.024)
+    m.box(t, (0.3, 0.6, 0), (0.26, 0.12, 0.1), bevel=0.02)
+    m.cyl(t, (0.42, 0.61, 0), (0.88, 0.61, 0), 0.05, seg=18)                                   # water jacket
+    m.cyl(t, (0.88, 0.61, 0), (0.96, 0.61, 0), 0.022, seg=10)
+    m.cyl(t, (0.84, 0.57, 0.03), (0.6, 0.3, 0.3), 0.012, seg=6)                                 # condenser hose
+    m.cyl(t, (0.6, 0.3, 0.3), (0.32, 0.22, 0.42), 0.012, seg=6)
+    m.box(t, (0.15, 0.54, 0), (0.05, 0.1, 0.04), bevel=0.01, pitch=0.3)                          # pistol grip
+    m.box(t, (0.3, 0.52, -0.14), (0.14, 0.12, 0.08), bevel=0.01)                                 # ammo box
+    for k in range(4): m.box('turret_dark', (0.3, 0.6 - k * 0.02, -0.07 - k * 0.02), (0.03, 0.02, 0.02), bevel=0.0)
+    m.finish()
+
+def us_tower():
+    """an American guard tower: timber legs and bracing, a ladder, the platform behind sandbags
+    with a .30 cal on the parapet, a pyramid roof, the searchlight and a white star on a board."""
+    m = Model('tower'); rnd = mulberry(3)
+    tower_legs(m, H)
+    ladder(m, 0.85, H)
+    m.box('main', (0, H + 0.03, 0), (1.8, 0.08, 1.8), bevel=0.02)
+    for k in range(9): m.box('dark', (-0.8 + k * 0.2, H + 0.072, 0), (0.012, 0.01, 1.76), bevel=0.0)
+    for side in range(4):
+        a = side * math.pi / 2; c, s = math.cos(a), math.sin(a)
+        if side == 1: continue
+        for l in range(2):
+            for i in range(4):
+                u = -0.72 + (i + 0.5 + (l % 2) * 0.25) * 0.36
+                if u > 0.75: continue
+                sandbag(m, 'main', (c * 0.8 - s * u, H + 0.15 + l * 0.14, s * 0.8 + c * u), -a + math.pi / 2, L=0.38, W=0.2, rnd=rnd)
+    for x in (-0.8, 0.8):
+        for z in (-0.8, 0.8): m.box('main', (x, H + 0.55, z), (0.06, 1.0, 0.06), bevel=0.0)
+    m.cyl('main', (0, H + 1.05, 0), (0, H + 1.45, 0), 1.3, seg=4, r2=0.05)
+    m.cyl('main', (0.6, H + 0.2, -0.6), (0.6, H + 0.4, -0.6), 0.04, seg=8)                     # searchlight
+    m.cyl('main', (0.6, H + 0.5, -0.6), (0.75, H + 0.52, -0.6), 0.1, seg=20, bevel=0.01)
+    m.cyl(LIGHT, (0.76, H + 0.52, -0.6), (0.77, H + 0.52, -0.6), 0.08, seg=20)
+    m.cyl('main', (0.72, H + 0.43, 0.45), (0.72, H + 0.5, 0.45), 0.02, seg=8)                  # the .30 cal on its pintle
+    m.mg((0.74, H + 0.54, 0.45), 0.5)
+    m.box('main', (0.0, 1.5, 0.74), (0.5, 0.5, 0.03), bevel=0.01)                              # the star board
+    m.star((0.0, 1.5, 0.76), 0.2, normal=(0, 0, 1), up=(0, 1, 0), colour=WHITE)
+    m.finish()
 
 # =========================================================================================
 # Germany
@@ -645,6 +741,7 @@ def it_tower():
     m.finish()
 
 NATIONS = {
+    'us': {'fieldgun': us_fieldgun, 'aa': us_aa, 'mgnest': us_mgnest, 'tower': us_tower},
     'de': {'fieldgun': de_fieldgun, 'aa': de_aa, 'mgnest': de_mgnest, 'tower': de_tower},
     'su': {'fieldgun': su_fieldgun, 'aa': su_aa, 'mgnest': su_mgnest, 'tower': su_tower},
     'gb': {'fieldgun': gb_fieldgun, 'aa': gb_aa, 'mgnest': gb_mgnest, 'tower': gb_tower},
@@ -657,7 +754,7 @@ if __name__ == '__main__':
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     only = next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--only=')), None)
     for nation in args or NATIONS:
-        vehicles.OUT = os.path.join(BASE, nation)
+        vehicles.OUT = BASE if nation == 'us' else os.path.join(BASE, nation)          # the American ones are the default models
         for name, build in NATIONS[nation].items():
             if only and name not in only: continue
             clear(); tip = build()

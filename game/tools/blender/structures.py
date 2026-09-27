@@ -1,11 +1,11 @@
-# Headquarters, fortifications and gun emplacements for Plastic Front, modelled in Blender in the
-# same moulded-plastic toy style as the vehicles (see vehicles.py for the helpers and conventions).
+# The American headquarters and everyone's fortifications (sandbags, walls, wire, barrels, tank
+# traps, mines) for Plastic Front, modelled in Blender in the same moulded-plastic toy style as the
+# vehicles (see vehicles.py for the helpers and conventions). The gun emplacements and towers of
+# every army, the Americans included, are in structures_nations.py.
 #
 #   python tools/blender/structures.py [name ...]
 #
-# Parts: main, dark, turret_main / turret_dark (the part of an emplacement that turns to aim,
-# modelled around the origin) and painted parts. The crews (MG gunner, tower lookout) are army-men
-# figures from army_men.py that the game places into these models.
+# Parts: main, dark and painted parts.
 import math, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy
@@ -121,116 +121,6 @@ def hq():
     sandbag_row(m, 'main', (2.25, 0.7), (2.25, 1.6), 0.08, 3, rnd); sandbag_row(m, 'main', (2.25, 0.8), (2.25, 1.5), 0.22, 2, rnd)
     m.finish()
 
-def mgnest():
-    m = Model('mgnest'); rnd = mulberry(11)
-    m.cyl('dark', (0, 0, 0), (0, 0.04, 0), 1.0, seg=40, bevel=0.01)                       # dug-in floor
-    sandbag_ring(m, 'main', 0.82, -math.pi * 0.66, math.pi * 0.66, 3, 10, rnd)
-    m.box('main', (-0.55, 0.12, 0.35), (0.22, 0.16, 0.16), bevel=0.02)                       # ammo tins
-    m.box('main', (-0.6, 0.12, 0.1), (0.22, 0.16, 0.16), bevel=0.02)
-    # turret: tripod, MG with cooling jacket, ammo belt (the gunner figure is added by the game)
-    t = 'turret_main'
-    for a in (0, 2.1, -2.1):
-        m.cyl(t, (0.35, 0.44, 0), (0.35 + math.cos(a) * 0.3, 0.04, math.sin(a) * 0.3), 0.022, seg=8)
-    m.cyl(t, (0.35, 0.44, 0), (0.35, 0.54, 0), 0.03, seg=10)
-    m.mg((0.4, 0.6, 0), 0.62, part=t)
-    m.box(t, (0.36, 0.5, 0.12), (0.12, 0.1, 0.08), bevel=0.01)
-    for k in range(6): m.box(t, (0.36, 0.44 - k * 0.04, 0.17 + k * 0.012), (0.03, 0.03, 0.02), bevel=0.0)   # dangling belt
-    m.finish()
-
-def fieldgun():
-    m = Model('fieldgun')
-    # shield with rivets and a sight window
-    m.box('main', (0.25, 0.68, 0), (0.05, 0.62, 1.12), bevel=0.012, pitch=-0.15)
-    m.box('main', (0.24, 1.02, 0), (0.05, 0.1, 1.0), bevel=0.01, pitch=-0.15)
-    m.box('dark', (0.27, 0.8, 0.22), (0.02, 0.12, 0.16), bevel=0.0, pitch=-0.15)
-    for z in (-0.5, 0.5): m.rivets('main', (0.28, 0.42, z), (0.23, 0.95, z), 6, normal=(1, 0, 0))
-    # barrel with recoil cylinders, muzzle brake, breech, sight, elevating wheel
-    a = (0.05, 0.85, 0); tip = (0.05 + math.cos(0.25) * 1.8, 0.85 + math.sin(0.25) * 1.8, 0)
-    m.cyl('main', a, tip, 0.075, seg=24, r2=0.06)
-    m.cyl('main', (tip[0] - 0.12, tip[1] - 0.03, 0), (tip[0] + 0.06, tip[1] + 0.015, 0), 0.1, seg=20, bevel=0.01)
-    for z in (-0.07, 0.07): m.cyl('main', (0.1, 0.72, z), (0.9, 0.93, z), 0.04, seg=12)
-    m.box('main', (-0.05, 0.8, 0), (0.3, 0.2, 0.24), bevel=0.03, pitch=0.25)                # breech
-    m.box('main', (0.0, 0.62, 0), (0.6, 0.18, 0.28), bevel=0.04)                             # carriage
-    m.box('dark', (0.1, 0.98, 0.2), (0.14, 0.08, 0.06), bevel=0.01)                           # sight
-    m.torus('dark', (-0.05, 0.62, 0.22), (0, 0, 1), 0.08, 0.012, seg=16)                     # hand wheel
-    # spoked wheels, split trail with spades and handles, ammo box
-    for z in (-0.5, 0.5):
-        s = 1 if z > 0 else -1
-        m.torus('dark', (0.05, 0.4, z), (0, 0, 1), 0.36, 0.05, seg=36)
-        m.cyl('main', (0.05, 0.4, z - s * 0.05), (0.05, 0.4, z + s * 0.08), 0.07, seg=16)
-        for k in range(10):
-            ang = k / 10 * 2 * math.pi
-            m.cyl('main', (0.05, 0.4, z), (0.05 + math.cos(ang) * 0.33, 0.4 + math.sin(ang) * 0.33, z), 0.016, seg=6)
-        m.cyl('main', (-0.05, 0.45, s * 0.12), (-1.2, 0.08, s * 0.55), 0.06, seg=14)
-        m.box('main', (-1.22, 0.06, s * 0.56), (0.22, 0.12, 0.26), bevel=0.02, pitch=0.4)
-        m.torus('main', (-0.8, 0.3, s * 0.4), (0, 1, 0), 0.05, 0.01, seg=12)
-    m.cyl('main', (0.05, 0.4, -0.5), (0.05, 0.4, 0.5), 0.03, seg=10)                          # axle
-    m.box('main', (-0.6, 0.1, 0.0), (0.3, 0.18, 0.2), bevel=0.02)                              # shell box
-    for k in range(3): m.cyl('dark', (-0.7 + k * 0.1, 0.2, 0.0), (-0.7 + k * 0.1, 0.24, 0.0), 0.03, seg=10)
-    m.finish()
-
-def aa():
-    m = Model('aa'); rnd = mulberry(5)
-    m.cyl('main', (0, 0, 0), (0, 0.18, 0), 0.9, seg=8, bevel=0.03)                          # octagonal platform
-    for k in range(8):
-        a = k / 8 * 2 * math.pi + math.pi / 8
-        m.box('dark', (math.cos(a) * 0.86, 0.12, math.sin(a) * 0.86), (0.08, 0.04, 0.08), bevel=0.0)
-    sandbag_ring(m, 'main', 1.0, 0, 2 * math.pi, 1, 16, rnd, y0=0.0)
-    t = 'turret_main'
-    m.cyl(t, (0, 0.18, 0), (0, 0.42, 0), 0.42, seg=28, bevel=0.02)                            # traverse ring
-    m.box(t, (0, 0.65, 0), (0.46, 0.46, 0.56), bevel=0.05)                                    # cradle
-    for z in (-0.18, 0.18):
-        b0 = (0.18, 0.95, z); b1 = (0.18 + math.cos(math.pi / 4) * 1.35, 0.95 + math.sin(math.pi / 4) * 1.35, z)
-        m.cyl(t, b0, b1, 0.045, seg=14)
-        m.cyl(t, (0.12, 0.89, z), (0.38, 1.15, z), 0.075, seg=16)                              # recoil jackets
-        m.cyl(t, (b1[0] - 0.06, b1[1] - 0.06, z), (b1[0] + 0.03, b1[1] + 0.03, z), 0.06, seg=14, bevel=0.005)   # flash hiders
-        m.box(t, (0.02, 0.98, z * 1.9), (0.2, 0.26, 0.1), bevel=0.02)                           # magazines
-    m.torus(t, (0.5, 1.25, 0), (1, 1, 0), 0.14, 0.01, seg=20)                                   # ring sight
-    for z in (-0.3, 0.3): m.torus('turret_dark', (-0.05, 0.62, z * 1.05), (0, 0, 1), 0.07, 0.012, seg=16)   # hand wheels
-    m.box('turret_dark', (-0.4, 0.62, 0), (0.18, 0.06, 0.26), bevel=0.02)                     # seat
-    m.cyl(t, (-0.3, 0.4, 0), (-0.4, 0.58, 0), 0.025, seg=8)
-    m.finish()
-
-def tower():
-    m = Model('tower')
-    # four timber legs with cross bracing, ladder, planked platform with sandbag parapet and a roof
-    H = 2.55
-    for x in (-0.7, 0.7):
-        for z in (-0.7, 0.7):
-            m.box('main', (x * (1 - 0.0), H / 2, z), (0.12, H, 0.12), bevel=0.015)
-            m.box('main', (x, 0.05, z), (0.22, 0.1, 0.22), bevel=0.02)                            # footing
-    for y0, y1 in ((0.2, 1.3), (1.3, 2.4)):
-        for s in (1, -1):
-            for zz in (-0.7, 0.7):
-                m.cyl('main', (-0.7, y0 if s > 0 else y1, zz), (0.7, y1 if s > 0 else y0, zz), 0.035, seg=8)
-            for xx in (-0.7, 0.7):
-                m.cyl('main', (xx, y0 if s > 0 else y1, -0.7), (xx, y1 if s > 0 else y0, 0.7), 0.035, seg=8)
-    for y in (1.3,):
-        for zz in (-0.7, 0.7): m.box('main', (0, y, zz), (1.5, 0.06, 0.06), bevel=0.0)
-        for xx in (-0.7, 0.7): m.box('main', (xx, y, 0), (0.06, 0.06, 1.5), bevel=0.0)
-    for zz in (0.72, 1.0): m.box('main', (0.85, H / 2 + 0.1, zz - 0.86), (0.04, H + 0.2, 0.04), bevel=0.0)   # ladder
-    for k in range(11): m.box('main', (0.85, 0.2 + k * 0.24, 0.0), (0.03, 0.03, 0.3), bevel=0.0)
-    m.box('main', (0, H + 0.03, 0), (1.8, 0.08, 1.8), bevel=0.02)                              # platform
-    for k in range(9): m.box('dark', (-0.8 + k * 0.2, H + 0.072, 0), (0.012, 0.01, 1.76), bevel=0.0)   # plank gaps
-    rnd = mulberry(3)
-    for side in range(4):
-        a = side * math.pi / 2
-        c, s = math.cos(a), math.sin(a)
-        if side == 1: continue                                                              # ladder opening
-        for l in range(2):
-            for i in range(4):
-                u = -0.72 + (i + 0.5 + (l % 2) * 0.25) * 0.36
-                if u > 0.75: continue
-                x, z = c * 0.8 - s * u, s * 0.8 + c * u
-                sandbag(m, 'main', (x, H + 0.15 + l * 0.14, z), -a + math.pi / 2, L=0.38, W=0.2, rnd=rnd)
-    for x in (-0.8, 0.8):
-        for z in (-0.8, 0.8): m.box('main', (x, H + 0.55, z), (0.06, 1.0, 0.06), bevel=0.0)   # roof posts
-    m.cyl('main', (0, H + 1.05, 0), (0, H + 1.45, 0), 1.3, seg=4, r2=0.05)                        # pyramid roof
-    m.cyl('main', (0.6, H + 0.2, -0.6), (0.6, H + 0.4, -0.6), 0.04, seg=8)                     # searchlight
-    m.cyl('main', (0.6, H + 0.5, -0.6), (0.75, H + 0.52, -0.6), 0.1, seg=20, bevel=0.01)
-    m.cyl(LIGHT, (0.76, H + 0.52, -0.6), (0.77, H + 0.52, -0.6), 0.08, seg=20)
-    m.finish()
-
 def sandbags(variant):
     m = Model(f'sandbags{variant}'); rnd = mulberry(100 + variant)
     for l in range(3):
@@ -342,7 +232,7 @@ def mine_ap():
     for a in (0, 2.1, 4.2): m.cyl('main', (0, 0.1, 0), (math.cos(a) * 0.035, 0.13, math.sin(a) * 0.035), 0.006, seg=5)
     m.finish()
 
-MODELS = {'hq': hq, 'mgnest': mgnest, 'fieldgun': fieldgun, 'aa': aa, 'tower': tower,
+MODELS = {'hq': hq,
           'sandbags0': lambda: sandbags(0), 'sandbags1': lambda: sandbags(1), 'wall0': lambda: wall(0), 'wall1': lambda: wall(1),
           'wire': wire, 'barrel': barrel, 'tanktrap': tanktrap, 'mine_at': mine_at, 'mine_ap': mine_ap}
 

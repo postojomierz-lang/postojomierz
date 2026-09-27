@@ -120,7 +120,8 @@ AB 41 armoured car, the amphibious L3 prototype, L6/40, M13/40, P26/40, D'Ascani
 helicopter with its coaxial rotors, Macchi C.202, Breda Ba.65, the three-engined SM.79 and SM.82
 and a farmhouse with its dovecote tower, plus a Fiat 626 with launch rails in the style of the
 time (Italy fielded no rocket lorry).
-Each of these armies also mans its own emplacements (`tools/blender/structures_nations.py`):
+Every army mans its own emplacements (`tools/blender/structures_nations.py`): the Americans a
+105 mm M2A1 howitzer, the M45 Quadmount, a water-cooled Browning and a guard tower with a searchlight;
 Germany a Pak 40, a Flak 38, an MG 42 on its Lafette and a timber watchtower; the Red Army a
 ZiS-3, a 61-K, a Maxim on its Sokolov mount behind logs and a log tower; Britain a 25-pounder on
 its firing platform, a Bofors, a Vickers and a scaffold-tube post; Japan a Type 92 battalion gun,
@@ -138,9 +139,11 @@ The vehicles and aircraft are WW2 machines modelled the same way by `tools/blend
 (lofted bodies, rounded tyres, airfoil wings, track belts of links): Willys jeep, Dodge WC54
 ambulance, GMC engineer truck, M8 Greyhound armoured car, DUKW amphibian, the M5 Stuart, M4 Sherman and M26 Pershing (light, medium and heavy tanks), Studebaker
 with a Katyusha launcher, a Sikorsky-style helicopter, P-51 Mustang, P-47 Thunderbolt, B-25
-Mitchell and C-47 Dakota; drivers, gunners and commanders ride in them, and the headquarters, emplacements (MG nest with its gunner, field gun,
-AA gun, watchtower with a lookout) and fortifications (sandbags, brick walls, barbed wire, oil drums, tank traps, mines)
-by `tools/blender/structures.py`; all of them are packed into `src/data/vehicles.js`.
+Mitchell and C-47 Dakota; drivers, gunners and commanders ride in them, the headquarters and
+fortifications (sandbags, brick walls, barbed wire, oil drums, tank traps, mines) are made by
+`tools/blender/structures.py` and the emplacements (MG nest with its gunner, field gun, AA gun,
+watchtower with a lookout) by `tools/blender/structures_nations.py`; all of them are packed into
+`src/data/vehicles.js`.
 The diorama scenery is Blender-made as well: `tools/blender/scenery.py` (Normandy: hedgerows, oaks,
 apple trees, farmhouse, barn, walls, hay, reeds, craters) and `tools/blender/town.py` (town houses,
 shop fronts, ruins, church, monument, rubble, barricade, hedgehog, bridge, quay, street lamp) and
