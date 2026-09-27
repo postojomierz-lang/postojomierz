@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && vite build -c vite.planer.config.js",
     "data": "python3 tools/prepare.py"
   },
   "dependencies": {
+    "leaflet": "^1.9.4",
     "three": "^0.170.0"
   },
   "devDependencies": {
