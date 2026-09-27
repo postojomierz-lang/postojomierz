@@ -12,6 +12,7 @@ import { buildForest } from './vegetation.js';
 import { loadImpostorKinds } from './impostor.js';
 import { buildGroundCover } from './groundcover.js';
 import { buildStreams } from './streams.js';
+import { Sound } from './sound.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -357,6 +358,14 @@ async function main() {
   const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds });
   const landPx = { d: pixels(landBmp), w: landBmp.width, h: landBmp.height };
   const photoPx = { d: pixels(innerBmp), w: innerBmp.width, h: innerBmp.height };
+  const sound = new Sound({
+    base: 'sounds/', streams, terrain,
+    isForest: (x, z) => {
+      const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * landPx.w), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * landPx.h);
+      return u >= 0 && v >= 0 && u < landPx.w && v < landPx.h && landPx.d[(v * landPx.w + u) * 4] === 10 && terrain.height(x, z) < 1600;
+    },
+    isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.2,
+  });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
     masks: { path: trailVisWide, lake: lakeMask }, quality: QUALITY });
   const dummy = new THREE.Object3D();
@@ -503,6 +512,7 @@ async function main() {
     if (e.code === 'Equal' || e.code === 'NumpadAdd') setSpeed(1);
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') setSpeed(-1);
     if (e.code === 'KeyH') $('help').classList.toggle('hidden');
+    if (e.code === 'KeyN') { sound.setEnabled(!sound.enabled); updateButtons(); }
     if (e.code === 'Home') state.s = 0;
     if (e.code === 'End') state.s = LENGTH;
   });
@@ -587,6 +597,7 @@ async function main() {
   }
 
   function updateButtons() {
+    $('btn-sound').textContent = sound.enabled ? '🔊' : '🔇';
     $('btn-auto').textContent = state.auto ? '⏸ Stop' : '▶ Idź sam';
     $('btn-auto').classList.toggle('on', state.auto);
     $('btn-mode').textContent = state.mode === 'walk' ? '🚁 Dron' : '🥾 Spacer';
@@ -599,6 +610,7 @@ async function main() {
   $('hour').oninput = (e) => { env.hour = +e.target.value; applyEnv(); };
   $('weather').onchange = (e) => { env.weather = e.target.value; applyEnv(); };
   $('btn-help').onclick = () => $('help').classList.toggle('hidden');
+  $('btn-sound').onclick = () => { sound.setEnabled(!sound.enabled); updateButtons(); };
   $('sources').textContent = meta.sources + '; textures: Poly Haven (CC0)';
   updateButtons();
 
@@ -768,6 +780,7 @@ async function main() {
       const fz = state.mode === 'walk' ? camera.position.z : hiker.position.z;
       updatePatch(fx, fz); updateNear(fx, fz); cover.update(fx, fz);
     }
+    sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });
     renderReflection();
     composer.render();
     requestAnimationFrame(tick);

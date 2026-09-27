@@ -23,6 +23,7 @@ export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, qu
     return d;
   };
   const sprays = [];
+  const samples = [];   // x, y, z, foam, width: for the sound of running water
   for (const s of meta.streams || []) {
     const P = s.pts, n = P.length;
     // split where the stream runs through a lake
@@ -68,6 +69,7 @@ export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, qu
       pos.push(x + nx * w / 2, y, z + nz * w / 2, x - nx * w / 2, y, z - nz * w / 2);
       uv.push(-1, dist, 1, dist);
       foamA.push(foam, foam);
+      samples.push(x, y, z, foam, w0);
       if (i) { const a = base + (i - 1) * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
     }
     // spray at the foot of the waterfalls this stream passes
@@ -205,7 +207,7 @@ export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, qu
     scene.add(spray);
   }
   return {
-    mesh, spray, sprays,
+    mesh, spray, sprays, samples: Float32Array.from(samples),
     setPixelRatio(pr, h) { if (spray) spray.material.uniforms.px.value = pr * h / 900; },
   };
 }
