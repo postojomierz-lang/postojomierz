@@ -20,9 +20,10 @@ const FIELDS = [
   { base: '#7a5f43', dots: ['#6b5239', '#86694b', '#5f4a34'], rows: ['rgba(50,35,20,.45)', 0.4], w: 0.14 },
   { base: '#8c9f4d', dots: ['#9aad58', '#7e9244', '#a4b45f'], rows: ['rgba(230,230,150,.16)', 1.6], w: 0.24 },
 ];
-function fieldKind(b) {
+function fieldKind(b, steppe) {
   let r = hash(b, 17), i = 0;
-  while (i < FIELDS.length - 1 && r > FIELDS[i].w) { r -= FIELDS[i].w; i++; }
+  const w = steppe ? [0.25, 0.4, 0.15, 0.2] : FIELDS.map(f => f.w);     // the steppe: mostly grain
+  while (i < FIELDS.length - 1 && r > w[i]) { r -= w[i]; i++; }
   return i;
 }
 
@@ -58,6 +59,14 @@ export function buildDiorama(map, quality = 'medium') {
   const height = (x, y) => {
     if (town) return townHeight(x, y);
     if (rs && inRiver(x, y, 1.1)) return -0.7;
+    if (map.rockBoard) {                                                  // the massifs rise out of the valleys
+      const dep = (cx2, cy2) => (cx2 < -M || cy2 < -M || cx2 >= W + M || cy2 >= H + M) ? 0 : map.rockDepth[(cy2 + M) * BW + cx2 + M];
+      let d;
+      if (Number.isInteger(x) && Number.isInteger(y)) d = Math.min(dep(x, y), dep(x - 1, y), dep(x, y - 1), dep(x - 1, y - 1));
+      else d = dep(Math.floor(x), Math.floor(y)) - 0.5;
+      if (d <= 0) return 0;
+      return Math.min(7.5, 0.35 + d * 0.8 + noise(x / 3, y / 3) * 1.2 * Math.min(1, d / 2)) * ss(0.2, 3, edgeDist(x, y));
+    }
     if (beachy) {
       const cd = coast(x, y);
       if (cd < 0) return Math.max(-1.1, cd * 0.4);
@@ -84,11 +93,12 @@ export function buildDiorama(map, quality = 'medium') {
   else if (map.theme === 'winter') paintWinter({ map, c, b, X, Y, px, rng, W, H, M, BW, BH });
   else if (map.theme === 'desert') paintDesert({ map, c, b, X, Y, px, rng, W, H, M, BW, BH });
   else if (map.theme === 'jungle') paintJungle({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, inRiver });
+  else if (map.theme === 'mountain') paintMountain({ map, c, b, X, Y, px, rng, W, H, M, BW, BH });
   else {
   c.fillStyle = FIELDS[0].base; c.fillRect(0, 0, cv.width, cv.height);
   for (const f of map.fields) {
     if (f.poly.length < 3) continue;
-    const kind = FIELDS[fieldKind(f.kind)];
+    const kind = FIELDS[fieldKind(f.kind, map.steppe)];
     const path = ctx => { ctx.beginPath(); f.poly.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)))); ctx.closePath(); };
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of f.poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
@@ -157,6 +167,12 @@ export function buildDiorama(map, quality = 'medium') {
     const gb = b.createRadialGradient(X(d.x), Y(d.y), 0, X(d.x), Y(d.y), px * 0.8);
     gb.addColorStop(0, '#202020'); gb.addColorStop(1, 'rgba(128,128,128,0)');
     b.fillStyle = gb; b.beginPath(); b.arc(X(d.x), Y(d.y), px * 0.8, 0, 7); b.fill();
+  }
+  // a fortress: a gravelled courtyard and the ground round the walls
+  if (map.fortress) {
+    const F = map.fortress, gr = c.createRadialGradient(X(W / 2), Y(H / 2), 0, X(W / 2), Y(H / 2), px * (F.r + 1.5));
+    gr.addColorStop(0, '#8c8472'); gr.addColorStop(0.8, '#9b9380'); gr.addColorStop(1, 'rgba(120,110,90,0)');
+    c.fillStyle = gr; c.beginPath(); c.arc(X(W / 2), Y(H / 2), px * (F.r + 1.5), 0, 7); c.fill();
   }
   // the edge of the play area: everything outside is a little darker, with a thin white line
   c.save();
@@ -250,6 +266,7 @@ export function buildDiorama(map, quality = 'medium') {
   else if (map.theme === 'winter') placeWinter({ map, put, onBoard, W, H, M, quality, outDist });
   else if (map.theme === 'desert') placeDesert({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, outDist });
   else if (map.theme === 'jungle') placeJungle({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, outDist, quality, inRiver });
+  else if (map.theme === 'mountain') placeMountain({ map, put, onBoard, W, H, M, BW, height, quality });
   else {
   const hedgePiece = (x, y, yaw, seed) => {
     const r = mulberry(seed);
@@ -299,6 +316,7 @@ export function buildDiorama(map, quality = 'medium') {
     }
   }
   }
+  if (map.fortress) placeFortress({ map, put, W, H });
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), s3 = new THREE.Vector3(), col = new THREE.Color();
   const pc = new THREE.Color();
   for (const [lkey, list] of lists) {
@@ -549,7 +567,8 @@ function paintBeach({ map, c, b, X, Y, px, rng, W, H, M, BW, BH, coast }) {
   // colour by distance from the sea: sea bed, wet sand, foam, dry sand, sandy grass further inland
   const step = Math.max(2, Math.floor(px / 4)), img = c.createImageData(BW * px, BH * px), d = img.data;
   const mix = (a, b2, t) => a.map((v, i) => v + (b2[i] - v) * Math.max(0, Math.min(1, t)));
-  const SEA = [92, 110, 96], WET = [176, 155, 112], DRY = [219, 199, 150], GRASS = [150, 152, 92];
+  const black = map.sand === 'black';
+  const SEA = [92, 110, 96], WET = black ? [70, 68, 66] : [176, 155, 112], DRY = black ? [96, 92, 88] : [219, 199, 150], GRASS = black ? [118, 116, 90] : [150, 152, 92];
   for (let py = 0; py < BH * px; py += step) for (let pxx = 0; pxx < BW * px; pxx += step) {
     const x = pxx / px - M, y = py / px - M, cd = coast(x, y), grain = (Math.sin(x * 12.9 + y * 78.2) * 43758.5 % 1 + 1) % 1;
     let col;
@@ -623,6 +642,7 @@ function placeBeach({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, coast, RB, 
     const r = mulberry(d.seed);
     if (d.kind === 'crater') put('crater', d.x, d.y, r() * 6, 0.8 + r() * 0.4, 0.7 + r() * 0.3, 0.8 + r() * 0.4, 1.1);
     else if (d.kind === 'mines') put('mines', d.x, d.y, r() * 6, 1);
+    else if (d.kind === 'palm') put(r() < 0.5 ? 'palm0' : 'palm1', d.x, d.y, r() * 6, 0.85 + r() * 0.3, 0.8 + r() * 0.4, 0.85 + r() * 0.3, 0.9 + r() * 0.15);
   }
   // landing craft run up on every army's beach, and a few more further along
   const r = mulberry(map.seed ^ 0x1c1f);
@@ -899,4 +919,93 @@ function placeJungle({ map, put, onBoard, W, H, M, BW, BH, g, wx, wz, outDist, q
     water.rotation.x = -Math.PI / 2; water.position.set(wx(W / 2), -0.2, wz(H / 2)); water.receiveShadow = true; water.renderOrder = 2;
     g.add(water);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mountains: meadows in the valleys, scree and grey rock up the massifs, snow on the peaks
+function paintMountain({ map, c, b, X, Y, px, rng, W, H, M, BW, BH }) {
+  const snow = map.snow;
+  c.fillStyle = snow ? '#e9eef4' : '#7d9450'; c.fillRect(0, 0, c.canvas.width, c.canvas.height);
+  for (let i = 0; i < BW * BH * px * 0.4; i++) {                        // grass and flowers / snow crust
+    c.fillStyle = snow ? ['#f6f8fb', '#d8e0e8', '#c9d2dc'][Math.floor(rng() * 3)] : ['#8aa257', '#6f8646', '#9bb060', '#e8e0a0', '#c8b0d8'][Math.floor(rng() * (rng() < 0.97 ? 3 : 5))];
+    c.fillRect(rng() * c.canvas.width, rng() * c.canvas.height, 1 + rng() * 1.5, 1 + rng() * 1.5);
+  }
+  for (const f of map.fields) if (f.forest && f.poly.length > 2) {     // fir woods: darker needle floor
+    c.beginPath(); f.poly.forEach(([x, y], i) => (i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y)))); c.closePath();
+    c.fillStyle = snow ? 'rgba(170,185,200,.5)' : 'rgba(60,80,45,.55)'; c.fill();
+  }
+  // the lanes: gravel
+  for (const r of map.roads) {
+    const L = Math.hypot(r.x1 - r.x0, r.y1 - r.y0), steps = Math.max(8, Math.ceil(L * 2));
+    c.beginPath();
+    for (let i = 0; i <= steps; i++) { const t = i / steps, u = 1 - t; const x = u * u * r.x0 + 2 * u * t * r.qx + t * t * r.x1, y = u * u * r.y0 + 2 * u * t * r.qy + t * t * r.y1; i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y)); }
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    c.strokeStyle = snow ? '#b8b4ab' : '#a89d85'; c.lineWidth = px * 1.6; c.stroke();
+  }
+  // rock by how deep into the massif: scree at the foot, grey rock, snow higher up
+  const dep = map.rockDepth;
+  for (let y = 0; y < BH; y++) for (let x = 0; x < BW; x++) {
+    const d = dep[y * BW + x]; if (!d) continue;
+    const j = (rng() - 0.5) * 18;
+    let col = d <= 1 ? [150, 142, 128] : d <= 3 ? [128, 122, 112] : [118, 112, 104];
+    if (d >= (snow ? 2 : 5)) col = [238, 242, 247];
+    else if (d === (snow ? 1 : 4)) col = [196, 198, 200];
+    c.fillStyle = `rgb(${col[0] + j},${col[1] + j},${col[2] + j})`;
+    c.fillRect(x * px - 0.5, y * px - 0.5, px + 1, px + 1);
+    b.fillStyle = `rgb(${100 + rng() * 80},${100 + rng() * 80},${100 + rng() * 80})`; b.fillRect(x * px, y * px, px, px);
+  }
+}
+
+// Mountains: firs, boulders, scree, stone houses, rocks up the slopes
+function placeMountain({ map, put, onBoard, W, H, M, BW, height, quality }) {
+  const r = mulberry(map.seed ^ 0x3a17), snow = map.snow;
+  const tree = (x, y, s = 1) => put((snow ? 'pine' : 'fir') + (r() < 0.55 ? 0 : 1), x, y, r() * 6, (0.7 + r() * 0.35) * s, (0.65 + r() * 0.45) * s, (0.7 + r() * 0.35) * s, 0.85 + r() * 0.25, (r() - 0.5) * 0.03);
+  for (const o of map.objects) if (o.style === 'forest') for (const c of o.cells) {
+    if (map.grid[c] !== 5) continue;
+    const x = c % W, y = Math.floor(c / W);
+    tree(x + 0.2 + r() * 0.6, y + 0.2 + r() * 0.6);
+    if (quality !== 'low' && r() < 0.4) tree(x + r(), y + r());
+  }
+  for (let c = 0; c < W * H; c++) if (map.grid[c] === 0 && r() < 0.025) {    // lone firs in the meadows
+    const x = c % W, y = Math.floor(c / W);
+    if (map.road[c] || map.zones.some(z => x >= z.x - 1 && x < z.x + z.w + 1 && y >= z.y - 1 && y < z.y + z.h + 1)) continue;
+    tree(x + r(), y + r(), 0.85);
+  }
+  // beyond the play area: woods and lone trees in the valleys
+  const forestAt = (x, y) => { let best = null, bd = Infinity; for (const f of map.fields) { const d = (f.x - x) ** 2 + (f.y - y) ** 2; if (d < bd) { bd = d; best = f; } } return best && best.forest; };
+  for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) {
+    if ((x >= 0 && y >= 0 && x < W && y < H) || !onBoard(x + 0.5, y + 0.5, 1) || map.rockDepth[(y + M) * BW + x + M]) continue;
+    if (forestAt(x + 0.5, y + 0.5) ? r() < 0.8 : r() < 0.06) tree(x + r(), y + r());
+  }
+  // boulders and crags up the slopes
+  for (let y = -M; y < H + M; y++) for (let x = -M; x < W + M; x++) {
+    const d = map.rockDepth[(y + M) * BW + x + M];
+    if (!d || d > 4 || r() > 0.12 || !onBoard(x + 0.5, y + 0.5, 1)) continue;
+    put('rocks', x + r(), y + r(), r() * 6, 0.5 + r() * 0.5, 0.4 + r() * 0.6, 0.5 + r() * 0.5, 0.9 + r() * 0.15);
+  }
+  for (const o of map.objects) {
+    const q = mulberry(o.seed + (o.turn || 0) * 977), cx = o.x + o.w / 2, cy = o.y + o.h / 2, along = o.w >= o.h;
+    const yaw = (along ? 0 : Math.PI / 2) + (q() < 0.5 ? Math.PI : 0);
+    if (o.style === 'boulder') put('rocks', cx, cy, q() * 6, o.w * 0.5 + q() * 0.2, 0.6 + q() * 0.5, o.h * 0.5 + q() * 0.2, 0.9 + q() * 0.15);
+    else if (o.style === 'mhouse') put(snow ? 'chalet' : 'house', cx, cy, yaw, 1, 0.95 + q() * 0.1, 1, 0.95 + q() * 0.08);
+    else if (o.style === 'scree') for (let k = 0; k < Math.max(o.w, o.h); k++) {
+      const x = along ? o.x + k + 0.5 : cx, y = along ? cy : o.y + k + 0.5;
+      put('scree', x, y, (along ? 0 : Math.PI / 2) + (q() < 0.5 ? Math.PI : 0), 1.05, 0.8 + q() * 0.4);
+    }
+  }
+  for (const d of map.decor) if (d.kind === 'crater' && onBoard(d.x, d.y, 1.2)) { const q = mulberry(d.seed); put('crater', d.x, d.y, q() * 6, 0.8 + q() * 0.4, 0.7 + q() * 0.3); }
+}
+
+// The fortress (any battlefield): walls round the ring, towers, a gatehouse facing every army, the keep
+function placeFortress({ map, put, W, H }) {
+  const cx = W / 2, cy = H / 2, F = map.fortress;
+  for (const o of map.objects) {
+    if (o.style === 'fwall') for (const c of o.cells) {
+      const x = c % W + 0.5, y = Math.floor(c / W) + 0.5, a = Math.atan2(y - cy, x - cx);
+      put('fwall', x, y, Math.PI / 2 - a, 1.08, 1, 1, 0.95 + ((c * 7) % 10) / 100);
+    }
+    else if (o.style === 'ftower') put('ftower', o.x + 1, o.y + 1, 0);
+    else if (o.style === 'keep') put('keep', o.x + 1.5, o.y + 1.5, Math.PI / 2 - Math.atan2(1, 0));
+  }
+  for (const gt of F.gates) put('fgate', gt.x, gt.y, Math.PI / 2 - gt.a);
 }

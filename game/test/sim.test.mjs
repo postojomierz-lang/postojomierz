@@ -3,8 +3,8 @@ import { Sim } from '../src/sim/sim.js';
 import { aiDeploy, aiOrders } from '../src/sim/ai.js';
 import { RULES } from '../src/data/catalog.js';
 
-function play(seed, teams, theme = null) {
-  const map = makeMap({ teams, theme, seed });
+function play(seed, teams, theme = null, options = {}) {
+  const map = makeMap({ teams, theme, seed, options });
   const sim = new Sim(map, Array.from({ length: teams }, (_, i) => ({ name: 'T' + i, color: i })), seed);
   const log = [];
   let ticks = 0;
@@ -20,8 +20,8 @@ function play(seed, teams, theme = null) {
   return { hash: sim.stateHash(), winner: sim.winner, rounds: sim.round, ms: Date.now() - t0, ticks, log, theme: map.theme };
 }
 
-for (const [seed, teams, theme] of (process.argv[2] ? JSON.parse(process.argv[2]) : [[1, 2], [42, 2], [7, 4], [99, 3], [3, 2, 'normandy'], [11, 4, 'normandy'], [5, 6, 'normandy'], [6, 2, 'town'], [11, 4, 'town'], [5, 2, 'beach'], [8, 5, 'beach'], [5, 2, 'winter'], [3, 4, 'winter'], [5, 2, 'desert'], [4, 6, 'desert'], [5, 2, 'jungle'], [2, 4, 'jungle']])) {
-  const a = play(seed, teams, theme), b = play(seed, teams, theme);
+for (const [seed, teams, theme, options] of (process.argv[2] ? JSON.parse(process.argv[2]) : [[1, 2], [42, 2], [7, 4], [99, 3], [3, 2, 'normandy'], [11, 4, 'normandy'], [5, 6, 'normandy'], [6, 2, 'town'], [11, 4, 'town'], [5, 2, 'beach'], [8, 5, 'beach'], [5, 2, 'winter'], [3, 4, 'winter'], [5, 2, 'desert'], [4, 6, 'desert'], [5, 2, 'jungle'], [2, 4, 'jungle'], [5, 2, 'mountain'], [3, 5, 'mountain', { snow: true }], [7, 3, 'town', { fortress: true }], [4, 2, 'normandy', { steppe: true }]])) {
+  const a = play(seed, teams, theme, options), b = play(seed, teams, theme, options);
   console.log(`seed ${seed} teams ${teams} theme ${a.theme}: winner ${a.winner} after ${a.rounds} rounds, ${a.ticks} ticks in ${a.ms}ms (${(a.ms / a.ticks).toFixed(2)} ms/tick) deterministic=${a.hash === b.hash}`);
   console.log('  ' + a.log.join('\n  '));
 }

@@ -72,7 +72,7 @@ async function beginGame({ n, seed, layout, theme, options = {}, armies, me, dif
   const map = makeMap({ teams: n, theme, seed, layout, options });
   if (DIORAMAS.includes(map.theme)) {
     const done = busy(['Unpacking the battlefield…']);
-    const ok = await loadScenery(map.theme); done();
+    const ok = await loadScenery(map.theme) && (!map.fortress || await loadScenery('fortress')); done();
     if (!ok) toast('Could not load the scenery (it needs the online version) — the battlefield is bare.', false, true);
   }
   game.mode = 'play'; game.seed = seed;
