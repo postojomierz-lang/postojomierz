@@ -79,8 +79,25 @@ export class Terrain {
     if (i < 0 || j < 0 || i >= g.w || j >= g.h) return 0;
     return this.dtmMask[j * g.w + i];
   }
+  // Terraces levelled under buildings: [{x, z, c, s, w, d, level}] (see buildings.js)
+  setFlats(flats) { this.flats = flats; }
+  flatten(x, z, h) {
+    for (const f of this.flats) {
+      const dx = x - f.x, dz = z - f.z;
+      const u = Math.abs(dx * f.c - dz * f.s) - f.w / 2, v = Math.abs(dx * f.s + dz * f.c) - f.d / 2;
+      const out = Math.max(u, v);
+      if (out > 6) continue;
+      const t = out <= 0 ? 1 : 1 - out / 6;
+      h = h + (f.level - h) * t * t * (3 - 2 * t);
+    }
+    return h;
+  }
   // Full height: 1 m tile if there is one, otherwise the grids plus micro relief.
   height(x, z) {
+    const h = this.rawHeight(x, z);
+    return this.flats ? this.flatten(x, z, h) : h;
+  }
+  rawHeight(x, z) {
     const t = this.tileAt(x, z);
     if (t) {
       const h = t.bilinear(x, z);
