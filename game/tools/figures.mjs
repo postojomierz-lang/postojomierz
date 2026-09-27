@@ -14,7 +14,7 @@ const OUT = path.join(HERE, '..', 'src', 'data', 'figures.js');
 const OUT_VEH = path.join(HERE, '..', 'src', 'data', 'vehicles.js');
 // yaw: degrees to turn the figure so that where it aims ends up along +X (after +Z -> +X)
 const SOURCES = ['rifleman', 'kneel', 'prone', 'officer', 'mg', 'sniper', 'bazooka', 'bazooka-stand', 'manpads', 'manpads-kneel',
-  'grenadier', 'grenadier-idle', 'medic', 'medic-heal', 'drag', 'gunner', 'lookout', 'sapper']
+  'grenadier', 'grenadier-idle', 'medic', 'medic-heal', 'drag', 'gunner', 'lookout', 'sapper', 'driver', 'mgstand']
   .map(key => ({ key, name: `blender/${key}.stl`, yaw: 0, keepCentre: true }));   // built facing -Y around the hips
 const NEAR_TRIS = 8000, FAR_TRIS = 1500, HEIGHT_MM = 37, HEIGHT = 1.08, Q = 16000;
 
@@ -117,7 +117,7 @@ const VEHICLES = ['jeep', 'ambulance', 'engtruck', 'apc', 'amphib', 'tank', 'roc
   'hq', 'mgnest', 'fieldgun', 'aa', 'tower', 'sandbags0', 'sandbags1', 'wall0', 'wall1', 'wire', 'barrel', 'tanktrap', 'mine_at', 'mine_ap', 'chute'];
 const BUDGET = { main: [7000, 1800], dark: [4500, 1000], turret_main: [2500, 1000], turret_dark: [1200, 600] };
 // structures are made of many small pieces (bricks, sacks): smaller budgets keep the download light
-const OVERRIDE = { hq: { main: [6000, 1800] }, mgnest: { main: [3000, 900] }, tower: { main: [4000, 1200] }, aa: { main: [3000, 900] },
+const OVERRIDE = { tank: { main: [11000, 2500] }, apc: { main: [8000, 2000] }, hq: { main: [6000, 1800] }, mgnest: { main: [3000, 900] }, tower: { main: [4000, 1200] }, aa: { main: [3000, 900] },
   sandbags0: { main: [1800, 600] }, sandbags1: { main: [1800, 600] }, wall0: { main: [3500, 1000] }, wall1: { main: [3500, 1000] },
   wire: { dark: [1800, 700] }, barrel: { main: [1500, 500] },
   tanktrap: { main: [700, 250], dark: [400, 150] }, mine_at: { main: [200, 80], dark: [400, 120] }, mine_ap: { main: [150, 60], dark: [150, 60] } };

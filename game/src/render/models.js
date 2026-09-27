@@ -12,7 +12,7 @@ const FIGURE_FOR = {
   rifleman: 'rifleman', para: 'rifleman', officer: 'officer', mg: 'mg', sniper: 'sniper', 'pose-kneel': 'kneel', 'pose-prone': 'prone',
   bazooka: 'bazooka', 'pose-bazooka-stand': 'bazooka-stand', manpads: 'manpads', 'pose-manpads-kneel': 'manpads-kneel',
   grenadier: 'grenadier', 'pose-grenadier-idle': 'grenadier-idle', medic: 'medic', 'pose-medic-heal': 'medic-heal', 'pose-drag': 'drag',
-  'pose-sapper': 'sapper',
+  'pose-sapper': 'sapper', 'pose-driver': 'driver',
 };
 // figure data is meshopt-compressed: wait for the (tiny, built-in) decoder before building models
 export const modelsReady = MeshoptDecoder.ready;
@@ -43,6 +43,15 @@ function paintGeometry(geo, colour) {
   geo.computeBoundingSphere(); geo.computeBoundingBox();
   return geo;
 }
+// Drivers, gunners and commanders riding in the vehicles: [figure, x, y, z] (figure origin = its feet).
+const CREW_SCALE = 0.8;
+const CREW = {
+  jeep: [['driver', -0.14, 0.47, -0.22], ['mgstand', -0.72, 0.43, 0]],
+  engtruck: [['driver', -0.07, 0.42, -0.2]],
+  amphib: [['driver', 0.09, 0.62, -0.2], ['mgstand', -0.58, 0.74, 0]],
+  apc: [['lookout', -0.25, 0.55, 0.12]],
+  tank: [['lookout', -0.35, 0.81, 0.2]],
+};
 // Toy vehicles and aircraft modelled in Blender (tools/blender/vehicles.py).
 function buildVehicle(key) {
   const v = VEHICLES[key], g = (p, c) => figureGeometry(p, c, VEHICLE_SCALE, true);
@@ -52,7 +61,11 @@ function buildVehicle(key) {
   if (v.rotor) { out.rotor = g(v.rotor); out.tailRotor = g(v.tail); }
   if (v.turret_main) out.turret = { main: g(v.turret_main.near), dark: v.turret_dark ? g(v.turret_dark.near) : undefined };
   // crews: army-men figures placed into the model (the MG gunner turns with his gun)
-  const crew = (geo, x, y, z) => geo.clone().toNonIndexed().translate(x, y, z);
+  const crew = (geo, x, y, z, s = 1) => (geo.index ? geo.toNonIndexed() : geo.clone()).scale(s, s, s).translate(x, y, z);
+  if (CREW[key]) {
+    out.main = mergeGeometries([out.main, ...CREW[key].map(([f, x, y, z]) => crew(figure(f).main, x, y, z, CREW_SCALE))]);
+    out.far.main = mergeGeometries([out.far.main, ...CREW[key].map(([f, x, y, z]) => crew(figure(f).far.main, x, y, z, CREW_SCALE))]);
+  }
   if (key === 'mgnest') out.turret.main = mergeGeometries([out.turret.main, crew(figure('gunner').main, -0.12, 0.04, 0)]);
   if (key === 'tower') {
     out.main = mergeGeometries([out.main, crew(figure('lookout').main, -0.15, 2.62, 0.25)]);
