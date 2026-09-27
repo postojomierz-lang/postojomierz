@@ -93,7 +93,7 @@ with crisp helmet, weapons and kit, each on its stand (run it with `pip install 
 `python tools/blender/army_men.py`, then `npm run figures`, which writes `src/data/figures.js`).
 The vehicles and aircraft are WW2 machines modelled the same way by `tools/blender/vehicles.py`
 (lofted bodies, rounded tyres, airfoil wings, track belts of links): Willys jeep, Dodge WC54
-ambulance, GMC engineer truck, M8 Greyhound armoured car, DUKW amphibian, M4 Sherman, Studebaker
+ambulance, GMC engineer truck, M8 Greyhound armoured car, DUKW amphibian, the M5 Stuart, M4 Sherman and M26 Pershing (light, medium and heavy tanks), Studebaker
 with a Katyusha launcher, a Sikorsky-style helicopter, P-51 Mustang, P-47 Thunderbolt, B-25
 Mitchell and C-47 Dakota; drivers, gunners and commanders ride in them, and the headquarters, emplacements (MG nest with its gunner, field gun,
 AA gun, watchtower with a lookout) and fortifications (sandbags, brick walls, barbed wire, oil drums, tank traps, mines)

@@ -60,7 +60,9 @@ export function aiDeploy(sim, teamId, seed) {
   // --- vehicles ---
   const vehiclePlan = [];
   const m = budget();
-  if (m > 700) vehiclePlan.push('tank');
+  if (m > 1100 && (enemyArmor > 300 || rng() < 0.35)) vehiclePlan.push('tank_heavy');
+  else if (m > 700) vehiclePlan.push('tank');
+  if (m > 450 && rng() < (enemyInf > 200 ? 0.45 : 0.25)) vehiclePlan.push('tank_light');
   if (m > 500 && (enemyInf > 200 || rng() < 0.4)) vehiclePlan.push(rng() < 0.5 ? 'apc' : 'jeep');
   if (sim.round >= 2 && m > 800 && rng() < 0.4) vehiclePlan.push('rockets');
   if (m > 450 && rng() < 0.35) vehiclePlan.push(rng() < 0.5 ? 'amphib' : 'jeep');

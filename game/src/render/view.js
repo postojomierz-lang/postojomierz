@@ -19,13 +19,13 @@ import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
   rifleman: [0.82, 0.87], para: [0.82, 0.87], officer: [0.51, 0.9], grenadier: [-0.12, 1.04], bazooka: [0.49, 0.68], manpads: [0.36, 1.09], medic: [0.3, 0.8],
-  sniper: [0.88, 0.87], mg: [0.78, 0.81], jeep: [0.26, 1.05], apc: [1.26, 0.98], amphib: [0.4, 1.36], tank: [2.1, 1.09], rockets: [0.05, 1.37],
+  sniper: [0.88, 0.87], mg: [0.78, 0.81], jeep: [0.26, 1.05], apc: [1.26, 0.98], amphib: [0.4, 1.36], tank: [2.1, 1.09], tank_light: [1.14, 0.98], tank_heavy: [2.7, 1.18], rockets: [0.05, 1.37],
   heli: [0.45, -0.16], fighter: [0.5, -0.08], attacker: [0.24, -0.21], bomber: [0, -0.25], transport: [-0.65, -0.1],
   mgnest: [1.0, 0.62], fieldgun: [1.85, 1.1], aa: [0.95, 1.75], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
 // the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)
 const POSE_MUZZLE = { 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
-const HEIGHT = { mg: 0.95, tank: 1.5, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
+const HEIGHT = { mg: 0.95, tank: 1.5, tank_light: 1.3, tank_heavy: 1.6, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
 const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4 };
 const CREW_SCALE = new THREE.Vector3(0.82, 0.82, 0.82);
 const isAir = def => def.cls === 'air' || def.cls === 'plane';
@@ -508,7 +508,7 @@ export class View {
       v.trackAcc += moved;
       if (v.trackAcc > 0.22) {
         v.trackAcc = 0;
-        this.fx.track(g.position.x, g.position.z, Math.cos(v.yaw), -Math.sin(v.yaw), e.type === 'tank' ? 0.62 : 0.5, e.type === 'tank');
+        this.fx.track(g.position.x, g.position.z, Math.cos(v.yaw), -Math.sin(v.yaw), def.tracked || 0.5, !!def.tracked);
       }
     }
     // toy-style animation
@@ -523,10 +523,10 @@ export class View {
       const fwdX = Math.cos(v.yaw), fwdZ = -Math.sin(v.yaw);
       const rk = (now - v.fireAt) / (def.vehicle || def.static ? 260 : 120);
       if (rk < 1) {
-        const kick = (1 - rk) * (e.type === 'tank' || e.type === 'fieldgun' ? 0.18 : def.vehicle || def.static ? 0.06 : 0.07);
+        const kick = (1 - rk) * (def.tracked || e.type === 'fieldgun' ? 0.18 : def.vehicle || def.static ? 0.06 : 0.07);
         if (!def.static || e.type === 'fieldgun') { g.position.x -= fwdX * kick; g.position.z -= fwdZ * kick; }
-        if (e.type === 'tank') v.pivot.rotation.z = kick * 0.6;
-      } else if (e.type === 'tank') v.pivot.rotation.z = 0;
+        if (def.tracked) v.pivot.rotation.z = kick * 0.6;
+      } else if (def.tracked) v.pivot.rotation.z = 0;
       const wk = (now - v.wobbleAt) / 380;
       if (def.cls === 'infantry' && wk < 1) v.pivot.rotation.x = Math.sin(wk * 22) * 0.22 * (1 - wk);
       else if (def.cls === 'infantry') v.pivot.rotation.x = 0;

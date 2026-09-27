@@ -555,6 +555,109 @@ def tank():
     m.cyl('dark', (-0.6, 1.25, -0.4), (-0.6, 2.1, -0.4), 0.007, seg=6)
     m.finish()
 
+def roadwheel(m, c, r, w, spokes=6, dual=True):
+    """a rubber-tyred road wheel (a pair when dual) with spokes, axle along z."""
+    x, y, z = c
+    for zz in ((z - w * 0.55, z + w * 0.55) if dual else (z,)):
+        m.lathe('main', [(0.0, -w / 2), (r * 0.8, -w / 2), (r, -w * 0.3), (r, w * 0.3), (r * 0.8, w / 2), (0.0, w / 2)], (x, y, zz), (0, 0, 1), seg=26)
+        o = 1 if zz >= z else -1
+        for i in range(spokes):
+            a = i / spokes * 2 * math.pi
+            m.box('main', (x + math.cos(a) * r * 0.42, y + math.sin(a) * r * 0.42, zz + o * (w / 2 + 0.002)), (r * 0.55, r * 0.14, 0.006), pitch=a, bevel=0.0)
+        m.cyl('main', (x, y, zz + o * w / 2), (x, y, zz + o * (w / 2 + 0.02)), r * 0.22, seg=12)
+
+def sprocket(m, c, r, w, teeth=13):
+    x, y, z = c
+    m.lathe('main', [(0.0, -w / 2), (r * 0.94, -w / 2), (r * 0.94, w / 2), (0.0, w / 2)], c, (0, 0, 1), seg=26)
+    for i in range(teeth):
+        a = i / teeth * 2 * math.pi
+        m.box('main', (x + math.cos(a) * r, y + math.sin(a) * r, z), (r * 0.24, r * 0.3, w * 0.9), pitch=a, bevel=0.004)
+    m.cyl('main', (x, y, z + (w / 2 if z > 0 else -w / 2)), (x, y, z + (w / 2 + 0.03 if z > 0 else -w / 2 - 0.03)), r * 0.35, seg=14)
+
+def arc_pts(cx, cy, r, a0, a1, n):
+    return [(cx + math.cos(a0 + (a1 - a0) * k / n) * r, cy + math.sin(a0 + (a1 - a0) * k / n) * r) for k in range(n + 1)]
+
+def tank_light():
+    """M5 Stuart light tank: boxy hull with a sloped glacis and driver hoods, two VVSS bogies a
+    side, a big trailing idler on the ground, small turret with the 37 mm gun and a .30 cal."""
+    m = Model('tank_light')
+    for s in (1, -1):
+        z = s * 0.5
+        for bx in (-0.34, 0.36): bogie(m, bx, z, s)
+        sprocket(m, (0.8, 0.36, z), 0.14, 0.12, 11)
+        m.lathe('main', [(0.0, -0.06), (0.12, -0.06), (0.13, 0.0), (0.12, 0.06), (0.0, 0.06)], (-0.84, 0.15, z), (0, 0, 1), seg=24)   # trailing idler
+        path = [(-0.84, 0.03), (0.55, 0.03)] + arc_pts(0.8, 0.36, 0.17, -1.9, 1.45, 8) + [(0.3, 0.56), (-0.4, 0.56)] + arc_pts(-0.84, 0.15, 0.155, 1.3, 4.6, 7)
+        m.track_loop(path, z, 0.24)
+    m.loft('main', [(-0.95, 0.2, 0.55, 0.36, 8), (0.72, 0.2, 0.55, 0.36, 8)], bevel=0.01)
+    m.loft('main', [(0.68, 0.22, 0.58, 0.38, 5), (0.86, 0.26, 0.58, 0.37, 4), (0.95, 0.4, 0.58, 0.32, 3)], seg=32)   # rounded nose
+    m.loft('main', [(-0.98, 0.52, 0.82, 0.6, 12), (0.3, 0.52, 0.86, 0.62, 12), (0.6, 0.52, 0.82, 0.62, 12), (0.96, 0.52, 0.58, 0.6, 12)], bevel=0.012)
+    for z in (-0.24, 0.24):                                                             # driver's hoods
+        m.box('main', (0.42, 0.9, z), (0.3, 0.1, 0.24), bevel=0.02)
+        m.box('dark', (0.58, 0.9, z), (0.02, 0.03, 0.14), bevel=0.0)
+    m.lathe('main', [(0.0, -0.03), (0.06, -0.02), (0.07, 0.03), (0.0, 0.06)], (0.82, 0.68, 0.22), (0.8, 0.6, 0), seg=16)   # bow MG
+    m.cyl('dark', (0.86, 0.7, 0.22), (1.0, 0.66, 0.22), 0.012, seg=8)
+    for s in (1, -1):
+        m.headlamp((0.92, 0.66, s * 0.52), 0.04, guard=True)
+        m.box('main', (-0.2, 0.84, s * 0.63), (0.6, 0.02, 0.03), bevel=0.004)
+    for k in range(6): m.box('dark', (-0.8 + k * 0.05, 0.865, 0), (0.02, 0.01, 0.7), bevel=0.0)
+    m.cyl('dark', (-0.92, 0.9, -0.4), (-0.92, 0.9, 0.4), 0.06, seg=14)                    # bedroll
+    # turret
+    m.loft('main', [(-0.45, 0.86, 1.08, 0.3, 4), (-0.35, 0.86, 1.12, 0.36, 5), (0.15, 0.86, 1.12, 0.36, 5), (0.26, 0.86, 1.06, 0.3, 4)], seg=32, bevel=0.01)
+    m.box('main', (0.3, 0.98, 0), (0.1, 0.16, 0.22), bevel=0.02)                         # mantlet
+    m.lathe('main', [(0.035, 0.0), (0.03, 0.25), (0.022, 0.3), (0.022, 0.78), (0.027, 0.8), (0.0, 0.8)], (0.34, 0.98, 0), (1, 0, 0), seg=14)
+    m.cyl('main', (-0.12, 1.12, 0.18), (-0.12, 1.15, 0.18), 0.11, seg=20, bevel=0.01)    # hatch
+    m.cyl('main', (-0.1, 0.95, -0.37), (-0.1, 1.2, -0.37), 0.015, seg=8)                  # AA pintle
+    m.mg((-0.08, 1.24, -0.37), 0.45)
+    m.cyl('dark', (-0.3, 1.1, 0.25), (-0.3, 1.8, 0.25), 0.006, seg=6)
+    m.finish()
+
+def tank_heavy():
+    """M26 Pershing heavy tank: six big road wheels a side on torsion bars, return rollers, drive
+    sprocket at the back, a long low hull with a sloped glacis, and a large turret with the
+    90 mm gun and its muzzle brake."""
+    m = Model('tank_heavy')
+    for s in (1, -1):
+        z = s * 0.78
+        for k in range(6):
+            x = -0.98 + k * 0.4
+            roadwheel(m, (x, 0.17, z), 0.16, 0.1)
+            m.box('main', (x + 0.14, 0.28, z - s * 0.13), (0.3, 0.05, 0.05), pitch=0.35, bevel=0.01)   # torsion arms
+        for k in range(5): m.lathe('main', [(0.0, -0.05), (0.05, -0.05), (0.05, 0.05), (0.0, 0.05)], (-0.8 + k * 0.4, 0.62, z), (0, 0, 1), seg=12)
+        sprocket(m, (-1.32, 0.45, z), 0.18, 0.2, 13)
+        m.lathe('main', [(0.0, -0.1), (0.15, -0.1), (0.16, 0.0), (0.15, 0.1), (0.0, 0.1)], (1.32, 0.42, z), (0, 0, 1), seg=24)
+        path = [(-1.1, 0.03), (1.1, 0.03)] + arc_pts(1.32, 0.42, 0.19, -1.8, 1.7, 8) + [(0.8, 0.69), (0.0, 0.69), (-0.8, 0.69)] + arc_pts(-1.32, 0.45, 0.21, 1.5, 4.5, 8)
+        m.track_loop(path, z, 0.34)
+        m.box('main', (0.0, 0.78, z), (2.9, 0.025, 0.4), bevel=0.006)                    # fender
+    m.loft('main', [(-1.35, 0.2, 0.7, 0.58, 8), (1.2, 0.2, 0.7, 0.58, 8)], bevel=0.01)
+    m.loft('main', [(-1.45, 0.66, 0.92, 0.96, 12), (-1.3, 0.62, 0.98, 1.0, 12), (0.55, 0.62, 1.0, 1.0, 12), (1.45, 0.62, 0.66, 0.98, 12), (1.5, 0.45, 0.62, 0.6, 8)], bevel=0.012)
+    for z in (-0.3, 0.3):
+        m.box('main', (0.68, 0.98, z), (0.26, 0.04, 0.26), bevel=0.02, pitch=-0.36)
+        m.box('dark', (0.6, 1.03, z), (0.03, 0.05, 0.05), bevel=0.0)
+    m.lathe('main', [(0.0, -0.03), (0.075, -0.02), (0.09, 0.03), (0.06, 0.07), (0.0, 0.08)], (1.12, 0.78, 0.35), (0.93, 0.36, 0), seg=18)
+    m.cyl('dark', (1.18, 0.8, 0.35), (1.36, 0.73, 0.35), 0.015, seg=8)
+    for s in (1, -1):
+        m.headlamp((1.38, 0.72, s * 0.7), 0.05, guard=True)
+        m.box('main', (1.46, 0.5, s * 0.35), (0.06, 0.08, 0.06), bevel=0.01)
+        m.box('main', (-0.5, 1.0, s * 0.96), (0.9, 0.03, 0.03), bevel=0.005)          # tools
+    for k in range(10): m.box('dark', (-1.25 + k * 0.05, 0.995, 0), (0.02, 0.012, 1.3), bevel=0.0)   # engine grilles
+    m.box('main', (-1.46, 0.8, 0), (0.05, 0.22, 1.5), bevel=0.01)
+    for z in (-0.5, 0.5): m.cyl('dark', (-1.48, 0.72, z), (-1.56, 0.72, z), 0.06, seg=14)   # exhausts
+    # turret: big and boxy-cast, bustle at the back
+    m.loft('main', [(-1.02, 1.0, 1.3, 0.42, 3), (-0.9, 0.98, 1.38, 0.56, 3.2), (-0.3, 0.97, 1.42, 0.64, 3.4), (0.35, 0.97, 1.4, 0.62, 3.2), (0.55, 1.0, 1.3, 0.5, 3)], seg=44)
+    m.lathe('main', [(0.66, -0.02), (0.68, 0.0), (0.68, 0.05), (0.0, 0.05)], (-0.2, 0.95, 0), (0, 1, 0), seg=40)
+    m.loft('main', [(0.5, 1.02, 1.34, 0.36, 4), (0.7, 1.04, 1.3, 0.32, 4)], seg=28)       # mantlet
+    m.lathe('main', [(0.075, 0.0), (0.065, 0.3), (0.055, 0.35), (0.055, 0.9), (0.075, 0.95), (0.075, 1.1), (0.055, 1.15), (0.055, 1.85), (0.0, 1.85)], (0.7, 1.18, 0), (1, 0, 0), seg=18)
+    m.lathe('main', [(0.0, 0.0), (0.085, 0.0), (0.085, 0.07), (0.07, 0.08), (0.07, 0.12), (0.085, 0.13), (0.085, 0.2), (0.0, 0.2)], (2.5, 1.18, 0), (1, 0, 0), seg=18)   # double-baffle muzzle brake
+    for zz in (-0.09, 0.09): m.box('dark', (2.53, 1.18, zz), (0.05, 0.08, 0.02), bevel=0.0)
+    m.cyl('dark', (0.72, 1.12, -0.2), (0.85, 1.12, -0.2), 0.014, seg=8)
+    m.lathe('main', [(0.2, 0.0), (0.2, 0.08), (0.14, 0.12), (0.0, 0.13)], (-0.45, 1.4, 0.3), (0, 1, 0), seg=28)   # cupola
+    m.cyl('main', (-0.35, 1.42, -0.3), (-0.35, 1.45, -0.3), 0.14, seg=24, bevel=0.01)
+    m.cyl('main', (-0.7, 1.38, -0.05), (-0.7, 1.55, -0.05), 0.02, seg=8)
+    m.mg((-0.68, 1.59, -0.05), 0.6)
+    m.box('main', (-1.08, 1.12, 0), (0.1, 0.18, 0.7), bevel=0.03)                        # bustle rack
+    m.cyl('dark', (-0.9, 1.35, -0.45), (-0.9, 2.2, -0.45), 0.007, seg=6)
+    m.finish()
+
 def rockets():
     """Studebaker US6 with a BM-13 'Katyusha' launcher: cab and bonnet, six wheels, eight rails
     with sixteen rockets on a raised frame, and stabiliser jacks."""
@@ -791,7 +894,7 @@ def chute():
     m.box('dark', (0, 0.78, 0), (0.05, 0.03, 0.14), bevel=0.005)                               # connector links
     m.finish()
 
-MODELS = {'jeep': jeep, 'ambulance': ambulance, 'engtruck': engtruck, 'apc': apc, 'amphib': amphib, 'tank': tank, 'rockets': rockets,
+MODELS = {'jeep': jeep, 'ambulance': ambulance, 'engtruck': engtruck, 'apc': apc, 'amphib': amphib, 'tank': tank, 'tank_light': tank_light, 'tank_heavy': tank_heavy, 'rockets': rockets,
           'heli': heli, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'transport': transport, 'chute': chute}
 
 if __name__ == '__main__':
