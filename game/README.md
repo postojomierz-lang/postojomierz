@@ -148,6 +148,10 @@ the Italian Salvator with its crown pulled down (the Americans keep the T-5).
 Each army is moulded in its nation's colour (`src/data/nations.js`): American green, German field
 grey, Soviet red, British khaki tan, Japanese white, French horizon blue and Italian black; a second
 army of the same nation, or one whose colour is taken, gets the first free colour.
+Every ground vehicle flies its nation's flag in its real colours from a staff at the back
+(`src/render/flags.js`, placed on the hull by a ray cast down onto the model): the 48-star flag, the
+Balkenkreuz on field grey, the Soviet red with its star and hammer and sickle, the Union Jack, the
+Hinomaru, the French tricolour and the Italian one with the shield of Savoy.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)

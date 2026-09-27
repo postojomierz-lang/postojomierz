@@ -6,6 +6,7 @@ import { VEHICLES, VEHICLE_SCALE } from '../data/vehicles.js';
 import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three';
+import { vehicleFlag } from './flags.js';
 
 // The army men (tools/blender/army_men.py): which figure each unit type and pose uses.
 const FIGURE_FOR = {
@@ -140,6 +141,7 @@ const ROTORS = { us: { rotors: [[0.3, 0.7, 0, 0, 1]], tail: [-1.85, 0.45, 0.06] 
   jp: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },                                          // the Kayaba autogyro
   fr: { rotors: [[0.1, 0.84, 0, 0, 1]], tail: null },                                         // the LeO-built Cierva
   it: { rotors: [[0.0, 0.86, 0, 0, 1], [0.0, 0.98, 0, 0, -1]], tail: null } };                 // D'Ascanio's coaxial pair
+const FLAGGED = new Set(['jeep', 'ambulance', 'engtruck', 'apc', 'amphib', 'tank_light', 'tank', 'tank_heavy', 'rockets']);
 // Toy vehicles and aircraft modelled in Blender (tools/blender/vehicles.py and vehicles_<nation>.py).
 function buildVehicle(key, nation = 'us') {
   const v = vehData(key, nation), g = (p, c) => figureGeometry(p, c, VEHICLE_SCALE, true);
@@ -160,6 +162,11 @@ function buildVehicle(key, nation = 'us') {
     out.far.main = mergeGeometries([out.far.main, ...crews.map(([f, x, y, z]) => crew(figure(f, nation).far.main, x, y, z, CREW_SCALE))]);
   }
   if (key === 'mgnest') out.turret.main = mergeGeometries([out.turret.main, crew(figure('gunner', nation).main, -0.12, 0.04, 0)]);
+  // ground vehicles fly their nation's flag from a staff at the back
+  if (FLAGGED.has(key)) {
+    const parts = vehicleFlag(out.main, nation);
+    out.accent = mergeGeometries(out.accent ? [out.accent, ...parts] : parts);
+  }
   if (key === 'tower') {
     out.main = mergeGeometries([out.main, crew(figure('lookout', nation).main, -0.15, 2.62, 0.25)]);
     out.far.main = mergeGeometries([out.far.main, crew(figure('lookout', nation).far.main, -0.15, 2.62, 0.25)]);
