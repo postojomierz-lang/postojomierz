@@ -506,10 +506,15 @@ $('btnHelp').onclick = () => $('dlgHelp').showModal();
 // presses Ready and sends the list to the host. When all orders are in, the host sends everyone the
 // full set; each browser takes back its own draft pieces and places everybody's pieces in the same
 // order, so all copies stay identical, and the battle plays out the same way everywhere.
-const online = { host: null, client: null, players: [], myName: '', beat: 0 };   // lobby state
+// If the host leaves, the next player (lowest army number) takes over as host: everyone knows the
+// list of players, the new host opens the room "<code>-<n>-<army>", the others reconnect to it and
+// re-send what they had (their orders, or the last round start they received), so all copies stay
+// identical. The old host's army is handed to the computer.
+const online = { host: null, client: null, players: [], beat: 0, room: '' };   // connection + lobby state
 // heartbeat: players say "still here" every few seconds; the host drops anyone silent for a minute
 // (browsers slow down timers in background tabs, so be patient; quicker in local test mode)
-const BEAT_MS = 4000, SILENT_MS = new URLSearchParams(location.search).has('localnet') ? 30000 : 60000;
+const LOCALNET = new URLSearchParams(location.search).has('localnet');
+const BEAT_MS = 4000, SILENT_MS = LOCALNET ? 30000 : 60000, RESUME_MS = LOCALNET ? 15000 : 30000;
 
 function markDeploy() {
   const net = game.net, sim = game.sim;
@@ -523,10 +528,10 @@ function submitOrders() {
   net.sentRound = sim.round;
   const t = sim.teams[me];
   const placements = sim.orders.filter(o => !o.kind && o.round === sim.round && o.team === me).map(o => [o.type, o.cx, o.cy, o.rot]);
-  const msg = { t: 'orders', round: sim.round, team: me, hash: net.deploy.hash, placements, focus: t.focus, stance: t.stance };
+  const msg = net.sentOrders = { t: 'orders', round: sim.round, team: me, hash: net.deploy.hash, placements, focus: t.focus, stance: t.stance };
   setTool(null); refresh();
   if (t.alive) toast('Ready — waiting for the other players…');
-  if (net.role === 'host') hostOrders(msg); else online.client.send(msg);
+  if (net.role === 'host') hostOrders(msg); else if (online.client) online.client.send(msg);
 }
 
 // host: collect orders; when every connected player has sent theirs, start the round for everybody
@@ -557,7 +562,8 @@ function tryGo() {
 // everybody: replace our draft with the full set of orders and start the battle
 function applyGo(go) {
   const net = game.net, sim = game.sim;
-  if (!net || sim.round !== go.round || sim.phase !== 'deploy') return;
+  if (!net || sim.round !== go.round || sim.phase !== 'deploy') return false;
+  net.lastGo = go;
   if (go.desync) toast('Warning: the games got out of step — results may differ between players.', false, true);
   for (const e of [...sim.ents]) {
     if (e.team === game.human && e.placedRound === sim.round && !e.free && !e.dead && e.def.cls !== 'hq') sim.sell(game.human, e.id);
@@ -579,6 +585,7 @@ function applyGo(go) {
   }
   flushEvents();
   launchBattle();
+  return true;
 }
 
 function leaveOnline() {
@@ -613,13 +620,14 @@ function netSettings() {
 }
 function preferredColor() { return Math.max(0, TEAM_COLORS.findIndex(c => c.id === settings.color)); }
 
-async function hostGame() {
-  leaveOnline();
-  $('netStatus').textContent = 'Opening a room…';
+// ---- the host (the one who opened the room, or whoever took over)
+function makeHost() {
   const host = new Host({
-    net: netSettings(),
+    net: settings.net || {},
     onHello: (id, msg) => {
-      if (game.net || online.players.length >= 8) { host.send(id, { t: 'full' }); host.kick(id); return; }
+      const net = game.net;
+      if (msg.resume && net) return playerResumed(id, msg);
+      if (net || online.players.length >= 8) { host.send(id, { t: 'full' }); host.kick(id); return; }
       const p = { id, name: String(msg.name || 'Player').slice(0, 16), color: +msg.color || 0, seen: Date.now(), route: '' };
       online.players.push(p);
       lobbySync();
@@ -630,24 +638,58 @@ async function hostGame() {
       p.seen = Date.now();
       if (msg.t === 'orders' && game.net && p.team === msg.team) hostOrders(msg);
     },
-    onLeave: id => playerLeft(id),
+    onLeave: id => { const p = online.players.find(p => p.id === id); if (p) playerLeft(p); },
   });
-  const playerLeft = id => {
-    const p = online.players.find(p => p.id === id); if (!p) return;
-    if (!game.net) { online.players = online.players.filter(q => q !== p); lobbySync(); return; }
-    if (game.net.dropped.has(p.team)) return;
-    p.gone = true;
-    game.net.dropped.add(p.team);
-    toast(`${p.name} left the game — the computer takes over their army`, false, true);
-    host.broadcast({ t: 'left', name: p.name });
-    tryGo();
-  };
+  clearInterval(online.beat);
   online.beat = setInterval(() => {
-    for (const p of [...online.players]) if (p.id && !p.gone && Date.now() - p.seen > SILENT_MS) { p.gone = true; host.kick(p.id); playerLeft(p.id); }
+    for (const p of [...online.players]) {
+      if (p.me || p.gone) continue;
+      const limit = p.id ? SILENT_MS : RESUME_MS;                 // waiting to reconnect after a hand-over: shorter
+      if (Date.now() - p.seen > limit) { if (p.id) host.kick(p.id); playerLeft(p); }
+    }
+    if (game.net) host.broadcast({ t: 'ping' });                 // so the players know the host is still here
   }, BEAT_MS);
+  return host;
+}
+function playerLeft(p) {
+  if (!game.net) { online.players = online.players.filter(q => q !== p); lobbySync(); return; }
+  if (p.gone) return;
+  p.gone = true;
+  game.net.dropped.add(p.team);
+  toast(`${p.name} left the game — the computer takes over their army`, false, true);
+  online.host.broadcast({ t: 'left', name: p.name });
+  sendRoster();
+  tryGo();
+}
+// the list every player keeps, so they know who takes over if the host goes
+function sendRoster() {
+  const net = game.net; if (!net || !online.host) return;
+  net.roster = online.players.filter(p => !p.gone).map(p => ({ team: p.team, name: p.name }));
+  online.host.broadcast({ t: 'roster', roster: net.roster, hostTeam: game.human, gen: net.gen, room: online.room });
+}
+// a player reconnecting after a hand-over: bring them up to date
+function playerResumed(id, msg) {
+  const net = game.net, sim = game.sim;
+  const p = online.players.find(q => q.team === msg.team && !q.gone && !q.me);
+  if (!p) { online.host.send(id, { t: 'full' }); online.host.kick(id); return; }
+  p.id = id; p.seen = Date.now();
+  online.host.send(id, { t: 'roster', roster: net.roster, hostTeam: game.human, gen: net.gen, room: online.room });
+  // someone already started this round under the old host? then that is the round start for everybody
+  if (msg.lastGo && msg.lastGo.round === sim.round && sim.phase === 'deploy') { online.host.broadcast(msg.lastGo); applyGo(msg.lastGo); }
+  // they are still deploying but we already started: send them the same start
+  else if (net.lastGo && net.lastGo.round === msg.round && msg.phase === 'deploy') online.host.send(id, net.lastGo);
+  else if (msg.orders) hostOrders(msg.orders);
+  tryGo();
+}
+
+async function hostGame() {
+  leaveOnline();
+  netSettings();
+  $('netStatus').textContent = 'Opening a room…';
+  const host = makeHost();
   try {
     const code = await host.open();
-    online.host = host;
+    online.host = host; online.room = code;
     online.players = [{ id: null, name: myName(), color: preferredColor(), me: true }];
     $('netRoom').textContent = code;
     $('netStatus').textContent = 'Share the code or the invite link with your friends.';
@@ -659,29 +701,32 @@ function lobbySync() {
   lobbyRender();
 }
 
-async function joinGame(code) {
-  leaveOnline();
-  code = cleanCode(code);
-  if (code.length !== 5) { $('netStatus').textContent = 'The room code has 5 letters.'; return; }
-  $('netStatus').textContent = 'Connecting…';
+// ---- a player connected to someone else's room
+function makeClient() {
   const client = new Client({
-    net: netSettings(),
-    onMessage: msg => clientMessage(msg),
+    net: settings.net || {},
+    onMessage: msg => clientMessage(msg, client),
     onClose: () => {
       if (online.client !== client) return;
       online.client = null;
-      if (game.net) {
-        // play on alone: every other player's army is taken over by the computer
-        for (const t of game.sim.teams) if (t.id !== game.human) t.human = false;
-        game.net = null; refresh();
-        toast('Lost the connection to the host — the computer plays the other armies now.', false, true);
-      } else { $('netStatus').textContent = 'The host closed the room.'; online.players = []; lobbyRender(); }
+      if (game.net && !online.handing) handOver();
+      else if (game.net) { /* a try during the hand-over failed; handOver goes on */ }
+      else { $('netStatus').textContent = 'The host closed the room.'; online.players = []; lobbyRender(); }
     },
   });
+  return client;
+}
+async function joinGame(code) {
+  leaveOnline();
+  netSettings();
+  code = cleanCode(code);
+  if (code.length !== 5) { $('netStatus').textContent = 'The room code has 5 letters.'; return; }
+  $('netStatus').textContent = 'Connecting…';
+  const client = makeClient();
   try {
     await client.join(code, { name: myName(), color: preferredColor() });
-    online.client = client;
-    online.beat = setInterval(() => client.send({ t: 'ping' }), BEAT_MS);
+    online.client = client; online.room = code;
+    clientBeat();
     $('netRoom').textContent = code;
     $('netStatus').textContent = 'Connected — waiting for the host to start.';
     setTimeout(async () => {
@@ -692,20 +737,100 @@ async function joinGame(code) {
   } catch (e) { $('netStatus').textContent = 'Could not join: ' + (e.message || e.type || e); client.close(); }
 }
 
-async function clientMessage(msg) {
+// a player's heartbeat: say "still here", and notice a host that went silent (crashed, lost Wi-Fi)
+function clientBeat() {
+  online.heard = Date.now();
+  clearInterval(online.beat);
+  online.beat = setInterval(() => {
+    const c = online.client; if (!c) return;
+    c.send({ t: 'ping' });
+    if (game.net && !online.handing && Date.now() - online.heard > SILENT_MS) { c.close(); c.onClose(); }
+  }, BEAT_MS);
+}
+async function clientMessage(msg, client) {
+  const net = game.net;
+  if (client === online.client) online.heard = Date.now();
   if (msg.t === 'lobby') {
     online.players = msg.players.map((p, i) => ({ ...p, me: i === msg.you }));
     lobbyRender();
   } else if (msg.t === 'full') {
     $('netStatus').textContent = 'That game has already started or is full.';
   } else if (msg.t === 'start') {
-    game.net = { role: 'client', sentRound: 0, deploy: null };
+    game.net = { role: 'client', sentRound: 0, deploy: null, gen: 0, hostTeam: 0, roster: msg.roster, lastGo: null };
     $('dlgOnline').close(); if ($('dlgSetup').open) $('dlgSetup').close('online');
     await beginGame({ ...msg.setup, me: msg.you });
     toast('Online game — you are ' + msg.setup.armies[msg.you].name, false, true);
+  } else if (msg.t === 'roster' && net) {
+    net.roster = msg.roster; net.hostTeam = msg.hostTeam; net.gen = msg.gen; online.room = msg.room || online.room;
+    if (client) client.gotRoster = true;
   } else if (msg.t === 'go') applyGo(msg);
-  else if (msg.t === 'status') { if (game.net && game.net.sentRound === game.sim.round) toast(msg.text); }
+  else if (msg.t === 'status') { if (net && net.sentRound === game.sim.round) toast(msg.text); }
   else if (msg.t === 'left') toast(`${msg.name} left the game — the computer takes over their army`, false, true);
+}
+
+// ---- host hand-over
+// Everyone goes down the same list (players by army number, without the host that left): the first
+// one still around opens "<code>-<n>-<army>" and becomes the host; the rest connect to it.
+async function handOver() {
+  online.handing = true;
+  try { await passHost(); } finally { online.handing = false; online.heard = Date.now(); }
+}
+async function passHost() {
+  const net = game.net, sim = game.sim;
+  const oldHost = net.hostTeam;
+  net.gen++;
+  const cands = net.roster.filter(p => p.team !== oldHost).sort((a, b) => a.team - b.team);
+  toast('The host left — passing the game to the next player…', false, true);
+  for (const c of cands) {
+    const room = `${online.room}-${net.gen}-${c.team}`;
+    if (c.team === game.human) { await becomeHost(room, cands, oldHost); return; }
+    const client = await reconnect(room, 14000);
+    if (client) {
+      online.client = client; net.hostTeam = c.team; clientBeat();
+      toast(`${c.name} is the host now`, false, true);
+      return;
+    }
+  }
+  // nobody left to connect to: play on against the computer
+  for (const t of sim.teams) if (t.id !== game.human) t.human = false;
+  clearInterval(online.beat);
+  game.net = null; refresh();
+  toast('Lost the connection to the other players — the computer plays their armies now.', false, true);
+}
+// keep knocking on the new host's door for a while (it needs a moment to open)
+async function reconnect(room, ms) {
+  const net = game.net, sim = game.sim, until = Date.now() + ms;
+  while (Date.now() < until && game.net === net) {
+    const client = makeClient();
+    try {
+      await client.join(room, {
+        resume: true, team: game.human, name: sim.teams[game.human].name, round: sim.round, phase: sim.phase,
+        lastGo: net.lastGo, orders: net.sentRound === sim.round && sim.phase === 'deploy' ? net.sentOrders : null,
+      });
+      online.client = client;                      // so its messages are handled while we wait for the roster
+      const t0 = Date.now();
+      while (!client.gotRoster && Date.now() - t0 < 3000) await new Promise(r => setTimeout(r, 200));
+      if (client.gotRoster) return client;
+    } catch { /* not open yet */ }
+    if (online.client === client) online.client = null;
+    client.close();
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  return null;
+}
+async function becomeHost(room, cands, oldHost) {
+  const net = game.net, sim = game.sim;
+  const host = makeHost();
+  try { await host.open(room); }
+  catch (e) { console.warn('hand-over: could not open', room, e); }
+  online.host = host; online.client = null;
+  net.role = 'host'; net.pending = new Map(); net.dropped = new Set([...(net.dropped || []), oldHost]);
+  net.hostTeam = game.human;
+  online.players = cands.map(c => ({ id: null, team: c.team, name: c.name, color: sim.teams[c.team].color, me: c.team === game.human, seen: Date.now() }));
+  net.roster = cands.map(c => ({ team: c.team, name: c.name }));
+  toast('You are the host now', false, true);
+  if (net.sentRound === sim.round && sim.phase === 'deploy' && net.sentOrders) hostOrders(net.sentOrders);
+  tryGo();
 }
 
 async function startOnline() {
@@ -715,11 +840,12 @@ async function startOnline() {
   const setup = await prepareMap({ photo: $('optPhoto').files[0] || null, mapFile: $('optMapFile').files[0] || null, drawing: $('optDrawing').files[0] || null }, null, n);
   // colours: everyone keeps their favourite unless somebody earlier already took it
   const used = new Set(), pick = c => { if (used.has(c)) c = TEAM_COLORS.findIndex((_, i) => !used.has(i)); used.add(c); return c; };
-  const armies = online.players.map((p, i) => { p.team = i; return { name: p.name, color: pick(p.color), human: true }; });
+  const armies = online.players.map((p, i) => { p.team = i; p.seen = Date.now(); return { name: p.name, color: pick(p.color), human: true }; });
   while (armies.length < n) { const c = pick(0); armies.push({ name: TEAM_COLORS[c].name + ' army (computer)', color: c, human: false }); }
   const full = { ...setup, armies, diff: settings.diff };
-  online.players.forEach((p, i) => { if (p.id) host.send(p.id, { t: 'start', setup: full, you: i }); });
-  game.net = { role: 'host', sentRound: 0, deploy: null, pending: new Map(), dropped: new Set() };
+  const roster = online.players.map(p => ({ team: p.team, name: p.name }));
+  online.players.forEach((p, i) => { if (p.id) host.send(p.id, { t: 'start', setup: full, you: i, roster }); });
+  game.net = { role: 'host', sentRound: 0, deploy: null, pending: new Map(), dropped: new Set(), gen: 0, hostTeam: 0, roster, lastGo: null };
   $('dlgOnline').close(); if ($('dlgSetup').open) $('dlgSetup').close('online');
   await beginGame({ ...full, me: 0 });
   toast('Online game started — press Ready when your army is set', false, true);
