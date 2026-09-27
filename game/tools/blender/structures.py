@@ -1,7 +1,8 @@
-# The American headquarters and everyone's fortifications (sandbags, walls, wire, barrels, tank
-# traps, mines) for Plastic Front, modelled in Blender in the same moulded-plastic toy style as the
-# vehicles (see vehicles.py for the helpers and conventions). The gun emplacements and towers of
-# every army, the Americans included, are in structures_nations.py.
+# The American headquarters and fortifications (sandbags, walls, wire, oil drum, tank trap) for
+# Plastic Front, modelled in Blender in the same moulded-plastic toy style as the vehicles (see
+# vehicles.py for the helpers and conventions). The gun emplacements and towers of every army, the
+# Americans included, the other armies' fortifications and everyone's mines are in
+# structures_nations.py.
 #
 #   python tools/blender/structures.py [name ...]
 #
@@ -215,26 +216,9 @@ def tanktrap():
     m.box('dark', (0, 0.38, 0), (0.14, 0.14, 0.14), bevel=0.02)                               # welded gusset
     m.finish()
 
-def mine_at():
-    """a Teller-type anti-tank mine, half dug in: a flat steel drum with a pressure cap."""
-    m = Model('mine_at')
-    m.cyl('dark', (0, 0.0, 0), (0, 0.06, 0), 0.2, seg=24, bevel=0.01)
-    m.torus('dark', (0, 0.055, 0), (0, 1, 0), 0.19, 0.012, seg=24)
-    m.cyl('main', (0, 0.06, 0), (0, 0.085, 0), 0.08, seg=16, bevel=0.005)
-    m.box('main', (0.21, 0.035, 0), (0.04, 0.02, 0.07), bevel=0.0)                           # carrying handle
-    m.finish()
-
-def mine_ap():
-    """an anti-personnel "S" mine: a small can with its three-pronged fuse sticking out."""
-    m = Model('mine_ap')
-    m.cyl('dark', (0, 0.0, 0), (0, 0.06, 0), 0.08, seg=16, bevel=0.006)
-    m.cyl('main', (0, 0.06, 0), (0, 0.11, 0), 0.015, seg=8)
-    for a in (0, 2.1, 4.2): m.cyl('main', (0, 0.1, 0), (math.cos(a) * 0.035, 0.13, math.sin(a) * 0.035), 0.006, seg=5)
-    m.finish()
-
 MODELS = {'hq': hq,
           'sandbags0': lambda: sandbags(0), 'sandbags1': lambda: sandbags(1), 'wall0': lambda: wall(0), 'wall1': lambda: wall(1),
-          'wire': wire, 'barrel': barrel, 'tanktrap': tanktrap, 'mine_at': mine_at, 'mine_ap': mine_ap}
+          'wire': wire, 'barrel': barrel, 'tanktrap': tanktrap}
 
 if __name__ == '__main__':
     only = sys.argv[1:]
