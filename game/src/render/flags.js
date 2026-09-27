@@ -64,32 +64,34 @@ const PATTERNS = {
   },
 };
 
-// the flag and its staff, standing on the hull at (x, y, z) and flying towards the back (-x)
-function flagMesh(pattern, x, y, z) {
+// a flag of w x h flying from the top of its staff at (x, top, z) towards dir (+1 or -1 along x),
+// waving by `wave`; with a staff from y0 up, or none (when it hangs on a pole of the model)
+function flagMesh(pattern, { x, top, z, dir = -1, w = W, h = H, wave = 0.035, y0 = null, gap = 0.004 }) {
   const pos = [], nor = [], col = [];
-  const top = y + STAFF;
-  const at = (u, v) => [x - 0.02 - u * W, top - H + v * H, z + Math.sin(u * 5.2 + 0.4) * 0.035 * u];
+  const at = (u, v) => [x + dir * (0.02 + u * w), top - h + v * h, z + Math.sin(u * 5.2 + 0.4) * wave * u];
   const quad = (a, b, c, d, n, rgb) => { for (const p of [a, b, c, a, c, d]) { pos.push(...p); nor.push(...n); col.push(...rgb); } };
   for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) {
     const u0 = i / NU, u1 = (i + 1) / NU, v0 = j / NV, v1 = (j + 1) / NV;
     const rgb = pattern((u0 + u1) / 2, (v0 + v1) / 2);
     const a = at(u0, v0), b = at(u1, v0), c = at(u1, v1), d = at(u0, v1);
-    const off = (p, k) => [p[0], p[1], p[2] + k * 0.004];
-    quad(off(a, 1), off(b, 1), off(c, 1), off(d, 1), [0, 0, 1], rgb);                   // one face each side
-    quad(off(a, -1), off(d, -1), off(c, -1), off(b, -1), [0, 0, -1], rgb);
+    const off = (p, k) => [p[0], p[1], p[2] + k * gap];
+    const [f, bk] = dir < 0 ? [-1, 1] : [1, -1];                                        // one face each side, each facing out
+    quad(off(a, f), off(b, f), off(c, f), off(d, f), [0, 0, f], rgb);
+    quad(off(a, bk), off(d, bk), off(c, bk), off(b, bk), [0, 0, bk], rgb);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  const staff = new THREE.CylinderGeometry(0.012, 0.014, STAFF + 0.04, 8).toNonIndexed().translate(x, y + STAFF / 2, z);
-  const sc = new Float32Array(staff.attributes.position.count * 3).fill(0.3);
-  staff.setAttribute('color', new THREE.BufferAttribute(sc, 3));
-  staff.deleteAttribute('uv');
-  const knob = new THREE.SphereGeometry(0.022, 8, 6).toNonIndexed().translate(x, top + 0.03, z);
-  knob.setAttribute('color', new THREE.BufferAttribute(new Float32Array(knob.attributes.position.count * 3).fill(0.75), 3));
-  knob.deleteAttribute('uv');
+  if (y0 == null) return [g];
+  const staff = tinted(new THREE.CylinderGeometry(0.012, 0.014, top - y0 + 0.04, 8).translate(x, (top + y0) / 2, z), 0.3);
+  const knob = tinted(new THREE.SphereGeometry(0.022, 8, 6).translate(x, top + 0.03, z), 0.75);
   return [g, staff, knob];
+}
+function tinted(geo, grey) {
+  const g = geo.toNonIndexed(); g.deleteAttribute('uv');
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(grey), 3));
+  return g;
 }
 
 // a flag for the nation's vehicle `main` (its hull, crew included): the staff stands near the back
@@ -102,5 +104,96 @@ export function vehicleFlag(main, nation) {
   const mesh = new THREE.Mesh(main, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
   ray.set(new THREE.Vector3(x, b.max.y + 1, z), down);
   const hit = ray.intersectObject(mesh, false)[0];
-  return flagMesh(pattern, x, hit ? hit.point.y : b.max.y * 0.6, z);
+  const y = hit ? hit.point.y : b.max.y * 0.6;
+  return flagMesh(pattern, { x, top: y + STAFF, z, y0: y });
+}
+
+// the headquarters' flags: where each nation's model has its pole, the plain plastic flag's top
+// corner at the pole [x, y, z], and its size (the painted one covers it on both sides)
+const HQ_FLAGS = { us: [-1.37, 4.45, -1.2, 0.67, 0.43, 0.02], de: [0.9, 2.98, 0.9], su: [0.8, 2.88, -0.9], gb: [1.8, 2.58, 1.0],
+  jp: [1.7, 2.78, -1.3], fr: [1.8, 2.78, -1.2], it: [1.8, 2.78, 1.2] };
+export function hqFlag(nation) {
+  const [x, top, z, w = 0.65, h = 0.42, t = 0.012] = HQ_FLAGS[nation] || HQ_FLAGS.us;
+  return flagMesh(PATTERNS[nation] || PATTERNS.us, { x: x - 0.02, top: top + 0.01, z, dir: 1, w: w + 0.01, h: h + 0.02, wave: 0, gap: t / 2 + 0.003 });
+}
+
+// ---- aircraft: the national markings on the wings and the sides of the fuselage
+const INSIGNIA = {
+  // the star and bars: a white star on a blue disc with white bars either side
+  us: (u, v) => {
+    const r = Math.hypot(u, v), a = Math.atan2(v, u);
+    if (Math.abs(v) < 0.2 && Math.abs(u) < 1 && Math.abs(u) > 0.5) return Math.abs(v) < 0.14 ? C.white : C.navy;
+    if (r > 0.5) return null;
+    const star = 0.47 * (0.45 + 0.55 * Math.cos(5 * (a - Math.PI / 2)) ** 10);
+    return r < Math.max(star, 0.18) ? C.white : C.navy;
+  },
+  // the Balkenkreuz
+  de: (u, v) => { const x = Math.abs(u), y = Math.abs(v); if (Math.max(x, y) > 0.8) return null; const m = Math.min(x, y); return m < 0.18 ? C.black : m < 0.3 ? C.white : null; },
+  // the red star, edged white and red
+  su: (u, v) => {
+    const r = Math.hypot(u, v), a = Math.atan2(v, u), s = 0.95 * (0.42 + 0.58 * Math.cos(5 * (a - Math.PI / 2)) ** 6);
+    return r < s - 0.14 ? C.red : r < s - 0.06 ? C.white : r < s ? C.red : null;
+  },
+  // the RAF roundel
+  gb: (u, v) => { const r = Math.hypot(u, v); return r < 0.32 ? C.red : r < 0.55 ? C.white : r < 0.85 ? C.navy : r < 0.95 ? C.yellow : null; },
+  // the Hinomaru, edged white
+  jp: (u, v) => { const r = Math.hypot(u, v); return r < 0.8 ? C.red : r < 0.95 ? C.white : null; },
+  // the cocarde: blue in the middle, white, red outside
+  fr: (u, v) => { const r = Math.hypot(u, v); return r < 0.32 ? C.fblue : r < 0.62 ? C.white : r < 0.95 ? C.fred : null; },
+  // the black roundel with the white fasces
+  it: (u, v) => {
+    const r = Math.hypot(u, v); if (r > 0.95) return null; if (r > 0.85) return C.white;
+    for (const x0 of [-0.35, 0, 0.35]) if (Math.abs(u - x0) < 0.08 && Math.abs(v) < 0.55) return C.white;
+    return C.black;
+  },
+};
+
+// a decal of `size` across lying on the surface at p (normal n), its u along the aircraft's length
+function decal(pattern, p, n, size) {
+  const N = new THREE.Vector3(n.x, n.y, n.z).normalize();
+  const T = new THREE.Vector3(1, 0, 0).addScaledVector(N, -N.x);
+  if (T.lengthSq() < 1e-4) T.set(0, 0, 1).addScaledVector(N, -N.z);
+  T.normalize(); const B = new THREE.Vector3().crossVectors(N, T);
+  const o = new THREE.Vector3(p.x, p.y, p.z).addScaledVector(N, 0.006), K = 16, pos = [], nor = [], col = [];
+  const at = (u, v) => o.clone().addScaledVector(T, u * size / 2).addScaledVector(B, v * size / 2);
+  for (let i = 0; i < K; i++) for (let j = 0; j < K; j++) {
+    const u0 = -1 + 2 * i / K, u1 = -1 + 2 * (i + 1) / K, v0 = -1 + 2 * j / K, v1 = -1 + 2 * (j + 1) / K;
+    const rgb = pattern((u0 + u1) / 2, (v0 + v1) / 2); if (!rgb) continue;
+    for (const [u, v] of [[u0, v0], [u1, v0], [u1, v1], [u0, v0], [u1, v1], [u0, v1]]) { pos.push(...at(u, v).toArray()); nor.push(N.x, N.y, N.z); col.push(...rgb); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
+
+// markings for an aircraft whose body is `main`: on the top of each wing, where it is widest, and
+// on both sides of the fuselage behind the wing. Helicopters (wings=false) get the fuselage only.
+export function aircraftMarkings(main, nation, { wings = true, big = false } = {}) {
+  const pattern = INSIGNIA[nation] || INSIGNIA.us, out = [];
+  main.computeBoundingBox();
+  const b = main.boundingBox, mesh = new THREE.Mesh(main, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  const hitAt = (o, d) => { ray.set(o, d); return ray.intersectObject(mesh, false)[0]; };
+  if (wings) {
+    const span = Math.max(-b.min.z, b.max.z), steps = 90;
+    for (const s of [1, -1]) {
+      const z = s * span * 0.7; let run = [], best = [];
+      for (let i = 0; i <= steps; i++) {
+        const x = b.max.x - (b.max.x - b.min.x) * i / steps, h = hitAt(new THREE.Vector3(x, b.max.y + 1, z), down);
+        if (h && h.face.normal.y > 0.5) run.push(x); else { if (run.length > best.length) best = run; run = []; }
+      }
+      if (run.length > best.length) best = run;
+      if (best.length < 3) continue;
+      const chord = best[0] - best[best.length - 1], x = (best[0] + best[best.length - 1]) / 2;
+      const h = hitAt(new THREE.Vector3(x, b.max.y + 1, z), down);
+      if (h) out.push(decal(pattern, h.point, h.face.normal, Math.min(chord * 0.75, big ? 0.42 : 0.3)));
+    }
+  }
+  const x = b.min.x + (b.max.x - b.min.x) * 0.32;
+  for (const s of [1, -1]) {
+    const h = hitAt(new THREE.Vector3(x, 0, s * (b.max.z + 1)), new THREE.Vector3(0, 0, -s));
+    if (h && Math.abs(h.face.normal.z) > 0.5 && s * h.point.z > 0.03) out.push(decal(pattern, h.point, h.face.normal, big ? 0.24 : 0.15));
+  }
+  return out;
 }
