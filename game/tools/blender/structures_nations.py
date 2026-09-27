@@ -1,0 +1,664 @@
+# Each army's own gun emplacements and lookout tower, in the style of structures.py: the field
+# gun, the anti-aircraft gun, the machine-gun nest and the watchtower of the Germans, the Red Army,
+# the British, the Japanese, the French and the Italians. The American ones are in structures.py;
+# walls, sandbags, wire, tank traps, barrels and mines look the same in every army. Written to
+# .cache/figures/vehicles/<nation>; tools/figures.mjs packs them into public/nation-<nation>.js.
+#
+#   python tools/blender/structures_nations.py [nation ...] [--only=fieldgun,aa,mgnest,tower]
+#
+# Kept to the American models' layout, so the game's crews and muzzle flashes fit: the MG sits
+# about 0.6 up with its gunner behind it at the origin, the AA gun turns about the origin
+# (turret parts), the tower's lookout stands on a platform 2.6 up.
+import math, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import vehicles
+from vehicles import Model, clear, LIGHT, GLASS, WHITE, RED
+from structures import mulberry, sandbag, sandbag_row, sandbag_ring
+
+BASE = vehicles.OUT
+H = 2.55                                   # tower platform height
+
+# ---- shared parts ------------------------------------------------------------------------
+def along(a, ang):
+    """the unit direction at elevation ang in the x-y plane."""
+    return (math.cos(ang), math.sin(ang), 0.0)
+
+def barrel(m, part, start, ang, length, r0, r1=None, brake=None, jacket=None):
+    """a gun tube from start at elevation ang: a tapering tube, an optional jacket at the breech
+    end [(from, to, r)] and a muzzle brake ('baffle', 'slots', 'cone', 'hider' or None)."""
+    d = along(start, ang); r1 = r1 or r0 * 0.85
+    m.lathe(part, [(r0, 0.0), (r1, length), (0.0, length)], start, d, seg=18)
+    for a, b, r in (jacket or ()):
+        m.lathe(part, [(0.0, a), (r, a), (r, b), (0.0, b)], start, d, seg=18)
+    tip = lambda k: tuple(start[i] + d[i] * (length + k) for i in range(3))
+    if brake == 'baffle':                                                    # double-baffle brake
+        m.lathe(part, [(0.0, length - 0.1), (r1 * 1.9, length - 0.1), (r1 * 1.9, length - 0.05), (r1 * 1.3, length - 0.04),
+                       (r1 * 1.9, length - 0.03), (r1 * 1.9, length + 0.03), (0.0, length + 0.03)], start, d, seg=18)
+    elif brake == 'slots':                                                   # the ZiS-3's slotted brake
+        m.lathe(part, [(0.0, length - 0.12), (r1 * 1.6, length - 0.12), (r1 * 1.6, length + 0.02), (0.0, length + 0.02)], start, d, seg=16)
+    elif brake == 'cone':
+        m.lathe(part, [(0.0, length - 0.02), (r1, length - 0.02), (r1 * 2.2, length + 0.14), (0.0, length + 0.14)], start, d, seg=18)
+    elif brake == 'hider':
+        m.lathe(part, [(0.0, length - 0.08), (r1 * 1.5, length - 0.08), (r1 * 1.5, length + 0.02), (0.0, length + 0.02)], start, d, seg=14)
+    return tip(0.03)
+
+def spoked_wheel(m, c, r, n=12, w=0.06, part='main', rim='dark'):
+    """a wooden artillery wheel: iron tyre, felloe, spokes and a hub."""
+    x, y, z = c
+    m.torus(rim, c, (0, 0, 1), r, w * 0.7, seg=36)
+    m.torus(part, c, (0, 0, 1), r * 0.9, w * 0.5, seg=36)
+    m.cyl(part, (x, y, z - w * 1.4), (x, y, z + w * 1.4), r * 0.18, seg=16, bevel=0.01)
+    for k in range(n):
+        a = k / n * 2 * math.pi
+        m.cyl(part, c, (x + math.cos(a) * r * 0.88, y + math.sin(a) * r * 0.88, z), 0.018, seg=6)
+
+def disc_wheel(m, c, r, w=0.13, holes=0):
+    """a pressed-steel wheel on a rubber tyre (the modern towed guns)."""
+    m.tyre(c, r, w, tread=False, nuts=6)
+    x, y, z = c; s = 1 if z >= 0 else -1
+    for k in range(holes):
+        a = k / holes * 2 * math.pi
+        m.cyl('dark', (x + math.cos(a) * r * 0.45, y + math.sin(a) * r * 0.45, z + s * w * 0.4), (x + math.cos(a) * r * 0.45, y + math.sin(a) * r * 0.45, z + s * w * 0.46), r * 0.08, seg=10)
+
+def split_trail(m, y0, length, spread, r=0.055, spade=True):
+    for s in (1, -1):
+        m.cyl('main', (-0.05, y0, s * 0.1), (-length, 0.07, s * spread), r, seg=12)
+        if spade: m.box('main', (-length - 0.03, 0.06, s * spread), (0.2, 0.12, 0.24), bevel=0.02, pitch=0.4)
+        m.torus('main', (-length * 0.7, 0.07 + (y0 - 0.07) * 0.3 + 0.06, s * spread * 0.72), (0, 1, 0), 0.05, 0.01, seg=12)
+
+def shell_box(m, x, z):
+    m.box('main', (x, 0.1, z), (0.3, 0.18, 0.2), bevel=0.02)
+    for k in range(3): m.cyl('dark', (x - 0.1 + k * 0.1, 0.2, z), (x - 0.1 + k * 0.1, 0.24, z), 0.03, seg=10)
+
+def pit(m, R=1.0):
+    m.cyl('dark', (0, 0, 0), (0, 0.04, 0), R, seg=40, bevel=0.01)          # the dug-in floor
+
+def log_ring(m, R, a0, a1, layers, n):
+    """a parapet of logs laid round the pit (the Soviet and Japanese nests)."""
+    for l in range(layers):
+        for i in range(n):
+            a, b = a0 + (a1 - a0) * i / n, a0 + (a1 - a0) * (i + 1) / n
+            y = 0.1 + l * 0.15
+            m.cyl('main', (math.cos(a) * R, y, math.sin(a) * R), (math.cos(b) * R, y, math.sin(b) * R), 0.075, seg=10)
+            m.cyl('dark', (math.cos(a) * R, y, math.sin(a) * R), (math.cos(a) * R * 1.001, y, math.sin(a) * R * 1.001), 0.06, seg=10)
+
+def tripod(m, part, top, legs, r=0.02):
+    for p in legs: m.cyl(part, top, p, r, seg=8)
+
+def ammo_tins(m):
+    m.box('main', (-0.55, 0.12, 0.35), (0.22, 0.16, 0.16), bevel=0.02)
+    m.box('main', (-0.6, 0.12, 0.1), (0.22, 0.16, 0.16), bevel=0.02)
+
+def tower_legs(m, H, r=0.06, brace=True, spread=0.7, round_=False, lean=0.0):
+    for x in (-spread, spread):
+        for z in (-spread, spread):
+            if round_: m.cyl('main', (x * (1 + lean), 0.0, z * (1 + lean)), (x, H, z), r, seg=10)
+            else: m.box('main', (x, H / 2, z), (r * 2, H, r * 2), bevel=0.015)
+    if brace:
+        for y0, y1 in ((0.2, H * 0.5), (H * 0.5, H - 0.15)):
+            for s in (1, -1):
+                for zz in (-spread, spread): m.cyl('main', (-spread, y0 if s > 0 else y1, zz), (spread, y1 if s > 0 else y0, zz), 0.03, seg=8)
+                for xx in (-spread, spread): m.cyl('main', (xx, y0 if s > 0 else y1, -spread), (xx, y1 if s > 0 else y0, spread), 0.03, seg=8)
+
+def ladder(m, x, H, z=0.0):
+    for zz in (-0.14, 0.14): m.box('main', (x, H / 2 + 0.1, z + zz), (0.04, H + 0.2, 0.04), bevel=0.0)
+    for k in range(int(H / 0.24)): m.box('main', (x, 0.2 + k * 0.24, z), (0.03, 0.03, 0.3), bevel=0.0)
+
+def hip_roof(m, y, hw, hd, rise, part='main'):
+    m.loft_poly(part, [(-hw, [(y, -hd), (y + 0.01, 0.0), (y, hd)]), (-hw * 0.2, [(y, -hd), (y + rise, 0.0), (y, hd)]),
+                       (hw * 0.2, [(y, -hd), (y + rise, 0.0), (y, hd)]), (hw, [(y, -hd), (y + 0.01, 0.0), (y, hd)])], bevel=0.01)
+
+# =========================================================================================
+# Germany
+def de_fieldgun():
+    """7.5 cm Pak 40: low and wide, the spaced double shield with its wavy top, the long barrel
+    with the double-baffle brake, pressed-steel wheels and the long split trail."""
+    m = Model('fieldgun')
+    for s in (1, -1):
+        m.box('main', (0.28, 0.55, s * 0.36), (0.04, 0.5, 0.5), bevel=0.01, pitch=-0.3, yaw=-s * 0.25)
+        m.box('main', (0.34, 0.56, s * 0.36), (0.02, 0.44, 0.46), bevel=0.008, pitch=-0.3, yaw=-s * 0.25)   # the spaced plate
+        m.box('main', (0.25, 0.82, s * 0.36), (0.04, 0.06, 0.44), bevel=0.01, pitch=-0.3, yaw=-s * 0.25)
+    m.box('main', (0.22, 0.68, 0), (0.04, 0.3, 0.2), bevel=0.01, pitch=-0.3)
+    m.box('main', (0.0, 0.58, 0), (0.6, 0.14, 0.26), bevel=0.03)                             # carriage
+    m.box('main', (-0.05, 0.72, 0), (0.34, 0.14, 0.2), bevel=0.03)                          # breech
+    for z in (-0.06, 0.06): m.cyl('main', (0.05, 0.64, z), (0.75, 0.68, z), 0.035, seg=10)   # recoil cylinders
+    tip = barrel(m, 'main', (0.1, 0.7, 0), 0.05, 1.8, 0.06, 0.045, brake='baffle')
+    m.box('dark', (0.1, 0.84, 0.16), (0.12, 0.07, 0.05), bevel=0.01)
+    for s in (1, -1): disc_wheel(m, (0.02, 0.32, s * 0.55), 0.32, 0.13, holes=6)
+    m.cyl('main', (0.02, 0.32, -0.55), (0.02, 0.32, 0.55), 0.035, seg=10)
+    split_trail(m, 0.45, 1.3, 0.62)
+    shell_box(m, -0.6, 0.0)
+    m.finish()
+    return tip
+
+def de_aa():
+    """2 cm Flak 38: the triangular platform on its levelling jacks, the gun with the small shield,
+    the long barrel with its flash hider, the curved magazine and the layer's seat."""
+    m = Model('aa'); rnd = mulberry(21)
+    for k in range(3):
+        a = k / 3 * 2 * math.pi + math.pi / 6
+        m.box('main', (math.cos(a) * 0.45, 0.1, math.sin(a) * 0.45), (0.9, 0.08, 0.14), bevel=0.02, yaw=-a)
+        m.cyl('main', (math.cos(a) * 0.88, 0.0, math.sin(a) * 0.88), (math.cos(a) * 0.88, 0.14, math.sin(a) * 0.88), 0.06, seg=12)   # jack
+    sandbag_ring(m, 'main', 1.05, 0, 2 * math.pi, 1, 16, rnd, y0=0.0)
+    t = 'turret_main'
+    m.cyl(t, (0, 0.12, 0), (0, 0.32, 0), 0.34, seg=28, bevel=0.02)
+    m.box(t, (0.0, 0.52, 0), (0.3, 0.32, 0.36), bevel=0.03)                                   # cradle
+    m.box(t, (0.3, 0.72, 0), (0.03, 0.4, 0.62), bevel=0.01, pitch=-0.2)                      # the small shield
+    tip = barrel(m, t, (0.1, 0.72, 0), 0.72, 1.35, 0.035, 0.03, brake='hider', jacket=[(0.0, 0.35, 0.07)])
+    for k in range(5):                                                                          # the curved magazine
+        m.box(t, (0.05 + k * 0.02, 0.8 - k * 0.05, 0.14), (0.08, 0.06, 0.05), bevel=0.01, roll=0.1 * k)
+    m.torus(t, (0.45, 1.0, -0.14), (1, 1, 0), 0.08, 0.008, seg=16)                            # ring sight
+    m.box('turret_dark', (-0.3, 0.5, -0.12), (0.18, 0.05, 0.2), bevel=0.02)                  # seat
+    m.cyl(t, (-0.2, 0.3, -0.1), (-0.3, 0.48, -0.12), 0.02, seg=8)
+    for z in (-0.2, 0.2): m.torus('turret_dark', (-0.05, 0.5, z), (0, 0, 1), 0.06, 0.01, seg=14)
+    m.finish()
+    return tip
+
+def mg42_gun(m, part, base, length=0.66):
+    """an MG 42 lying along +x from base: stock, receiver, perforated jacket, brake, belt."""
+    x, y, z = base
+    m.box(part, (x - 0.1, y - 0.01, z), (0.16, 0.07, 0.05), bevel=0.01)
+    m.box(part, (x + 0.08, y, z), (0.22, 0.08, 0.07), bevel=0.01)
+    m.cyl(part, (x + 0.18, y, z), (x + length, y, z), 0.034, seg=12)
+    for k in range(5): m.box('turret_dark', (x + 0.24 + k * 0.06, y + 0.035, z), (0.03, 0.01, 0.03), bevel=0.0)
+    m.cyl(part, (x + length, y, z), (x + length + 0.05, y, z), 0.028, seg=10)
+    for k in range(4): m.box(part, (x + 0.06, y - 0.02 - k * 0.04, z + 0.06 + k * 0.01), (0.04, 0.02, 0.03), bevel=0.0)   # belt
+
+def de_mgnest():
+    """an MG 42 on its Lafette 34 tripod, the padded front leg and the sight, in a pit ringed with
+    sandbags."""
+    m = Model('mgnest'); rnd = mulberry(22)
+    pit(m)
+    sandbag_ring(m, 'main', 0.82, -math.pi * 0.66, math.pi * 0.66, 3, 10, rnd)
+    ammo_tins(m)
+    t = 'turret_main'
+    tripod(m, t, (0.3, 0.46, 0), [(0.75, 0.04, 0), (-0.05, 0.04, 0.3), (-0.05, 0.04, -0.3)])
+    m.cyl(t, (0.66, 0.16, 0), (0.72, 0.1, 0), 0.04, seg=10)                                       # the padded front leg
+    m.box(t, (0.3, 0.5, 0), (0.28, 0.08, 0.1), bevel=0.02)                                         # the cradle
+    m.box(t, (0.22, 0.62, 0.06), (0.1, 0.08, 0.04), bevel=0.01)                                    # periscope sight
+    mg42_gun(m, t, (0.36, 0.6, 0))
+    m.finish()
+
+def de_tower():
+    """a German watchtower: timber legs and bracing under a closed cabin with windows all round,
+    a pitched roof and a searchlight."""
+    m = Model('tower')
+    tower_legs(m, H)
+    ladder(m, 0.85, H)
+    m.box('main', (0, H + 0.03, 0), (1.8, 0.08, 1.8), bevel=0.02)
+    for s in (1, -1):                                                                      # cabin walls with windows
+        m.box('main', (s * 0.8, H + 0.25, 0), (0.06, 0.4, 1.66), bevel=0.01)
+        m.box('main', (0, H + 0.25, s * 0.8), (1.66, 0.4, 0.06), bevel=0.01)
+    for x in (-0.8, 0.8):
+        for z in (-0.8, 0.8): m.box('main', (x, H + 0.6, z), (0.07, 1.1, 0.07), bevel=0.0)
+    m.loft_poly('main', [(-1.0, [(H + 1.1, -1.0), (H + 1.5, 0.0), (H + 1.1, 1.0)]), (1.0, [(H + 1.1, -1.0), (H + 1.5, 0.0), (H + 1.1, 1.0)])], bevel=0.01)
+    m.cyl('main', (0.6, H + 0.45, -0.6), (0.75, H + 0.5, -0.6), 0.1, seg=20, bevel=0.01)
+    m.cyl(LIGHT, (0.76, H + 0.5, -0.6), (0.77, H + 0.5, -0.6), 0.08, seg=20)
+    m.finish()
+
+# =========================================================================================
+# Soviet Union
+def su_fieldgun():
+    """76 mm ZiS-3: the shield with its cranked top edge, the long thin barrel with the slotted
+    muzzle brake, the tubular split trail and the wheels on rubber tyres."""
+    m = Model('fieldgun')
+    m.box('main', (0.3, 0.62, 0), (0.04, 0.56, 1.1), bevel=0.01, pitch=-0.2)
+    for s in (1, -1): m.box('main', (0.26, 0.95, s * 0.36), (0.04, 0.16, 0.38), bevel=0.01, pitch=-0.2)   # the raised outer panels
+    m.box('main', (0.33, 0.36, 0), (0.04, 0.12, 0.9), bevel=0.01, pitch=0.3)                # the lower apron
+    m.box('main', (0.0, 0.62, 0), (0.56, 0.16, 0.26), bevel=0.03)
+    m.box('main', (-0.1, 0.78, 0), (0.3, 0.16, 0.22), bevel=0.03)
+    m.cyl('main', (0.05, 0.7, 0), (0.95, 0.78, 0), 0.045, seg=12)                              # recuperator
+    tip = barrel(m, 'main', (0.05, 0.84, 0), 0.08, 1.75, 0.055, 0.042, brake='slots')
+    m.box('dark', (0.1, 0.96, 0.18), (0.12, 0.08, 0.06), bevel=0.01)
+    for s in (1, -1): disc_wheel(m, (0.05, 0.34, s * 0.58), 0.34, 0.14)
+    split_trail(m, 0.5, 1.25, 0.58, r=0.045)
+    shell_box(m, -0.6, 0.0)
+    m.finish()
+    return tip
+
+def su_aa():
+    """37 mm 61-K: the gun on its four-legged platform with the outriggers spread, a long barrel
+    with a conical flash hider, the clip standing up out of the breech and the two layers' seats."""
+    m = Model('aa'); rnd = mulberry(23)
+    m.box('main', (0, 0.14, 0), (0.9, 0.12, 0.6), bevel=0.03)
+    for a in (0.6, 2.54, 3.74, 5.68):
+        m.box('main', (math.cos(a) * 0.55, 0.1, math.sin(a) * 0.55), (0.6, 0.07, 0.1), bevel=0.01, yaw=-a)
+        m.cyl('main', (math.cos(a) * 0.85, 0.0, math.sin(a) * 0.85), (math.cos(a) * 0.85, 0.12, math.sin(a) * 0.85), 0.07, seg=12)
+    sandbag_ring(m, 'main', 1.08, 0, 2 * math.pi, 1, 16, rnd, y0=0.0)
+    t = 'turret_main'
+    m.cyl(t, (0, 0.2, 0), (0, 0.36, 0), 0.36, seg=28, bevel=0.02)
+    m.box(t, (0.0, 0.6, 0), (0.44, 0.4, 0.4), bevel=0.04)
+    tip = barrel(m, t, (0.12, 0.75, 0), 0.78, 1.3, 0.042, 0.036, brake='cone', jacket=[(0.0, 0.3, 0.08)])
+    m.box(t, (0.02, 0.98, 0), (0.18, 0.3, 0.08), bevel=0.01, pitch=0.78)                      # the clip
+    for z in (-0.3, 0.3):
+        m.box('turret_dark', (-0.25, 0.46, z), (0.18, 0.05, 0.16), bevel=0.02)
+        m.torus('turret_dark', (0.0, 0.58, z * 0.85), (0, 0, 1), 0.07, 0.012, seg=16)
+    m.torus(t, (0.5, 1.2, 0.2), (1, 1, 0), 0.12, 0.009, seg=18)
+    m.finish()
+    return tip
+
+def su_mgnest():
+    """a Maxim on its Sokolov mount - the fluted water jacket, the small shield, the little wheels
+    and the U-shaped trail - in a pit lined with logs."""
+    m = Model('mgnest')
+    pit(m)
+    log_ring(m, 0.85, -math.pi * 0.66, math.pi * 0.66, 3, 9)
+    ammo_tins(m)
+    t = 'turret_main'
+    for s in (1, -1):
+        m.lathe('turret_dark', [(0.03, -0.02), (0.1, -0.02), (0.11, 0.0), (0.1, 0.02), (0.03, 0.02)], (0.35, 0.12, s * 0.22), (0, 0, 1), seg=16, closed=True)
+        m.cyl(t, (0.35, 0.12, s * 0.22), (-0.15, 0.06, s * 0.16), 0.02, seg=8)                   # the U trail
+    m.cyl(t, (-0.15, 0.06, -0.16), (-0.15, 0.06, 0.16), 0.02, seg=8)
+    m.cyl(t, (0.35, 0.12, -0.22), (0.35, 0.12, 0.22), 0.02, seg=8)
+    m.cyl(t, (0.35, 0.12, 0), (0.35, 0.5, 0), 0.03, seg=10)
+    m.box(t, (0.55, 0.52, 0), (0.03, 0.36, 0.4), bevel=0.01)                                     # shield
+    m.box(t, (0.3, 0.6, 0), (0.24, 0.12, 0.12), bevel=0.02)                                      # receiver
+    m.cyl(t, (0.4, 0.61, 0), (0.85, 0.61, 0), 0.06, seg=18)                                      # water jacket
+    for k in range(8): m.torus(t, (0.45 + k * 0.05, 0.61, 0), (1, 0, 0), 0.062, 0.006, seg=16)   # its flutes
+    m.cyl(t, (0.85, 0.61, 0), (0.95, 0.61, 0), 0.02, seg=10)
+    m.cyl(t, (0.52, 0.68, 0), (0.52, 0.72, 0), 0.03, seg=10)                                     # filler cap
+    for k in range(4): m.box('turret_dark', (0.3, 0.58 - k * 0.04, 0.1 + k * 0.01), (0.03, 0.03, 0.02), bevel=0.0)
+    m.finish()
+
+def su_tower():
+    """a Red Army lookout: a tower of round logs with an open platform behind a log parapet, a
+    lean-to roof and the red star on a board."""
+    m = Model('tower')
+    tower_legs(m, H, r=0.07, round_=True, lean=0.15)
+    for y in (0.6, 1.3, 2.0):
+        for s in (1, -1):
+            m.cyl('main', (-0.75, y, s * 0.72), (0.75, y, s * 0.72), 0.035, seg=8)
+            m.cyl('main', (s * 0.72, y + 0.05, -0.75), (s * 0.72, y + 0.05, 0.75), 0.035, seg=8)
+    ladder(m, 0.88, H)
+    m.box('main', (0, H + 0.03, 0), (1.8, 0.08, 1.8), bevel=0.02)
+    for s in (1, -1):                                                                          # log parapet
+        for l in range(3):
+            y = H + 0.12 + l * 0.11
+            m.cyl('main', (-0.85, y, s * 0.85), (0.85, y, s * 0.85), 0.055, seg=10)
+            if s < 0 or l < 3: m.cyl('main', (-0.85, y + 0.05, -0.85), (-0.85, y + 0.05, 0.85), 0.055, seg=10)
+    for x in (-0.8, 0.8):
+        for z in (-0.8, 0.8): m.cyl('main', (x, H, z), (x, H + (1.1 if x < 0 else 0.9), z), 0.04, seg=8)
+    m.box('main', (0, H + 1.03, 0), (1.9, 0.05, 1.9), bevel=0.01, roll=0.0, pitch=-0.1)       # lean-to roof
+    m.box('main', (0.86, H + 0.45, 0.0), (0.03, 0.3, 0.3), bevel=0.01)
+    m.star((0.88, H + 0.45, 0.0), 0.12, normal=(1, 0, 0), up=(0, 1, 0), colour=RED)
+    m.finish()
+
+# =========================================================================================
+# Britain
+def gb_fieldgun():
+    """the 25-pounder: the short barrel with its muzzle brake, the box trail, the flat shield with
+    the bent-back sides, big wheels and the round firing platform under them."""
+    m = Model('fieldgun')
+    m.cyl('main', (0.0, 0.0, 0), (0.0, 0.04, 0), 0.75, seg=32, bevel=0.01)                    # firing platform
+    for k in range(8):
+        a = k / 8 * 2 * math.pi
+        m.box('dark', (math.cos(a) * 0.5, 0.04, math.sin(a) * 0.5), (0.4, 0.012, 0.03), bevel=0.0, yaw=-a)
+    m.box('main', (0.3, 0.66, 0), (0.04, 0.6, 1.0), bevel=0.01, pitch=-0.12)
+    for s in (1, -1): m.box('main', (0.2, 0.66, s * 0.54), (0.24, 0.56, 0.04), bevel=0.01, yaw=s * 0.5)   # the bent-back sides
+    m.box('main', (0.0, 0.62, 0), (0.6, 0.18, 0.28), bevel=0.03)
+    m.box('main', (-0.12, 0.8, 0), (0.34, 0.2, 0.26), bevel=0.03)                              # breech
+    m.cyl('main', (0.0, 0.7, 0), (0.7, 0.82, 0), 0.05, seg=12)
+    tip = barrel(m, 'main', (0.05, 0.86, 0), 0.2, 1.25, 0.065, 0.055, brake='baffle')
+    m.box('dark', (0.05, 0.98, 0.2), (0.14, 0.08, 0.06), bevel=0.01)
+    for s in (1, -1): disc_wheel(m, (0.05, 0.4, s * 0.58), 0.4, 0.15)
+    m.cyl('main', (0.05, 0.4, -0.58), (0.05, 0.4, 0.58), 0.035, seg=10)
+    m.loft_poly('main', [(-0.05, [(0.44, -0.14), (0.58, -0.14), (0.58, 0.14), (0.44, 0.14)]), (-1.25, [(0.06, -0.12), (0.18, -0.12), (0.18, 0.12), (0.06, 0.12)])], bevel=0.01)   # box trail
+    m.box('main', (-1.3, 0.1, 0), (0.12, 0.2, 0.36), bevel=0.02, pitch=0.3)
+    m.torus('main', (-1.1, 0.24, 0), (0, 1, 0), 0.08, 0.012, seg=14)
+    shell_box(m, -0.6, 0.45)
+    m.finish()
+    return tip
+
+def gb_aa():
+    """the Bofors 40 mm: the cruciform platform with its four levelling feet, the gun with the big
+    flash cone, the clip in the guides on top and the two layers' seats."""
+    m = Model('aa'); rnd = mulberry(24)
+    for a in (0, math.pi / 2):
+        m.box('main', (0, 0.12, 0), (1.8, 0.08, 0.14), bevel=0.02, yaw=a)
+    for k in range(4):
+        a = k * math.pi / 2
+        m.cyl('main', (math.cos(a) * 0.9, 0.0, math.sin(a) * 0.9), (math.cos(a) * 0.9, 0.16, math.sin(a) * 0.9), 0.07, seg=12)
+    sandbag_ring(m, 'main', 1.1, 0, 2 * math.pi, 1, 16, rnd, y0=0.0)
+    t = 'turret_main'
+    m.cyl(t, (0, 0.18, 0), (0, 0.36, 0), 0.4, seg=28, bevel=0.02)
+    for z in (-0.2, 0.2): m.box(t, (0.0, 0.62, z), (0.36, 0.5, 0.05), bevel=0.02)             # the side plates
+    tip = barrel(m, t, (0.1, 0.8, 0), 0.78, 1.25, 0.04, 0.036, brake='cone', jacket=[(0.0, 0.25, 0.09)])
+    m.box(t, (-0.02, 1.0, 0), (0.22, 0.26, 0.1), bevel=0.01, pitch=0.78)                       # the clip in its guides
+    for z in (-0.36, 0.36):
+        m.box('turret_dark', (-0.3, 0.52, z), (0.18, 0.05, 0.16), bevel=0.02)
+        m.torus('turret_dark', (-0.1, 0.62, z * 0.75), (0, 0, 1), 0.07, 0.012, seg=16)
+    m.torus(t, (0.45, 1.15, 0.26), (1, 1, 0), 0.1, 0.008, seg=18)
+    m.finish()
+    return tip
+
+def gb_mgnest():
+    """a Vickers gun on its tripod: the water jacket with the condenser hose running down to the
+    can, the fusee spring box and the belt - in a sandbagged pit."""
+    m = Model('mgnest'); rnd = mulberry(25)
+    pit(m)
+    sandbag_ring(m, 'main', 0.82, -math.pi * 0.66, math.pi * 0.66, 3, 10, rnd)
+    ammo_tins(m)
+    m.cyl('main', (0.3, 0.04, 0.4), (0.3, 0.22, 0.4), 0.07, seg=14)                           # the condenser can
+    t = 'turret_main'
+    tripod(m, t, (0.3, 0.46, 0), [(0.7, 0.04, 0), (0.0, 0.04, 0.3), (0.0, 0.04, -0.3)], r=0.024)
+    m.box(t, (0.3, 0.6, 0), (0.24, 0.12, 0.11), bevel=0.02)
+    m.box(t, (0.26, 0.6, 0.075), (0.18, 0.05, 0.03), bevel=0.01)                               # fusee spring box
+    m.cyl(t, (0.42, 0.61, 0), (0.86, 0.61, 0), 0.055, seg=18)                                  # water jacket
+    for k in (0.5, 0.78): m.torus(t, (k, 0.61, 0), (1, 0, 0), 0.057, 0.008, seg=16)
+    m.cyl(t, (0.86, 0.61, 0), (0.94, 0.61, 0), 0.025, seg=10)
+    m.cyl(t, (0.8, 0.56, 0.03), (0.6, 0.3, 0.3), 0.012, seg=6)                                  # condenser hose
+    m.cyl(t, (0.6, 0.3, 0.3), (0.32, 0.22, 0.4), 0.012, seg=6)
+    for k in range(5): m.box('turret_dark', (0.3, 0.57 - k * 0.04, -0.1 - k * 0.01), (0.03, 0.03, 0.02), bevel=0.0)
+    m.finish()
+
+def gb_tower():
+    """a British observation post on scaffold tubes and clips, the platform ringed with sandbags
+    under a roof of corrugated iron."""
+    m = Model('tower'); rnd = mulberry(26)
+    tower_legs(m, H, r=0.035, round_=True, brace=True)
+    for y in (0.9, 1.8):
+        for s in (1, -1):
+            m.cyl('main', (-0.75, y, s * 0.7), (0.75, y, s * 0.7), 0.03, seg=8)
+            m.cyl('main', (s * 0.7, y, -0.75), (s * 0.7, y, 0.75), 0.03, seg=8)
+            for zz in (-0.7, 0.7): m.box('main', (s * 0.7, y, zz), (0.07, 0.07, 0.07), bevel=0.01)   # clips
+    ladder(m, 0.85, H)
+    m.box('main', (0, H + 0.03, 0), (1.8, 0.08, 1.8), bevel=0.02)
+    for side in range(4):
+        a = side * math.pi / 2; c, s = math.cos(a), math.sin(a)
+        if side == 1: continue
+        for l in range(2):
+            for i in range(4):
+                u = -0.72 + (i + 0.5 + (l % 2) * 0.25) * 0.36
+                if u > 0.75: continue
+                sandbag(m, 'main', (c * 0.8 - s * u, H + 0.15 + l * 0.14, s * 0.8 + c * u), -a + math.pi / 2, L=0.38, W=0.2, rnd=rnd)
+    for x in (-0.8, 0.8):
+        for z in (-0.8, 0.8): m.cyl('main', (x, H, z), (x, H + 1.0, z), 0.03, seg=8)
+    m.box('main', (0, H + 1.02, 0), (1.9, 0.03, 1.9), bevel=0.0, pitch=0.08)
+    for k in range(12): m.cyl('main', (-0.95, H + 1.04 + 0.08 * 0.95 * 0, -0.9 + k * 0.164), (0.95, H + 1.04, -0.9 + k * 0.164), 0.012, seg=6)   # corrugations
+    m.finish()
+
+# =========================================================================================
+# Japan
+def jp_fieldgun():
+    """the Type 92 battalion gun: a stubby 70 mm barrel over a cranked axle, the curved shield,
+    big spoked wheels and the split trail - light enough for the crew to drag."""
+    m = Model('fieldgun')
+    m.box('main', (0.32, 0.56, 0), (0.04, 0.5, 0.86), bevel=0.01, pitch=-0.1)
+    for s in (1, -1): m.box('main', (0.26, 0.56, s * 0.46), (0.14, 0.48, 0.04), bevel=0.01, yaw=s * 0.35)   # the curved-back edges
+    m.box('dark', (0.34, 0.66, 0.15), (0.02, 0.1, 0.14), bevel=0.0, pitch=-0.1)
+    m.box('main', (0.0, 0.46, 0), (0.5, 0.16, 0.26), bevel=0.03)
+    m.box('main', (-0.05, 0.62, 0), (0.3, 0.16, 0.22), bevel=0.03)
+    tip = barrel(m, 'main', (0.02, 0.66, 0), 0.3, 0.75, 0.075, 0.07)
+    for s in (1, -1):
+        spoked_wheel(m, (0.05, 0.38, s * 0.52), 0.38, n=12)
+        m.cyl('main', (0.05, 0.38, s * 0.52), (0.05, 0.3, s * 0.15), 0.035, seg=10)          # the cranked axle
+    m.cyl('main', (0.05, 0.3, -0.15), (0.05, 0.3, 0.15), 0.035, seg=10)
+    split_trail(m, 0.36, 1.1, 0.5, r=0.04)
+    shell_box(m, -0.55, 0.0)
+    m.finish()
+    return tip
+
+def jp_aa():
+    """the Type 96 25 mm twin mount: two barrels with their flash hiders side by side, the
+    magazines standing on top, the layers' seats, all on a round pedestal and base plate."""
+    m = Model('aa'); rnd = mulberry(27)
+    m.cyl('main', (0, 0.0, 0), (0, 0.12, 0), 0.8, seg=24, bevel=0.02)
+    for k in range(6):
+        a = k / 6 * 2 * math.pi
+        m.box('dark', (math.cos(a) * 0.72, 0.12, math.sin(a) * 0.72), (0.06, 0.02, 0.06), bevel=0.0)
+    sandbag_ring(m, 'main', 1.0, 0, 2 * math.pi, 1, 16, rnd, y0=0.0)
+    t = 'turret_main'
+    m.cyl(t, (0, 0.12, 0), (0, 0.5, 0), 0.18, seg=20, bevel=0.02)                            # pedestal
+    m.box(t, (0.0, 0.66, 0), (0.4, 0.3, 0.5), bevel=0.04)
+    tip = None
+    for z in (-0.13, 0.13):
+        tip = barrel(m, t, (0.1, 0.78, z), 0.78, 1.25, 0.034, 0.03, brake='hider', jacket=[(0.0, 0.25, 0.07)])
+        m.box(t, (0.02, 0.98, z), (0.2, 0.22, 0.06), bevel=0.01, pitch=0.78)                  # the magazines on top
+    for z in (-0.38, 0.38):
+        m.box('turret_dark', (-0.25, 0.5, z), (0.18, 0.05, 0.16), bevel=0.02)
+        m.cyl(t, (-0.12, 0.3, z * 0.4), (-0.25, 0.48, z), 0.02, seg=8)
+    m.torus(t, (0.45, 1.15, 0), (1, 1, 0), 0.13, 0.009, seg=18)
+    m.finish()
+    return tip
+
+def jp_mgnest():
+    """the Type 92 heavy machine gun ('woodpecker'): the finned barrel, the tripod with its
+    carrying poles sticking out, the feed strips from the left - in a pit lined with logs."""
+    m = Model('mgnest')
+    pit(m)
+    log_ring(m, 0.85, -math.pi * 0.66, math.pi * 0.66, 2, 9)
+    for a in (-1.2, 0.0, 1.2):                                                                  # earth heaped on the logs
+        m.sphere('main', (math.cos(a) * 0.95, 0.3, math.sin(a) * 0.95), 0.2, scale=(1.4, 0.5, 1.4), seg=14)
+    ammo_tins(m)
+    t = 'turret_main'
+    tripod(m, t, (0.3, 0.44, 0), [(0.68, 0.04, 0), (0.0, 0.04, 0.3), (0.0, 0.04, -0.3)], r=0.024)
+    for s in (1, -1): m.cyl(t, (0.72, 0.1, s * 0.06), (-0.1, 0.1, s * 0.36), 0.014, seg=6)   # carrying poles
+    m.box(t, (0.3, 0.58, 0), (0.24, 0.12, 0.11), bevel=0.02)
+    m.cyl(t, (0.42, 0.59, 0), (0.62, 0.59, 0), 0.045, seg=16)
+    for k in range(9): m.torus(t, (0.43 + k * 0.022, 0.59, 0), (1, 0, 0), 0.05, 0.008, seg=16)   # the cooling fins
+    m.cyl(t, (0.62, 0.59, 0), (0.92, 0.59, 0), 0.02, seg=10)
+    m.cyl(t, (0.92, 0.59, 0), (0.97, 0.59, 0), 0.03, seg=10)
+    m.box(t, (0.3, 0.6, -0.14), (0.26, 0.012, 0.12), bevel=0.0)                                  # the feed strip
+    m.cyl(t, (0.14, 0.58, 0.06), (0.1, 0.52, 0.12), 0.012, seg=6)                                # spade grips
+    m.finish()
+
+def jp_tower():
+    """a lookout of lashed bamboo: poles tied at every joint, a woven screen round the platform
+    and a steep thatched roof."""
+    m = Model('tower')
+    tower_legs(m, H, r=0.045, round_=True, lean=0.2)
+    for y in (0.7, 1.4, 2.1):
+        for s in (1, -1):
+            m.cyl('main', (-0.8, y, s * 0.72), (0.8, y, s * 0.72), 0.03, seg=8)
+            m.cyl('main', (s * 0.72, y, -0.8), (s * 0.72, y, 0.8), 0.03, seg=8)
+            for zz in (-0.72, 0.72): m.torus('main', (s * 0.72, y, zz), (0, 1, 0), 0.05, 0.012, seg=10)   # lashings
+    for x in (-0.72, 0.72):
+        for k in range(8):
+            y = 0.25 + k * 0.3
+            m.torus('main', (x, y, 0.72), (0, 1, 0), 0.05, 0.01, seg=10)
+    ladder(m, 0.85, H)
+    m.box('main', (0, H + 0.03, 0), (1.8, 0.08, 1.8), bevel=0.02)
+    for s in (1, -1):                                                                       # the woven screens
+        m.box('main', (s * 0.85, H + 0.25, 0), (0.03, 0.4, 1.7), bevel=0.005)
+        if s < 0: m.box('main', (0, H + 0.25, 0.85), (1.7, 0.4, 0.03), bevel=0.005)
+        m.box('main', (0, H + 0.25, -0.85), (1.7, 0.4, 0.03), bevel=0.005)
+        for k in range(6): m.box('dark', (s * 0.865, H + 0.1 + k * 0.06, 0), (0.01, 0.012, 1.66), bevel=0.0)
+    for x in (-0.8, 0.8):
+        for z in (-0.8, 0.8): m.cyl('main', (x, H, z), (x, H + 0.9, z), 0.03, seg=8)
+    m.cyl('main', (0, H + 0.85, 0), (0, H + 1.65, 0), 1.35, seg=4, r2=0.05)                   # thatch
+    for k in range(3): m.cyl('main', (0, H + 0.85 + k * 0.012, 0), (0, H + 0.87 + k * 0.012, 0), 1.35 - k * 0.03, seg=4)
+    m.finish()
+
+# =========================================================================================
+# France
+def fr_fieldgun():
+    """the Canon de 75 mle 1897: the long slim barrel over its recuperator, the flat shield with
+    the split top, big wooden wheels and the single pole trail."""
+    m = Model('fieldgun')
+    m.box('main', (0.28, 0.62, 0), (0.04, 0.62, 1.04), bevel=0.01, pitch=-0.08)
+    m.box('main', (0.3, 0.33, 0), (0.04, 0.12, 0.9), bevel=0.01, pitch=0.35)                 # the folding apron
+    for s in (1, -1): m.box('main', (0.27, 0.98, s * 0.3), (0.04, 0.12, 0.34), bevel=0.01)     # the split top
+    m.box('main', (0.0, 0.66, 0), (0.56, 0.14, 0.24), bevel=0.03)
+    m.box('main', (-0.12, 0.8, 0), (0.24, 0.16, 0.2), bevel=0.03)
+    m.cyl('main', (-0.05, 0.74, 0), (1.05, 0.8, 0), 0.06, seg=14)                            # the recuperator
+    tip = barrel(m, 'main', (-0.1, 0.88, 0), 0.06, 1.8, 0.052, 0.045)
+    m.box('dark', (0.0, 0.98, 0.16), (0.12, 0.08, 0.06), bevel=0.01)
+    for s in (1, -1): spoked_wheel(m, (0.05, 0.45, s * 0.6), 0.45, n=14)
+    m.cyl('main', (0.05, 0.45, -0.6), (0.05, 0.45, 0.6), 0.035, seg=10)
+    m.cyl('main', (-0.05, 0.55, 0), (-1.35, 0.08, 0), 0.07, seg=14)                             # single pole trail
+    m.box('main', (-1.36, 0.06, 0), (0.18, 0.12, 0.36), bevel=0.02, pitch=0.4)
+    m.box('main', (-0.7, 0.34, 0), (0.3, 0.05, 0.3), bevel=0.01)                                # the gunner's seat
+    shell_box(m, -0.65, 0.45)
+    m.finish()
+    return tip
+
+def fr_aa():
+    """the Hotchkiss 25 mm: the gun on its three-legged mount with the small shield, the long
+    barrel with the flash hider, the magazine on top and the seats either side."""
+    m = Model('aa'); rnd = mulberry(28)
+    for k in range(3):
+        a = k / 3 * 2 * math.pi
+        m.cyl('main', (0, 0.3, 0), (math.cos(a) * 0.8, 0.02, math.sin(a) * 0.8), 0.05, seg=10)
+        m.cyl('main', (math.cos(a) * 0.8, 0.0, math.sin(a) * 0.8), (math.cos(a) * 0.8, 0.06, math.sin(a) * 0.8), 0.1, seg=14)
+    sandbag_ring(m, 'main', 1.05, 0, 2 * math.pi, 1, 16, rnd, y0=0.0)
+    t = 'turret_main'
+    m.cyl(t, (0, 0.28, 0), (0, 0.42, 0), 0.26, seg=24, bevel=0.02)
+    m.box(t, (0.0, 0.62, 0), (0.34, 0.34, 0.3), bevel=0.03)
+    m.box(t, (0.3, 0.75, 0), (0.03, 0.36, 0.56), bevel=0.01, pitch=-0.25)
+    tip = barrel(m, t, (0.1, 0.76, 0), 0.75, 1.3, 0.036, 0.032, brake='hider', jacket=[(0.0, 0.3, 0.075)])
+    m.box(t, (0.02, 0.96, 0), (0.18, 0.22, 0.07), bevel=0.01, pitch=0.75)
+    for z in (-0.3, 0.3):
+        m.box('turret_dark', (-0.28, 0.5, z), (0.18, 0.05, 0.16), bevel=0.02)
+        m.torus('turret_dark', (-0.05, 0.6, z * 0.8), (0, 0, 1), 0.06, 0.01, seg=14)
+    m.finish()
+    return tip
+
+def fr_mgnest():
+    """the Hotchkiss mle 1914 on its tripod - the barrel with the five brass cooling rings and the
+    feed strip - in a pit walled with wicker gabions."""
+    m = Model('mgnest')
+    pit(m)
+    for i in range(7):                                                                         # the gabions
+        a = -math.pi * 0.62 + i * math.pi * 1.24 / 6
+        c = (math.cos(a) * 0.82, 0.0, math.sin(a) * 0.82)
+        m.cyl('main', c, (c[0], 0.42, c[2]), 0.16, seg=16)
+        for k in range(4): m.torus('main', (c[0], 0.08 + k * 0.1, c[2]), (0, 1, 0), 0.162, 0.01, seg=16)
+    ammo_tins(m)
+    t = 'turret_main'
+    tripod(m, t, (0.3, 0.46, 0), [(0.72, 0.04, 0), (0.0, 0.04, 0.32), (0.0, 0.04, -0.32)], r=0.024)
+    m.box(t, (0.3, 0.6, 0), (0.26, 0.11, 0.1), bevel=0.02)
+    m.cyl(t, (0.42, 0.61, 0), (0.98, 0.61, 0), 0.026, seg=12)
+    for k in range(5): m.lathe(t, [(0.026, -0.012), (0.06, -0.01), (0.06, 0.01), (0.026, 0.012)], (0.46 + k * 0.035, 0.61, 0), (1, 0, 0), seg=16)   # the cooling rings
+    m.cyl(t, (0.4, 0.55, 0), (0.7, 0.56, 0), 0.02, seg=8)                                       # gas cylinder
+    m.box(t, (0.3, 0.62, -0.14), (0.28, 0.012, 0.1), bevel=0.0)                                   # the feed strip
+    m.cyl(t, (0.14, 0.6, 0), (0.08, 0.56, 0), 0.02, seg=8)
+    m.finish()
+
+def fr_tower():
+    """a round concrete observation tower in the Maginot style: the drum with its vision slits,
+    a platform with a railing on top, and the armoured cloche beside the lookout."""
+    m = Model('tower')
+    m.cyl('main', (0, 0, 0), (0, H, 0), 0.75, seg=32, r2=0.68, bevel=0.02)
+    m.cyl('main', (0, 0, 0), (0, 0.25, 0), 0.85, seg=32, bevel=0.02)                           # footing
+    for k in range(6):
+        a = k / 6 * 2 * math.pi
+        m.box('dark', (math.cos(a) * 0.7, 1.9, math.sin(a) * 0.7), (0.04, 0.06, 0.2), bevel=0.0, yaw=-a)   # vision slits
+    m.box('dark', (0.76, 0.45, 0), (0.02, 0.8, 0.36), bevel=0.0)                                # door
+    for k in range(9): m.box('main', (0.8 + k * 0.001, 0.12 + k * 0.28, -0.35), (0.04, 0.03, 0.26), bevel=0.0)   # rungs up the side
+    m.cyl('main', (0, H, 0), (0, H + 0.07, 0), 0.92, seg=32, bevel=0.01)                        # platform
+    for k in range(16):
+        a = k / 16 * 2 * math.pi
+        m.cyl('main', (math.cos(a) * 0.88, H + 0.07, math.sin(a) * 0.88), (math.cos(a) * 0.88, H + 0.45, math.sin(a) * 0.88), 0.015, seg=6)
+    m.torus('main', (0, H + 0.45, 0), (0, 1, 0), 0.88, 0.02, seg=40)
+    m.lathe('main', [(0.0, 0.0), (0.32, 0.0), (0.32, 0.12), (0.26, 0.28), (0.0, 0.34)], (0.4, H + 0.07, -0.4), (0, 1, 0), seg=24)   # the cloche
+    for k in range(3):
+        a = k * 0.9
+        m.box('dark', (0.4 + math.cos(a) * 0.3, H + 0.2, -0.4 + math.sin(a) * 0.3), (0.03, 0.04, 0.1), bevel=0.0, yaw=-a)
+    m.finish()
+
+# =========================================================================================
+# Italy
+def it_fieldgun():
+    """the Cannone da 47/32: a small, low gun with no shield - the long thin barrel, the little
+    spoked wheels and the split trail."""
+    m = Model('fieldgun')
+    m.box('main', (0.0, 0.46, 0), (0.46, 0.14, 0.22), bevel=0.03)
+    m.box('main', (-0.1, 0.58, 0), (0.24, 0.14, 0.18), bevel=0.03)
+    m.cyl('main', (0.0, 0.54, 0), (0.6, 0.58, 0), 0.04, seg=12)
+    tip = barrel(m, 'main', (-0.05, 0.62, 0), 0.08, 1.6, 0.045, 0.036)
+    m.box('dark', (0.0, 0.72, 0.13), (0.1, 0.07, 0.05), bevel=0.01)
+    m.torus('dark', (-0.08, 0.48, 0.16), (0, 0, 1), 0.06, 0.01, seg=14)
+    for s in (1, -1): spoked_wheel(m, (0.05, 0.3, s * 0.42), 0.3, n=10, w=0.05)
+    m.cyl('main', (0.05, 0.3, -0.42), (0.05, 0.3, 0.42), 0.03, seg=10)
+    split_trail(m, 0.38, 1.1, 0.5, r=0.04)
+    m.box('main', (0.2, 0.3, 0.0), (0.2, 0.3, 0.02), bevel=0.01)                               # the small splinter plate
+    shell_box(m, -0.55, 0.0)
+    m.finish()
+    return tip
+
+def it_aa():
+    """the Breda 20/65: the gun on its three-legged mount with the shield, the long barrel with its
+    flash hider, the feed tray with the strip on the left, and the seats."""
+    m = Model('aa'); rnd = mulberry(29)
+    for k in range(3):
+        a = k / 3 * 2 * math.pi + 0.5
+        m.box('main', (math.cos(a) * 0.42, 0.1, math.sin(a) * 0.42), (0.84, 0.08, 0.12), bevel=0.02, yaw=-a)
+        m.lathe('dark', [(0.02, -0.03), (0.08, -0.03), (0.09, 0.0), (0.08, 0.03), (0.02, 0.03)], (math.cos(a) * 0.8, 0.09, math.sin(a) * 0.8), (0, 0, 1), seg=14, closed=True)
+    sandbag_ring(m, 'main', 1.05, 0, 2 * math.pi, 1, 16, rnd, y0=0.0)
+    t = 'turret_main'
+    m.cyl(t, (0, 0.12, 0), (0, 0.32, 0), 0.32, seg=24, bevel=0.02)
+    m.box(t, (0.0, 0.56, 0), (0.34, 0.34, 0.32), bevel=0.03)
+    m.box(t, (0.3, 0.72, 0), (0.03, 0.42, 0.6), bevel=0.01, pitch=-0.25)
+    tip = barrel(m, t, (0.1, 0.74, 0), 0.74, 1.35, 0.034, 0.03, brake='hider', jacket=[(0.0, 0.3, 0.07)])
+    m.box(t, (0.1, 0.8, 0.16), (0.3, 0.012, 0.1), bevel=0.0, pitch=0.74)                        # the feed strip
+    for z in (-0.3, 0.3):
+        m.box('turret_dark', (-0.26, 0.48, z), (0.18, 0.05, 0.16), bevel=0.02)
+        m.torus('turret_dark', (-0.05, 0.56, z * 0.8), (0, 0, 1), 0.06, 0.01, seg=14)
+    m.torus(t, (0.45, 1.1, -0.2), (1, 1, 0), 0.1, 0.008, seg=18)
+    m.finish()
+    return tip
+
+def it_mgnest():
+    """the Breda 37 on its tripod - the heavy barrel with the carrying handle and the flat feed
+    strip going in from the left - behind a dry-stone wall."""
+    m = Model('mgnest'); rnd = mulberry(30)
+    pit(m)
+    for l in range(3):                                                                         # the dry-stone wall
+        n = 11 - l
+        for i in range(n):
+            a = -math.pi * 0.64 + (i + 0.5 * (l % 2)) * math.pi * 1.28 / n
+            r = 0.84 + (rnd() - 0.5) * 0.04
+            m.box('main', (math.cos(a) * r, 0.08 + l * 0.13, math.sin(a) * r), (0.2 + rnd() * 0.08, 0.12, 0.22 + rnd() * 0.06), bevel=0.03, yaw=-a + rnd() * 0.2)
+    ammo_tins(m)
+    t = 'turret_main'
+    tripod(m, t, (0.3, 0.46, 0), [(0.72, 0.04, 0), (0.0, 0.04, 0.3), (0.0, 0.04, -0.3)], r=0.024)
+    m.box(t, (0.3, 0.6, 0), (0.28, 0.12, 0.1), bevel=0.02)
+    m.cyl(t, (0.44, 0.61, 0), (0.95, 0.61, 0), 0.032, seg=12)
+    m.cyl(t, (0.95, 0.61, 0), (1.0, 0.61, 0), 0.036, seg=12)
+    m.box(t, (0.6, 0.69, 0), (0.14, 0.04, 0.02), bevel=0.01)                                     # carrying handle
+    m.box(t, (0.3, 0.62, -0.15), (0.3, 0.012, 0.1), bevel=0.0)                                    # the feed strip
+    m.cyl(t, (0.14, 0.6, 0), (0.08, 0.56, 0), 0.02, seg=8)
+    m.finish()
+
+def it_tower():
+    """a stone lookout tower (a torretta): rough masonry, a doorway and slit windows, an open
+    loggia at the top under a hipped roof of curved tiles."""
+    m = Model('tower'); rnd = mulberry(31)
+    m.box('main', (0, H / 2, 0), (1.4, H, 1.4), bevel=0.02)
+    for k in range(14):                                                                         # quoins
+        for x in (-0.7, 0.7):
+            for z in (-0.7, 0.7): m.box('main', (x, 0.1 + k * 0.18, z), (0.18 if k % 2 else 0.12, 0.14, 0.12 if k % 2 else 0.18), bevel=0.012)
+    for k in range(12):
+        m.box('main', (0.705, 0.3 + rnd() * 2.0, -0.5 + rnd() * 1.0), (0.02, 0.07, 0.16), bevel=0.01)
+    m.box('dark', (0.705, 0.45, 0.2), (0.02, 0.8, 0.36), bevel=0.0)
+    m.cyl('dark', (0.7, 0.85, 0.2), (0.71, 0.85, 0.2), 0.18, seg=16)                            # arched door head
+    for y in (1.3, 2.0): m.box('dark', (0.705, y, -0.3), (0.02, 0.26, 0.08), bevel=0.0)
+    m.box('main', (0, H + 0.03, 0), (1.7, 0.08, 1.7), bevel=0.02)                              # the loggia floor
+    for x in (-0.78, 0.78):
+        for z in (-0.78, 0.78): m.box('main', (x, H + 0.5, z), (0.14, 1.0, 0.14), bevel=0.02)
+    for s in (1, -1):
+        m.box('main', (s * 0.8, H + 0.2, 0), (0.06, 0.3, 1.6), bevel=0.01)
+        if s < 0: m.box('main', (0, H + 0.2, 0.8), (1.6, 0.3, 0.06), bevel=0.01)
+        m.box('main', (0, H + 0.2, -0.8), (1.6, 0.3, 0.06), bevel=0.01)
+    hip_roof(m, H + 1.0, 1.05, 1.05, 0.45)
+    ladder(m, 0.9, H)
+    m.finish()
+
+NATIONS = {
+    'de': {'fieldgun': de_fieldgun, 'aa': de_aa, 'mgnest': de_mgnest, 'tower': de_tower},
+    'su': {'fieldgun': su_fieldgun, 'aa': su_aa, 'mgnest': su_mgnest, 'tower': su_tower},
+    'gb': {'fieldgun': gb_fieldgun, 'aa': gb_aa, 'mgnest': gb_mgnest, 'tower': gb_tower},
+    'jp': {'fieldgun': jp_fieldgun, 'aa': jp_aa, 'mgnest': jp_mgnest, 'tower': jp_tower},
+    'fr': {'fieldgun': fr_fieldgun, 'aa': fr_aa, 'mgnest': fr_mgnest, 'tower': fr_tower},
+    'it': {'fieldgun': it_fieldgun, 'aa': it_aa, 'mgnest': it_mgnest, 'tower': it_tower},
+}
+
+if __name__ == '__main__':
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    only = next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--only=')), None)
+    for nation in args or NATIONS:
+        vehicles.OUT = os.path.join(BASE, nation)
+        for name, build in NATIONS[nation].items():
+            if only and name not in only: continue
+            clear(); tip = build()
+            if tip: print(f'{nation}:{name} muzzle {tip[0]:.2f}, {tip[1]:.2f}')
