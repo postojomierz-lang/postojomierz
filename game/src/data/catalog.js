@@ -225,6 +225,15 @@ export const RULES = {
   battleSeconds: 40,
   maxRounds: 10,
   tickRate: 20,
+  // experience: a unit earns the value of the damage it does (the share of a target's health
+  // times the target's cost); at 1x, 3x and 6x its own cost it becomes a Veteran, Elite, Hero
+  veteran: {
+    names: ['Veteran', 'Elite', 'Hero'],
+    at: [1, 3, 6],
+    acc: [0.1, 0.2, 0.3],      // hit chance, relative
+    rate: [0, 0.2, 0.3],       // rate of fire, relative
+    hp: [0.1, 0.15, 0.2],      // toughness, relative
+  },
   mines: {               // engineers' mines: trigger radius, blast radius, damage
     at: { trigger: 0.5, radius: 1.1, dmg: 130 },
     ap: { trigger: 0.45, radius: 1.3, dmg: 16 },

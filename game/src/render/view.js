@@ -679,15 +679,27 @@ export class View {
         if (!safe) { c.strokeStyle = '#d63a2f'; c.lineWidth = 2; c.beginPath(); c.arc(sx, sy, 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, e.bleed) / 18); c.stroke(); }
         continue;
       }
-      if (!hq && e.hp >= e.maxHp) continue;
+      const hurt = hq || e.hp < e.maxHp;
+      if (!hurt && !e.rank) continue;
       p.set(v.g.position.x, v.g.position.y + (HEIGHT[e.type] || 1.25) + 0.25, v.g.position.z).project(this.camera);
       if (p.z > 1 || p.x < -1.1 || p.x > 1.1 || p.y < -1.1 || p.y > 1.1) continue;
       const sx = (p.x + 1) / 2 * w, sy = (1 - p.y) / 2 * h;
       const bw = hq ? 60 : e.def.vehicle || e.def.static || e.def.aircraft ? 30 : 18, bh = hq ? 6 : 4;
       const f = Math.max(0, e.hp / e.maxHp);
-      c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(sx - bw / 2 - 1, sy - 1, bw + 2, bh + 2);
-      c.fillStyle = f > 0.5 ? '#8fe05a' : f > 0.25 ? '#f0c13a' : '#f05a3a';
-      c.fillRect(sx - bw / 2, sy, bw * f, bh);
+      if (hurt) {
+        c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(sx - bw / 2 - 1, sy - 1, bw + 2, bh + 2);
+        c.fillStyle = f > 0.5 ? '#8fe05a' : f > 0.25 ? '#f0c13a' : '#f05a3a';
+        c.fillRect(sx - bw / 2, sy, bw * f, bh);
+      }
+      if (e.rank) {
+        // veterancy: one gold chevron per rank, stacked above the health bar
+        c.lineWidth = 2; c.lineJoin = 'miter';
+        for (let i = 0; i < e.rank; i++) {
+          const y = sy - 3 - i * 4;
+          c.strokeStyle = 'rgba(0,0,0,.6)'; c.beginPath(); c.moveTo(sx - 5, y - 1); c.lineTo(sx, y - 5); c.lineTo(sx + 5, y - 1); c.stroke();
+          c.strokeStyle = '#f2c230'; c.beginPath(); c.moveTo(sx - 5, y - 2); c.lineTo(sx, y - 6); c.lineTo(sx + 5, y - 2); c.stroke();
+        }
+      }
       if (hq) {
         const t = this.sim.teams[e.team];
         c.font = '600 12px Rubik, system-ui, sans-serif'; c.textAlign = 'center';
