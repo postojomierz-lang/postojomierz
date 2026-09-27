@@ -65,6 +65,14 @@ export class Sound {
     this.stepFilter.connect(this.master);
   }
 
+  // a call of a large animal at a position (deer barking when startled, bear growling)
+  animal(group, pos) {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const b = this.buf[group];
+    if (!b || !b.length) return;
+    this.play(b[Math.floor(Math.random() * b.length)], { pos, gain: group === 'bear' ? 1.4 : 1.0, ref: 25, rate: 0.95 + Math.random() * 0.1 });
+  }
+
   setEnabled(on) {
     this.enabled = on;
     if (!this.ctx) return;

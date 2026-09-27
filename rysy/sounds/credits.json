@@ -1,9 +1,21 @@
 {
+ "bear": {
+  "title": "Karhut murisevat / A couple of bears growling, brown bear",
+  "author": "YleArkisto",
+  "license": "CC BY 4.0",
+  "url": "https://freesound.org/people/YleArkisto/sounds/249441/"
+ },
  "chough": {
   "title": "20110824_morning.Chough 01.wav",
   "author": "dobroide",
   "license": "CC BY 4.0",
   "url": "https://freesound.org/people/dobroide/sounds/127353/"
+ },
+ "deer_bark": {
+  "title": "Deer barking.m4a",
+  "author": "Spamanator",
+  "license": "CC0",
+  "url": "https://freesound.org/people/Spamanator/sounds/569926/"
  },
  "forest": {
   "title": "forest june 1047AM 220617_0403.wav",
@@ -22,6 +34,12 @@
   "author": "reinsamba",
   "license": "CC BY 4.0",
   "url": "https://freesound.org/people/reinsamba/sounds/56302/"
+ },
+ "roe_bark": {
+  "title": "Deer.wav",
+  "author": "juskiddink",
+  "license": "CC BY 4.0",
+  "url": "https://freesound.org/people/juskiddink/sounds/58128/"
  },
  "steps_grass": {
   "title": "passos grama.wav",

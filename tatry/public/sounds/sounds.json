@@ -57,5 +57,18 @@
   "marmot_0",
   "marmot_1",
   "marmot_2"
+ ],
+ "deerBark": [
+  "deer_bark_0",
+  "deer_bark_1"
+ ],
+ "roeBark": [
+  "roe_bark_0",
+  "roe_bark_1"
+ ],
+ "bear": [
+  "bear_0",
+  "bear_1",
+  "bear_2"
  ]
 }

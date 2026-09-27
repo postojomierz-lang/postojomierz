@@ -64,3 +64,16 @@ też w oknie pomocy). `python3 tools/fetch_freesound.py` pobiera je (wymaga nag�
 lasu i pogody, przestrzenny szum najbliższych potoków i wodospadu, kroki według podłoża, ptaki według
 piętra (strzyżyk i chór leśny w lesie, kopciuszek przy skałach, wieszczek na graniach), gwizdy
 świstaka na halach. Klawisz N lub 🔊 wycisza.
+
+## Zwierzęta
+Modele: Quaternius „Ultimate Animated Animal Pack” (CC0). `python3 tools/blender/make_animals.py
+<katalog glTF> public/models/animals` przebarwia jelenia (byk, łania) i robi sarnę (mniejsza, rudawa),
+a niedźwiedzia brunatnego tworzy z wilka: siatka jest przerabiana w pozie spoczynkowej (masywny tułów
+z garbem, grube łapy, szeroki łeb, krótki pysk, okrągłe uszy, bez ogona), więc animacje wilka dalej
+nią poruszają. Zostają klipy Walk, Idle, Eating, Gallop, HeadLow.
+
+`src/animals.js`: stado jeleni (byk i łanie) na halach, druga grupa łań, sarny przy skraju lasu nad
+Morskim Okiem, jeden niedźwiedź w lesie i kosodrzewinie; miejsca losowane raz, zgodnie z mapą pokrycia
+terenu. Zwierzęta pasą się, rozglądają i wędrują; gdy turysta podejdzie bliżej, jelenie i sarny
+szczekają i uciekają galopem, a niedźwiedź pomrukuje i powoli odchodzi. Głosy: Freesound (szczekanie
+jelenia CC0 Spamanator, sarny CC BY juskiddink, niedźwiedzie CC BY YleArkisto).

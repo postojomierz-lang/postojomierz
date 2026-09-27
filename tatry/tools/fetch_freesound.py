@@ -3,7 +3,8 @@ freesound.org, e.g. injected by the environment) into ./snd2 with credits.json."
 import json, urllib.request, os
 IDS = {'stream': 826443, 'waterfall': 442475, 'wind_forest': 679753, 'wind_open': 578630,
        'steps_gravel': 609173, 'steps_rock': 770084, 'steps_grass': 580699,
-       'marmot': 351664, 'marmot2': 822939, 'wren': 156032, 'forest': 658498, 'redstart': 56302, 'chough': 127353}
+       'marmot': 351664, 'marmot2': 822939, 'wren': 156032, 'forest': 658498, 'redstart': 56302, 'chough': 127353,
+       'deer_bark': 569926, 'roe_bark': 58128, 'bear': 249441}
 credits = {}
 for key, sid in IDS.items():
     d = json.load(urllib.request.urlopen(f'https://freesound.org/apiv2/sounds/{sid}/?fields=id,name,username,license,url,previews'))
