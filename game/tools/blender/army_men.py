@@ -772,6 +772,43 @@ def insignia_head(fig, H, cap):
         c = Frame(H.at(0.0, 0, 6.2), H.d(1, 0, -0.1), H.d(0.1, 0, 1))
         star_badge(fig, c.at(3.25, 0, -0.55), c.f, c.u, 0.8, INS['red'])
 
+def insignia_rank(fig, T):
+    """a captain's rank, the way each army wore it: on the shoulder straps (the American silver
+    bars, the German silver boards with two gold pips, the Soviet gold pogony with their red
+    stripe and stars, the British three pips, the French three gold galons, the Italian three
+    stars) or on the collar (the German Litzen, the Japanese red tabs with a gold stripe and three
+    stars)."""
+    for s in (1, -1):
+        b = T.at(-0.05, s * 3.0, 10.9)                                         # the shoulder strap, lying along the shoulder
+        B = Frame(b, T.f, T.u)
+        along = lambda k, u=0.0: B.at(0, s * k, 0.12 + u)
+        if US:
+            for k in (-0.2, 0.2): fig.box(along(k), (0.24, 0.8, 0.12), B.q, INS['silver'], bevel=0.02)
+        elif DE:
+            fig.box(b, (2.1, 0.8, 0.2), B.q, INS['silver'], bevel=0.06)
+            for k in (-0.3, 0.3): fig.sphere(along(k, 0.08), 0.17, INS['gold'], seg=10)
+        elif SU:
+            fig.box(b, (2.1, 0.9, 0.2), B.q, INS['gold'], bevel=0.06)
+            fig.box(along(0, 0.02), (2.0, 0.16, 0.12), B.q, INS['red'], bevel=0.0)
+            for k in (-0.55, -0.15): fig.sphere(along(k, 0.05) + B.f * 0.25, 0.12, INS['silver'], seg=8)
+            for k in (-0.55, -0.15): fig.sphere(along(k, 0.05) - B.f * 0.25, 0.12, INS['silver'], seg=8)
+        elif GB:
+            for k in (-0.55, 0.0, 0.55): star_badge(fig, along(k, 0.02), T.u, T.f, 0.4, INS['gold'])
+        elif FR:
+            for k in (-0.35, 0.0, 0.35): fig.box(along(k), (0.16, 0.9, 0.1), B.q, INS['gold'], bevel=0.0)
+        elif IT:
+            for k in (-0.55, 0.0, 0.55): star_badge(fig, along(k, 0.02), T.u, T.f, 0.4, INS['gold'])
+        if DE or JP:                                                           # the collar tabs
+            d = (T.f * 0.8 + T.l * (s * 0.6)).normalized()
+            c = T.at(1.55, s * 1.3, 10.5) + d * 0.3
+            C = Frame(c, d, T.u)
+            if DE:
+                for k in (0.18, -0.18): fig.box(C.at(0, 0, k), (1.0, 0.12, 0.12), C.q, INS['silver'], bevel=0.0)
+            else:
+                fig.box(c, (1.1, 0.12, 0.6), C.q, INS['red'], bevel=0.02)
+                fig.box(C.at(0.02, 0, 0), (1.1, 0.12, 0.14), C.q, INS['gold'], bevel=0.0)
+                for k in (-0.32, 0.0, 0.32): fig.sphere(C.at(0.05, k, 0.18), 0.08, INS['yellow'], seg=8)
+
 def insignia_collar(fig, T):
     """the Italian stellette: a white star on each side of the collar."""
     for s in (1, -1):
@@ -1288,6 +1325,7 @@ def officer():
         tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
         d = (tip.f + tip.u * 0.4).normalized(); p = tip.o + d * 3.5; B = Frame(p, d, tip.u)
         for s_ in (1, -1): fig.box(B.at(0, s_ * 0.3, 0), (0.28, 0.14, 0.9), B.q, INS['silver'], bevel=0.03)
+    insignia_rank(fig, T)
     if JP:
         with fig.hard():                                                         # the officer's sword at his hip
             hilt = T.at(1.2, 3.6, 2.2)

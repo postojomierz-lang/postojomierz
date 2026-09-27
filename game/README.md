@@ -169,7 +169,11 @@ yellow; the Free French cross of Lorraine on the sleeve; and the Italian stellet
 officers' caps carry their badges too: the Reich's cockade and a silver eagle on the German
 peaked cap, the red star on the Soviet one, a gold badge on the British beret and the Italian
 bustina, the French kepi's gold badge and rank stripes; the American officer, in his helmet,
-wears a captain's two silver bars on it.
+wears a captain's two silver bars on it. Their uniforms show a captain's rank the way each army wore it
+(`insignia_rank`): the American silver bars on the shoulders, the German silver shoulder boards
+with two gold pips and the Litzen on the collar, the Soviet gold pogony with a red stripe and
+stars, the British three pips, the Japanese red collar tabs with a gold stripe and three stars,
+the French three gold galons and the Italian three stars.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
