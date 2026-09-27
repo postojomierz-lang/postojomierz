@@ -1,9 +1,10 @@
 # The Italian Army's vehicles, aircraft and headquarters, built with the tools in vehicles.py:
-# Fiat 508 CM, Fiat 626 cab-over lorries (ambulance and engineers), AB 41 armoured car, L6/40,
-# M13/40, P26/40, Macchi C.202, Breda Ba.65, the three-engined SM.79 Sparviero and a farmhouse
-# with its dovecote tower. (No amphibian, rocket lorry, rotorcraft or transport of their own: the
-# American models are used.) Written to .cache/figures/vehicles/it; tools/figures.mjs packs them
-# into public/nation-it.js.
+# Fiat 508 CM, Fiat 626 cab-over lorries (ambulance and engineers), AB 41 armoured car, the
+# amphibious L3 prototype, L6/40, M13/40, P26/40, the D'Ascanio D'AT3 helicopter, Macchi C.202,
+# Breda Ba.65, the three-engined SM.79 Sparviero and SM.82 Marsupiale and a farmhouse with its
+# dovecote tower. Italy fielded no rocket lorry, so that one (a Fiat 626 with launch rails) is in
+# the style of the time. Written to .cache/figures/vehicles/it; tools/figures.mjs packs them into
+# public/nation-it.js.
 #
 #   python tools/blender/vehicles_it.py [name ...]
 import math, os, sys
@@ -296,8 +297,114 @@ def hq():
     for a in (0.5, 2.6, 4.7): m.cyl('dark', (-1.1, 3.2, -0.7), (-1.1 + math.cos(a) * 1.0, 0.05, -0.7 + math.sin(a) * 1.0), 0.004, seg=4)
     m.finish()
 
-MODELS = {'jeep': jeep, 'ambulance': ambulance, 'engtruck': engtruck, 'apc': apc, 'tank_light': tank_light, 'tank': tank,
-          'tank_heavy': tank_heavy, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'hq': hq}
+def amphib():
+    """the amphibious L3: the little two-man tankette with its twin machine guns, buoyancy floats
+    along both sides, a propeller and a rudder at the back. (Built as prototypes in the 1930s.)"""
+    m = Model('amphib')
+    for s in (1, -1):
+        z = s * 0.34
+        fiat_bogies(m, z, -0.35, 2, 0.09, 0.5)
+        track_side(m, z, [], (0.7, 0.28, 0.12), (-0.74, 0.26, 0.11), 0.4, 0.18, (0.0,))
+        m.loft('main', [(-1.0, 0.44, 0.62, 0.02, 3, s * 0.6), (-0.8, 0.32, 0.64, 0.1, 3.5, s * 0.6), (0.6, 0.32, 0.64, 0.1, 3.5, s * 0.6),
+                        (0.95, 0.42, 0.64, 0.06, 3, s * 0.6), (1.05, 0.56, 0.64, 0.02, 2.5, s * 0.6)], seg=24, bevel=0.01)   # the floats
+        for x in (-0.6, 0.0, 0.5): m.box('main', (x, 0.6, s * 0.46), (0.06, 0.04, 0.24), bevel=0.005)   # their brackets
+    m.loft_poly('main', [(-0.85, [(0.22, -0.34), (0.62, -0.34), (0.62, 0.34), (0.22, 0.34)]), (0.3, [(0.22, -0.34), (0.66, -0.34), (0.66, 0.34), (0.22, 0.34)]),
+                         (0.85, [(0.3, -0.3), (0.54, -0.3), (0.54, 0.3), (0.3, 0.3)])], bevel=0.012)
+    m.loft_poly('main', [(0.05, [(0.66, -0.3), (0.86, -0.28), (0.86, 0.28), (0.66, 0.3)]), (0.5, [(0.66, -0.3), (0.86, -0.28), (0.86, 0.28), (0.66, 0.3)]),
+                         (0.68, [(0.62, -0.3), (0.76, -0.26), (0.76, 0.26), (0.62, 0.3)])], bevel=0.01)   # the superstructure
+    m.rivets('main', (-0.7, 0.55, 0.345), (0.3, 0.55, 0.345), 9, normal=(0, 0, 1))
+    m.rivets('main', (-0.7, 0.55, -0.345), (0.3, 0.55, -0.345), 9, normal=(0, 0, -1))
+    for z in (-0.08, 0.08): m.cyl('dark', (0.66, 0.74, z), (0.92, 0.72, z), 0.014, seg=8)
+    m.box('dark', (0.6, 0.8, 0.18), (0.02, 0.025, 0.12), bevel=0.0, pitch=0.5)
+    m.box('main', (0.2, 0.87, 0.1), (0.2, 0.03, 0.22), bevel=0.01)                      # hatch
+    for k in range(5): m.box('dark', (-0.6 + k * 0.05, 0.625, 0), (0.02, 0.012, 0.4), bevel=0.0)
+    m.cyl('dark', (-0.85, 0.3, 0), (-1.0, 0.3, 0), 0.025)
+    for a in (0.3, 2.4, 4.5): m.box('dark', (-1.01, 0.3 + math.sin(a) * 0.06, math.cos(a) * 0.06), (0.03, 0.1, 0.04), bevel=0.005, roll=a)
+    m.box('dark', (-1.07, 0.34, 0), (0.05, 0.2, 0.02), bevel=0.005)
+    m.finish()
+
+def rockets():
+    """a Fiat 626 carrying a frame of open launch rails with the rockets on them. (Italy fielded
+    no rocket lorry; this one is in the style of the time.)"""
+    m = Model('rockets')
+    for z in (-0.3, 0.3): m.box('dark', (0, 0.34, z), (2.5, 0.1, 0.08), bevel=0.01)
+    fiat626_front(m, 0.85)
+    m.box('main', (-0.5, 0.5, 0), (1.55, 0.1, 0.96), bevel=0.02)
+    tilt = 0.42; ct, st = math.cos(tilt), math.sin(tilt)
+    for c in range(8):
+        z = -0.38 + c * 0.108
+        m.box('dark', (-0.5, 1.08, z), (1.4, 0.02, 0.05), pitch=tilt, bevel=0.0)          # the rail
+        m.lathe('main', [(0.0, 0.0), (0.035, 0.03), (0.038, 0.1), (0.038, 0.8), (0.05, 0.86), (0.05, 1.0), (0.03, 1.08), (0.0, 1.1)],
+                (-1.0, 0.9, z), (ct, st, 0), seg=12)
+    for x in (-0.95, -0.2): m.box('main', (x, 0.95 + (x + 0.5) * st / ct, 0), (0.05, 0.05, 0.9), bevel=0.01, pitch=tilt)
+    m.box('main', (-0.55, 0.72, 0), (0.3, 0.36, 0.5), bevel=0.02)
+    for z in (-0.5, 0.5):
+        m.cyl('main', (-1.2, 0.5, z), (-1.3, 0.08, z * 1.12), 0.035)
+        m.cyl('main', (-1.3, 0.06, z * 1.12), (-1.3, 0.02, z * 1.12), 0.08)
+    for x in (0.95, -0.35, -0.85):
+        for z in (-0.5, 0.5): m.tyre((x, 0.28, z), 0.28, 0.19)
+    m.finish()
+
+def heli():
+    """D'Ascanio D'AT3: the Italian helicopter of 1930 - an open steel-tube frame with the pilot's
+    seat, the engine below a tall mast carrying two coaxial two-blade rotors, a small tail and
+    wheels. Armed for the game with MG pods."""
+    m = Model('heli')
+    tube = lambda a, b, r=0.018: m.cyl('main', a, b, r, seg=8)
+    for z in (-0.18, 0.18):
+        tube((0.55, -0.35, z * 0.6), (-0.3, -0.35, z)); tube((-0.3, -0.35, z), (-1.3, 0.0, z * 0.2))
+        tube((0.55, -0.35, z * 0.6), (0.0, 0.2, z * 0.5)); tube((-0.3, -0.35, z), (0.0, 0.2, z * 0.5))
+        tube((-0.3, 0.1, z * 0.6), (-1.3, 0.04, z * 0.2))
+    for x in (-0.6, -0.9): tube((x, -0.35 + (-0.3 - x) * 0.35, 0), (x, 0.08, 0), 0.012)
+    m.box('main', (-0.05, -0.1, 0), (0.42, 0.34, 0.34), bevel=0.04)                  # the engine
+    for k in range(5): m.box('dark', (-0.2 + k * 0.07, -0.1, 0.175), (0.02, 0.26, 0.01), bevel=0.0)
+    m.cyl('main', (0.0, 0.05, 0), (0.0, 1.0, 0), 0.035, seg=12)                       # the mast
+    m.cyl('main', (0.0, 0.6, 0), (0.0, 0.66, 0), 0.07, seg=14)                        # its gearbox
+    for z in (-0.12, 0.12): tube((-0.05, 0.1, z), (0.0, 0.62, 0), 0.012)
+    seat(m, 0.35, -0.3, 0, w=0.26)
+    m.cyl('dark', (0.55, -0.1, 0), (0.45, -0.28, 0), 0.01, seg=6)                     # control column
+    m.wing('main', [(-0.35, -1.3, 0.2, 0.02), (0.0, -1.26, 0.26, 0.02), (0.35, -1.3, 0.2, 0.02)], thick=0.08)
+    m.wing('main', [(0.02, -1.28, 0.22, 0), (0.24, -1.32, 0.14, 0)], thick=0.08, vertical=True)
+    for z in (-0.35, 0.35):
+        m.cyl('main', (0.2, -0.35, z * 0.4), (0.2, -0.55, z), 0.02, seg=8)
+        m.cyl('main', (-0.3, -0.35, z * 0.5), (0.2, -0.55, z), 0.02, seg=8)
+        m.lathe('dark', [(0.04, -0.03), (0.08, -0.03), (0.09, 0.0), (0.08, 0.03), (0.04, 0.03)], (0.2, -0.55, z), (0, 0, 1), seg=18, closed=True)
+        m.cyl('dark', (-0.1, -0.2, z * 1.2), (0.4, -0.2, z * 1.2), 0.045, seg=14)
+        m.cyl('main', (0.05, -0.3, z * 0.6), (0.1, -0.22, z * 1.15), 0.015, seg=6)
+    m.lathe('dark', [(0.02, -0.02), (0.04, -0.02), (0.04, 0.02), (0.02, 0.02)], (-1.25, -0.04, 0), (0, 0, 1), seg=12, closed=True)
+    m.cyl('rotor', (0, -0.03, 0), (0, 0.04, 0), 0.07, seg=18, bevel=0.01)             # one of the two rotors
+    for i in range(2):
+        a = i * math.pi
+        m.box('rotor', (math.cos(a) * 0.65, 0.0, math.sin(a) * 0.65), (1.2, 0.02, 0.12), bevel=0.008, yaw=-a, roll=0.05)
+    m.finish()
+
+def transport():
+    """Savoia-Marchetti SM.82 Marsupiale: the deep 'pouched' fuselage, three radials (one in the
+    nose), the long wing, a single fin and the undercarriage under the wing engines."""
+    m = Model('transport')
+    m.lathe('main', [(0.1, 0.0), (0.18, 0.02), (0.19, 0.08), (0.18, 0.16)], (1.62, 0.02, 0), (-1, 0, 0), seg=32)
+    m.lathe('dark', [(0.0, 0.0), (0.1, 0.0), (0.1, 0.02)], (1.62, 0.02, 0), (-1, 0, 0), seg=24)
+    m.prop('dark', (1.63, 0.02, 0), 0.42, blades=3, spinner=0.06)
+    fuselage(m, [(1.46, -0.16, 0.2, 0.18, 2.2), (1.1, -0.34, 0.3, 0.26, 2.6), (0.3, -0.4, 0.32, 0.28, 3.0), (-0.6, -0.34, 0.28, 0.24, 2.8),
+                 (-1.25, -0.1, 0.2, 0.1, 2.3), (-1.65, 0.04, 0.14, 0.03, 2.0)], seg=40)
+    canopy(m, [(1.2, 0.26, 0.28, 0.16, 2.6), (1.08, 0.26, 0.4, 0.17, 2.8), (0.84, 0.26, 0.41, 0.17, 2.8), (0.74, 0.27, 0.34, 0.12, 2.4)], frames=[(0.96, 0.26, 0.4, 0.17)])
+    m.lathe(GLASS, [(0.0, 0.1), (0.07, 0.08), (0.1, 0.0)], (0.1, 0.3, 0), (0, 1, 0), seg=18)   # the dorsal turret
+    for s in (1, -1):
+        for k in range(6): m.box(GLASS, (0.55 - k * 0.2, 0.05, s * 0.28), (0.08, 0.08, 0.012), bevel=0.0)
+    m.box('dark', (-0.7, -0.08, -0.25), (0.22, 0.34, 0.012), bevel=0.0)                   # the side door
+    m.wing('main', [(-2.2, 0.12, 0.26, 0.04), (-1.9, 0.26, 0.48, 0.02), (-0.9, 0.5, 0.84, -0.04), (0.0, 0.56, 0.96, -0.06),
+                    (0.9, 0.5, 0.84, -0.04), (1.9, 0.26, 0.48, 0.02), (2.2, 0.12, 0.26, 0.04)], thick=0.15)
+    for z in (-0.8, 0.8):
+        nacelle(m, 0.9, -0.06, z, 0.17, 1.0, 0.42)
+        for dx in (-0.05, 0.05): m.cyl('main', (0.3 + dx, -0.2, z), (0.3 + dx, -0.36, z), 0.02, seg=8)
+        m.lathe('dark', [(0.03, -0.045), (0.09, -0.045), (0.1, 0.0), (0.09, 0.045), (0.03, 0.045)], (0.3, -0.37, z), (0, 0, 1), seg=18, closed=True)
+    m.wing('main', [(-0.8, -1.4, 0.22, 0.08), (-0.65, -1.36, 0.34, 0.08), (0.0, -1.32, 0.44, 0.08), (0.65, -1.36, 0.34, 0.08), (0.8, -1.4, 0.22, 0.08)], thick=0.1)
+    m.wing('main', [(0.08, -1.28, 0.5, 0), (0.34, -1.38, 0.4, 0), (0.54, -1.48, 0.26, 0), (0.62, -1.54, 0.12, 0)], thick=0.1, vertical=True)
+    m.lathe('dark', [(0.02, -0.02), (0.04, -0.02), (0.04, 0.02), (0.02, 0.02)], (-1.5, -0.02, 0), (0, 0, 1), seg=12, closed=True)
+    m.finish()
+
+MODELS = {'jeep': jeep, 'ambulance': ambulance, 'engtruck': engtruck, 'apc': apc, 'amphib': amphib, 'tank_light': tank_light, 'tank': tank,
+          'tank_heavy': tank_heavy, 'fighter': fighter, 'attacker': attacker, 'bomber': bomber, 'transport': transport, 'rockets': rockets, 'heli': heli, 'hq': hq}
 
 if __name__ == '__main__':
     only = sys.argv[1:]

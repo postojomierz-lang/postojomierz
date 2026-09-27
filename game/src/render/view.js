@@ -31,6 +31,8 @@ const MUZZLE = {
   'gb:rockets': [-0.17, 1.58], 'gb:heli': [0.45, -0.08], 'gb:fighter': [0.45, -0.07], 'gb:attacker': [0.2, -0.2], 'gb:bomber': [0.2, -0.24], 'gb:hq': [1.55, 0.5],
   'it:apc': [1.02, 0.97], 'it:tank_light': [0.96, 0.88], 'it:tank': [1.19, 1.1], 'it:tank_heavy': [1.96, 1.18],
   'it:fighter': [0.8, 0.1], 'it:attacker': [0.46, -0.1], 'it:bomber': [0.0, -0.3], 'it:hq': [1.55, 0.5],
+  'it:amphib': [0.92, 0.72], 'it:rockets': [-0.05, 1.35], 'it:heli': [0.4, -0.2], 'it:transport': [-0.7, -0.08],
+  'fr:amphib': [0.4, 1.34], 'fr:rockets': [-0.15, 1.45], 'fr:transport': [-0.65, -0.05],
   'fr:apc': [0.9, 0.98], 'fr:tank_light': [0.84, 0.94], 'fr:tank': [1.43, 1.14], 'fr:tank_heavy': [1.27, 1.28],
   'fr:heli': [0.45, -0.08], 'fr:fighter': [1.1, 0.0], 'fr:attacker': [1.08, -0.04], 'fr:bomber': [0.2, -0.24], 'fr:hq': [1.55, 0.5],
   'jp:apc': [0.27, 1.12], 'jp:amphib': [0.92, 0.9], 'jp:tank_light': [0.84, 0.92], 'jp:tank': [1.32, 1.06], 'jp:tank_heavy': [2.57, 1.2],
@@ -41,7 +43,7 @@ const MUZZLE = {
 // the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)
 const POSE_MUZZLE = { 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
 const HEIGHT = { mg: 0.95, tank: 1.5, tank_light: 1.3, tank_heavy: 1.6, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
-const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4, 'de:attacker': 0.55, 'de:transport': 0.5, 'jp:attacker': 0.55 };
+const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4, 'de:attacker': 0.55, 'de:transport': 0.5, 'jp:attacker': 0.55, 'fr:transport': 0.44, 'it:transport': 0.47 };
 const CREW_SCALE = new THREE.Vector3(0.82, 0.82, 0.82);
 const isAir = def => def.cls === 'air' || def.cls === 'plane';
 
