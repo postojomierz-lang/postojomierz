@@ -145,6 +145,9 @@ And their paratroopers come down under their own canopies: the Germans' flat RZ 
 gathered behind the back, the Soviet PD-6 with its wide vent and tapes, the British X-type in 28
 gores, the Japanese Type 1 with its scalloped skirt, a French canopy of light and dark panels and
 the Italian Salvator with its crown pulled down (the Americans keep the T-5).
+Each army is moulded in its nation's colour (`src/data/nations.js`): American green, German field
+grey, Soviet red, British khaki tan, Japanese white, French horizon blue and Italian black; a second
+army of the same nation, or one whose colour is taken, gets the first free colour.
 
 The army men (18 poses: riflemen standing, kneeling and prone, officer, machine gunner, sniper,
 bazooka, AA missile, grenadier, medic, rescuer, sapper, the MG-nest gunner and the tower lookout)
