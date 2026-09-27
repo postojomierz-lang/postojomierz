@@ -67,7 +67,6 @@
   <div class="build-head">
     <span class="hint">Drag on the floor to draw (size = drag). Click for a default size. Right-click removes. Army zones must stay clear.</span>
     <div class="grow"></div>
-    <button type="button" id="edDrawing" class="ghost">Import drawing</button><input type="file" id="edDrawingFile" accept="image/*" hidden>
     <button type="button" id="edOpen" class="ghost">Open file</button><input type="file" id="edOpenFile" accept=".json,application/json" hidden>
     <button type="button" id="edSave" class="ghost">Save file</button>
     <button type="button" id="edClear" class="ghost">Clear</button>
@@ -91,7 +90,6 @@
           <option value="4">4 — free-for-all</option>
           <option value="5">5 — free-for-all</option>
           <option value="6">6 — free-for-all</option>
-          <option value="8">8 — Chaos (huge map, experimental)</option>
         </select>
       </label>
       <label>Your army
@@ -99,10 +97,10 @@
       </label>
       <label>Battlefield
         <select id="optSource">
-          <option value="random">Random battlefield</option>
-          <option value="library">From the map library</option>
-          <option value="file">Load a map file</option>
-          <option value="drawing">From a hand-drawn map (photo)</option>
+          <option value="normandy">Normandy countryside (diorama)</option>
+          <option value="random">Toy room (classic) — random floor</option>
+          <option value="library">Toy room — from the map library</option>
+          <option value="file">Toy room — load a map file</option>
         </select>
       </label>
       <label id="rowTheme">Floor
@@ -121,9 +119,6 @@
       </label>
       <label id="rowFile">Map file (.pfmap.json)
         <input type="file" id="optMapFile" accept=".json,application/json">
-      </label>
-      <label id="rowDrawing">Photo of your drawing
-        <input type="file" id="optDrawing" accept="image/*">
       </label>
       <label>Enemy commanders
         <select id="optDiff">
@@ -147,23 +142,10 @@
       </label>
       <label class="check"><input type="checkbox" id="optSound" checked> Sound effects</label>
     </div>
-    <div id="drawingHelp" class="claude" hidden>
-      <p class="note">Draw on white paper with markers: <b>black</b> = books, boxes and walls · <b>red</b> = LEGO bricks · <b>blue</b> = spills · <b>green</b> lines = low cover (pencils). Keep the army zones empty, then photograph just the sheet from above. Everything is read on your device; nothing is uploaded.</p>
-      <div><button type="button" id="btnBlank" class="ghost">Download a blank sheet to print</button></div>
-    </div>
     <details id="advanced" class="claude">
-      <summary>Advanced: let Claude design the battlefield (needs your own Anthropic API key)</summary>
+      <summary>Advanced: let Claude design a toy-room battlefield (needs your own Anthropic API key)</summary>
       <label class="check"><input type="checkbox" id="optUseClaude"> Use Claude for this battlefield</label>
-      <label>Claude designs it from
-        <select id="optClaudeMode">
-          <option value="text">A description</option>
-          <option value="photo">A photo of a real floor, table or desk</option>
-        </select>
-      </label>
-      <label id="photoRow">Photo
-        <input type="file" id="optPhoto" accept="image/*">
-      </label>
-      <label>Description <span class="muted" id="promptHint">(optional with a photo)</span>
+      <label>Description
         <textarea id="optPrompt" rows="2" placeholder="e.g. Breakfast table: cereal box fortress, spilled milk river, spoons as bridges"></textarea>
       </label>
       <div class="grid2">
@@ -178,7 +160,7 @@
           </select>
         </label>
       </div>
-      <p class="note">Your description or photo is sent to Anthropic's Claude API and billed to your key. The key is saved only in this browser; use one with a spending limit. If anything fails you get a random battlefield instead.</p>
+      <p class="note">Your description is sent to Anthropic's Claude API and billed to your key. The key is saved only in this browser; use one with a spending limit. If anything fails you get a random battlefield instead.</p>
     </details>
     <p class="note">Online battles against other players come in a later stage. Right now the other armies are commanded by the computer.</p>
     <div class="actions"><button value="editor" class="ghost">🛠 Map editor</button><button value="online" class="ghost">🌐 Play online</button><button value="go" class="go">Tip out the toy box ▶</button></div>
@@ -247,7 +229,7 @@
       <b>Online</b><span>“Play online” on the setup screen: host a room and send the code or invite link, or join a friend's room. Everyone deploys at the same time and presses <b>Ready</b>; the battle starts when all players are ready. If someone leaves, the computer takes over their army. If a network blocks direct connections, the game goes through a free relay (TURN) automatically — see Connection settings in the online dialog.</span>
       <b>Wounded</b><span>Soldiers often go down wounded instead of dying (red cross). A nearby comrade drags them behind the closest cover (a book, a mug, sandbags), medics patch them up on the spot so they fight on, and field ambulances pick up to 4 from safe spots and drive them back to base — they steer clear of enemy fire. Anyone saved fights again next round for free. Wounded left out in the open bleed out.</span>
       <b>Friendly fire</b><span>Explosions hurt everyone nearby, including your own soldiers. Troops avoid lobbing grenades or shells at enemies standing next to friends, but misses happen.</span>
-      <b>Maps</b><span>Play a random battlefield, pick one from the map library, load a map file a friend sent you, or draw one on paper and photograph it. "Save map" (top bar) saves the current battlefield; the Map editor lets you build your own.</span>
+      <b>Maps</b><span>The Normandy countryside is a new diorama every game: fields boxed in by hedgerows (they block movement and sight; look for the gates), lanes, farms, stone walls and hay bales for cover. Or pick the classic toy room: a random floor, the map library, or a map file a friend sent you. "Save map" (top bar) saves a toy-room battlefield; the Map editor lets you build your own.</span>
       <b>Minimap</b><span>Click the minimap (bottom right) to jump the camera there.</span>
       <b>Winning</b><span>Destroy the enemy headquarters. After 10 rounds the strongest army wins.</span>
     </div>

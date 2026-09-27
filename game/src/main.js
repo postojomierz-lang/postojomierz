@@ -1,10 +1,9 @@
 import './style.css';
 import { CATALOG, GROUPS, TEAM_COLORS, RULES } from './data/catalog.js';
-import { makeMap } from './sim/map.js';
+import { makeMap, MAX_ARMIES } from './sim/map.js';
 import { designBattlefield, explainError } from './claude.js';
 import { LIBRARY } from './data/maps.js';
 import { exportLayout, downloadLayout, readLayoutFile } from './mapfile.js';
-import { recognizeDrawing, blankSheet } from './drawn.js';
 import { Editor } from './editor.js';
 import { Sim } from './sim/sim.js';
 import { aiDeploy, aiOrders } from './sim/ai.js';
@@ -17,9 +16,12 @@ const $ = id => document.getElementById(id);
 const DT = 1 / RULES.tickRate;
 
 // ---------------------------------------------------------------- settings (per-browser convenience)
-const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal', source: 'random', library: LIBRARY[0].id,
-  useClaude: false, claudeMode: 'text', living: 'toy', apiKey: '', model: 'claude-opus-5', prompt: '' };
+const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal', source: 'normandy', library: LIBRARY[0].id,
+  useClaude: false, living: 'toy', apiKey: '', model: 'claude-opus-5', prompt: '' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
+settings.teams = Math.max(2, Math.min(MAX_ARMIES, +settings.teams || 2));   // at most 6 armies
+if (!settings.diorama) { settings.diorama = 1; settings.source = 'normandy'; }   // the Normandy diorama is the new default
+if (!['normandy', 'random', 'library', 'file'].includes(settings.source)) settings.source = 'normandy';
 const save = () => { try { localStorage.setItem('plasticfront3d', JSON.stringify(settings)); } catch {} };
 
 let view;
@@ -40,18 +42,16 @@ const busy = (lines) => {
   return () => { clearInterval(timer); $('loading').hidden = true; };
 };
 
-// Works out the battlefield from the setup screen. files: { photo, mapFile, drawing }.
+// Works out the battlefield from the setup screen. files: { mapFile }.
 // Returns everything every player needs to build the very same map: { n, seed, layout, theme }.
 async function prepareMap(files = {}, layout = null, n = +settings.teams) {
   const seed = (Math.random() * 2 ** 31) >>> 0;
-  const blank = makeMap({ teams: n, seed });
   if (!layout && settings.useClaude) {
     if (!settings.apiKey) toast('Add an Anthropic API key to let Claude design the battlefield — using a random one.', false, true);
-    else if (settings.claudeMode === 'photo' && !files.photo) toast('Pick a photo for Claude first — using a random battlefield.', false, true);
     else {
       const done = busy(['Claude is surveying the battlefield…', 'Measuring the coffee mugs…', 'Counting LEGO studs…', 'Checking where the juice spilled…']);
       try {
-        layout = await designBattlefield({ apiKey: settings.apiKey, model: settings.model, map: blank, prompt: settings.prompt, photo: settings.claudeMode === 'photo' ? files.photo : null });
+        layout = await designBattlefield({ apiKey: settings.apiKey, model: settings.model, map: makeMap({ teams: n, seed }), prompt: settings.prompt });
       } catch (e) {
         toast('Claude could not design the map (' + await explainError(e) + ') — using a random one.', false, true);
       } finally { done(); }
@@ -61,16 +61,8 @@ async function prepareMap(files = {}, layout = null, n = +settings.teams) {
   } else if (!layout && settings.source === 'file') {
     if (!files.mapFile) toast('Choose a map file first — using a random battlefield.', false, true);
     else try { layout = await readLayoutFile(files.mapFile); } catch (e) { toast('Could not open the map (' + e.message + ') — using a random one.', false, true); }
-  } else if (!layout && settings.source === 'drawing') {
-    if (!files.drawing) toast('Choose a photo of your drawing first — using a random battlefield.', false, true);
-    else {
-      const done = busy(['Reading your drawing…']);
-      try { layout = await recognizeDrawing(files.drawing, blank.W, blank.H); layout.theme = settings.theme || 'carpet'; }
-      catch (e) { toast('Could not read the drawing (' + e.message + ') — using a random one.', false, true); }
-      finally { done(); }
-    }
   }
-  const theme = settings.source === 'random' && !layout ? settings.theme || null : null;
+  const theme = layout ? null : settings.source === 'normandy' && !settings.useClaude ? 'normandy' : settings.theme || null;
   return { n, seed, layout, theme };
 }
 
@@ -439,7 +431,7 @@ function openSetup() {
   $('optTeams').value = settings.teams; colorSel.value = settings.color; $('optTheme').value = settings.theme;
   $('optDiff').value = settings.diff; $('optQuality').value = settings.quality; $('optSound').checked = settings.sound;
   $('optSource').value = settings.source; $('optLibrary').value = settings.library; $('optLiving').value = settings.living;
-  $('optUseClaude').checked = settings.useClaude; $('optClaudeMode').value = settings.claudeMode;
+  $('optUseClaude').checked = settings.useClaude;
   $('optKey').value = settings.apiKey; $('optModel').value = settings.model; $('optPrompt').value = settings.prompt;
   if (settings.useClaude) $('advanced').open = true;
   syncSetup();
@@ -449,7 +441,7 @@ function readSetup() {
   settings.teams = +$('optTeams').value; settings.color = colorSel.value; settings.theme = $('optTheme').value;
   settings.diff = $('optDiff').value; settings.quality = $('optQuality').value; settings.sound = $('optSound').checked;
   settings.source = $('optSource').value; settings.library = $('optLibrary').value; settings.living = $('optLiving').value;
-  settings.useClaude = $('optUseClaude').checked; settings.claudeMode = $('optClaudeMode').value;
+  settings.useClaude = $('optUseClaude').checked;
   settings.apiKey = $('optKey').value.trim(); settings.model = $('optModel').value; settings.prompt = $('optPrompt').value.trim().slice(0, 600);
   save();
 }
@@ -458,26 +450,22 @@ $('dlgSetup').addEventListener('close', () => {
   sounds.unlock();
   if ($('dlgSetup').returnValue === 'editor') { openEditor(); return; }
   if ($('dlgSetup').returnValue === 'online') { if (!game.net) openOnline(); return; }
-  newGame({ photo: $('optPhoto').files[0] || null, mapFile: $('optMapFile').files[0] || null, drawing: $('optDrawing').files[0] || null });
+  newGame({ mapFile: $('optMapFile').files[0] || null });
 });
 $('dlgSetup').addEventListener('cancel', e => { if (!game.sim) e.preventDefault(); });
 $('optLibrary').innerHTML = LIBRARY.map(m => `<option value="${m.id}">${m.title}</option>`).join('');
 function syncSetup() {
   const src = $('optSource').value, claude = $('optUseClaude').checked;
-  $('rowTheme').hidden = claude || !(src === 'random' || src === 'drawing');
+  $('rowTheme').hidden = claude || src !== 'random';
   $('rowLibrary').hidden = claude || src !== 'library';
   $('rowFile').hidden = claude || src !== 'file';
-  $('rowDrawing').hidden = claude || src !== 'drawing';
-  $('drawingHelp').hidden = claude || src !== 'drawing';
   $('optSource').disabled = claude;
-  $('photoRow').hidden = $('optClaudeMode').value !== 'photo';
-  $('promptHint').hidden = $('optClaudeMode').value !== 'photo';
 }
-for (const id of ['optSource', 'optUseClaude', 'optClaudeMode']) $(id).addEventListener('change', syncSetup);
-$('btnBlank').onclick = () => blankSheet(makeMap({ teams: +$('optTeams').value, seed: 1 }));
+for (const id of ['optSource', 'optUseClaude']) $(id).addEventListener('change', syncSetup);
 $('btnSaveMap').onclick = () => {
   const sim = game.mode === 'play' ? game.sim : null;
   if (!sim) return;
+  if (sim.map.theme === 'normandy') { toast('Map files are for toy-room battlefields — Normandy is a new diorama every game'); return; }
   downloadLayout(exportLayout(sim.map));
   toast('Map saved — share the file or load it from the setup screen');
 };
@@ -494,7 +482,7 @@ function openEditor() {
   for (const id of ['build', 'speed', 'armies']) $(id).hidden = true;
   $('phase').textContent = 'Editor';
   const cur = game.sim && game.sim.map;
-  editor.open(cur && cur.objects.length ? exportLayout(cur) : null);
+  editor.open(cur && cur.objects.length && cur.theme !== 'normandy' ? exportLayout(cur) : null);
   toast('Map editor — draw household obstacles on the floor', true);
 }
 $('btnMenu').onclick = openSetup;
@@ -627,7 +615,7 @@ function makeHost() {
     onHello: (id, msg) => {
       const net = game.net;
       if (msg.resume && net) return playerResumed(id, msg);
-      if (net || online.players.length >= 8) { host.send(id, { t: 'full' }); host.kick(id); return; }
+      if (net || online.players.length >= MAX_ARMIES) { host.send(id, { t: 'full' }); host.kick(id); return; }
       const p = { id, name: String(msg.name || 'Player').slice(0, 16), color: +msg.color || 0, seen: Date.now(), route: '' };
       online.players.push(p);
       lobbySync();
@@ -836,8 +824,8 @@ async function becomeHost(room, cands, oldHost) {
 async function startOnline() {
   const host = online.host; if (!host || online.players.length < 2) return;
   readSetup();
-  const n = Math.min(8, Math.max(+settings.teams, online.players.length));
-  const setup = await prepareMap({ photo: $('optPhoto').files[0] || null, mapFile: $('optMapFile').files[0] || null, drawing: $('optDrawing').files[0] || null }, null, n);
+  const n = Math.min(MAX_ARMIES, Math.max(+settings.teams, online.players.length));
+  const setup = await prepareMap({ mapFile: $('optMapFile').files[0] || null }, null, n);
   // colours: everyone keeps their favourite unless somebody earlier already took it
   const used = new Set(), pick = c => { if (used.has(c)) c = TEAM_COLORS.findIndex((_, i) => !used.has(i)); used.add(c); return c; };
   const armies = online.players.map((p, i) => { p.team = i; p.seen = Date.now(); return { name: p.name, color: pick(p.color), human: true }; });

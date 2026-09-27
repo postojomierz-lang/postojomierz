@@ -1,6 +1,6 @@
-// Battlefields designed by Claude, from a text description or a photo of a real floor/table.
+// Toy-room battlefields designed by Claude from a text description.
 // Runs in the browser with the player's own API key (stored only in their browser).
-import { THEMES, STYLES } from './sim/map.js';
+import { ROOM_THEMES as THEMES, STYLES } from './sim/map.js';
 
 let sdk = null;
 async function loadSDK() {
@@ -57,26 +57,11 @@ Objects must not overlap. Leave open lanes between the zones so armies can reach
 Also choose the floor theme closest to the surface (${THEMES.join(', ')}), its main colour as a hex string like #b98a55, a short punchy battle title and a 1-2 sentence briefing in a war-movie voice from the toys' point of view. Keep it kid-friendly.`;
 }
 
-async function shrinkImage(file) {
-  const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
-  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.85).split(',')[1];
-}
-
 // Returns a layout object for makeMap({ layout }).
-export async function designBattlefield({ apiKey, model, map, prompt, photo }) {
+export async function designBattlefield({ apiKey, model, map, prompt }) {
   const Anthropic = await loadSDK();
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  const content = [];
-  if (photo) {
-    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: await shrinkImage(photo) } });
-    content.push({ type: 'text', text: `This is a photo of a real surface the player wants to fight on. Identify the objects on it and recreate its layout on the ${map.W}x${map.H} grid as seen from above: keep objects in the same relative positions and proportions (stretch the photo's play area over the whole grid), map each object to the closest style, and read the floor colour from the photo. Move anything that would land in a deployment zone just outside it.${prompt ? ' The player adds: ' + prompt : ''}` });
-  } else {
-    content.push({ type: 'text', text: prompt ? `Design this battlefield: ${prompt}` : 'Surprise the player with an imaginative household battlefield.' });
-  }
+  const content = [{ type: 'text', text: prompt ? `Design this battlefield: ${prompt}` : 'Surprise the player with an imaginative household battlefield.' }];
   const params = {
     model, max_tokens: 16000,
     system: systemPrompt(map.W, map.H, map.zones),
@@ -90,7 +75,7 @@ export async function designBattlefield({ apiKey, model, map, prompt, photo }) {
     try { msg = await client.beta.messages.create({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }); }
     catch (e) { if (e instanceof Anthropic.BadRequestError) msg = await client.messages.create(params); else throw e; }
   } else msg = await client.messages.create(params);
-  if (msg.stop_reason === 'refusal') throw new Error('Claude declined to design this battlefield. Try another description or photo.');
+  if (msg.stop_reason === 'refusal') throw new Error('Claude declined to design this battlefield. Try another description.');
   if (msg.stop_reason === 'max_tokens') throw new Error('The answer was cut off before it finished.');
   const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
   return JSON.parse(text);
