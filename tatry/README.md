@@ -131,3 +131,13 @@ kamienna ścieżka, powyżej Buli goła skała i słabo wydeptany ślad).
   wydeptaną krawędzią; bruk z nieregularnych płyt granitowych w ziemi, niektórych brak.
 - Na brukowanych odcinkach teren pod ścieżką jest wyrównany w poprzek (półka wcięta w zbocze),
   a na stromiznach (> 20%) stoją kamienne stopnie co ~20–28 cm wysokości.
+
+## Roślinność i otoczenie (2)
+- Kosodrzewina: kępy złożone w Blenderze z 11–15 sosenek `pine_sapling_small` odchylonych na boki
+  (`tools/blender/make_dwarfpine.py`), upieczone jako impostory w 8 widokach. Pozycje z mapy pokrycia
+  ESA oraz z ortofotomapy (ciemna zieleń na 1500–1950 m w pasie 400 m od szlaku), po 1–3 kępy na punkt.
+- Pokrycie gruntu: drugi, rzadszy pierścień większych kęp do 70–95 m; więcej paproci i trawy w lesie;
+  szczaw alpejski przy schroniskach i szałasach, żółte kwiaty na halach (`tools/blender/combine_gltf.py`
+  łączy kilka modeli w jeden atlas).
+- Martwe drewno: zwalone pnie i pniaki (Poly Haven, uproszczone do ~1500 trójkątów) w lesie przy szlaku
+  (`src/deadwood.js`).

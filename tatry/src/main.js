@@ -20,6 +20,7 @@ import { buildTrailMarks } from './trailmarks.js';
 import { buildSigns } from './signs.js';
 import { buildLabels } from './labels.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
+import { buildDeadwood } from './deadwood.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -374,11 +375,39 @@ async function main() {
       else if (h < 1950 && terrain.normal(x, z, 4).y > 0.8) pine.push(x, h, z);
     }
   }
-  const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern'], shade, {
+  {
+    // dwarf pine where the orthophoto shows it: dark, saturated green between 1500 and 1950 m,
+    // near the trail (the 10 m land-cover map misses most of the thickets beside the path)
+    const ph = pixels(innerBmp), PW = innerBmp.width, PH = innerBmp.height;
+    const G = QUALITY === 'low' ? 7 : 5;
+    const seen = new Set();
+    for (let i = 0; i < N; i += 6) {
+      for (let k = 0; k < (QUALITY === 'low' ? 60 : 110); k++) {
+        const d = Math.pow(r(), 1.5) * 420, a = r() * 6.283;
+        const gx = Math.round((trail.X[i] + Math.cos(a) * d) / G), gz = Math.round((trail.Z[i] + Math.sin(a) * d) / G);
+        const key = gx * 100003 + gz;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const x = (gx + r() - 0.5) * G, z = (gz + r() - 0.5) * G;
+        const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * PW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * PH);
+        if (u < 0 || v < 0 || u >= PW || v >= PH) continue;
+        const o = (v * PW + u) * 4, R = ph[o], Gc = ph[o + 1], B = ph[o + 2];
+        if (!(Gc > R + 4 && Gc > B + 6 && R + Gc + B < 260)) continue;
+        const h = terrain.height(x, z);
+        if (h < 1500 || h > 1950 || terrain.maskAt(trailWide, x, z) > 0.3 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
+        if (terrain.normal(x, z, 4).y < 0.75) continue;
+        pine.push(x, h, z);
+      }
+    }
+  }
+  const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3 }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3 },
     grass: { wind: 2.5, brightness: 2.6, upNormal: 0.7 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
+    mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55 }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
   });
-  const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds });
+  const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds,
+    ground: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.02 || terrain.maskAt(lakeMask, x, z) > 0.02 || houses.inside(x, z, 2)
+      || terrain.normal(x, z, 3).y < 0.7) ? null : terrain.height(x, z) });
   const landPx = { d: pixels(landBmp), w: landBmp.width, h: landBmp.height };
   const photoPx = { d: pixels(innerBmp), w: innerBmp.width, h: innerBmp.height };
   const sound = new Sound({
@@ -403,7 +432,9 @@ async function main() {
   };
   const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
-    masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), quality: QUALITY });
+    masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY });
+  const deadwood = await buildDeadwood({ scene, terrain, trail, shade, quality: QUALITY, isForest: sound.isForest,
+    free: (x, z) => terrain.maskAt(clearing, x, z) === 0 && terrain.maskAt(lakeMask, x, z) < 0.02 && !houses.inside(x, z, 3) });
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
   {
@@ -856,7 +887,7 @@ async function main() {
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
