@@ -1,6 +1,6 @@
 import './style.css';
 import { CATALOG, GROUPS, TEAM_COLORS, RULES } from './data/catalog.js';
-import { makeMap } from './sim/map.js';
+import { makeMap, MAX_ARMIES } from './sim/map.js';
 import { designBattlefield, explainError } from './claude.js';
 import { LIBRARY } from './data/maps.js';
 import { exportLayout, downloadLayout, readLayoutFile } from './mapfile.js';
@@ -19,6 +19,7 @@ const DT = 1 / RULES.tickRate;
 const settings = { quality: 'medium', sound: true, teams: 2, color: 'green', theme: '', diff: 'normal', source: 'normandy', library: LIBRARY[0].id,
   useClaude: false, living: 'toy', apiKey: '', model: 'claude-opus-5', prompt: '' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('plasticfront3d') || '{}')); } catch {}
+settings.teams = Math.max(2, Math.min(MAX_ARMIES, +settings.teams || 2));   // at most 6 armies
 if (!settings.diorama) { settings.diorama = 1; settings.source = 'normandy'; }   // the Normandy diorama is the new default
 if (!['normandy', 'random', 'library', 'file'].includes(settings.source)) settings.source = 'normandy';
 const save = () => { try { localStorage.setItem('plasticfront3d', JSON.stringify(settings)); } catch {} };
@@ -464,6 +465,7 @@ for (const id of ['optSource', 'optUseClaude']) $(id).addEventListener('change',
 $('btnSaveMap').onclick = () => {
   const sim = game.mode === 'play' ? game.sim : null;
   if (!sim) return;
+  if (sim.map.theme === 'normandy') { toast('Map files are for toy-room battlefields — Normandy is a new diorama every game'); return; }
   downloadLayout(exportLayout(sim.map));
   toast('Map saved — share the file or load it from the setup screen');
 };
@@ -480,7 +482,7 @@ function openEditor() {
   for (const id of ['build', 'speed', 'armies']) $(id).hidden = true;
   $('phase').textContent = 'Editor';
   const cur = game.sim && game.sim.map;
-  editor.open(cur && cur.objects.length ? exportLayout(cur) : null);
+  editor.open(cur && cur.objects.length && cur.theme !== 'normandy' ? exportLayout(cur) : null);
   toast('Map editor — draw household obstacles on the floor', true);
 }
 $('btnMenu').onclick = openSetup;
@@ -613,7 +615,7 @@ function makeHost() {
     onHello: (id, msg) => {
       const net = game.net;
       if (msg.resume && net) return playerResumed(id, msg);
-      if (net || online.players.length >= 8) { host.send(id, { t: 'full' }); host.kick(id); return; }
+      if (net || online.players.length >= MAX_ARMIES) { host.send(id, { t: 'full' }); host.kick(id); return; }
       const p = { id, name: String(msg.name || 'Player').slice(0, 16), color: +msg.color || 0, seen: Date.now(), route: '' };
       online.players.push(p);
       lobbySync();
@@ -822,7 +824,7 @@ async function becomeHost(room, cands, oldHost) {
 async function startOnline() {
   const host = online.host; if (!host || online.players.length < 2) return;
   readSetup();
-  const n = Math.min(8, Math.max(+settings.teams, online.players.length));
+  const n = Math.min(MAX_ARMIES, Math.max(+settings.teams, online.players.length));
   const setup = await prepareMap({ mapFile: $('optMapFile').files[0] || null }, null, n);
   // colours: everyone keeps their favourite unless somebody earlier already took it
   const used = new Set(), pick = c => { if (used.has(c)) c = TEAM_COLORS.findIndex((_, i) => !used.has(i)); used.add(c); return c; };

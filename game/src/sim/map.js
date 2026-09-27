@@ -20,11 +20,12 @@ const OBSTACLES = {
 // Two armies face each other across a rectangle. Three or more sit at the corners of a regular
 // polygon on a round table, so every army is exactly as far from its neighbours and from the middle.
 // (No Math.sin/cos: the map must come out identical on every machine.)
-const ZONE = { 3: 18, 4: 17, 5: 16, 6: 15, 7: 14, 8: 13 };   // zone edge (cells)
+export const MAX_ARMIES = 6;                                 // 2-6 armies per battle
+const ZONE = { 3: 18, 4: 17, 5: 16, 6: 15 };   // zone edge (cells)
 const NEIGHBOUR = 52;                                        // distance between neighbouring HQ zones
 export function mapSize(n) {
   if (n <= 2) return { W: 64, H: 40, zw: 16, zh: 40, round: false };
-  n = Math.min(8, n);
+  n = Math.min(MAX_ARMIES, n);
   const z = ZONE[n], d = NEIGHBOUR / (2 * sinT(PI / n));
   const S = 2 * Math.ceil(d + z * 0.70715 + 2);
   return { W: S, H: S, zw: z, zh: z, round: true };
@@ -61,6 +62,7 @@ export const STYLES = {
 
 // layout (optional): { theme, objects: [{ kind: 'tall'|'low'|'water', style, x, y, w, h }], decor: [{ kind, x, y }] }
 export function makeMap({ teams, theme, seed, layout = null }) {
+  teams = Math.max(2, Math.min(MAX_ARMIES, teams));
   const rng = mulberry(seed);
   const { W, H, zw, zh, round } = mapSize(teams);
   if (layout && ROOM_THEMES.includes(layout.theme)) theme = layout.theme;

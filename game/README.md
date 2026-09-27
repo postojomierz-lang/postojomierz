@@ -5,7 +5,7 @@ on soldiers, vehicles and fortifications inside its deployment zone, then the ba
 out on its own for 40 seconds. Survivors stay on the field, reinforcements follow, and the
 last headquarters standing wins.
 
-Features: 2–8 armies on maps that grow with the number of armies, infantry (incl. AA missile
+Features: 2–6 armies on maps that grow with the number of armies, infantry (incl. AA missile
 soldiers), vehicles, aircraft (fighters, ground-attack planes, bombers, paratroop transports,
 helicopters), defences and fortifications. Soldiers are often wounded rather than killed:
 comrades drag them behind the nearest cover, medics heal them on the spot, and cautious
@@ -15,7 +15,7 @@ again next round. Explosions cause friendly fire.
 With 3 or more armies the battle is fought on a round table: headquarters sit at the corners of a
 regular polygon, so every army is equally far from its neighbours, and random obstacles are
 rotationally symmetric. Every round each army gets orders: a main target (or the nearest enemy)
-and Attack or Defend. 2–6 armies are standard; 8 is an experimental "Chaos" mode.
+and Attack or Defend. A battle has at most 6 armies.
 
 Battlefields (all free and offline):
 - **Normandy countryside** (the default): a model-railway style diorama generated from the seed —
