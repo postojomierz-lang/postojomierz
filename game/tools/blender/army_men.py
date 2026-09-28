@@ -1522,11 +1522,28 @@ def mgstand():
     head(fig, neck, F, D(0.25, 0, 1))
     fig.finish()
 
+def bearer(front):
+    """one of a pair of stretcher bearers, unarmed, walking with a handle of the stretcher in each
+    hand - the front man's hands down behind him, the rear man's down in front; a white arm band."""
+    fig = Fig('bearer-front' if front else 'bearer-back')
+    WHITE = '#f4f1e8'
+    pel = standing(fig, stride=4.2, stance=2.6, lean=0.5 if front else -0.3)
+    T = Frame(pel, F, D(0.1 if front else -0.06, 0, 1))
+    shR, shL, neck = torso(fig, T, pack=False)
+    fx = -3.2 if front else 3.2
+    for s, sh in ((1, shL), (-1, shR)):
+        el = arm(fig, sh, P(fx, s * 5.6, 15.5), pole=D(-fx * 0.1, s, 0.2), grip_dir=L)
+        if s > 0:
+            fig.ring(sh + (el - sh) * 0.45, el - sh, 1.45, 0.4, WHITE, seg=18)                # arm band
+    head(fig, neck, F, U)
+    fig.finish()
+
 POSES = {'rifleman': rifleman, 'kneel': kneel, 'prone': prone, 'officer': officer, 'mg': mg, 'sniper': sniper,
          'bazooka': lambda: bazooka(False), 'bazooka-stand': lambda: bazooka(True), 'manpads': lambda: manpads(False),
          'manpads-kneel': lambda: manpads(True), 'grenadier': lambda: grenadier(True), 'grenadier-idle': lambda: grenadier(False),
          'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag, 'gunner': gunner, 'lookout': lookout,
-         'sapper': sapper, 'driver': driver, 'mgstand': mgstand}
+         'sapper': sapper, 'driver': driver, 'mgstand': mgstand,
+         'bearer-front': lambda: bearer(True), 'bearer-back': lambda: bearer(False)}
 
 if __name__ == '__main__':
     only = [a for a in sys.argv[1:] if not a.startswith('--')]

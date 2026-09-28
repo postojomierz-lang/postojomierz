@@ -53,6 +53,10 @@ export const CATALOG = {
     weapon: { kind: 'bullet', range: 6, dmg: 1, cd: 1.4, acc: 0.6 },
     blurb: 'Runs to wounded soldiers and patches them up on the spot, so they fight on.',
   },
+  bearers: {
+    name: 'Stretcher bearers', group: 'infantry', cls: 'infantry', medic: true, capacity: 1, cost: 25, hp: 16, speed: 1.3, size: [1, 1], radius: 0.45,
+    blurb: 'Two unarmed men with a stretcher: carry a wounded soldier home from where no ambulance can go.',
+  },
   para: {
     name: 'Paratrooper', group: 'hidden', cls: 'infantry', cost: 10, hp: 10, speed: 1.7, size: [1, 1], radius: 0.32,
     weapon: { kind: 'bullet', range: 9, dmg: 2, cd: 1.1, acc: 0.72, air: true },

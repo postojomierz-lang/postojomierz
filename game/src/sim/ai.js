@@ -67,7 +67,7 @@ export function aiDeploy(sim, teamId, seed) {
   if (sim.round >= 2 && m > 800 && rng() < 0.4) vehiclePlan.push('rockets');
   if (m > 450 && rng() < 0.35) vehiclePlan.push(rng() < 0.5 ? 'amphib' : 'jeep');
   let myInf = 0, myMedic = 0;
-  for (const e of sim.ents) if (e.team === teamId && !e.dead) { if (e.def.cls === 'infantry') myInf++; if (e.def.medic) myMedic++; }
+  for (const e of sim.ents) if (e.team === teamId && !e.dead) { if (e.def.cls === 'infantry') myInf++; if (e.def.medic && e.def.vehicle) myMedic++; }
   if (!myMedic && (sim.round >= 2 || m > 900) && rng() < 0.6) vehiclePlan.push('ambulance');
   // a field hospital at the back once there are wounded to look after
   if (!sim.beds(teamId) && sim.round >= 2 && (myMedic || t.ward.length) && m > 400 && rng() < 0.6) tryPlace('hospital', -1, -0.3);
@@ -91,7 +91,7 @@ export function aiDeploy(sim, teamId, seed) {
 
   // --- infantry with whatever is left ---
   const weights = {
-    rifleman: 40, mg: 14, grenadier: 13, sniper: 7, medic: 7, manpads: enemyAir > 0 ? 10 + Math.min(20, enemyAir / 25) : 0,
+    rifleman: 40, mg: 14, grenadier: 13, sniper: 7, medic: 7, bearers: sim.round >= 2 ? 4 : 0, manpads: enemyAir > 0 ? 10 + Math.min(20, enemyAir / 25) : 0,
     bazooka: 10 + Math.min(30, enemyArmor / 20),
   };
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
