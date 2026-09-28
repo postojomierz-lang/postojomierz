@@ -1438,6 +1438,43 @@ def officer():
     binoculars(fig, T.at(2.7, 0.0, 6.2), T.d(0, 0, -1) + T.f * 0.001)
     fig.finish()
 
+def mg_kit(fig, T):
+    """what each army's light machine gunner carried for his gun: the American BAR belt with its
+    magazine pouches, a German gunner's cartridge belt round his neck and the spare barrel case
+    on his back, the Red Army's steel carrier for DP pans on the back, the Bren gunner's spare
+    barrel holdall, the Japanese gunner's magazine boxes on the belt, the French musettes for
+    FM 24/29 magazines on both hips, the Italian tin of Breda chargers."""
+    q = T.q
+    if US:
+        with fig.hard():
+            for k in range(6):
+                a = -1.0 + k * 0.4; p = T.at(2.75 * math.cos(a), 3.3 * math.sin(a), 1.9)
+                fig.box(p, (1.0, 0.8, 1.4), Frame(p, T.f * math.cos(a) + T.l * math.sin(a), T.u).q, bevel=0.15)
+    elif DE:
+        pts = [T.at(2.3, -2.6, 6.8), T.at(1.2, -2.6, 10.4), T.at(-0.8, -1.2, 11.6), T.at(-0.8, 1.2, 11.6), T.at(1.2, 2.6, 10.4), T.at(2.4, 2.3, 6.4)]
+        for a, b in zip(pts, pts[1:]):
+            d = b - a; n = max(2, int(d.length / 0.5))
+            for k in range(n):
+                p = a + d * (k / n); out = (p - T.at(0, 0, p.dot(T.u) - T.o.dot(T.u))).normalized()
+                fig.box(p + out * 0.2, (0.28, 0.28, 1.1), Frame(p, out, out.cross(d)).q, '#c9a24a', bevel=0.02)   # cartridges
+        with fig.hard(): fig.cyl(T.at(-2.9, -2.4, 2.2), T.at(-2.9, 1.8, 10.2), 0.6, seg=12, bevel=0.1)          # spare barrel case
+    elif SU:
+        with fig.hard():
+            fig.box(T.at(-3.4, 0, 6.8), (4.2, 2.0, 4.6), q, bevel=0.2)                       # the pan carrier
+            fig.box(T.at(-4.45, 0, 6.8), (3.6, 0.2, 3.6), q, bevel=0.05)
+    elif GB:
+        with fig.hard(): fig.cyl(T.at(-2.8, 2.6, 1.8), T.at(-2.8, -2.2, 11.0), 0.75, seg=12, bevel=0.15)          # spare barrel holdall
+        fig.strap([T.at(-2.6, 2.6, 2.2), T.at(1.8, 2.8, 8.0), T.at(1.0, -2.8, 11.2)], 0.2)
+    elif JP:
+        with fig.hard():
+            for s_ in (1.8, -1.8): fig.box(T.at(2.9, s_, 1.6), (1.6, 1.2, 1.9), q, bevel=0.15)
+    elif FR:
+        with fig.hard():
+            for s_ in (1, -1): fig.box(T.at(0.6, s_ * 3.8, 0.4), (2.4, 1.3, 2.6), q, bevel=0.35)        # the musettes
+        for s_ in (1, -1): fig.strap([T.at(0.6, s_ * 3.8, 1.6), T.at(2.4, s_ * 1.5, 7.5), T.at(0.8, -s_ * 2.6, 11.4)], 0.2)
+    elif IT:
+        with fig.hard(): fig.box(T.at(1.8, -3.3, 1.2), (1.5, 1.2, 2.0), q, bevel=0.12)                        # the charger tin
+
 def mg():
     """machine gunner firing a BAR from the hip, leaning into it."""
     fig = Fig('mg')
@@ -1450,6 +1487,7 @@ def mg():
     arm(fig, shL, R.at(14.0, 0, -0.9), pole=D(0, 0.5, -1), grip_dir=R.f)
     head(fig, neck, F, D(0.05, -0.05, 1))
     fig.strap([R.at(1.5, 0, -1.2), T.at(-1.0, 3.5, 10.2)], 0.2)                    # sling over the shoulder
+    mg_kit(fig, T)
     fig.finish()
 
 def bazooka(standing_=False):
