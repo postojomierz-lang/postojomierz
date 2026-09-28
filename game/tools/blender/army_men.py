@@ -1407,6 +1407,19 @@ def grenadier(throwing=True):
         head(fig, neck, F, U)
     fig.finish()
 
+def armband(fig, sh, el, band='#f4f1e8', mark='cross'):
+    """an arm band round the upper arm (left arm: its mark on the outer side): the Geneva red cross,
+    or two lettering blocks in the given colour."""
+    RED = '#d63a2f'
+    c, ax = sh + (el - sh) * 0.45, (el - sh).normalized()
+    fig.ring(c, el - sh, 1.45, 0.45, band, seg=18)
+    n = (L - ax * L.dot(ax)).normalized()
+    Fr = Frame(c, n, ax); q, p = Fr.q, c + n * 1.86
+    if mark == 'cross':
+        fig.box(p, (0.95, 0.12, 0.3), q, RED, bevel=0.02); fig.box(p, (0.3, 0.12, 0.95), q, RED, bevel=0.02)
+    else:
+        for k in (-1, 1): fig.box(p + Fr.l * (k * 0.42), (0.3, 0.12, 0.7), q, mark, bevel=0.02)
+
 def medic(kneel_=False):
     fig = Fig('medic-heal' if kneel_ else 'medic')
     WHITE, RED = '#f4f1e8', '#d63a2f'
@@ -1420,7 +1433,8 @@ def medic(kneel_=False):
     H = head(fig, neck, F, D(0.55, 0, 1) if kneel_ else U)
     # each army marks its medics its own way: helmet (US: white circles with red crosses front and
     # sides; British: a white square; Italians: a white circle; French: the cross painted straight
-    # on; the others none), the bag (colour, with or without a cross) - all wear the arm band
+    # on; the others none), the bag (colour, with or without a cross) - all wear the same Geneva arm
+    # band, white with the red cross, as the Convention laid down for every army
     helm, bag, bag_cross = {'us': ('disc', WHITE, True), 'de': (None, '#5a4632', False), 'su': (None, '#9a8f5a', True),
                             'gb': ('square', '#b5a57a', False), 'jp': (None, '#6b4a2a', True), 'fr': ('bare', '#8b6b43', False),
                             'it': ('disc', '#7d7f5e', True)}[NATION]
@@ -1434,13 +1448,13 @@ def medic(kneel_=False):
     if kneel_:
         arm(fig, shR, P(10.0, -1.6, 3.4), pole=D(0, -1, -0.3), grip_dir=L)
         elL = arm(fig, shL, P(10.0, 1.6, 3.2), pole=D(0, 1, -0.3), grip_dir=L)
-        fig.ring(shL + (elL - shL) * 0.45, elL - shL, 1.45, 0.4, WHITE, seg=18)     # arm band
+        armband(fig, shL, elL)                                                       # the Geneva arm band
         with fig.hard(): fig.cyl(P(10.0, -1.4, 3.2), P(10.0, 1.4, 3.2), 0.9, WHITE, seg=14)   # bandage roll
         K = kitbag(fig, P(9.2, -6.5, 1.4), turn(F, 0.4), bag)
         fig.ground(P(11, -1, 0), K.o)
     else:
         elL = arm(fig, shL, shL + P(3.0, 3.0, 9.5), pole=D(-0.3, 1, 0), wave=True)
-        fig.ring(shL + (elL - shL) * 0.45, elL - shL, 1.45, 0.4, WHITE, seg=18)     # arm band
+        armband(fig, shL, elL)                                                       # the Geneva arm band
         g = shR + P(0.5, -1.2, -13.2)
         arm(fig, shR, g, pole=D(-1, -0.2, 0), grip_dir=L)
         K = kitbag(fig, g + P(0, -0.4, -2.2), F, bag)
@@ -1535,19 +1549,11 @@ def bearer(front):
     # (Hilfskrankentraeger: a red band lettered in white) and the British regimental bearers
     # (a white band lettered 'SB' in red)
     RED = '#d63a2f'
-    band, mark = {'de': (RED, WHITE), 'gb': (WHITE, 'SB')}.get(NATION, (WHITE, 'cross'))
+    band, mark = {'de': (RED, WHITE), 'gb': (WHITE, RED)}.get(NATION, (WHITE, 'cross'))
     for s, sh in ((1, shL), (-1, shR)):
         el = arm(fig, sh, P(fx, s * 5.6, 15.5), pole=D(-fx * 0.1, s, 0.2), grip_dir=L)
         if s > 0:
-            c, ax = sh + (el - sh) * 0.45, (el - sh).normalized()
-            fig.ring(c, el - sh, 1.45, 0.45, band, seg=18)                                  # arm band
-            n = (L - ax * L.dot(ax)).normalized()                                            # its outer side
-            q, p = Frame(c, n, ax).q, c + n * 1.86
-            if mark == 'cross':
-                fig.box(p, (0.95, 0.12, 0.3), q, RED, bevel=0.02); fig.box(p, (0.3, 0.12, 0.95), q, RED, bevel=0.02)
-            else:                                                                             # lettering
-                col = RED if mark == 'SB' else WHITE
-                for k in (-1, 1): fig.box(p + Frame(c, n, ax).l * (k * 0.42), (0.3, 0.12, 0.7), q, col, bevel=0.02)
+            armband(fig, sh, el, band, mark)
     head(fig, neck, F, U)
     fig.finish()
 
