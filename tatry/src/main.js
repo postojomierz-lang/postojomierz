@@ -233,6 +233,12 @@ async function main() {
   const sky = new Sky();
   sky.scale.setScalar(100000);
   sky.material.fog = false;
+  // the Sky shader is made for exposure ~0.5 without the scene's bloom and grade: here it burnt out to
+  // white. Scale its radiance down (skyGain, lower towards the horizon glow) so the blue survives
+  sky.material.uniforms.skyGain = { value: 0.4 };
+  sky.material.fragmentShader = sky.material.fragmentShader
+    .replace('uniform vec3 up;', 'uniform vec3 up;\nuniform float skyGain;')
+    .replace('gl_FragColor = vec4( retColor, 1.0 );', 'gl_FragColor = vec4( retColor * skyGain, 1.0 );');
   scene.add(sky);
 
   const sunLight = new THREE.DirectionalLight(0xffffff, 3.6);
@@ -553,7 +559,7 @@ async function main() {
   // ---------------------------------------------------------------- environment
   const env = { hour: 10.5, weather: 'clear' };
   const WEATHER = {
-    clear: { fog: 2.6e-5, turb: 1.6, ray: 2.6, sun: 1, amb: 1, fogMix: 0 },
+    clear: { fog: 2.6e-5, turb: 1.4, ray: 3.2, sun: 1, amb: 1, fogMix: 0 },
     haze: { fog: 5.5e-5, turb: 8, ray: 2.2, sun: 0.8, amb: 1.1, fogMix: 0.25 },
     mist: { fog: 1.1e-3, turb: 12, ray: 3, sun: 0.35, amb: 1.35, fogMix: 0.85 },
     cloudy: { fog: 3.5e-5, turb: 16, ray: 0.6, sun: 0.35, amb: 1.4, fogMix: 0.6 },
@@ -567,7 +573,8 @@ async function main() {
     const low = Math.pow(1 - THREE.MathUtils.smoothstep(e, 0.03, 0.45), 0.8);
     const u = sky.material.uniforms;
     u.turbidity.value = w.turb; u.rayleigh.value = w.ray;
-    u.mieCoefficient.value = 0.003 + 0.004 * low; u.mieDirectionalG.value = 0.82;
+    // a tight sun halo: a wide one washes out half the sky when looking towards the sun
+    u.mieCoefficient.value = 0.0018 + 0.004 * low; u.mieDirectionalG.value = 0.9;
     u.sunPosition.value.copy(dir);
     light.sunDir.value.copy(dir.y < 0.02 ? dir.clone().setY(0.02).normalize() : dir);
     const sc = new THREE.Color(1, 0.96, 0.88).lerp(new THREE.Color(1, 0.62, 0.3), low).lerp(new THREE.Color(1, 0.4, 0.15), low * low * 0.6);
@@ -938,7 +945,7 @@ async function main() {
     composer.render();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 

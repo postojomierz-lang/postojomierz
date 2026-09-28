@@ -252,6 +252,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         vec3 Nr = N;
         if (detail > 0.5) Nr = normalize(mix(N, hNormal(vWorld.xz, 4.0), smoothstep(60.0, 200.0, dist)));
         vec3 Nsm = Nr;                                              // slope direction for the fall lines
+        float slopeH = 1.0 - Nr.y;                                  // from the 4 m heights: real walls read as walls
         // ribs and gullies belong to rock and scree, not to grass and dwarf pine
         float greenish = clamp((sat.g - max(sat.r, sat.b)) * 9.0 - 0.25, 0.0, 1.0);
         float fl = fallLine(vWorld, Nr, Nsm, (detail > 0.5 ? 1.0 : 0.8) * (1.0 - 0.9 * greenish));
@@ -268,7 +269,10 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float strata = 0.88 + 0.12 * sin(w.y * 0.7 + t1 * 9.0);
           float glum = dot(satBlur, vec3(0.3, 0.45, 0.25));
           vec3 rock = vec3(glum) * vec3(1.02, 1.0, 0.95) * (0.55 + 0.9 * t1) * (0.82 + 0.36 * t2) * strata;
-          float steep = smoothstep(0.32, 0.7, slope) * (1.0 - green * 0.6 * (1.0 - smoothstep(0.5, 0.72, slope)));
+          // walls are granite whatever green the top-down photo smeared over them (from ~40° up the photo's
+          // green is ignored; the mesh normals are smoothed, so real walls show up from ~0.4)
+          float sl = max(slope, slopeH);
+          float steep = smoothstep(0.3, 0.6, sl) * (1.0 - green * 0.6 * (1.0 - smoothstep(0.38, 0.52, sl)));
           col = mix(sat, rock, steep * mid);
 
           // close range: photo textures (Poly Haven), coloured by the satellite image
