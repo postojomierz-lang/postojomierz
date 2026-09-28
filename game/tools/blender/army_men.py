@@ -1798,12 +1798,77 @@ def mp():
             fig.box(p + n * 0.15 + H.u * (0.8 + 0.15 * (k == 1)) + H.l * dl, (0.18, 0.15, 0.6), Frame(p, n, H.u + H.l * dl).q, INS['black'], bevel=0.02)
     fig.finish()
 
+def ammo_box(fig, c, fwd):
+    """the loader's ammunition: German twin MG belt boxes, the Red Army's box of DP pans, an
+    American ammunition can, a Japanese wooden box, the others a plain steel box."""
+    B = Frame(c, fwd, U)
+    with fig.hard():
+        if DE:
+            for s_ in (0.65, -0.65): fig.box(B.at(0, s_, 0), (1.1, 3.0, 2.2), B.q, bevel=0.12)
+            fig.box(B.at(0, 0, 1.25), (2.4, 0.4, 0.3), B.q, bevel=0.05)
+        elif SU:
+            fig.box(c, (1.6, 3.6, 3.6), B.q, bevel=0.2)
+            fig.box(B.at(0, 0, 1.95), (0.5, 1.6, 0.3), B.q, bevel=0.05)
+        elif JP:
+            fig.box(c, (1.8, 3.4, 2.0), B.q, bevel=0.08)
+            for k in (-1, 1): fig.box(B.at(0, 0, 0) + B.f * (k * 1.72), (1.9, 0.2, 2.1), B.q, bevel=0.02)
+        else:
+            fig.box(c, (1.3, 3.0, 2.2), B.q, bevel=0.12)
+            fig.box(B.at(0, 0, 1.25), (0.35, 1.8, 0.3), B.q, bevel=0.05)
+
+def lmg_ammo():
+    """the LMG team's loader on the move: an ammunition box in his right hand, rifle slung."""
+    fig = Fig('lmg-ammo')
+    pel = standing(fig, stride=4.4, stance=2.8, lean=0.4)
+    T = Frame(pel, F, D(0.08, 0, 1))
+    shR, shL, neck = torso(fig, T)
+    g = shR + P(0.8, -0.9, -12.4)
+    arm(fig, shR, g, pole=D(-0.3, -1, 0), grip_dir=F)
+    ammo_box(fig, g - U * 1.7, F)
+    arm(fig, shL, shL + P(3.0, 1.2, -11.5), pole=D(-0.3, 1, 0), grip_dir=F)
+    rifle(fig, T.at(-3.2, -3.8, -3.5), T.at(-2.5, 3.5, 17.5), up=T.f * -1, sling=True)
+    head(fig, neck, F, U)
+    fig.finish()
+
+def lmg_prone():
+    """the LMG team's gunner lying behind his gun on its bipod."""
+    fig = Fig('lmg-prone')
+    pel = P(-9.0, 0, 2.9)
+    prone_legs(fig, pel)
+    T = Frame(pel, -U, D(1, 0, 0.3))
+    shR, shL, neck = torso(fig, T, pack=False)
+    butt = P(1.2, -2.3, 6.2)
+    R = smg(fig, butt, butt + D(1, 0.02, -0.02) * 25)
+    Ln = 25
+    with fig.hard():
+        for s_ in (1, -1): fig.cyl(R.at(Ln * 0.84, 0, -0.3), R.at(Ln * 0.8, s_ * 1.6, 0) - U * (R.at(Ln * 0.8).z - 0.2), 0.14, seg=6)   # bipod down
+    elR = arm(fig, shR, R.at(6.0, 0, -1.4), pole=D(-0.2, -0.6, -1), grip_dir=R.f)
+    elL = arm(fig, shL, R.at(2.2, 0.2, 0.9), pole=D(0.2, 0.8, -1), grip_dir=R.f)              # left hand on the butt
+    head(fig, neck, F, D(0.75, -0.25, 1))
+    fig.ground(elR + P(0, 0, -1.3), elL + P(0, 0, -1.3), pel)
+    fig.finish()
+
+def lmg_loader():
+    """the LMG team's loader kneeling by the gun, the ammunition box open on the ground beside him."""
+    fig = Fig('lmg-loader')
+    pel = kneeling(fig)
+    T = Frame(pel, F, D(0.8, 0, 1))
+    shR, shL, neck = torso(fig, T)
+    box = P(8.0, 1.5, 1.2)
+    ammo_box(fig, box, F)
+    for s_, sh in ((1, shL), (-1, shR)): arm(fig, sh, box + P(-0.6, s_ * 1.6 - 0.8, 1.6), pole=D(0, s_, -0.3), grip_dir=F)
+    rifle(fig, T.at(-3.2, -3.8, -3.5), T.at(-2.5, 3.5, 17.5), up=T.f * -1, sling=True)
+    head(fig, neck, F, D(0.7, -0.2, 1))
+    fig.ground(box + P(2.0, 2.0, -1.2), box + P(-2.0, -2.0, -1.2))
+    fig.finish()
+
 POSES = {'rifleman': rifleman, 'kneel': kneel, 'prone': prone, 'officer': officer, 'mg': mg, 'sniper': sniper,
          'bazooka': lambda: bazooka(False), 'bazooka-stand': lambda: bazooka(True), 'manpads': lambda: manpads(False),
          'manpads-kneel': lambda: manpads(True), 'grenadier': lambda: grenadier(True), 'grenadier-idle': lambda: grenadier(False),
          'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag, 'gunner': gunner, 'lookout': lookout,
          'sapper': sapper, 'driver': driver, 'mgstand': mgstand,
-         'bearer-front': lambda: bearer(True), 'bearer-back': lambda: bearer(False), 'mp': mp}
+         'bearer-front': lambda: bearer(True), 'bearer-back': lambda: bearer(False), 'mp': mp,
+         'lmg-ammo': lmg_ammo, 'lmg-prone': lmg_prone, 'lmg-loader': lmg_loader}
 
 if __name__ == '__main__':
     only = [a for a in sys.argv[1:] if not a.startswith('--')]

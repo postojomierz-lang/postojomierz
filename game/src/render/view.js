@@ -14,11 +14,11 @@ import { buildTerrain, floorTexture, FLOOR, buildTape } from './terrain.js';
 import { buildDiorama } from './diorama.js';
 import { DIORAMAS } from '../sim/map.js';
 import { Fx } from './fx.js';
-import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
+import { CATALOG, TEAM_COLORS, RULES } from '../data/catalog.js';
 
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
-  rifleman: [0.82, 0.87], para: [0.82, 0.87], officer: [0.51, 0.9], grenadier: [-0.12, 1.04], bazooka: [0.49, 0.68], manpads: [0.36, 1.09], medic: [0.3, 0.8], mp: [0.18, 0.57],
+  rifleman: [0.82, 0.87], para: [0.82, 0.87], officer: [0.51, 0.9], grenadier: [-0.12, 1.04], bazooka: [0.49, 0.68], manpads: [0.36, 1.09], medic: [0.3, 0.8], mp: [0.18, 0.57], lmg: [1.03, 0.81], lmg1: [1.03, 0.81],
   sniper: [0.88, 0.87], mg: [0.78, 0.81], jeep: [0.26, 1.05], apc: [1.26, 0.98], amphib: [0.4, 1.36], tank: [2.1, 1.09], tank_light: [1.14, 0.98], tank_heavy: [2.7, 1.18], rockets: [0.05, 1.37],
   heli: [0.45, -0.16], fighter: [0.5, -0.08], attacker: [0.24, -0.21], bomber: [0, -0.25], transport: [-0.65, -0.1],
   // the German models
@@ -43,7 +43,7 @@ const MUZZLE = {
   mgnest: [1.0, 0.62], fieldgun: [1.41, 1.12], aa: [1.03, 1.59], tower: [0.6, 2.95], hq: [1.9, 1.75],
 };
 // the same for the other poses a figure is swapped into (tools/blender/army_men.py prints them)
-const POSE_MUZZLE = { 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
+const POSE_MUZZLE = { 'pose-lmg-set': [1.06, 0.2], 'pose-lmg-set1': [1.06, 0.2], 'pose-prone': [0.74, 0.22], 'pose-kneel': [0.8, 0.65], 'pose-manpads-kneel': [0.35, 0.87], 'pose-bazooka-stand': [0.52, 0.9], 'pose-grenadier-idle': [0.15, 1.08] };
 const LITTER_Y = 0.13;   // a wounded man on a stretcher lies this much higher
 const HEIGHT = { mg: 0.95, tank: 1.5, tank_light: 1.3, tank_heavy: 1.6, jeep: 1.3, apc: 1.3, amphib: 1.7, rockets: 1.9, heli: 1.0, fighter: 0.6, attacker: 0.6, bomber: 0.8, transport: 0.9, ambulance: 1.5, eng_traps: 1.3, eng_at: 1.3, eng_ap: 1.3, tanktrap: 0.8, mgnest: 1.1, fieldgun: 1.3, aa: 1.9, tower: 3.3, hospital: 1.5, hq: 4.4, wall: 1.7, sandbags: 0.7, wire: 0.7, barrel: 1.0 };
 const PARKED = { fighter: 0.3, attacker: 0.34, bomber: 0.3, transport: 0.4, 'de:attacker': 0.55, 'de:transport': 0.5, 'jp:attacker': 0.55, 'fr:transport': 0.44, 'it:transport': 0.47, 'gb:transport': 0.46, 'jp:transport': 0.44 };
@@ -54,9 +54,11 @@ const isAir = def => def.cls === 'air' || def.cls === 'plane';
 // as if a kid repositioned them. Returns the model name to draw.
 const CAN_KNEEL = { rifleman: 'pose-kneel', officer: 'pose-kneel', para: 'pose-kneel', grenadier: 'pose-kneel', manpads: 'pose-manpads-kneel' };
 const CAN_PRONE = new Set(['rifleman', 'officer', 'para', 'grenadier']);
+const LMG_SET = RULES.lmg.setup * RULES.tickRate;   // ticks until the bipod is down
 function basePose(type) { return type === 'grenadier' ? 'pose-grenadier-idle' : type; }
 function poseFor(v, now, battle) {
   const e = v.e, t = e.type;
+  if (t === 'lmg') return (battle && e.setup >= LMG_SET ? 'pose-lmg-set' : 'lmg') + (e.crew < 2 ? '1' : '');
   if (e.carrying) return 'pose-drag';
   if (e.healing) return 'pose-medic-heal';
   if (t === 'grenadier' && now < v.throwUntil) return 'grenadier';

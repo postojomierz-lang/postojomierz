@@ -23,6 +23,11 @@ export const CATALOG = {
     weapon: { kind: 'bullet', range: 11, dmg: 1, cd: 0.16, acc: 0.42, air: true },
     blurb: 'Shreds infantry. Slow to move.',
   },
+  lmg: {
+    name: 'LMG team', group: 'infantry', cls: 'infantry', team2: true, cost: 45, hp: 20, speed: 1.3, size: [1, 1], radius: 0.45,
+    weapon: { kind: 'bullet', range: 16, dmg: 1, cd: 0.13, acc: 0.55, air: true },
+    blurb: 'Gunner and loader. Once the bipod is down it outshoots anything on foot; slower without the loader.',
+  },
   bazooka: {
     name: 'Bazooka', group: 'infantry', cls: 'infantry', cost: 25, hp: 10, speed: 1.4, size: [1, 1], radius: 0.32,
     weapon: { kind: 'rocket', range: 9, dmg: 20, cd: 3.4, acc: 0.8, splash: 0.7, projSpeed: 13, prefer: 'armor' },
@@ -245,6 +250,8 @@ export const RULES = {
   recovery: { rounds: 2, bed: 2, noBed: 1 },
   // badly hurt soldiers may break and run for home for a few seconds - unless an officer
   // (within his aura) or a military policeman (within his reach) is close by
+  // the two-man light machine gun team: firing before the bipod is set up, or without the loader
+  lmg: { setup: 1.5, hastyAcc: 0.4, hastyRate: 2.2, aloneRate: 1.6 },
   morale: { breakAt: 0.4, chance: 0.35, flee: 5 },
   veteran: {
     names: ['Veteran', 'Elite', 'Hero'],

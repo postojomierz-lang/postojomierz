@@ -91,7 +91,7 @@ export function aiDeploy(sim, teamId, seed) {
 
   // --- infantry with whatever is left ---
   const weights = {
-    rifleman: 40, mg: 14, grenadier: 13, sniper: 7, medic: 7, bearers: sim.round >= 2 ? 4 : 0, mp: sim.round >= 2 ? 3 : 0, manpads: enemyAir > 0 ? 10 + Math.min(20, enemyAir / 25) : 0,
+    rifleman: 40, mg: 14, lmg: sim.round >= 2 ? 6 : 2, grenadier: 13, sniper: 7, medic: 7, bearers: sim.round >= 2 ? 4 : 0, mp: sim.round >= 2 ? 3 : 0, manpads: enemyAir > 0 ? 10 + Math.min(20, enemyAir / 25) : 0,
     bazooka: 10 + Math.min(30, enemyArmor / 20),
   };
   const total = Object.values(weights).reduce((a, b) => a + b, 0);

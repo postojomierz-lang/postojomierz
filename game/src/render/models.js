@@ -257,6 +257,22 @@ function buildBearers(nation) {
   return out;
 }
 
+// The two-man light machine gun team: on the move the gunner (the machine gunner's figure) with his
+// loader behind him carrying the ammunition; set up, the gunner lies behind the bipod and the loader
+// kneels by the gun. Without the loader only the gunner is left. [figure, x, z] per man.
+const LMG_TEAM = {
+  lmg: [['mg', 0.25, -0.28], ['lmg-ammo', -0.55, 0.32]], lmg1: [['mg', 0.25, -0.28]],
+  'pose-lmg-set': [['lmg-prone', 0.3, -0.25], ['lmg-loader', -0.05, 0.62]], 'pose-lmg-set1': [['lmg-prone', 0.3, -0.25]],
+};
+function buildTeam(men, nation) {
+  const at = (geo, x, z) => (geo.index ? geo.toNonIndexed() : geo.clone()).translate(x, 0, z);
+  const figs = men.map(([k, x, z]) => [figure(k, nation), x, z]);
+  const out = { main: mergeGeometries(figs.map(([f, x, z]) => at(f.main, x, z))), far: { main: mergeGeometries(figs.map(([f, x, z]) => at(f.far.main, x, z))) } };
+  const acc = figs.filter(([f]) => f.accent).map(([f, x, z]) => at(f.accent, x, z));
+  if (acc.length) out.accent = mergeGeometries(acc);
+  return out;
+}
+
 // ---------------------------------------------------------------------------------
 const cache = new Map();
 export function modelKey(type, seed = 0, nation = 'us') { return nation + ':' + (type === 'wall' || type === 'sandbags' ? type + (seed % 4) : type); }
@@ -266,6 +282,7 @@ export function model(type, seed = 0, nation = 'us') {
   let m;
   if (FIGURE_FOR[type]) { m = figure(FIGURE_FOR[type], nation); cache.set(k, m); return m; }
   if (type === 'bearers') { m = buildBearers(nation); cache.set(k, m); return m; }
+  if (LMG_TEAM[type]) { m = buildTeam(LMG_TEAM[type], nation); cache.set(k, m); return m; }
   // walls and sandbags come in two shapes, picked by the placement seed; all engineers share one truck
   const vk = type === 'wall' || type === 'sandbags' ? type + (seed % 2) : type.startsWith('eng_') ? 'engtruck' : type;
   m = buildVehicle(VEHICLES[vk] ? vk : 'barrel', nation);
