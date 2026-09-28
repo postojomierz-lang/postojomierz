@@ -380,7 +380,7 @@ async function main() {
   const r = rng(7);
   const spruce = [], pine = [];
   const px = (IB[2] - IB[0]) / LW, pz = (IB[3] - IB[1]) / LH;
-  const density = (QUALITY === 'low' ? 0.35 : 0.9) / AREA_K;
+  const density = QUALITY === 'low' ? 0.35 : 0.9;              // big areas are thinned afterwards, away from the trail
   for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) {
     const c = land[(j * LW + i) * 4];
     if (c !== 10 && c !== 20 && c !== 30) continue;
@@ -423,16 +423,21 @@ async function main() {
       }
     }
   }
-  // keep the plant count in hand on big areas: thin out at random beyond a cap, far from the trail first
+  // keep the plant count in hand on big areas: everything within ~300 m of the trail stays (full
+  // density where you walk), the rest is thinned to fit the cap
+  const nearMask = drawMask(1024, IB, (g) => {
+    g.strokeStyle = 'rgb(255,0,0)'; g.lineWidth = 600;
+    g.beginPath(); trailPts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
+  });
   const thin = (arr, stride, cap) => {
     const n = arr.length / stride;
     if (n <= cap) return arr;
+    let nNear = 0;
+    const isNear = new Uint8Array(n);
+    for (let k = 0; k < n; k++) if (terrain.maskAt(nearMask, arr[k * stride], arr[k * stride + 2]) > 0) { isNear[k] = 1; nNear++; }
+    const keepFar = Math.max(0, cap - nNear) / Math.max(1, n - nNear);
     const out = [];
-    for (let k = 0; k < n; k++) {
-      const x = arr[k * stride], z = arr[k * stride + 2];
-      const nearTrail = terrain.maskAt(clearing, x, z) > 0 || r() < 0.02;
-      if (nearTrail || r() < cap / n) for (let q = 0; q < stride; q++) out.push(arr[k * stride + q]);
-    }
+    for (let k = 0; k < n; k++) if (isNear[k] || r() < keepFar) for (let q = 0; q < stride; q++) out.push(arr[k * stride + q]);
     return out;
   };
   const CAP = QUALITY === 'low' ? { spruce: 14000, pine: 7000 } : { spruce: 26000, pine: 14000 };
@@ -548,7 +553,7 @@ async function main() {
   // ---------------------------------------------------------------- environment
   const env = { hour: 10.5, weather: 'clear' };
   const WEATHER = {
-    clear: { fog: 2.0e-5, turb: 2.5, ray: 1.2, sun: 1, amb: 1, fogMix: 0 },
+    clear: { fog: 2.6e-5, turb: 1.6, ray: 2.6, sun: 1, amb: 1, fogMix: 0 },
     haze: { fog: 5.5e-5, turb: 8, ray: 2.2, sun: 0.8, amb: 1.1, fogMix: 0.25 },
     mist: { fog: 1.1e-3, turb: 12, ray: 3, sun: 0.35, amb: 1.35, fogMix: 0.85 },
     cloudy: { fog: 3.5e-5, turb: 16, ray: 0.6, sun: 0.35, amb: 1.4, fogMix: 0.6 },
@@ -558,22 +563,24 @@ async function main() {
     const { el, dir } = sunAt(env.hour);
     const e = Math.max(el, -0.2);
     const day = THREE.MathUtils.smoothstep(e, -0.1, 0.25);
-    const low = 1 - THREE.MathUtils.smoothstep(e, 0.02, 0.5);
+    // warm low sun: from ~25° down to the horizon (morning and evening)
+    const low = Math.pow(1 - THREE.MathUtils.smoothstep(e, 0.03, 0.45), 0.8);
     const u = sky.material.uniforms;
     u.turbidity.value = w.turb; u.rayleigh.value = w.ray;
-    u.mieCoefficient.value = 0.005; u.mieDirectionalG.value = 0.8;
+    u.mieCoefficient.value = 0.003 + 0.004 * low; u.mieDirectionalG.value = 0.82;
     u.sunPosition.value.copy(dir);
     light.sunDir.value.copy(dir.y < 0.02 ? dir.clone().setY(0.02).normalize() : dir);
-    const sc = new THREE.Color(1, 0.96, 0.88).lerp(new THREE.Color(1, 0.55, 0.25), low);
+    const sc = new THREE.Color(1, 0.96, 0.88).lerp(new THREE.Color(1, 0.62, 0.3), low).lerp(new THREE.Color(1, 0.4, 0.15), low * low * 0.6);
     light.sunCol.value.copy(sc).multiplyScalar(w.sun * THREE.MathUtils.smoothstep(e, -0.03, 0.1));
-    const amb = new THREE.Color(0.32, 0.38, 0.5).lerp(new THREE.Color(0.4, 0.3, 0.35), low * 0.6);
+    const amb = new THREE.Color(0.32, 0.38, 0.5).lerp(new THREE.Color(0.3, 0.3, 0.42), low * 0.7);
     light.ambCol.value.copy(amb).multiplyScalar(w.amb * (0.08 + 0.92 * day));
     // scene lights reproduce the tuned sun/ambient colours (Lambert divides by PI)
     sunLight.color.copy(light.sunCol.value); sunLight.intensity = 1.15 * Math.PI;
     hemi.color.copy(light.ambCol.value).multiplyScalar(1.55);
     hemi.groundColor.copy(light.ambCol.value).multiplyScalar(0.8);
     hemi.intensity = Math.PI;
-    const fogDay = new THREE.Color(0.66, 0.74, 0.84).lerp(new THREE.Color(0.9, 0.7, 0.55), low * 0.7);
+    // aerial perspective: distant ridges fade into a cool blue haze (warm towards evening)
+    const fogDay = new THREE.Color(0.56, 0.67, 0.83).lerp(new THREE.Color(0.86, 0.66, 0.52), low * 0.75);
     const fogGrey = new THREE.Color(0.7, 0.72, 0.74);
     const fc = fogDay.lerp(fogGrey, w.fogMix).multiplyScalar(0.12 + 0.88 * day);
     scene.fog.color.copy(fc);

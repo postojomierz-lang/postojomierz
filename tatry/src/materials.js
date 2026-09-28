@@ -365,6 +365,28 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         } else {
           float tr = texture2D(trailMap, uv).r;
           col = mix(col, vec3(0.4, 0.38, 0.35), smoothstep(0.2, 0.75, tr) * 0.6);
+          // panorama: the 10 m satellite photo on a 58 m mesh breaks into green and white camouflage
+          // patches (snow fields, shadows). Paint the far mountains by height and slope instead
+          // (forest, dwarf pine, alpine meadow, grey granite and scree) and keep only the photo's
+          // broad colour, taken from a blurred level
+          vec3 satB = textureLod(satMap, uv, 4.0).rgb * 1.5;
+          float y = vWorld.y + (vnoise(vWorld.xz / 400.0) - 0.5) * 160.0;
+          float st = smoothstep(0.28, 0.62, slope);
+          vec3 forestC = vec3(0.10, 0.15, 0.08), mugoC = vec3(0.16, 0.21, 0.10), meadowC = vec3(0.30, 0.33, 0.18);
+          vec3 rockC = vec3(0.47, 0.46, 0.44) * (0.85 + 0.3 * vnoise(vWorld.xz / 90.0)), screeC = vec3(0.55, 0.54, 0.51);
+          vec3 veg = mix(forestC, mugoC, smoothstep(1450.0, 1600.0, y));
+          veg = mix(veg, meadowC, smoothstep(1750.0, 1950.0, y));
+          vec3 bare = mix(screeC, rockC, st);
+          float rocky = max(st, smoothstep(1950.0, 2250.0, y));
+          vec3 paint = mix(veg, bare, rocky);
+          // the photo still decides between green and bare where it is sure (broad scale only)
+          float g = clamp((satB.g - max(satB.r, satB.b)) * 8.0, 0.0, 1.0);
+          paint = mix(paint, veg, g * (1.0 - st) * (1.0 - smoothstep(1800.0, 2100.0, y)) * 0.5);
+          float lum = dot(satB, vec3(0.3, 0.55, 0.15));
+          paint *= mix(1.0, clamp(lum / 0.32, 0.8, 1.15), 0.3);
+          float far = smoothstep(500.0, 2500.0, dist);
+          col = mix(col, paint, far * 0.92);
+          fl *= 1.0 - far * 0.7;               // the ribs would re-draw the patches at this distance
         }
         col *= clamp(1.0 + fl * 1.1, 0.45, 1.5);
         diffuseColor.rgb = col;

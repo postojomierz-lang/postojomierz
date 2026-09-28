@@ -102,8 +102,11 @@ export function buildingFlats(meta, terrain) {
       hs.push(terrain.rawHeight(x, z));
     }
     hs.sort((p, q) => p - q);
-    // a terrace a little wider than the eaves, at the median ground level
-    return { x: b.x, z: b.z, c, s, w: b.w + 2 * st.eave + 2, d: b.d + 2 * st.eave + 2, level: hs[Math.floor(hs.length / 2)] };
+    // on steep ground a mountain building stands on the upper part of its footprint with a tall stone
+    // plinth on the downhill side, instead of being dug into the slope: level from the upper heights
+    // (70th percentile), a terrace just under the footprint
+    const lvl = hs[Math.floor(hs.length * 0.7)];
+    return { x: b.x, z: b.z, c, s, w: b.w + 1, d: b.d + 1, level: lvl, blend: 3 };
   });
 }
 
@@ -143,6 +146,9 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture 
     for (let i = -1; i <= 1; i += 0.5) for (let j = -1; j <= 1; j += 0.5) {
       const p = L(i * W / 2, 0, j * D / 2), h = terrain.height(p.x, p.z);
       gMin = Math.min(gMin, h); gMax = Math.max(gMax, h);
+      // just outside the walls (downhill the ground falls away): the plinth reaches down to it
+      const q = L(i * (W / 2 + 1.2), 0, j * (D / 2 + 1.2));
+      gMin = Math.min(gMin, terrain.height(q.x, q.z) - 0.3);
     }
     const y0 = gMin - 0.5, yP = gMax + st.plinth;                   // plinth from below ground to above the high side
     const wallH = st.floorH * (b.floors || 1) * (b.style === 'old_hut' ? 0.8 : 1);
