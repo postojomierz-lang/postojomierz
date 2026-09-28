@@ -168,6 +168,6 @@ repozytorium (serwowanego obok `rysy/`, nie kopiowanego do builda):
   (`prepare.py`, `prepare_gugik.py`, `prepare_water.py`, `prepare_buildings.py`, `prepare_labels.py`).
 `src/routeinfo.js` wyprowadza z tagów OSM: szerokość i nawierzchnię ścieżki (asfalt, droga, bruk,
 schody, skała), kolor znaków na kamieniach, łańcuchy na trudnych odcinkach (`sac_scale` ≥ 3, powyżej
-1650 m), drogowskazy w miejscach drogowskazów z OSM oraz na starcie i mecie (nazwy mijanych schronisk,
+1950 m), drogowskazy w miejscach drogowskazów z OSM, przy mijanych schroniskach i jeziorach oraz na starcie i mecie (nazwy mijanych schronisk,
 przełęczy, szczytów i jezior, czasy z norm), nazwy miejsc w HUD i tytuł trasy. Bez parametru `trasa`
 aplikacja działa jak dotąd (Morskie Oko → Rysy z `public/data`).

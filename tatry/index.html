@@ -26,7 +26,8 @@
   .stats dt { color: var(--muted); }
   .stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
   .stats .tread { color: #ffc9a8; }
-  #controls { top: 12px; right: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; width: 210px; }
+  #controls { top: 12px; right: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; width: 236px; }
+  #controls .row:first-child button { padding: 7px 8px; white-space: nowrap; }
   .row { display: flex; gap: 6px; align-items: center; }
   button, select { font: inherit; font-size: 13px; color: var(--ink); background: rgba(255,255,255,0.08); border: 1px solid var(--line);
     border-radius: 8px; padding: 7px 10px; cursor: pointer; }
@@ -76,7 +77,8 @@
     #hud { min-width: 0; padding: 8px 10px; }
     #hud h1 { font-size: 13px; }
     .stats { font-size: 12px; }
-    #controls { width: 160px; }
+    #controls { width: 196px; }
+    #controls .row:first-child button { padding: 6px 5px; }
     #profile { height: 44px; }
   }
 </style>

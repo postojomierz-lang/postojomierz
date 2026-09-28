@@ -423,6 +423,25 @@ async function main() {
       }
     }
   }
+  // keep the plant count in hand on big areas: thin out at random beyond a cap, far from the trail first
+  const thin = (arr, stride, cap) => {
+    const n = arr.length / stride;
+    if (n <= cap) return arr;
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      const x = arr[k * stride], z = arr[k * stride + 2];
+      const nearTrail = terrain.maskAt(clearing, x, z) > 0 || r() < 0.02;
+      if (nearTrail || r() < cap / n) for (let q = 0; q < stride; q++) out.push(arr[k * stride + q]);
+    }
+    return out;
+  };
+  const CAP = QUALITY === 'low' ? { spruce: 14000, pine: 7000 } : { spruce: 26000, pine: 14000 };
+  for (const [arr, stride, cap] of [[spruce, 4, CAP.spruce], [pine, 3, CAP.pine]]) {
+    const kept = thin(arr, stride, cap);
+    if (kept === arr) continue;
+    arr.length = 0;
+    for (const v of kept) arr.push(v);
+  }
   const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3 }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3 },
     grass: { wind: 2.5, brightness: 2.6, upNormal: 0.7 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },

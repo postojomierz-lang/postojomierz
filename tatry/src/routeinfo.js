@@ -14,6 +14,13 @@ function surfaceOf(t, ele) {
   return ele < 1700 ? { width: 1.7, paved: 0.75, wear: 0.95 } : { width: 1.3, paved: 0.35, wear: 0.8 };
 }
 
+// signpost-style short names: "Schronisko PTTK w Dolinie Pięciu Stawów Polskich" -> "Dolina Pięciu Stawów Polskich"
+function shortName(n) {
+  const m = n.match(/^(?:Stare\s+)?Schronisko(?:\s+PTTK)?\s+(?:(?:w|na|przy)\s+)?(.+)$/);
+  if (!m || /^(pod|nad)\s/.test(m[1])) return n;       // 'pod Wagą': the case cannot be undone simply
+  return m[1].replace(/^Dolinie\b/, 'Dolina').replace(/^Hali\b/, 'Hala').replace(/^Morskim Oku$/, 'Morskie Oko');
+}
+
 export function routeInfo({ route, trail, TH, meta, pois }) {
   const N = trail.X.length, step = trail.step;
   // distance along the route of every planner vertex, then per-metre lookups
@@ -50,7 +57,7 @@ export function routeInfo({ route, trail, TH, meta, pois }) {
   for (const p of pois) {
     if (p.k === 'sign' || !p.n) continue;
     const q = nearest(p.xz[0], p.xz[1]);
-    if (q.d < (p.k === 'hut' ? 120 : 70)) named.push({ s: q.s, name: p.n, kind: p.k, ele: p.e });
+    if (q.d < (p.k === 'hut' ? 120 : 70)) named.push({ s: q.s, name: shortName(p.n), kind: p.k, ele: p.e });
   }
   for (const l of meta.lakes || []) {
     if (!l.name) continue;
@@ -67,7 +74,11 @@ export function routeInfo({ route, trail, TH, meta, pois }) {
     return best;
   };
   const ends = (k) => {
-    const n = nameNear(k ? L : 0, 450);
+    // a hut near the end names it first (the route ends at the hut, not at the lake beside it)
+    const at = k ? L : 0;
+    const hut = dedup.filter((m) => m.kind === 'hut' && Math.abs(m.s - at) < 450).sort((a, b) => Math.abs(a.s - at) - Math.abs(b.s - at))[0];
+    if (hut) return hut.name;
+    const n = nameNear(at, 450);
     if (n) return n.name;
     const nm = route.info[k ? route.info.length - 1 : 0].name;
     const parts = nm.split(/\s+[-–]\s+/);
@@ -80,13 +91,24 @@ export function routeInfo({ route, trail, TH, meta, pois }) {
   for (const p of pois) {
     if (p.k !== 'sign') continue;
     const q = nearest(p.xz[0], p.xz[1]);
-    if (q.d < 25 && q.s > 150 && q.s < L - 150) spots.push({ s: q.s, name: p.n || (nameNear(q.s, 300) || {}).name || '' });
+    if (q.d < 25 && q.s > 150 && q.s < L - 150) spots.push({ s: q.s, name: p.n ? shortName(p.n) : (nameNear(q.s, 300) || {}).name || '' });
+  }
+  // and at the huts and lakes the route passes, where OSM has no guidepost close by
+  for (const n of dedup) {
+    if ((n.kind !== 'hut' && n.kind !== 'lake') || n.s < 300 || n.s > L - 300) continue;
+    if (!spots.some((sp) => Math.abs(sp.s - n.s) < 300)) spots.push({ s: n.s + 15, name: n.name });
   }
   spots.push({ s: Math.max(L - 6, L * 0.9), name: endName, end: true });
   spots.sort((a, b) => a.s - b.s);
   const posts = [];
   for (const sp of spots) {
-    if (posts.length && sp.s - posts[posts.length - 1].s < 200 && !sp.end) continue;
+    // a signpost needs a name; guideposts close to the previous one are left out
+    if (!sp.end && posts.length) {
+      if (sp.s - posts[posts.length - 1].s < 400) continue;
+      if (!sp.name) sp.name = (nameNear(sp.s, 500) || {}).name || '';
+      if (!sp.name || sp.name === posts[posts.length - 1].title) continue;
+    }
+    if (sp.end && posts.length && sp.s - posts[posts.length - 1].s < 150) posts.pop();
     const ahead = dedup.find((n) => n.s > sp.s + 300 && n.s < L - 300);
     const behind = [...dedup].reverse().find((n) => n.s < sp.s - 300 && n.s > 300);
     const boards = [];
@@ -104,7 +126,7 @@ export function routeInfo({ route, trail, TH, meta, pois }) {
   const places = [{ s: 0, name: startName }, ...dedup.filter((n) => n.s > 150 && n.s < L - 150).map((n) => ({ s: n.s, name: n.name })), { s: L, name: endName }];
   return {
     sectionAt, colourAt: (s) => colour[idx(s)], sacAt: (s) => SAC[idx(s)],
-    chainAt: (i) => SAC[i] >= 3 && TH[i] > 1650,
+    chainAt: (i) => SAC[i] >= 3 && TH[i] > 1950,      // difficult (SAC 3+) rock high up: Zawrat, Rysy, Kozi...
     posts, places, startName, endName, named: dedup,
   };
 }
