@@ -1490,6 +1490,35 @@ def mg():
     mg_kit(fig, T)
     fig.finish()
 
+def at_kit(fig, T):
+    """the tank hunter's ammunition and extras: American (and Free French) bazooka rockets in their
+    tubes on the back, the German Panzerschreck rocket frame with a Panzerfaust across it, the PIAT
+    bomb carrier of three tubes, Red Army RPG-43 anti-tank grenades on the belt, the Japanese
+    magnetic anti-tank mine hanging at the hip, the Italian box of Solothurn magazines."""
+    with fig.hard():
+        if US or FR:
+            for s_ in (0.9, -0.9): fig.cyl(T.at(-3.0, s_, 3.2), T.at(-3.0, s_ * 1.2, 11.2), 0.75, seg=12, bevel=0.08)
+            fig.box(T.at(-3.0, 0, 7.2), (3.4, 0.4, 0.5), T.q, bevel=0.05)
+        elif DE:
+            for s_ in (0.8, -0.8): fig.cyl(T.at(-3.2, s_, 2.8), T.at(-3.2, s_, 11.5), 0.8, seg=12, bevel=0.08)   # two rockets
+            for u in (4.0, 10.0): fig.box(T.at(-3.0, 0, u), (3.2, 0.9, 0.3), T.q, bevel=0.05)               # the carrying frame
+            a, b = T.at(-4.2, 3.0, 2.0), T.at(-4.2, -3.2, 11.8)                                               # Panzerfaust
+            fig.cyl(a, b, 0.4, seg=10); fig.sphere(b + (b - a).normalized() * 0.6, 1.0, scale=(1, 1, 1.5), q=Frame(b, T.f, b - a).q, seg=12)
+        elif GB:
+            for k in range(3): fig.cyl(T.at(-3.1, -1.1 + k * 1.1, 3.4), T.at(-3.1, -1.1 + k * 1.1, 10.4), 0.55, seg=10, bevel=0.06)   # bomb carrier
+            for u in (4.2, 9.6): fig.box(T.at(-3.1, 0, u), (3.6, 1.3, 0.35), T.q, bevel=0.05)
+        elif SU:
+            for s_ in (1.8, -0.4):                                                                           # RPG-43s through the belt
+                c = T.at(2.95, s_, 2.4); fig.cyl(c, c - T.u * 2.6, 0.35, seg=10); fig.cyl(c, c + T.u * 1.4, 0.95, seg=14, bevel=0.1)
+        elif JP:
+            c = T.at(0.9, 3.9, 0.2)                                                                          # hako-bakurai
+            fig.cyl(c - T.l * 0.6, c + T.l * 0.6, 1.9, seg=18, bevel=0.15)
+            for k in range(4):
+                a = k * math.pi / 2 + 0.785; d = T.f * math.cos(a) + T.u * math.sin(a)
+                fig.cyl(c + T.l * 0.7 + d * 1.35, c + T.l * 1.0 + d * 1.35, 0.4, seg=10)                       # its magnets
+        elif IT:
+            fig.box(T.at(2.4, -2.6, 1.6), (2.0, 1.3, 2.4), T.q, bevel=0.15)                                  # magazine box
+
 def bazooka(standing_=False):
     fig = Fig('bazooka-stand' if standing_ else 'bazooka')
     pel = standing(fig, stride=4.0, stance=2.9, lean=0.5) if standing_ else kneeling(fig)
@@ -1501,6 +1530,7 @@ def bazooka(standing_=False):
     arm(fig, shR, top + F * 4.8 + U * (-3.3), pole=D(-0.3, -1, -0.6), grip_dir=F)
     arm(fig, shL, top + F * 8.9 + U * (-2.9) + L * 0.4, pole=D(0.2, 0.3, -1), grip_dir=F)
     head(fig, neck, F, D(0.2, -0.35, 1))
+    at_kit(fig, T)
     fig.finish()
 
 def manpads(kneel_=False):
