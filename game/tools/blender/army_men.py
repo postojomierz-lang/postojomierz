@@ -222,6 +222,7 @@ class Fig:
         for o in objs: apply_transform(o)
         body = join(objs)
         remesh(body, VOXEL, BODY_TRIS)
+        for cb in getattr(self, 'on_body', []): cb(body)           # things laid onto the finished surface
         if self.base: self.stand()
         parts = [body]
         if self.hard_objs:
@@ -1295,12 +1296,51 @@ def rifleman():
     aim_rifle(fig, T, shR, shL, neck)
     fig.finish()
 
+def sniper_camo(fig, T, H):
+    """snipers wore no arm band: each army's is known by its camouflage - the German splinter-pattern
+    smock, the Red Army's amoeba suit, the British Denison smock's brush strokes, the Americans'
+    'frog skin' spots, the Italian telo mimetico, the Japanese sniper's leaves stuck all over his
+    helmet net and shoulders. (The French of 1940 had none: their sniper keeps only the helmet net.)"""
+    rnd = mulberry(311)
+    def spots(cols, n, size, shape):
+        # laid onto the finished body: rays from all round the torso's axis find its surface
+        def lay(body):
+            for i in range(n):
+                u = 2.4 + rnd() * 8.0; a = rnd() * 6.283
+                c = T.at(0.2, 0, u); d = (T.f * math.cos(a) + T.l * math.sin(a)).normalized()
+                ok, loc, nrm, _ = body.ray_cast(c + d * 15.0, -d)
+                if not ok: continue
+                nrm = nrm.normalized()
+                tang = T.u - nrm * T.u.dot(nrm)
+                if tang.length < 0.1: tang = T.f - nrm * T.f.dot(nrm)
+                tang = tang.normalized(); side = nrm.cross(tang); w = rnd() * 6.283
+                q = Frame(loc, nrm, tang * math.cos(w) + side * math.sin(w)).q; col = cols[i % len(cols)]
+                if shape == 'box': fig.box(loc, (size[0], 0.36, size[1]), q, col, bevel=0.05)
+                else: fig.sphere(loc, size[0], col, scale=(1.0, 0.3, size[1] / size[0]), q=q, seg=10)
+        fig.on_body = getattr(fig, 'on_body', []) + [lay]
+    if DE: spots(['#4f6b35', '#6e5b41', '#8a8a5a'], 44, (1.6, 0.8), 'box')           # Splittertarn
+    elif SU: spots(['#2f3a24', '#3f5a2e'], 36, (0.8, 1.15), 'blob')                     # amoeba
+    elif GB: spots(['#6e5b41', '#4f6b35'], 40, (0.4, 2.2), 'box')                      # Denison brush strokes
+    elif US: spots(['#4f6b35', '#6e5b41', '#2f3a24'], 44, (0.6, 0.6), 'blob')          # frog skin
+    elif IT: spots(['#6e5b41', '#4f6b35', '#b59a5a'], 40, (0.95, 0.8), 'blob')          # telo mimetico
+    elif JP:                                                                             # leaves in the net
+        tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
+        for i in range(16):
+            a = rnd() * 6.28; e = 0.15 + rnd() * 1.1
+            d = (tip.f * math.cos(a) * math.cos(e) + tip.l * math.sin(a) * math.cos(e) + tip.u * math.sin(e)).normalized()
+            p = tip.o + d * 3.55
+            fig.box(p + d * 0.5, (0.55, 0.12, 1.4), Frame(p, tip.u.cross(d) if tip.u.cross(d).length > 0.1 else tip.f, d).q, '#4f6b35', bevel=0.03)
+        for i in range(10):
+            sg = 1 if i % 2 else -1; p = T.at((rnd() - 0.5) * 2.0, sg * 3.2, 9.5 + rnd() * 1.5)
+            fig.box(p + T.u * 0.6, (0.55, 0.12, 1.5), Frame(p, T.f, T.u + T.l * sg * 0.5).q, '#4f6b35', bevel=0.03)
+
 def sniper():
     fig = Fig('sniper')
     pel = standing(fig, stride=4.6, stance=3.0, lean=1.0)
     T = Frame(pel, turn(F, -0.6), D(0.13, 0, 1))
     shR, shL, neck = torso(fig, T)
     aim_rifle(fig, T, shR, shL, neck, 'scoped')
+    sniper_camo(fig, T, Frame(neck, F, D(0.55, -0.4, 1)))
     fig.finish()
 
 def kneel():
