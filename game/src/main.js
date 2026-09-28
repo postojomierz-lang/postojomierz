@@ -35,7 +35,7 @@ try {
   throw e;
 }
 const sounds = new Sounds();
-const game = { sim: null, human: 0, seed: 0, diff: 'normal', tool: null, rot: 0, speed: 1, acc: 0, undo: [], thumbs: null, group: 'infantry', mode: 'play', net: null };
+const game = { sim: null, human: 0, seed: 0, diff: 'normal', tool: null, rot: 0, face: 0, speed: 1, acc: 0, undo: [], thumbs: null, group: 'infantry', mode: 'play', net: null };
 
 // ---------------------------------------------------------------- new game
 const busy = (lines) => {
@@ -343,7 +343,7 @@ function cellUnder(e) {
 }
 function tryPlace(cell, quiet) {
   const sim = game.sim;
-  const res = sim.place(game.human, game.tool, cell.cx, cell.cy, game.rot);
+  const res = sim.place(game.human, game.tool, cell.cx, cell.cy, game.rot, game.face);
   if (res.error) { if (!quiet) { toast(res.error); sounds.play('error'); } return false; }
   game.undo.push(res.ent.id);
   flushEvents();
@@ -366,13 +366,20 @@ canvas.addEventListener('pointerdown', e => {
 window.addEventListener('pointerup', () => {
   if (painting) { painting = false; view.controls.enabled = true; }
 });
-canvas.addEventListener('pointermove', e => {
+let lastMove = null;
+function showGhost(e) {
   const sim = game.sim;
-  if (!editable() || !game.tool) return;
+  if (!editable() || !game.tool) return null;
   const c = cellUnder(e);
-  if (!c) { view.hideGhost(); return; }
+  if (!c) { view.hideGhost(); return null; }
   const err = sim.canPlace(game.human, game.tool, c.cx, c.cy, game.rot);
-  view.setGhost(game.tool, game.human, c.cx, c.cy, game.rot, !err);
+  view.setGhost(game.tool, game.human, c.cx, c.cy, game.rot, !err, game.face);
+  return c;
+}
+canvas.addEventListener('pointermove', e => {
+  lastMove = { clientX: e.clientX, clientY: e.clientY };
+  const c = showGhost(e);
+  if (!c) return;
   const k = c.cx + ',' + c.cy;
   if (painting && k !== lastCell) { lastCell = k; tryPlace(c, true); }
 });
@@ -431,7 +438,13 @@ window.addEventListener('keydown', e => {
   if (document.querySelector('dialog[open]') || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
   const sim = game.sim; if (!sim || game.mode !== 'play') return;
   if (e.key === 'Escape') setTool(null);
-  else if (e.key === 'r' || e.key === 'R') { game.rot ^= 1; }
+  else if (e.key === 'r' || e.key === 'R') {
+    // walls, sandbags and wire turn across; everything else turns in steps of 45 degrees (Shift+R back)
+    const d = game.tool && CATALOG[game.tool];
+    if (d && d.static && d.cls === 'fort') game.rot ^= 1;
+    else game.face = (game.face + (e.shiftKey ? 7 : 1)) % 8;
+    if (lastMove) showGhost(lastMove);
+  }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
   else if (e.key === ' ') { e.preventDefault(); if (sim.phase === 'deploy') startBattle(); else if (sim.phase === 'battle') game.speed = game.speed ? 0 : 1; refresh(); }
   else if (sim.phase === 'battle' && ['1', '2', '4'].includes(e.key)) { game.speed = +e.key; refresh(); }
@@ -555,7 +568,7 @@ function submitOrders() {
   if (net.sentRound === sim.round) return;
   net.sentRound = sim.round;
   const t = sim.teams[me];
-  const placements = sim.orders.filter(o => !o.kind && o.round === sim.round && o.team === me).map(o => [o.type, o.cx, o.cy, o.rot]);
+  const placements = sim.orders.filter(o => !o.kind && o.round === sim.round && o.team === me).map(o => [o.type, o.cx, o.cy, o.rot, o.face || 0]);
   const msg = net.sentOrders = { t: 'orders', round: sim.round, team: me, hash: net.deploy.hash, placements, focus: t.focus, stance: t.stance };
   setTool(null); refresh();
   if (t.alive) toast('Ready — waiting for the other players…');
@@ -605,8 +618,8 @@ function applyGo(go) {
       aiDeploy(sim, o.team, game.seed); aiOrders(sim, o.team, game.seed);
       continue;
     }
-    for (const [type, cx, cy, rot] of o.placements) {
-      const r = sim.place(o.team, type, cx, cy, rot);
+    for (const [type, cx, cy, rot, face] of o.placements) {
+      const r = sim.place(o.team, type, cx, cy, rot, face || 0);
       if (r.error) console.warn('online: could not place', type, 'for', t.name, r.error);
     }
     sim.setOrders(o.team, { focus: o.focus, stance: o.stance });

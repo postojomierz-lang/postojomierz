@@ -9,6 +9,10 @@ const INF = 1e9;
 const SPEED = 1.35;   // global pace of ground movement
 const RESCUERS = new Set(['rifleman', 'officer', 'grenadier', 'bazooka', 'manpads', 'para']);
 const COVER_SEARCH = 7;   // how far (cells) comrades look for cover to drag a wounded soldier behind
+// turn a direction by k steps of 45 degrees (clockwise seen from above), without sin/cos so every
+// machine agrees
+const S45 = 0.7071067811865476, TURN45 = [[1, 0], [S45, S45], [0, 1], [-S45, S45], [-1, 0], [-S45, -S45], [0, -1], [S45, -S45]];
+export function turn45(x, z, k) { const [c, s] = TURN45[((k % 8) + 8) % 8]; return [x * c - z * s, x * s + z * c]; }
 
 export const isAir = e => e.def.cls === 'air' || e.def.cls === 'plane';
 
@@ -109,15 +113,17 @@ export class Sim {
     return null;
   }
 
-  place(teamId, type, cx, cy, rot = 0) {
+  // face: which way a unit (not a wall or sandbags: they use rot) looks when set down, in steps of
+  // 45 degrees from facing the middle of the map
+  place(teamId, type, cx, cy, rot = 0, face = 0) {
     const err = this.canPlace(teamId, type, cx, cy, rot);
     if (err) return { error: err };
     const t = this.teams[teamId], def = CATALOG[type];
     t.money -= def.cost; t.spent += def.cost;
     if (def.vehicle) t.vehicles++;
     if (def.aircraft) t.aircraft++;
-    this.orders.push({ round: this.round, team: teamId, type, cx, cy, rot });
-    return { ent: this.spawn(teamId, type, cx, cy, rot) };
+    this.orders.push({ round: this.round, team: teamId, type, cx, cy, rot, face });
+    return { ent: this.spawn(teamId, type, cx, cy, rot, face) };
   }
 
   // Undo a placement made during the current deploy phase (full refund).
@@ -134,11 +140,12 @@ export class Sim {
     return true;
   }
 
-  spawn(teamId, type, cx, cy, rot) {
+  spawn(teamId, type, cx, cy, rot, face = 0) {
     const def = CATALOG[type];
     const [w, h] = this.footprint(type, cx, cy, rot);
-    // face towards the middle of the map
-    const fx = this.W / 2 - (cx + w / 2), fz = this.H / 2 - (cy + h / 2);
+    // face towards the middle of the map (turned by the player in steps of 45 degrees)
+    let fx = this.W / 2 - (cx + w / 2), fz = this.H / 2 - (cy + h / 2);
+    if (face) [fx, fz] = turn45(fx, fz, face);
     const fl = Math.sqrt(fx * fx + fz * fz) || 1;
     const e = {
       id: this.nextId++, type, def, team: teamId, cx, cy, rot, w, h,
