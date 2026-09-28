@@ -17,9 +17,10 @@ HERE = os.path.dirname(__file__)
 sys.path.insert(0, HERE)
 CACHE = os.path.join(HERE, '.cache')
 OUT = os.path.join(HERE, '..', 'public', 'data', 'region')
-REGION = (19.93, 49.165, 20.15, 49.29)      # lon0, lat0, lon1, lat1: Polish High Tatras with Kasprowy
+REGION = (19.85, 49.08, 20.31, 49.29)       # lon0, lat0, lon1, lat1: Polish and Slovak High Tatras
 STEP = 10.0                                   # m between vertices
-OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']
+OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter',
+            'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.osm.jp/api/interpreter']
 WCS = ('https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFF'
        '?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage&COVERAGEID=DTM_PL-KRON86-NH_TIFF&FORMAT=image/tiff')
 SAC = {'hiking': 1, 'mountain_hiking': 2, 'demanding_mountain_hiking': 3, 'alpine_hiking': 4,
@@ -65,6 +66,7 @@ to2180 = Transformer.from_crs(4326, 2180, always_xy=True)
 _chunks = {}
 def gugik(lon, lat):
     from rasterio.io import MemoryFile
+    if lat < 49.165: return None          # south of Poland's southernmost point (Rysy): no GUGiK data
     x, y = to2180.transform(lon, lat)
     cx, cy = int(x // 1000 * 1000), int(y // 1000 * 1000)
     k = (cx, cy)
@@ -83,23 +85,45 @@ def gugik(lon, lat):
     if 0 <= i < a.shape[0] and 0 <= j < a.shape[1] and a[i, j] > 100: return float(a[i, j])
     return None
 
+# Slovak DMR 5.0 tiles (ÚGKK SR, S-JTSK [JTSK03]) from tatry/zbgis and ZBGIS_EXTRA (colon-separated dirs)
+_zb = None
+def zbgis(lon, lat):
+    global _zb
+    import glob, rasterio
+    if _zb is None:
+        dirs = [os.path.join(HERE, '..', 'zbgis')] + [d for d in os.environ.get('ZBGIS_EXTRA', '').split(':') if d]
+        tr = Transformer.from_crs(4326, 'EPSG:8353', always_xy=True)
+        _zb = {'tr': tr, 'files': []}
+        for d in dirs:
+            for f in sorted(glob.glob(os.path.join(d, '*.tif'))):
+                r = rasterio.open(f); _zb['files'].append((r.bounds, r))
+    x, y = _zb['tr'].transform(lon, lat)
+    for b, r in _zb['files']:
+        if b.left <= x < b.right and b.bottom < y <= b.top:
+            v = float(next(r.sample([(x, y)]))[0])
+            if 100 < v < 3000: return v
+    return None
+
 _cop = None
 def copernicus(lon, lat):
     global _cop
     import rasterio
     if _cop is None:
-        _cop = [rasterio.open(f'https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM/'
-                              f'Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM.tif') for e in (19, 20)]
+        _cop = []
+        for e in (19, 20):     # downloaded once into the cache (reading the remote file breaks on long runs)
+            name = f'Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM'
+            fetch(f'https://copernicus-dem-30m.s3.amazonaws.com/{name}/{name}.tif', f'cop/{name}.tif')
+            _cop.append(rasterio.open(os.path.join(CACHE, 'cop', f'{name}.tif')))
     src = _cop[0] if lon < 20 else _cop[1]
     return float(next(src.sample([(lon, lat)]))[0])
 
 def main():
     os.makedirs(OUT, exist_ok=True)
     s, w, n, e = REGION[1], REGION[0], REGION[3], REGION[2]
-    routes = overpass(f'[out:json][timeout:180];relation["route"="hiking"]({s},{w},{n},{e});out body;way(r);out body qt;node(w);out skel qt;', 'routes_tags')
+    routes = overpass(f'[out:json][timeout:180];relation["route"="hiking"]({s},{w},{n},{e});out body;way(r);out body qt;node(w);out skel qt;', 'routes_v2')
     pois = overpass(f'[out:json][timeout:180];(node["tourism"~"alpine_hut|wilderness_hut"]({s},{w},{n},{e});'
                     f'way["tourism"="alpine_hut"]({s},{w},{n},{e});node["information"="guidepost"]({s},{w},{n},{e});'
-                    f'node["natural"~"peak|saddle"]["name"]({s},{w},{n},{e}););out center tags;', 'pois')
+                    f'node["natural"~"peak|saddle"]["name"]({s},{w},{n},{e}););out center tags;', 'pois_v2')
     nodes = {el['id']: (el['lon'], el['lat']) for el in routes['elements'] if el['type'] == 'node'}
     ways = {el['id']: el['nodes'] for el in routes['elements'] if el['type'] == 'way'}
     wtags = {el['id']: el.get('tags', {}) for el in routes['elements'] if el['type'] == 'way'}
@@ -166,7 +190,7 @@ def main():
     print('vertices', len(V))
     # fetch the 1 km DTM chunks under the trails in parallel first
     import concurrent.futures as cf
-    keys = sorted({(int(x // 1000 * 1000), int(y // 1000 * 1000)) for x, y in (to2180.transform(v[0], v[1]) for v in V[::3])})
+    keys = sorted({(int(x // 1000 * 1000), int(y // 1000 * 1000)) for x, y in (to2180.transform(v[0], v[1]) for v in V[::3] if v[1] >= 49.165)})
     print('dtm chunks', len(keys))
     def pre(k):
         try: fetch(f'{WCS}&SUBSET=x({k[0]},{k[0] + 1000})&SUBSET=y({k[1]},{k[1] + 1000})', f'dtm/{k[0]}_{k[1]}.tif')
@@ -175,6 +199,7 @@ def main():
     miss = 0
     for k, v in enumerate(V):
         h = gugik(v[0], v[1])
+        if h is None: h = zbgis(v[0], v[1])
         if h is None: h = copernicus(v[0], v[1]); miss += 1
         v[2] = round(h, 1)
         if k % 5000 == 0: print('heights', k, '/', len(V), flush=True)
@@ -195,7 +220,7 @@ def main():
         P.append({'k': kind, 'n': name, 'p': [round(lon, 6), round(lat, 6)], 'e': ele})
     out = {'region': REGION, 'step': STEP, 'colours': COLOURS,
            'v': [[round(v[0], 6), round(v[1], 6), v[2]] for v in V], 'e': edges, 'poi': P,
-           'source': 'OpenStreetMap contributors (ODbL); GUGiK NMT; Copernicus DEM GLO-30'}
+           'source': 'OpenStreetMap contributors (ODbL); GUGiK NMT; ÚGKK SR DMR 5.0; Copernicus DEM GLO-30'}
     json.dump(out, open(os.path.join(OUT, 'trails.json'), 'w'), separators=(',', ':'), ensure_ascii=False)
     from collections import Counter
     print('edges', len(edges), 'pois', Counter(p['k'] for p in P), 'size', os.path.getsize(os.path.join(OUT, 'trails.json')))

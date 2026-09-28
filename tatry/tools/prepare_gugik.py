@@ -94,32 +94,64 @@ def dtm_mosaic(ib):
     print('dtm mosaic', mos.shape, 'coverage', round(float((mos > 100).mean()), 3))
     return mos, from_origin(x0, y1, 1, 1)
 
-def zbgis_mosaic():
-    """Slovak DMR 5.0 (ÚGKK SR, 1 m, S-JTSK [JTSK03]) from tatry/zbgis/*.tif, or None."""
+def _dirs(sub, env):
     import glob
-    from rasterio.merge import merge
-    files = sorted(glob.glob(os.path.join(ROOT, 'zbgis', '*.tif')))
+    ds = [os.path.join(ROOT, sub)] + [d for d in os.environ.get(env, '').split(':') if d]
+    return [f for d in ds for f in sorted(glob.glob(os.path.join(d, '*.tif')))]
+
+def zbgis_mosaic(bounds_ll=None):
+    """Slovak DMR 5.0 (ÚGKK SR, 1 m, S-JTSK [JTSK03]) from tatry/zbgis/*.tif (and ZBGIS_EXTRA dirs),
+    as one 1 m array covering bounds_ll (lon0 lat0 lon1 lat1) + 200 m, or None. Tiles that overlap
+    fill only what is still empty; their padding (nodata, huge values) is ignored."""
+    from rasterio.windows import from_bounds as wfb
+    files = _dirs('zbgis', 'ZBGIS_EXTRA')
     if not files: return None
-    srcs = [rasterio.open(f) for f in files]
-    mos, t = merge(srcs, nodata=0)
-    a = mos[0].astype(np.float32)
-    a[(a > 10000) | (a < 100)] = 0
-    print('zbgis mosaic', a.shape, 'coverage', round(float((a > 0).mean()), 3))
-    return a, t
+    tr = Transformer.from_crs(4326, 'EPSG:8353', always_xy=True)
+    lo0, la0, lo1, la1 = bounds_ll
+    xs, ys = tr.transform([lo0, lo1, lo0, lo1], [la0, la0, la1, la1])
+    X0, X1, Y0, Y1 = math.floor(min(xs)) - 200, math.ceil(max(xs)) + 200, math.floor(min(ys)) - 200, math.ceil(max(ys)) + 200
+    a = np.zeros((Y1 - Y0, X1 - X0), np.float32)
+    n = 0
+    for f in files:
+        with rasterio.open(f) as r:
+            b = r.bounds
+            if b.right <= X0 or b.left >= X1 or b.top <= Y0 or b.bottom >= Y1: continue
+            L, R_, B_, T = max(b.left, X0), min(b.right, X1), max(b.bottom, Y0), min(b.top, Y1)
+            w = wfb(L, B_, R_, T, r.transform)
+            v = r.read(1, window=w, boundless=True, fill_value=0).astype(np.float32)
+            c0, r0 = int(round(L - X0)), int(round(Y1 - T))
+            v = v[:a.shape[0] - r0, :a.shape[1] - c0]
+            dst = a[r0:r0 + v.shape[0], c0:c0 + v.shape[1]]
+            good = (v > 100) & (v < 3000) & (dst == 0)
+            dst[good] = v[good]
+            n += 1
+    if not n: return None
+    print('zbgis mosaic', a.shape, 'from', n, 'tiles, coverage', round(float((a > 0).mean()), 3))
+    return a, from_origin(X0, Y1, 1, 1)
 
 def sk_ortho(bounds_ll, w, h):
-    """Slovak orthophoto mosaic (S-JTSK, EPSG:5514, .tif + .tfw) resampled to a lon/lat pixel grid."""
-    import glob
-    from rasterio.merge import merge
-    files = sorted(glob.glob(os.path.join(ROOT, 'zbgis_orto', '*.tif')))
+    """Slovak orthophoto (S-JTSK, EPSG:5514, .tif + .tfw) resampled to a lon/lat pixel grid; each file is
+    reprojected on its own and fills what is still empty."""
+    files = _dirs('zbgis_orto', 'ZBGIS_ORTO_EXTRA')
     if not files: return None
-    srcs = [rasterio.open(f) for f in files]
-    mos, t = merge(srcs, nodata=0)
+    tr = Transformer.from_crs(4326, 'EPSG:5514', always_xy=True)
+    lo0, la0, lo1, la1 = bounds_ll
+    xs, ys = tr.transform([lo0, lo1, lo0, lo1], [la0, la0, la1, la1])
     t_dst = from_bounds(*bounds_ll, w, h)
     out = np.zeros((3, h, w), dtype=np.float32)
-    for b in range(3):
-        reproject(mos[b].astype(np.float32), out[b], src_transform=t, src_crs='EPSG:5514', dst_transform=t_dst,
-                  dst_crs='EPSG:4326', resampling=Resampling.lanczos, src_nodata=0, dst_nodata=0)
+    n = 0
+    for f in files:
+        with rasterio.open(f) as r:
+            b = r.bounds
+            if b.right < min(xs) or b.left > max(xs) or b.top < min(ys) or b.bottom > max(ys): continue
+            tmp = np.zeros((3, h, w), dtype=np.float32)
+            for k in range(3):
+                reproject(r.read(k + 1).astype(np.float32), tmp[k], src_transform=r.transform, src_crs='EPSG:5514', dst_transform=t_dst,
+                          dst_crs='EPSG:4326', resampling=Resampling.lanczos, src_nodata=0, dst_nodata=0)
+            empty = out.sum(0) == 0
+            out[:, empty] = tmp[:, empty]
+            n += 1
+    if not n: return None
     o = np.moveaxis(out, 0, -1)
     # white (Poland) and black (missing) mean no data; erode a little to drop resampled edges
     from scipy.ndimage import binary_erosion
@@ -140,7 +172,7 @@ def to_local_grid(src, src_t, bounds_ll, w, h, resampling, pixel_is_point=True, 
     return dst
 
 def copernicus(bounds_ll, w, h):
-    srcs = [f'https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM/Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM.tif' for e in (19, 20)]
+    srcs = [P.cached(f'https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM/Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM.tif') for e in (19, 20)]
     lon0, lat0, lon1, lat1 = bounds_ll
     dlon, dlat = (lon1 - lon0) / (w - 1), (lat1 - lat0) / (h - 1)
     t = from_origin(lon0 - dlon / 2, lat1 + dlat / 2, dlon, dlat)
@@ -204,18 +236,53 @@ def wms_filled(lon0, lat0, lon1, lat1, w, h, name):
             v = v | v2
     return o, v
 
+CHUNK_BLOCKS = (9, 8)       # region processed in chunks of 9 x 8 blocks (~9 x 8 km) on one block grid
+
+def merge_chunks():
+    """Region: collect what the chunks wrote (blocks, tiles, lake levels) into meta.json."""
+    import glob
+    meta = json.load(open(os.path.join(DATA, 'meta.json')))
+    rb = meta['inner']['bounds']
+    BM = BLOCK * BASE_STEP
+    blocks, tiles, sources = [], [], set()
+    for f in sorted(glob.glob(os.path.join(DATA, 'chunks', '*.json'))):
+        c = json.load(open(f))
+        blocks += c['blocks']; tiles += c['tiles']; sources |= set(c['sources'])
+        for k, lvl in c['lakes'].items(): meta['lakes'][int(k)]['level'] = lvl
+    nbx = max(b[0] for b in blocks) + 1; nbz = max(b[1] for b in blocks) + 1
+    meta['base'] = {'bounds': [rb[0], rb[1], rb[0] + nbx * BM, rb[1] + nbz * BM], 'n': [nbx * BLOCK + 1, nbz * BLOCK + 1],
+                    'step': BASE_STEP, 'block': BLOCK, 'blocks': sorted(blocks)}
+    meta['tiles'] = {'size': TILE, 'origin': rb[:2], 'list': sorted(tiles), 'samples': TILE + 1, 'orthoPx': 512}
+    for src in sorted(sources):
+        if src not in meta['sources']: meta['sources'] += '; ' + src
+    json.dump(meta, open(os.path.join(DATA, 'meta.json'), 'w'), separators=(',', ':'), ensure_ascii=False)
+    print('merged', len(blocks), 'blocks,', len(tiles), 'tiles')
+
 def main():
     meta = json.load(open(os.path.join(DATA, 'meta.json')))
-    ib = meta['inner']['bounds']              # local metres x0 z0 x1 z1
+    rb = meta['inner']['bounds']              # local metres x0 z0 x1 z1
+    ib, boff, toff, chunk = rb, (0, 0), (0, 0), None
+    if REGION and os.environ.get('CHUNK'):
+        # this chunk only: whole blocks from the region's origin, global block and tile numbers
+        ci, cj = map(int, os.environ['CHUNK'].split(','))
+        BM = BLOCK * BASE_STEP
+        x0 = rb[0] + ci * CHUNK_BLOCKS[0] * BM; z0 = rb[1] + cj * CHUNK_BLOCKS[1] * BM
+        if x0 >= rb[2] or z0 >= rb[3]: print('chunk outside the region'); return
+        nbx = math.ceil((min(rb[2], x0 + CHUNK_BLOCKS[0] * BM) - x0) / BM); nbz = math.ceil((min(rb[3], z0 + CHUNK_BLOCKS[1] * BM) - z0) / BM)
+        ib = [x0, z0, x0 + nbx * BM, z0 + nbz * BM]
+        boff = (ci * CHUNK_BLOCKS[0], cj * CHUNK_BLOCKS[1]); toff = (round((x0 - rb[0]) / TILE), round((z0 - rb[1]) / TILE))
+        chunk = (ci, cj)
+        print('chunk', chunk, 'bounds', [round(v) for v in ib])
     ll = (*lonlat(ib[0], ib[3]), *lonlat(ib[2], ib[1]))   # lon0 lat0 lon1 lat1
+    in_poland = ll[3] > 49.165                            # the chunk reaches north of Rysy: GUGiK has data
 
     # PHOTO_ONLY=1: redo only the photos (base blocks and tiles), keep the heights already written
     photo_only = os.environ.get('PHOTO_ONLY') == '1'
     if photo_only:
         mos = mos_t = zb = None
     else:
-        mos, mos_t = dtm_mosaic(ib)
-        zb = zbgis_mosaic() if not photo_only else None
+        mos, mos_t = dtm_mosaic(ib) if in_poland else (None, None)
+        zb = zbgis_mosaic(ll)
     SK = 'EPSG:8353'  # S-JTSK [JTSK03] / Krovak East North
     zb_off = [0.0]
     def lidar(bounds, w, h, resampling):
@@ -234,7 +301,7 @@ def main():
             # (zeros) would dig pits along the edge of each survey
             m = to_local_grid((sub > 100).astype(np.float32), st, bounds, w, h, Resampling.bilinear, crs=crs, nodata=None)
             return np.where(m > 0.999, v, 0)
-        a = one(mos, mos_t, 'EPSG:2180')
+        a = one(mos, mos_t, 'EPSG:2180') if mos is not None else np.zeros((h, w), np.float32)
         if zb is not None:
             b = one(zb[0], zb[1], SK)
             a = np.where(a > 100, a, np.where(b > 100, b + zb_off[0], 0))
@@ -248,7 +315,7 @@ def main():
         med = median_filter(a, 5)
         a = np.where((np.abs(a - med) > 4) & (a > 100), med, a)
         return a
-    if zb is not None and not photo_only:
+    if zb is not None and not photo_only and mos is not None:
         # the two height systems (PL-KRON86-NH, Bpv) differ by under a metre: measure it on the overlap
         bw_ = int(round((ib[2] - ib[0]) / 8)) + 1; bh_ = int(round((ib[3] - ib[1]) / 8)) + 1
         a8 = to_local_grid(mos, mos_t, ll, bw_, bh_, Resampling.average)
@@ -261,8 +328,8 @@ def main():
     bw = int(round((ib[2] - ib[0]) / BASE_STEP)) + 1
     bh = int(round((ib[3] - ib[1]) / BASE_STEP)) + 1
     if photo_only:
-        blocks = meta['base'].get('blocks', [])
-        base = None
+        blocks = [b for b in meta['base'].get('blocks', []) if 0 <= b[0] - boff[0] < math.ceil((bw - 1) / BLOCK) and 0 <= b[1] - boff[1] < math.ceil((bh - 1) / BLOCK)]
+        base = None; lake_levels = {}
     else:
       dtm4 = lidar(ll, bw, bh, Resampling.average)
       cop4 = copernicus(ll, bw, bh)
@@ -271,13 +338,15 @@ def main():
       # lakes: flat water surface a bit below the shore
       tb = from_bounds(*ll, bw, bh)
       from shapely.geometry import Polygon
-      for l in meta['lakes']:
+      lake_levels = {}
+      for li, l in enumerate(meta['lakes']):
           ring = [lonlat(x, z) for x, z in l['ring']]
           m = rasterize([Polygon(ring)], out_shape=base.shape, transform=tb).astype(bool)
           if not m.any(): continue
           if (m & have).sum() > 0.5 * m.sum():
               # the terrain model has the real water surface: use it
               l['level'] = round(float(np.median(base[m & have])), 2)
+              lake_levels[li] = l['level']
           base[m] = np.minimum(base[m], l['level'] - 1.0)
       blocks = []
       if REGION:
@@ -289,8 +358,9 @@ def main():
                   hb, mb = base[sl], have[sl]
                   pad = ((0, BLOCK + 1 - hb.shape[0]), (0, BLOCK + 1 - hb.shape[1]))
                   hb, mb = np.pad(hb, pad, mode='edge'), np.pad(mb, pad, mode='constant')
-                  open(os.path.join(DATA, 'base', f'h_{bi}_{bj}.bin'), 'wb').write(pack_heights(hb, mb))
-                  blocks.append([bi, bj])
+                  if not mb.any() and hb.max() < 1: continue
+                  open(os.path.join(DATA, 'base', f'h_{bi + boff[0]}_{bj + boff[1]}.bin'), 'wb').write(pack_heights(hb, mb))
+                  blocks.append([bi + boff[0], bj + boff[1]])
       else:
           open(os.path.join(DATA, 'inner4.bin'), 'wb').write(pack_heights(base, have))
       print('base', bw, bh, 'max', round(float(base.max()), 1), 'blocks', len(blocks))
@@ -302,14 +372,19 @@ def main():
     nq_x, nq_z = math.ceil(ow / 4000), math.ceil(oh / 4000)
     cols = [(ow * k // nq_x, ow * (k + 1) // nq_x) for k in range(nq_x)]
     rows = [(oh * k // nq_z, oh * (k + 1) // nq_z) for k in range(nq_z)]
-    for qi, (c0, c1) in enumerate(cols):
+    ctag = f'c{chunk[0]}_{chunk[1]}_' if chunk else ''
+    for qi, (c0, c1) in enumerate(cols if in_poland else []):
         for qj, (r0, r1) in enumerate(rows):
             lon_a = ll[0] + (ll[2] - ll[0]) * c0 / ow; lon_b = ll[0] + (ll[2] - ll[0]) * c1 / ow
             lat_b = ll[3] - (ll[3] - ll[1]) * r0 / oh; lat_a = ll[3] - (ll[3] - ll[1]) * r1 / oh
-            o, v = wms_filled(lon_a, lat_a, lon_b, lat_b, c1 - c0, r1 - r0, f'{PFX}base_{qi}{qj}')
+            o, v = wms_filled(lon_a, lat_a, lon_b, lat_b, c1 - c0, r1 - r0, f'{PFX}{ctag}base_{qi}{qj}')
             ortho[r0:r1, c0:c1] = o; validq[r0:r1, c0:c1] = v
     valid = validq
-    sen = np.asarray(Image.open(os.path.join(DATA, 'inner.sentinel.jpg')).convert('RGB').resize((ow, oh), Image.BICUBIC)).astype(np.float32)
+    senI = Image.open(os.path.join(DATA, 'inner.sentinel.jpg')).convert('RGB')
+    if chunk:   # the chunk's part of the region's Sentinel-2 image
+        kx, kz = senI.width / (rb[2] - rb[0]), senI.height / (rb[3] - rb[1])
+        senI = senI.crop((round((ib[0] - rb[0]) * kx), round((ib[1] - rb[1]) * kz), round((ib[2] - rb[0]) * kx), round((ib[3] - rb[1]) * kz)))
+    sen = np.asarray(senI.resize((ow, oh), Image.BICUBIC)).astype(np.float32)
     lum = lambda im: im @ np.array([0.3, 0.55, 0.15], dtype=np.float32)
     def fit_cmap(src, sel):
         # per-channel gain towards Sentinel-2 colours (so shader constants hold)
@@ -387,7 +462,8 @@ def main():
         os.makedirs(os.path.join(DATA, 'photo'), exist_ok=True)
         PB = BLOCK * BASE_STEP // ORTHO_BASE
         for bi, bj in blocks:
-            im = fused[bj * PB:(bj + 1) * PB, bi * PB:(bi + 1) * PB]
+            li, lj = bi - boff[0], bj - boff[1]
+            im = fused[lj * PB:(lj + 1) * PB, li * PB:(li + 1) * PB]
             im = np.pad(im, ((0, PB - im.shape[0]), (0, PB - im.shape[1]), (0, 0)), mode='edge')
             Image.fromarray(im).save(os.path.join(DATA, 'photo', f'o_{bi}_{bj}.jpg'), quality=82, optimize=True)
     else:
@@ -415,8 +491,9 @@ def main():
             x1, z1 = x0 + TILE, z0 + TILE
             if x1 > ib[2] or z1 > ib[3]: continue
             tll = (*lonlat(x0, z1), *lonlat(x1, z0))
+            gi, gj = i + toff[0], j + toff[1]
             if photo_only:
-                if [i, j] not in old_tiles: continue
+                if [gi, gj] not in old_tiles: continue
                 h = None
             else:
                 h = lidar(tll, TILE + 1, TILE + 1, Resampling.bilinear)
@@ -430,10 +507,14 @@ def main():
                 GZ, GX = np.meshgrid(gz, gx, indexing='ij')
                 bb = map_coordinates(base, [GZ, GX], order=1)
                 h = np.where(ok, h, bb)
-            if h is not None: open(os.path.join(DATA, 'tiles', f'h_{i}_{j}.bin'), 'wb').write(pack_heights(h))
-            o, ov = wms_filled(*tll, 512, 512, f'{PFX}t_{i}_{j}')
+            if h is not None: open(os.path.join(DATA, 'tiles', f'h_{gi}_{gj}.bin'), 'wb').write(pack_heights(h))
             px0 = (x0 - ib[0]) / ORTHO_BASE; pz0 = (z0 - ib[1]) / ORTHO_BASE
             box = (px0, pz0, px0 + TILE / ORTHO_BASE, pz0 + TILE / ORTHO_BASE)
+            pv = validq[int(pz0):int(pz0 + TILE / ORTHO_BASE), int(px0):int(px0 + TILE / ORTHO_BASE)]
+            if pv.size and pv.mean() > 0.005:     # the Polish 0.5 m photo covers some of the tile
+                o, ov = wms_filled(*tll, 512, 512, f'{PFX}t_{gi}_{gj}')
+            else:
+                o, ov = np.zeros((512, 512, 3), np.float32), np.zeros((512, 512), bool)
             o = apply_cmap(o, cmap)
             for c in range(3):
                 g = Image.fromarray(gain[..., c].astype(np.float32)).crop(box).resize((512, 512), Image.BILINEAR)
@@ -444,10 +525,22 @@ def main():
             # background from the fused base where the tile has no data
             bg = np.asarray(fused_img.crop((px0, pz0, px0 + TILE / ORTHO_BASE, pz0 + TILE / ORTHO_BASE)).resize((512, 512), Image.BICUBIC)).astype(np.float32)
             o = np.where(ov[..., None], o, bg)
-            Image.fromarray(np.clip(o, 0, 255).astype(np.uint8)).save(os.path.join(DATA, 'tiles', f'o_{i}_{j}.jpg'), quality=84, optimize=True)
-            tiles.append([i, j])
+            Image.fromarray(np.clip(o, 0, 255).astype(np.uint8)).save(os.path.join(DATA, 'tiles', f'o_{gi}_{gj}.jpg'), quality=84, optimize=True)
+            tiles.append([gi, gj])
     print('tiles', len(tiles))
 
+    if chunk:
+        srcs = ['GUGiK: NMT 1 m, ortofotomapa (geoportal.gov.pl)'] if in_poland else []
+        if zb is not None: srcs.append('Zdroj produktov LLS: ÚGKK SR (DMR 5.0, CC BY 4.0)')
+        if sk is not None: srcs.append('ortofotomozaika SR: GKÚ Bratislava, NLC')
+        os.makedirs(os.path.join(DATA, 'chunks'), exist_ok=True)
+        prev = {}
+        pf = os.path.join(DATA, 'chunks', f'c_{chunk[0]}_{chunk[1]}.json')
+        if photo_only and os.path.exists(pf): prev = json.load(open(pf))
+        json.dump({'blocks': prev.get('blocks', blocks) if photo_only else blocks, 'tiles': tiles, 'sources': srcs,
+                   'lakes': prev.get('lakes', {}) if photo_only else lake_levels}, open(pf, 'w'))
+        print('chunk done', chunk, len(blocks), 'blocks', len(tiles), 'tiles')
+        return
     if not photo_only: meta['base'] = {'bounds': ib, 'n': [bw, bh], 'step': BASE_STEP, **({'block': BLOCK, 'blocks': blocks} if REGION else {})}
     meta['tiles'] = {'size': TILE, 'origin': ib[:2], 'list': tiles, 'samples': TILE + 1, 'orthoPx': 512}
     if 'GUGiK' not in meta['sources']: meta['sources'] += '; GUGiK: NMT 1 m, ortofotomapa (geoportal.gov.pl)'
@@ -457,4 +550,4 @@ def main():
     print('done')
 
 if __name__ == '__main__':
-    main()
+    merge_chunks() if os.environ.get('MERGE') == '1' else main()
