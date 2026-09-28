@@ -13,6 +13,7 @@ import { model, modelKey, plastic, LITTER_LIFT } from './models.js';
 import { buildTerrain, floorTexture, FLOOR, buildTape } from './terrain.js';
 import { buildDiorama } from './diorama.js';
 import { DIORAMAS } from '../sim/map.js';
+import { turn45 } from '../sim/sim.js';
 import { Fx } from './fx.js';
 import { CATALOG, TEAM_COLORS, RULES } from '../data/catalog.js';
 
@@ -275,14 +276,26 @@ export class View {
       this.world.add(buildTape(map));
     }
     this.zones = new THREE.Group(); this.world.add(this.zones);
+    // deployment zones, shown while armies are being set up: ours with a bright double border that
+    // reads on any ground and any army colour, the others with a border in their colour
+    const strip = (x0, z0, x1, z1, width, color, y, opacity = 1) => {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(len + width, 0.02, width), new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 }));
+      m.position.set(this.wx((x0 + x1) / 2), y, this.wz((z0 + z1) / 2)); m.rotation.y = -Math.atan2(z1 - z0, x1 - x0) * (this.wz(1) - this.wz(0));
+      this.zones.add(m);
+    };
+    const frame = (z, inset, width, color, y, opacity) => {
+      const x0 = z.x + inset, z0 = z.y + inset, x1 = z.x + z.w - inset, z1 = z.y + z.h - inset;
+      strip(x0, z0, x1, z0, width, color, y, opacity); strip(x0, z1, x1, z1, width, color, y, opacity);
+      strip(x0, z0, x0, z1, width, color, y, opacity); strip(x1, z0, x1, z1, width, color, y, opacity);
+    };
     for (const t of sim.teams) {
       const z = t.zone, col = TEAM_COLORS[t.color].main, own = t.id === human;
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(z.w, z.h), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: own ? 0.16 : 0.08, depthWrite: false }));
-      plane.rotation.x = -Math.PI / 2; plane.position.set(this.wx(z.x + z.w / 2), 0.02, this.wz(z.y + z.h / 2));
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(z.w, z.h), new THREE.MeshBasicMaterial({ color: own ? 0xfff2b0 : col, transparent: true, opacity: own ? 0.2 : 0.1, depthWrite: false }));
+      plane.rotation.x = -Math.PI / 2; plane.position.set(this.wx(z.x + z.w / 2), 0.03, this.wz(z.y + z.h / 2));
       this.zones.add(plane);
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(z.w, z.h)), new THREE.LineDashedMaterial({ color: col, dashSize: 0.6, gapSize: 0.4 }));
-      edges.rotation.x = -Math.PI / 2; edges.position.copy(plane.position); edges.position.y = 0.03; edges.computeLineDistances();
-      this.zones.add(edges);
+      if (own) { frame(z, 0.12, 0.24, 0xffffff, 0.05); frame(z, 0.36, 0.16, 0xf0c13a, 0.05); }
+      else frame(z, 0.1, 0.18, col, 0.05, 0.85);
     }
     this.fx = new Fx(this.scene, map, this.world);
     for (const e of sim.ents) this.addEnt(e);
@@ -856,7 +869,7 @@ export class View {
     }
     return 0;
   }
-  setGhost(type, teamId, cx, cy, rot, valid) {
+  setGhost(type, teamId, cx, cy, rot, valid, face = 0) {
     if (!type) { if (this.ghost) this.ghost.g.visible = false; return; }
     if (!this.ghost || this.ghost.type !== type) {
       if (this.ghost) this.world.remove(this.ghost.g);
@@ -881,8 +894,9 @@ export class View {
     gh.pad.position.set(gh.g.position.x, 0.03, gh.g.position.z); gh.pad.scale.set(w, h, 1);
     if (def.static && def.cls === 'fort') gh.g.rotation.y = rot & 1 ? Math.PI / 2 : 0;
     else {
-      const z = this.sim.teams[teamId].zone;
-      gh.g.rotation.y = Math.atan2(-(this.map.H / 2 - (z.y + z.h / 2)), this.map.W / 2 - (z.x + z.w / 2));
+      // the way the unit will face: towards the middle of the map, turned by the player (R)
+      const [fx, fz] = turn45(this.map.W / 2 - (cx + w / 2), this.map.H / 2 - (cy + h / 2), face);
+      gh.g.rotation.y = Math.atan2(-fz, fx);
     }
   }
   hideGhost() { if (this.ghost) { this.ghost.g.visible = false; this.ghost.pad.visible = false; } }
