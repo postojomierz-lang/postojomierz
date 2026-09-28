@@ -9,7 +9,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { HorizontalTiltShiftShader } from 'three/addons/shaders/HorizontalTiltShiftShader.js';
 import { VerticalTiltShiftShader } from 'three/addons/shaders/VerticalTiltShiftShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { model, modelKey, plastic } from './models.js';
+import { model, modelKey, plastic, LITTER_LIFT } from './models.js';
 import { buildTerrain, floorTexture, FLOOR, buildTape } from './terrain.js';
 import { buildDiorama } from './diorama.js';
 import { DIORAMAS } from '../sim/map.js';
@@ -655,6 +655,14 @@ export class View {
     if (v.rotors && !v.e.dead) {
       for (const r of v.rotors) this.batches.push(this.batches.get(v.key + ':r', m.rotor, this.plasticMat), r.matrixWorld, darkC, id);
       if (v.tail) this.batches.push(this.batches.get(v.key + ':t', m.tailRotor, this.plasticMat), v.tail.matrixWorld, darkC, id);
+    }
+    if (v.e.def.medic && v.e.def.cls === 'infantry' && v.e.cargo.length && !v.e.dead) {
+      // stretcher bearers: the wounded man lies face up on their stretcher
+      const f = model('rifleman', 0, v.nation);
+      this.legM.makeRotationZ(Math.PI / 2).setPosition(0.52, LITTER_LIFT + 0.14, 0);
+      this.tmpM.multiplyMatrices(pm, this.legM);
+      this.batches.push(this.batches.get(v.nation + ':rifleman:m', f.main, this.plasticMat), this.tmpM, mainC, id);
+      if (f.accent) this.batches.push(this.batches.get(v.nation + ':rifleman:a', f.accent, this.accentMat), this.tmpM, accC, id);
     }
     if (v.litter) {
       const c = model('litter', 0, v.nation);

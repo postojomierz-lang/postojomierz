@@ -242,7 +242,7 @@ export class Sim {
     // only with enough infantry), everybody else goes to fight
     for (const t of this.teams) {
       const hq = this.byId.get(t.hq);
-      const inf = this.ents.filter(e => e.team === t.id && !e.dead && !e.down && e.def.cls === 'infantry' && !e.free && !e.def.healer);
+      const inf = this.ents.filter(e => e.team === t.id && !e.dead && !e.down && e.def.cls === 'infantry' && !e.free && !e.def.healer && !e.def.medic);
       for (const e of inf) e.garrison = false;
       if (!hq || inf.length < 6) continue;
       const d = e => (e.x - hq.x) ** 2 + (e.z - hq.z) ** 2;
@@ -531,7 +531,7 @@ export class Sim {
 
   kill(o, attacker) {
     if (o.dead) return;
-    if (o.def.cls === 'infantry' && !o.down && !o.falling && this.teams[o.team].alive && this.rng() < RULES.woundChance) this.wound(o, attacker);
+    if (o.def.cls === 'infantry' && !o.def.medic && !o.down && !o.falling && this.teams[o.team].alive && this.rng() < RULES.woundChance) this.wound(o, attacker);
     else this.die(o, attacker);
   }
 
@@ -827,7 +827,8 @@ export class Sim {
     return best;
   }
   thinkAmbulance(e) {
-    const cap = e.def.capacity, home = this.fields.get(e.team + ':home:wheel');
+    // field ambulances, and stretcher bearers on foot
+    const cap = e.def.capacity, home = this.fields.get(e.team + ':home:' + this.moveClass(e));
     if (--e.retarget <= 0) {
       e.retarget = 10;
       e.retreat = e.hp < e.maxHp * 0.45 || this.danger(e.team, e.x, e.z, 6);
@@ -992,7 +993,7 @@ export class Sim {
         }
       }
       if (!hit) { keep.push(m); continue; }
-      this.events.push({ t: 'mine', kind: m.kind, x: m.x, z: m.z, team: m.team, mine: m.id });
+      this.events.push({ t: 'mine', kind: m.kind, x: m.x, z: m.z, team: m.team, mine: m.id, by: hit.id });
       this.explode(m.x, m.z, spec.radius, spec.dmg, { id: 0, team: m.team, x: m.x, z: m.z }, 'mine', 0);
     }
     this.mines = keep;

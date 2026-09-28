@@ -19,7 +19,6 @@ for (const [seed, teams, theme] of [[3, 2, 'normandy'], [11, 4, 'desert'], [5, 2
     sim.events.length = 0;
     sim.startBattle();
     while (sim.phase === 'battle') {
-      const before = new Map(sim.ents.map(e => [e.id, e.hp]));
       sim.step();
       for (const ev of sim.events) {
         if (ev.t === 'lay') {
@@ -30,9 +29,9 @@ for (const [seed, teams, theme] of [[3, 2, 'normandy'], [11, 4, 'desert'], [5, 2
         }
         if (ev.t === 'mine') {
           tot[ev.kind === 'at' ? 'boomAt' : 'boomAp']++;
-          // the one who set it off must be an enemy of the mine's army
-          const near = sim.ents.filter(o => !o.def.static && o.y < 0.5 && Math.hypot(o.x - ev.x, o.z - ev.z) < 1 && before.get(o.id) > o.hp);
-          if (near.length && near.every(o => o.team === ev.team)) tot.ownHit++;
+          // the one who set it off must be an enemy of the mine's army (bystanders of either side may get hurt)
+          const by = sim.byId.get(ev.by);
+          if (!by || by.team === ev.team) tot.ownHit++;
         }
         if (ev.t === 'death') { const e = sim.byId.get(ev.id); if (e && e.type === 'tanktrap') tot.trapsKilled++; }
       }

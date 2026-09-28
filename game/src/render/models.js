@@ -241,6 +241,22 @@ function buildFigure(key, nation = 'us') {
   return out;
 }
 
+// Stretcher bearers: two of the army's men carrying its stretcher at hand height between them.
+export const LITTER_LIFT = 0.33;                   // the stretcher's bed ends up about 0.47 up
+function buildBearers(nation) {
+  const front = figure('bearer-front', nation), back = figure('bearer-back', nation), lit = model('litter', 0, nation);
+  const at = (geo, x, y = 0) => (geo.index ? geo.toNonIndexed() : geo.clone()).translate(x, y, 0);
+  const both = get => [at(get(front), 0.88), at(get(back), -0.88)];
+  const out = {
+    main: mergeGeometries([...both(f => f.main), at(lit.main, 0, LITTER_LIFT)]),
+    far: { main: mergeGeometries([...both(f => f.far.main), at(lit.main, 0, LITTER_LIFT)]) },
+  };
+  if (lit.dark) out.dark = at(lit.dark, 0, LITTER_LIFT);
+  const acc = [...(front.accent ? both(f => f.accent) : []), ...(lit.accent ? [at(lit.accent, 0, LITTER_LIFT)] : [])];
+  if (acc.length) out.accent = mergeGeometries(acc);
+  return out;
+}
+
 // ---------------------------------------------------------------------------------
 const cache = new Map();
 export function modelKey(type, seed = 0, nation = 'us') { return nation + ':' + (type === 'wall' || type === 'sandbags' ? type + (seed % 4) : type); }
@@ -249,6 +265,7 @@ export function model(type, seed = 0, nation = 'us') {
   if (cache.has(k)) return cache.get(k);
   let m;
   if (FIGURE_FOR[type]) { m = figure(FIGURE_FOR[type], nation); cache.set(k, m); return m; }
+  if (type === 'bearers') { m = buildBearers(nation); cache.set(k, m); return m; }
   // walls and sandbags come in two shapes, picked by the placement seed; all engineers share one truck
   const vk = type === 'wall' || type === 'sandbags' ? type + (seed % 2) : type.startsWith('eng_') ? 'engtruck' : type;
   m = buildVehicle(VEHICLES[vk] ? vk : 'barrel', nation);
