@@ -109,7 +109,7 @@ const WHITE = new THREE.Color(1, 1, 1);
 function teamPalette(col) {
   const main = new THREE.Color(col.main), dark = new THREE.Color(col.dark);
   const dead = c => c.clone().lerp(new THREE.Color('#6f6c64'), 0.45).multiplyScalar(0.75);
-  const burnt = c => c.clone().lerp(new THREE.Color('#1c1a17'), 0.8);
+  const burnt = c => c.clone().lerp(new THREE.Color('#1c1a17'), 0.92).multiplyScalar(0.7);   // charred black
   return {
     main, dark, accent: WHITE,
     deadMain: dead(main), deadDark: dead(dark), deadAccent: dead(WHITE),
@@ -603,6 +603,13 @@ export class View {
     if (v.chute) {
       if (e.falling) { v.chuteT = 1; v.chute.scale.setScalar(1); }
       else if (v.chuteT > 0) { v.chuteT -= dt * 2; v.chute.scale.set(Math.max(0.01, v.chuteT), Math.max(0.01, v.chuteT * v.chuteT), Math.max(0.01, v.chuteT)); }
+    }
+    // a wreck burns through the rest of the battle (after the first column of smoke), then smoulders
+    if (e.dead && e.wreck && v.deadAt && now > v.deadAt + 2500 && now > (v.nextSmoke || 0)) {
+      const burning = this.sim.burning(e), p = g.position;
+      v.nextSmoke = now + (burning ? 220 : 600);
+      this.fx.puff(p.clone().add(new THREE.Vector3(0, 0.5, 0)), burning ? 0.9 + Math.random() * 0.5 : 0.7, burning ? 0x3d3a36 : 0x77726a, burning ? 0.5 : 0.4, burning ? 2.2 : 1.3, burning ? 2600 : 2200);
+      if (burning) this.fx.puff(p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.35, (Math.random() - 0.5) * 0.5)), 0.45, 0xff7a2a, 0.8, 0.8, 500);
     }
     this.emit(v, variant);
   }

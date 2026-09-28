@@ -169,6 +169,7 @@ export class Sim {
     this.events.push({ t: 'remove', id: e.id });
   }
   freeCells(e) {
+    if (e.wreckCells) { for (const c of e.wreckCells) if (this.occ[c] === e.id) this.occ[c] = 0; e.wreckCells = []; }
     if (!e.def.static) return;
     for (let y = e.cy; y < e.cy + e.h; y++) for (let x = e.cx; x < e.cx + e.w; x++) if (this.occ[y * this.W + x] === e.id) this.occ[y * this.W + x] = 0;
   }
@@ -293,7 +294,7 @@ export class Sim {
     this.round++;
     this.phase = 'deploy';
     // clear wrecks and fallen soldiers from the previous round
-    for (const e of [...this.ents]) if (e.dead) this.remove(e);
+    for (const e of [...this.ents]) if (e.dead && !(e.wreck && this.round - e.wreckRound < RULES.wreckRounds)) this.remove(e);
     for (const t of this.teams) {
       if (!t.alive) { t.ward = []; continue; }
       t.money += RULES.income + RULES.incomeGrowth * (this.round - 1) + Math.round(t.bounty);
@@ -339,6 +340,7 @@ export class Sim {
     const s = this.occ[c];
     if (!s) return 1;
     const o = this.byId.get(s);
+    if (o && o.wreck) return cls === 'foot' ? 1.2 : 14;               // a wreck: drive round it (a tank can shove it aside)
     if (!o || o.dead) return 1;
     if (o.def.tankTrap && cls === 'foot') return 1.3;                 // soldiers step between the hedgehogs
     if (o.team === team) {
@@ -360,6 +362,7 @@ export class Sim {
     const s = this.occ[c];
     if (!s) return true;
     const o = this.byId.get(s);
+    if (o && o.wreck) return cls === 'foot';                          // soldiers clamber past a wreck, vehicles cannot
     if (!o || o.dead) return true;
     if (o.def.wire) return cls !== 'foot' || o.team === e.team;
     if (o.def.tankTrap) return cls === 'foot';
@@ -464,12 +467,13 @@ export class Sim {
       const c = this.cellOf(x, z);
       if (this.map.grid[c] === T_SOLID) return false;
       if (c !== last && c !== c0 && c !== c1 && this.map.grid[c] === T_RUIN && ++thick >= 3) return false;
-      last = c;
       const s = this.occ[c];
       if (s && s !== o.id && s !== e.id) {
         const b = this.byId.get(s);
         if (b && b.def.blocksLos) return false;
+        if (b && c !== last && this.burning(b) && ++thick >= 3) return false;   // smoke from a burning wreck
       }
+      last = c;
     }
     return true;
   }
@@ -485,7 +489,7 @@ export class Sim {
       const g = this.map.grid[c];
       if (g === T_SOLID || g === T_LOW) return 0.5;   // hiding behind a book, a mug, a pencil...
       const id = this.occ[c];
-      if (id) { const b = this.byId.get(id); if (b && b.def.cover && b.team === o.team) return 0.5; }
+      if (id) { const b = this.byId.get(id); if (b && (b.wreck || (b.def.cover && b.team === o.team))) return 0.5; }   // (or behind a wreck)
     }
     return 1;
   }
@@ -595,6 +599,7 @@ export class Sim {
     if (o.def.explodes) this.explode(o.x, o.z, o.def.explodes.radius, o.def.explodes.dmg, null, 'barrel', 0);
     if (o.cargo.length) { for (const id of o.cargo) { const d = this.byId.get(id); if (d && !d.dead) { d.loaded = false; this.die(d, attacker); } } o.cargo = []; }
     if (isAir(o) && o.y > 0.5) this.events.push({ t: 'crash', id: o.id });
+    if (o.def.vehicle && !isAir(o)) this.makeWreck(o);
     if (o.def.cls === 'hq') {
       t.alive = false;
       this.events.push({ t: 'eliminated', team: o.team, by: attacker ? attacker.team : -1 });
@@ -604,6 +609,20 @@ export class Sim {
       }
     }
   }
+
+  // A destroyed vehicle stays where it died as a wreck (for RULES.wreckRounds rounds): it burns
+  // through the rest of the battle, blocks other vehicles and gives soldiers something to hide behind.
+  makeWreck(o) {
+    o.wreck = true; o.wreckRound = this.round; o.wreckCells = []; o.shove = 0;
+    const r = Math.max(0.7, o.def.radius * 0.85), cx = Math.floor(o.x), cz = Math.floor(o.z);
+    for (let z = cz - 2; z <= cz + 2; z++) for (let x = cx - 2; x <= cx + 2; x++) {
+      if (!this.inside(x, z)) continue;
+      const c = z * this.W + x;
+      if (this.map.grid[c] !== T_OPEN || this.occ[c] || (x + 0.5 - o.x) ** 2 + (z + 0.5 - o.z) ** 2 > r * r) continue;
+      this.occ[c] = o.id; o.wreckCells.push(c);
+    }
+  }
+  burning(o) { return o.wreck && o.wreckRound === this.round; }
 
   // Explosions hurt everyone nearby, friend or foe.
   explode(x, z, radius, dmg, attacker, kind, y = 0) {
@@ -740,7 +759,7 @@ export class Sim {
     const g = this.map.grid[c];
     if (g === T_SOLID || g === T_LOW || g === T_RUIN) return true;
     const o = this.occ[c] ? this.byId.get(this.occ[c]) : null;
-    return !!(o && !o.dead && o.team === team && (o.def.cover || o.def.blocksLos || o.def.cls === 'hq'));
+    return !!(o && (o.wreck || (!o.dead && o.team === team && (o.def.cover || o.def.blocksLos || o.def.cls === 'hq'))));
   }
   // Nearest free cell right next to cover, preferring cover that faces the enemy.
   coverSpot(e, d) {
@@ -1314,7 +1333,15 @@ export class Sim {
           if (field[n] < freeD - 0.01 && this.canEnter(e, n) && (k < 4 || (this.canEnter(e, cy * this.W + nx) && this.canEnter(e, ny * this.W + cx)))) { freeD = field[n]; free = n; }
         }
         // the best cell is blocked by something of our own (a gun, a wall) or a corner: take the next best way
-        if (best >= 0 && !this.canEnter(e, best)) { const o = this.byId.get(this.occ[best]); if ((!o || o.team === e.team) && free >= 0) best = free; }
+        if (best >= 0 && !this.canEnter(e, best)) {
+          const o = this.byId.get(this.occ[best]);
+          if (o && o.wreck && e.def.tracked >= 0.6) {
+            // a medium or heavy tank shoves the wreck out of the way (it takes a couple of seconds)
+            if (++o.shove >= RULES.shoveTicks) { this.events.push({ t: 'shove', id: o.id, by: e.id }); this.remove(o); }
+            e.moving = false; return;
+          }
+          if ((!o || o.team === e.team || o.wreck) && free >= 0) best = free;
+        }
         if (best < 0) {
           // at a goal or stuck in a local minimum: find a way to the target if we have one
           if (!tgt) return;
@@ -1324,7 +1351,7 @@ export class Sim {
           // an enemy structure is in the way: attack it
           if (!this.canEnter(e, best)) {
             const b = this.byId.get(this.occ[best]);
-            if (b && b.team !== e.team && e.def.weapon && !e.def.weapon.airOnly) {
+            if (b && !b.dead && b.team !== e.team && e.def.weapon && !e.def.weapon.airOnly) {
               e.target = b.id; e.retarget = 30;
               const dx = b.x - e.x, dz = b.z - e.z, l = Math.sqrt(dx * dx + dz * dz) || 1;
               e.dirX = dx / l; e.dirZ = dz / l;
