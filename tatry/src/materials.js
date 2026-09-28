@@ -6,7 +6,24 @@ export const light = {
   sunCol: { value: new THREE.Color(1, 0.95, 0.85) },
   ambCol: { value: new THREE.Color(0.35, 0.4, 0.5) },
   time: { value: 0 },
+  cloudCover: { value: 0.35 },       // 0 clear .. 1 overcast (set by the weather)
 };
+
+// Cumulus layer at ~3.4 km, drifting with the wind. The same density drives the clouds in the sky
+// (objects/Sky shader patch in main.js) and their shadows on the ground, so the shadows sit under them.
+export const CLOUDS = /* glsl */`
+uniform float cloudCover;
+float cl_h(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
+float cl_n(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
+  return mix(mix(cl_h(i),cl_h(i+vec2(1,0)),u.x), mix(cl_h(i+vec2(0,1)),cl_h(i+vec2(1,1)),u.x), u.y); }
+const float CLOUD_Y = 3400.0;
+float cloudDensity(vec2 p, float t){
+  p += vec2(7.0, 3.0) * t;                         // wind ~8 m/s from the west
+  float n = cl_n(p / 2600.0) * 0.55 + cl_n(p / 1100.0 + 3.1) * 0.3 + cl_n(p / 420.0 + 7.7) * 0.15;
+  float c = clamp(cloudCover, 0.0, 1.0);
+  return smoothstep(0.78 - c * 0.6, 0.9 - c * 0.6, n);
+}
+`;
 
 const NOISE = /* glsl */`
 float h21(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
@@ -43,12 +60,13 @@ export function makeEnv({ inner, outer, quality }) {
     bOuter: { value: new THREE.Vector4(outer.x0, outer.z0, outer.x1, outer.z1) },
     nInner: { value: new THREE.Vector2(inner.w, inner.h) },
     nOuter: { value: new THREE.Vector2(outer.w, outer.h) },
-    sunDir: light.sunDir, time: light.time,
+    sunDir: light.sunDir, time: light.time, cloudCover: light.cloudCover,
     shSteps: { value: quality === 'low' ? 14 : 28 },
   };
 }
 
 export const HEIGHTS = /* glsl */`
+${CLOUDS}
 uniform sampler2D hInner; uniform sampler2D hOuter;
 uniform vec4 bInner; uniform vec4 bOuter; uniform vec2 nInner; uniform vec2 nOuter;
 uniform vec3 sunDir; uniform float time; uniform int shSteps;
@@ -73,6 +91,12 @@ float terrainShadow(vec3 wp){
     t *= grow;
   }
   return sh;
+}
+// shadow of the cloud layer: follow the sun ray up to the clouds
+float cloudShadow(vec3 wp){
+  if (cloudCover < 0.02 || sunDir.y <= 0.02) return 1.0;
+  vec2 p = wp.xz + sunDir.xz / sunDir.y * (CLOUD_Y - wp.y);
+  return 1.0 - 0.62 * cloudDensity(p, time);
 }
 float terrainAO(vec3 wp){
   vec2 p = wp.xz;
@@ -107,7 +131,7 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
             wpS = instanceMatrix * wpS;
           #endif
           wpS = modelMatrix * wpS;
-          vTerrSh = ${perVertexShadow ? 'terrainShadow(wpS.xyz)' : '1.0'};
+          vTerrSh = ${perVertexShadow ? 'terrainShadow(wpS.xyz)' : '1.0'} * cloudShadow(wpS.xyz);
         }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vTerrSh;')
@@ -414,7 +438,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         }`)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         {
-          float tsh = terrainShadow(vWorld);
+          float tsh = terrainShadow(vWorld) * cloudShadow(vWorld);
           float ao = mix(1.0, terrainAO(vWorld), ${aoStrength.toFixed(2)});
           reflectedLight.directDiffuse *= tsh * mix(1.0, ao, 0.35);
           reflectedLight.indirectDiffuse *= ao;
