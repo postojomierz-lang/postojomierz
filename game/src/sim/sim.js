@@ -993,7 +993,7 @@ export class Sim {
         }
       }
       if (!hit) { keep.push(m); continue; }
-      this.events.push({ t: 'mine', kind: m.kind, x: m.x, z: m.z, team: m.team, mine: m.id });
+      this.events.push({ t: 'mine', kind: m.kind, x: m.x, z: m.z, team: m.team, mine: m.id, by: hit.id });
       this.explode(m.x, m.z, spec.radius, spec.dmg, { id: 0, team: m.team, x: m.x, z: m.z }, 'mine', 0);
     }
     this.mines = keep;

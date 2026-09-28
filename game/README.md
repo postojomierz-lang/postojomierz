@@ -9,7 +9,7 @@ Features: 2–6 armies on maps that grow with the number of armies, infantry (in
 soldiers), vehicles, aircraft (fighters, ground-attack planes, bombers, paratroop transports,
 helicopters), defences and fortifications. Soldiers are often wounded rather than killed:
 comrades drag them behind the nearest cover, medics heal them on the spot, and cautious
-field ambulances carry them home. The saved recover in the base and come back as themselves,
+field ambulances and stretcher bearers carry them home. The saved recover in the base and come back as themselves,
 rank kept: next round with a bed in a field hospital (6 beds each), a round later without. Engineer trucks lay belts of tank traps, anti-tank or anti-personnel mines
 across the enemy's way in front of the base. Explosions cause friendly fire. Units earn
 experience from the damage they deal (worth the target's cost) and rise to Veteran, Elite and
@@ -85,6 +85,7 @@ node test/engineer.test.mjs # engineers lay tank traps and mines; mines go off u
 node test/orders.test.mjs # main target steers the army, Defend keeps it home
 node test/veteran.test.mjs # experience from damage dealt, promotions, determinism
 node test/hospital.test.mjs # ward, hospital beds, veterans return with their rank, ambulances unload at the tent
+node test/bearers.test.mjs # stretcher bearers fetch the wounded on foot, one at a time
 npm run build   # writes a single self-contained ../plastic-front/index.html
 ```
 
