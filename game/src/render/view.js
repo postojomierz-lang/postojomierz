@@ -369,7 +369,7 @@ export class View {
     if (m.turret) { turret = new THREE.Object3D(); pivot.add(turret); }
     const yaw = Math.atan2(-e.dirZ, e.dirX);
     const v = { e, g, pivot, rotors, tail, chute, turret, tyaw: yaw, key, m, nation, yaw, pose: inf ? basePose(e.type) : e.type, poseAt: 0, lastFire: 0, fireAt: 0, lastHit: 0, wobbleAt: 0, throwUntil: 0, celebrate: false, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
-    if (e.def.static && e.def.cls === 'fort') g.rotation.y = e.rot & 1 ? Math.PI / 2 : 0;
+    if (e.def.static && e.def.cls === 'fort') this.turnFort(g, e.def, e.rot);
     else g.rotation.y = yaw;
     g.position.set(this.wx(e.x), e.y, this.wz(e.z));
     this.ents.set(e.id, v);
@@ -885,21 +885,32 @@ export class View {
       this.ghost = { type, g, pad, mat };
     }
     const def = CATALOG[type];
-    const [w, h] = rot & 1 ? [def.size[1], def.size[0]] : def.size;
+    const fort = def.static && def.cls === 'fort', diag = fort && rot >= 2 && def.size[0] > 1;
+    const [w, h] = diag ? [def.size[0], def.size[0]] : rot & 1 ? [def.size[1], def.size[0]] : def.size;
     const gh = this.ghost;
     gh.g.visible = gh.pad.visible = true;
     const col = valid ? 0x9fe06a : 0xf0503a;
     gh.mat.color.setHex(col); gh.pad.material.color.setHex(col);
     gh.g.position.set(this.wx(cx + w / 2), def.cls === 'air' ? def.alt : 0, this.wz(cy + h / 2));
-    gh.pad.position.set(gh.g.position.x, 0.03, gh.g.position.z); gh.pad.scale.set(w, h, 1);
-    if (def.static && def.cls === 'fort') gh.g.rotation.y = rot & 1 ? Math.PI / 2 : 0;
-    else {
+    gh.pad.position.set(gh.g.position.x, 0.03, gh.g.position.z);
+    gh.pad.rotation.set(-Math.PI / 2, 0, 0); gh.pad.scale.set(w, h, 1);
+    if (fort) {
+      this.turnFort(gh.g, def, rot);
+      if (diag) { gh.pad.rotation.set(-Math.PI / 2, 0, gh.g.rotation.y); gh.pad.scale.set(w * Math.SQRT2, def.size[1], 1); }   // the diagonal strip
+    } else {
       // the way the unit will face: towards the middle of the map, turned by the player (R)
       const [fx, fz] = turn45(this.map.W / 2 - (cx + w / 2), this.map.H / 2 - (cy + h / 2), face);
       gh.g.rotation.y = Math.atan2(-fz, fx);
     }
   }
   hideGhost() { if (this.ghost) { this.ghost.g.visible = false; this.ghost.pad.visible = false; } }
+  // a wall, sandbags or wire the way it was set down (rot: along x, along z, the two diagonals -
+  // stretched to reach corner to corner of its cells)
+  turnFort(g, def, rot) {
+    const [dx, dz] = [[1, 0], [0, 1], [1, 1], [-1, 1]][rot & 3];
+    g.rotation.y = Math.atan2(-(this.wz(dz) - this.wz(0)), this.wx(dx) - this.wx(0));
+    g.scale.x = rot >= 2 && def.size[0] > 1 ? Math.SQRT2 : 1;
+  }
 }
 
 // Small renders of each catalogue item for the build palette.

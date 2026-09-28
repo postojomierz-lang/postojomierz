@@ -61,9 +61,19 @@ export class Sim {
   // ---------------------------------------------------------------- helpers
   cellOf(x, z) { return (Math.floor(z) | 0) * this.W + (Math.floor(x) | 0); }
   inside(cx, cy) { return cx >= 0 && cy >= 0 && cx < this.W && cy < this.H; }
+  // Fortifications (walls, sandbags, wire) turn four ways: rot 0 along x, 1 along z, 2 and 3 on the
+  // two diagonals, where they take the cells of a staircase inside an n x n square (still tight:
+  // nobody gets between two cells that touch at a corner). Everything else: rot 1 swaps the sides.
   footprint(type, cx, cy, rot) {
     const [w, h] = CATALOG[type].size;
+    if (rot >= 2 && CATALOG[type].cls === 'fort') return [w, w];
     return rot & 1 ? [h, w] : [w, h];
+  }
+  cellsOf(type, cx, cy, rot) {
+    const [w, h] = this.footprint(type, cx, cy, rot), out = [];
+    if (rot >= 2 && CATALOG[type].cls === 'fort') { for (let i = 0; i < w; i++) out.push((cy + i) * this.W + cx + (rot === 2 ? i : w - 1 - i)); }
+    else for (let y = cy; y < cy + h; y++) for (let x = cx; x < cx + w; x++) out.push(y * this.W + x);
+    return out;
   }
   inZone(teamId, x, z) {
     const r = this.teams[teamId].zone;
@@ -101,14 +111,12 @@ export class Sim {
     if (def.aircraft && t.aircraft >= RULES.aircraftPerRound) return `Only ${RULES.aircraftPerRound} aircraft per round`;
     const [w, h] = this.footprint(type, cx, cy, rot), z = t.zone;
     if (cx < z.x || cy < z.y || cx + w > z.x + z.w || cy + h > z.y + z.h) return 'Must be inside your deployment zone';
-    for (let y = cy; y < cy + h; y++) for (let x = cx; x < cx + w; x++) {
-      const c = y * this.W + x;
-      if (this.map.grid[c] !== T_OPEN || this.occ[c]) return 'Space is taken';
-    }
+    const cells = this.cellsOf(type, cx, cy, rot);
+    for (const c of cells) if (this.map.grid[c] !== T_OPEN || this.occ[c]) return 'Space is taken';
     for (const e of this.ents) {
       if (e.dead || e.def.static || e.y > 0.5) continue;
       const r = e.def.radius;
-      if (e.x + r > cx && e.x - r < cx + w && e.z + r > cy && e.z - r < cy + h) return 'Space is taken';
+      if (cells.some(c => { const x = c % this.W, y = (c / this.W) | 0; return e.x + r > x && e.x - r < x + 1 && e.z + r > y && e.z - r < y + 1; })) return 'Space is taken';
     }
     return null;
   }
@@ -158,8 +166,8 @@ export class Sim {
       falling: false, bombs: def.bombs || 0, bombCd: 0, done: false, wp: 0, xp: 0, rank: 0, flee: 0, crew: def.team2 ? 2 : 1, setup: 0,
     };
     if (def.static) {
-      if (def.cls === 'fort') { e.dirX = rot & 1 ? 0 : 1; e.dirZ = rot & 1 ? 1 : 0; }
-      for (let y = cy; y < cy + h; y++) for (let x = cx; x < cx + w; x++) this.occ[y * this.W + x] = e.id;
+      if (def.cls === 'fort') [e.dirX, e.dirZ] = [[1, 0], [0, 1], [S45, S45], [-S45, S45]][rot & 3];   // the way it runs
+      for (const c of this.cellsOf(type, cx, cy, rot)) this.occ[c] = e.id;
     }
     e.px = e.x; e.pz = e.z; e.py = e.y;
     this.ents.push(e); this.byId.set(e.id, e);
@@ -1496,7 +1504,10 @@ export class Sim {
       if (!endsFree(nx, nz) && endsFree(e.x, e.z)) return false;       // would push an end into a wall
     }
     const c = this.cellOf(nx, nz);
-    if (this.canEnter(e, c)) {
+    // no slipping between two blocked cells that touch at a corner (a diagonal wall stays tight)
+    const ox = Math.floor(e.x), oz = Math.floor(e.z), tx = Math.floor(nx), tz = Math.floor(nz);
+    const corner = ox !== tx && oz !== tz && (!this.canEnter(e, oz * this.W + tx) || !this.canEnter(e, tz * this.W + ox));
+    if (!corner && this.canEnter(e, c)) {
       e.x = nx; e.z = nz;
       // vehicles flatten barbed wire
       const s = this.occ[c];
