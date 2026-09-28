@@ -1524,17 +1524,30 @@ def mgstand():
 
 def bearer(front):
     """one of a pair of stretcher bearers, unarmed, walking with a handle of the stretcher in each
-    hand - the front man's hands down behind him, the rear man's down in front; a white arm band."""
+    hand - the front man's hands down behind him, the rear man's down in front; his army's arm band."""
     fig = Fig('bearer-front' if front else 'bearer-back')
     WHITE = '#f4f1e8'
     pel = standing(fig, stride=4.2, stance=2.6, lean=0.5 if front else -0.3)
     T = Frame(pel, F, D(0.1 if front else -0.06, 0, 1))
     shR, shL, neck = torso(fig, T, pack=False)
     fx = -3.2 if front else 3.2
+    # each army's arm band: the Geneva red cross on white, except the Germans' auxiliary bearers
+    # (Hilfskrankentraeger: a red band lettered in white) and the British regimental bearers
+    # (a white band lettered 'SB' in red)
+    RED = '#d63a2f'
+    band, mark = {'de': (RED, WHITE), 'gb': (WHITE, 'SB')}.get(NATION, (WHITE, 'cross'))
     for s, sh in ((1, shL), (-1, shR)):
         el = arm(fig, sh, P(fx, s * 5.6, 15.5), pole=D(-fx * 0.1, s, 0.2), grip_dir=L)
         if s > 0:
-            fig.ring(sh + (el - sh) * 0.45, el - sh, 1.45, 0.4, WHITE, seg=18)                # arm band
+            c, ax = sh + (el - sh) * 0.45, (el - sh).normalized()
+            fig.ring(c, el - sh, 1.45, 0.45, band, seg=18)                                  # arm band
+            n = (L - ax * L.dot(ax)).normalized()                                            # its outer side
+            q, p = Frame(c, n, ax).q, c + n * 1.86
+            if mark == 'cross':
+                fig.box(p, (0.95, 0.12, 0.3), q, RED, bevel=0.02); fig.box(p, (0.3, 0.12, 0.95), q, RED, bevel=0.02)
+            else:                                                                             # lettering
+                col = RED if mark == 'SB' else WHITE
+                for k in (-1, 1): fig.box(p + Frame(c, n, ax).l * (k * 0.42), (0.3, 0.12, 0.7), q, col, bevel=0.02)
     head(fig, neck, F, U)
     fig.finish()
 
