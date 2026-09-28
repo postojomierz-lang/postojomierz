@@ -1548,7 +1548,31 @@ def manpads(kneel_=False):
     arm(fig, shR, top + d * 4.5 - U * 3.0, pole=D(-0.3, -1, -0.6), grip_dir=d)
     arm(fig, shL, top + d * 8.8 - U * 2.4 + L * 0.3, pole=D(0.2, 0.3, -1), grip_dir=d)
     head(fig, neck, D(1, 0, 0.5), D(-0.25, -0.3, 1))
+    aa_kit(fig, T)
     fig.finish()
+
+def aa_kit(fig, T):
+    """the anti-aircraft soldier's ammunition for his army's weapon: a spare missile tube on the back
+    (American, French), the box of nine-round Fliegerfaust clips at the German's hip, a bandolier of
+    big brass cartridges across the chest for the Boys (British) and the PTRS (Red Army, Japanese,
+    Italian)."""
+    if US or FR:
+        with fig.hard():
+            fig.cyl(T.at(-3.1, -2.2, 2.6), T.at(-3.1, 2.0, 11.6), 1.0, seg=14, bevel=0.1)
+            for k in (0.12, 0.88):
+                a, b = T.at(-3.1, -2.2, 2.6), T.at(-3.1, 2.0, 11.6); c = a + (b - a) * k
+                fig.ring(c, b - a, 1.05, 0.14, seg=16)
+    elif DE:
+        with fig.hard():
+            fig.box(T.at(1.4, -3.6, 0.8), (1.8, 1.4, 2.4), T.q, bevel=0.15)
+            fig.box(T.at(1.4, -3.65, 2.1), (1.9, 1.5, 0.5), T.q, bevel=0.1)
+    else:
+        a, b = T.at(0.9, 3.4, 11.0), T.at(2.7, -2.8, 1.8)                     # the bandolier
+        fig.strap([a, T.at(2.6, 1.0, 7.8), T.at(2.8, -1.4, 4.6), b], 0.35)
+        d = (b - a); n = 11
+        for k in range(1, n):
+            p = a + d * (k / n); p = p + T.f * 0.35
+            fig.cyl(p - T.u * 0.1, p + T.u * 1.25, 0.24, '#c9a24a', seg=8)                        # cartridges
 
 def grenadier_kit(fig, T):
     """how each army carried its spare grenades: the Americans hooked them on the suspenders, the
