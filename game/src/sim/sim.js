@@ -426,7 +426,9 @@ export class Sim {
 
   buildBuckets() {
     this.buckets = new Map();
+    this.wounded = [];                                   // lying on the ground: vehicles steer round them
     for (const e of this.ents) {
+      if (e.down && !e.dead && !e.loaded && !e.carrier) this.wounded.push(e);
       if (!this.active(e) || e.def.static || e.y > 0.5) continue;
       const k = this.cellOf(e.x, e.z);
       let b = this.buckets.get(k); if (!b) this.buckets.set(k, b = []);
@@ -1472,6 +1474,14 @@ export class Sim {
   tryMove(e, mx, mz) {
     const nx = e.x + mx, nz = e.z + mz;
     if (nx < 0.3 || nz < 0.3 || nx > this.W - 0.3 || nz > this.H - 0.3) return false;
+    // vehicles do not run over the wounded (of either side): they go round
+    if (e.def.vehicle && this.wounded && this.wounded.length) {
+      const r = e.def.radius * 0.7 + 0.25;
+      for (const d of this.wounded) {
+        const dx = d.x - nx, dz = d.z - nz;
+        if (dx * dx + dz * dz < r * r && (d.x - e.x) ** 2 + (d.z - e.z) ** 2 > dx * dx + dz * dz) return false;   // only when getting closer
+      }
+    }
     // long units (stretcher bearers, an LMG team) must fit end to end, not just at their middle
     if (e.def.len) {
       const ml = Math.hypot(mx, mz) || 1, ux = mx / ml, uz = mz / ml, L = e.def.len;
