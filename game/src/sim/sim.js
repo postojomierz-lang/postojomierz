@@ -734,9 +734,7 @@ export class Sim {
       this.events.push({ t: 'pickup', id: e.id, wounded: d.id });
       return;
     }
-    const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
-    this.tryMove(e, dx * k, dz * k);
-    e.dirX = dx / l; e.dirZ = dz / l; e.moving = true;
+    this.goTo(e, d.x, d.z);
   }
   isCoverCell(c, team) {
     const g = this.map.grid[c];
@@ -784,14 +782,12 @@ export class Sim {
     const d = this.byId.get(e.carrying);
     if (!d || !d.down) { e.carrying = 0; return; }
     const dx = e.goalX - e.x, dz = e.goalZ - e.z, l = Math.sqrt(dx * dx + dz * dz);
-    if (l < 0.3 || e.stuck > 30) {
+    if (l < 0.3 || e.stuck > 90) {
       e.carrying = 0;
       if (l < 1.2) this.stabilize(d, e); else { d.carrier = 0; d.noCover = this.tick + 60; }
       return;
     }
-    const s = e.def.speed * SPEED * DT * 0.6, k = Math.min(s, l) / l;
-    if (this.tryMove(e, dx * k, dz * k)) { e.dirX = dx / l; e.dirZ = dz / l; e.stuck = 0; } else e.stuck++;
-    e.moving = true;
+    this.goTo(e, e.goalX, e.goalZ, 0.6);
     d.x = e.x - e.dirX * 0.55; d.z = e.z - e.dirZ * 0.55;
     d.dirX = e.dirX; d.dirZ = e.dirZ;
   }
@@ -818,9 +814,8 @@ export class Sim {
     const dx = d.x - e.x, dz = d.z - e.z, l = Math.sqrt(dx * dx + dz * dz);
     if (l > 0.75) {
       e.healing = false; e.healT = 0;
-      const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
-      if (this.tryMove(e, dx * k, dz * k)) e.stuck = 0; else if (++e.stuck > 30) { d.medicBy = 0; e.heal = 0; return false; }
-      e.dirX = dx / l; e.dirZ = dz / l; e.moving = true;
+      this.goTo(e, d.x, d.z);
+      if (e.stuck > 90) { d.medicBy = 0; e.heal = 0; e.stuck = 0; return false; }
       return true;
     }
     e.moving = false; e.dirX = dx / (l || 1); e.dirZ = dz / (l || 1);
@@ -883,9 +878,8 @@ export class Sim {
         goal.loaded = true; goal.rescuer = 0; e.cargo.push(goal.id); e.target = 0; e.retarget = 0;
         this.events.push({ t: 'load', id: e.id, wounded: goal.id });
       } else {
-        const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
-        if (!this.tryMove(e, dx * k, dz * k)) this.followField(e, home, 0.6);
-        else { e.dirX = dx / l; e.dirZ = dz / l; e.moving = true; }
+        this.goTo(e, goal.x, goal.z);
+        if (e.stuck > 120) { e.target = 0; e.retarget = 40; e.stuck = 0; }       // cannot get there: try another
       }
     } else if (this.inZone(e.team, e.x, e.z)) {
       // home: drive up to the field hospital if there is one, then hand the wounded over
@@ -893,11 +887,7 @@ export class Sim {
       let there = true;
       if (hosp) {
         const dx = hosp.x - e.x, dz = hosp.z - e.z, l = Math.sqrt(dx * dx + dz * dz);
-        if (l > 2.6 && e.stuck < 30) {
-          const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
-          if (this.tryMove(e, dx * k, dz * k)) { e.dirX = dx / l; e.dirZ = dz / l; e.moving = true; e.stuck = 0; } else e.stuck++;
-          there = false;
-        }
+        if (l > 2.6 && e.stuck < 90) { this.goTo(e, hosp.x, hosp.z); there = false; }
       }
       if (there && e.cargo.length) {
         for (const id of e.cargo) {
@@ -1326,9 +1316,10 @@ export class Sim {
         // the best cell is blocked by something of our own (a gun, a wall) or a corner: take the next best way
         if (best >= 0 && !this.canEnter(e, best)) { const o = this.byId.get(this.occ[best]); if ((!o || o.team === e.team) && free >= 0) best = free; }
         if (best < 0) {
-          // at a goal or stuck in a local minimum: head straight for the target if we have one
+          // at a goal or stuck in a local minimum: find a way to the target if we have one
           if (!tgt) return;
-          gx = tgt.x; gz = tgt.z;
+          this.goTo(e, tgt.x, tgt.z);
+          return;
         } else {
           // an enemy structure is in the way: attack it
           if (!this.canEnter(e, best)) {
@@ -1361,9 +1352,105 @@ export class Sim {
     e.moving = true;
   }
 
+  // Walk (or drive) to a point: straight while the way is clear, otherwise along a grid path round
+  // walls, hedges and houses. The path is found again when the goal moves to another cell, every
+  // couple of seconds, and whenever the unit makes no headway. Returns true once there.
+  goTo(e, gx, gz, speedMul = 1, near = 0.05) {
+    if (Math.hypot(gx - e.x, gz - e.z) < near) return true;
+    const s = e.def.speed * SPEED * DT * speedMul, gc = this.cellOf(gx, gz);
+    let tx = gx, tz = gz;
+    if (!this.clearLine(e, e.x, e.z, gx, gz)) {
+      if (!e.path || e.pathGoal !== gc || this.tick >= e.pathAt) {
+        e.path = this.findPath(e, gc); e.pathGoal = gc; e.pathAt = this.tick + 50; e.pathI = 0;
+      }
+      if (e.path) {
+        const W = this.W;
+        while (e.pathI < e.path.length - 1 && Math.hypot(e.path[e.pathI] % W + 0.5 - e.x, ((e.path[e.pathI] / W) | 0) + 0.5 - e.z) < 0.55) e.pathI++;
+        const c = e.path[e.pathI]; tx = c % W + 0.5; tz = ((c / W) | 0) + 0.5;
+        if (e.pathI === e.path.length - 1) { tx = gx; tz = gz; }
+      }
+    } else e.path = null;
+    const dx = tx - e.x, dz = tz - e.z, l = Math.hypot(dx, dz) || 1, k = Math.min(s, l) / l;
+    e.dirX = dx / l; e.dirZ = dz / l; e.moving = true;
+    if (this.tryMove(e, dx * k, dz * k)) { e.stuck = 0; return false; }
+    e.stuck++;
+    if (e.stuck > 8) {                                                   // step aside, alternating sides
+      const side = (e.id + (e.stuck >> 4)) % 2 ? 1 : -1;
+      if (!this.tryMove(e, -dz / l * s * side, dx / l * s * side)) this.tryMove(e, dz / l * s * side, -dx / l * s * side);
+    }
+    if (e.stuck % 40 === 39) e.pathAt = 0;                                // no headway: find the way again
+    return false;
+  }
+  // can this unit walk the straight line between two points (checked every 0.4 cells)?
+  clearLine(e, x0, z0, x1, z1) {
+    const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.4), end = this.cellOf(x1, z1);
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, c = this.cellOf(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t);
+      if (c !== end && !this.canEnter(e, c)) return false;
+    }
+    return true;
+  }
+  // A* on the grid (8 ways, no cutting corners) to the goal cell or right next to it; null if the
+  // way is too long or there is none. Deterministic: ties go to the cell found first.
+  findPath(e, goal) {
+    const W = this.W, H = this.H, gx = goal % W, gy = (goal / W) | 0, start = this.cellOf(e.x, e.z);
+    const g = new Map([[start, 0]]), from = new Map(), heap = [];
+    let seq = 0, found = -1;
+    const less = (a, b) => a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
+    const push = n => {
+      heap.push(n); let i = heap.length - 1;
+      while (i > 0) { const p = (i - 1) >> 1; if (!less(n, heap[p])) break; heap[i] = heap[p]; i = p; }
+      heap[i] = n;
+    };
+    const pop = () => {
+      const top = heap[0], last = heap.pop();
+      if (heap.length) {
+        let i = 0;
+        for (;;) {
+          const a = 2 * i + 1, b = a + 1; let m = -1, best = last;
+          if (a < heap.length && less(heap[a], best)) { m = a; best = heap[a]; }
+          if (b < heap.length && less(heap[b], best)) { m = b; best = heap[b]; }
+          if (m < 0) break;
+          heap[i] = heap[m]; i = m;
+        }
+        heap[i] = last;
+      }
+      return top;
+    };
+    const hOf = c => { const dx = Math.abs(c % W - gx), dy = Math.abs(((c / W) | 0) - gy); return Math.max(dx, dy) + 0.41 * Math.min(dx, dy); };
+    push([hOf(start), seq++, start]);
+    for (let it = 0; heap.length && it < 6000; it++) {
+      const c = pop()[2], cx = c % W, cy = (c / W) | 0;
+      if (Math.abs(cx - gx) <= 1 && Math.abs(cy - gy) <= 1) { found = c; break; }
+      const gc = g.get(c);
+      for (let k = 0; k < 8; k++) {
+        const nx = cx + NX[k], ny = cy + NY[k];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const n = ny * W + nx;
+        if (!this.canEnter(e, n)) continue;
+        if (k >= 4 && (!this.canEnter(e, cy * W + nx) || !this.canEnter(e, ny * W + cx))) continue;
+        const ng = gc + (k < 4 ? 1 : 1.41);
+        if (g.has(n) && g.get(n) <= ng) continue;
+        g.set(n, ng); from.set(n, c); push([ng + hOf(n), seq++, n]);
+      }
+    }
+    if (found < 0) return null;
+    const path = [found];
+    for (let c = found; from.has(c); ) { c = from.get(c); if (c !== start) path.push(c); }
+    path.reverse();
+    if (found !== goal && this.canEnter(e, goal)) path.push(goal);
+    return path;
+  }
+
   tryMove(e, mx, mz) {
     const nx = e.x + mx, nz = e.z + mz;
     if (nx < 0.3 || nz < 0.3 || nx > this.W - 0.3 || nz > this.H - 0.3) return false;
+    // long units (stretcher bearers, an LMG team) must fit end to end, not just at their middle
+    if (e.def.len) {
+      const ml = Math.hypot(mx, mz) || 1, ux = mx / ml, uz = mz / ml, L = e.def.len;
+      const endsFree = (x, z) => this.canEnter(e, this.cellOf(x + ux * L, z + uz * L)) && this.canEnter(e, this.cellOf(x - ux * L, z - uz * L));
+      if (!endsFree(nx, nz) && endsFree(e.x, e.z)) return false;       // would push an end into a wall
+    }
     const c = this.cellOf(nx, nz);
     if (this.canEnter(e, c)) {
       e.x = nx; e.z = nz;
