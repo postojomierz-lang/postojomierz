@@ -23,6 +23,7 @@ import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
 import { routeFromHash, routePath, loadRegionArea, REGION_BASE } from './region.js';
 import { routeInfo } from './routeinfo.js';
+import { loadJournal, saveJournal, routeKey, addWalk, addPeak, ghostAt, fmtClock } from './journal.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 
@@ -659,8 +660,8 @@ async function main() {
     if (e.code === 'KeyH') $('help').classList.toggle('hidden');
     if (e.code === 'KeyN') { sound.setEnabled(!sound.enabled); updateButtons(); }
     if (e.code === 'KeyL') { labels.setEnabled(!labels.enabled); updateButtons(); }
-    if (e.code === 'Home') state.s = 0;
-    if (e.code === 'End') state.s = LENGTH;
+    if (e.code === 'Home') { state.s = 0; resetSession(); }
+    if (e.code === 'End') { state.s = LENGTH; sess.fair = false; }
   });
   addEventListener('keyup', (e) => keys.delete(e.code));
   addEventListener('blur', () => keys.clear());
@@ -720,9 +721,13 @@ async function main() {
     for (let k = 0; k <= i; k += 4) pg.lineTo(X(k * trail.step), Y(profile[k]));
     pg.lineTo(sx, Y(profile[i])); pg.lineTo(sx, h); pg.closePath();
     pg.fillStyle = 'rgba(230,60,40,0.45)'; pg.fill();
+    if (state.ghostS != null) {
+      const gi = Math.round(state.ghostS / trail.step);
+      pg.beginPath(); pg.arc(X(state.ghostS), Y(profile[gi]), 3.5 * devicePixelRatio, 0, 7); pg.fillStyle = '#9fd4ff'; pg.fill();
+    }
     pg.beginPath(); pg.arc(sx, Y(profile[i]), 4 * devicePixelRatio, 0, 7); pg.fillStyle = '#ff5a3c'; pg.fill();
   }
-  pc.addEventListener('click', (e) => { const b = pc.getBoundingClientRect(); state.s = (e.clientX - b.left) / b.width * LENGTH; });
+  pc.addEventListener('click', (e) => { const b = pc.getBoundingClientRect(); state.s = (e.clientX - b.left) / b.width * LENGTH; if (state.s < 5) resetSession(); else sess.fair = false; });
 
   // PTTK signposts at the start, at Czarny Staw, at the Bula and on the summit
   const sCzarny = nearestNamed()[0]?.s ?? LENGTH * 0.45;
@@ -758,6 +763,65 @@ async function main() {
     }
     return out;
   }
+
+  // ---------------------------------------------------------------- journal: records, ghost, peaks
+  const J = loadJournal();
+  const RKEY = routeKey(STOPS ? location.hash : '');
+  const TITLE = $('route-title').textContent;
+  const best = J.best[RKEY] || null;
+  const peaksOnRoute = RI ? RI.named.filter((n) => n.kind === 'peak') : [{ s: LENGTH, name: 'Rysy', ele: 2499 }];
+  let sess;
+  function resetSession() { sess = { t: 0, fair: true, trace: [[0, 0]], sampled: 0, done: false, up: 0, lastH: null, peaks: new Set() }; }
+  resetSession();
+  let toastT = 0;
+  function toast(text) { $('toast').innerHTML = text; $('toast').classList.add('show'); toastT = 4.5; }
+  // the ghost: a pale hiker walking your best run of this route
+  const ghost = new THREE.Group();
+  {
+    const gm = new THREE.MeshBasicMaterial({ color: 0x9fd4ff, transparent: true, opacity: 0.45, depthWrite: false });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 1.1, 4, 8), gm); body.position.y = 0.85;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 8), gm); head.position.y = 1.62;
+    ghost.add(body, head); ghost.visible = false; scene.add(ghost);
+  }
+  function journalTick(dt, dir) {
+    if (toastT > 0 && (toastT -= dt) <= 0) $('toast').classList.remove('show');
+    if (state.speedMul > 1) sess.fair = false;
+    if (dir > 0 && !sess.done) {
+      sess.t += dt;
+      if (sess.t - sess.sampled >= 5) { sess.trace.push([Math.round(sess.t * 10) / 10, Math.round(state.s)]); sess.sampled = sess.t; }
+    }
+    const h = profile[Math.round(state.s / trail.step)];
+    if (sess.lastH !== null && h > sess.lastH) sess.up += h - sess.lastH;
+    sess.lastH = h;
+    for (const p of peaksOnRoute) {
+      if (sess.peaks.has(p.name) || Math.abs(state.s - p.s) > 20) continue;
+      sess.peaks.add(p.name);
+      if (addPeak(J, p.name, p.ele)) { saveJournal(J); toast(`▲ Nowy szczyt w dzienniku: <b>${p.name}</b>${p.ele ? ' ' + p.ele + ' m' : ''}`); }
+    }
+    if (!sess.done && state.s >= LENGTH - 1 && sess.t > 0) {
+      sess.done = true;
+      sess.trace.push([Math.round(sess.t * 10) / 10, Math.round(LENGTH)]);
+      const rec = addWalk(J, { key: RKEY, title: TITLE, hash: STOPS ? location.hash : '', date: new Date().toISOString().slice(0, 16).replace('T', ' '),
+        dist: Math.round(LENGTH), up: Math.round(sess.up), time: Math.round(sess.t), fair: sess.fair, trace: sess.fair ? sess.trace : null });
+      saveJournal(J);
+      toast(sess.fair ? `🏁 Meta! Czas ${fmtClock(sess.t)}${rec ? '<br>Nowy rekord trasy!' : best ? `<br>Rekord: ${fmtClock(best.time)}` : ''}`
+        : '🏁 Meta! (przejście z przyspieszeniem lub skokami – bez rekordu)');
+    }
+    // HUD and ghost
+    const gs = best && !sess.done ? ghostAt(best, sess.t) : null;
+    let txt = best ? fmtClock(best.time) : '–';
+    if (gs !== null && sess.t > 0) {
+      const d = Math.round(state.s - gs);
+      txt += ` · duch ${Math.abs(d)} m ${d >= 0 ? 'za Tobą' : 'przed Tobą'}`;
+      const g = at(gs);
+      ghost.position.set(g.x, g.y - EYE_OFF(), g.z);
+      ghost.rotation.y = headingAt(gs);
+      ghost.visible = Math.abs(d) < 400 && Math.abs(d) > 2;
+    } else ghost.visible = false;
+    if (!sess.fair && !sess.done) txt += ' · bez rekordu (przyspieszenie)';
+    return { txt, gs };
+  }
+  const EYE_OFF = () => 0;     // at() gives the eye line over the ground; the ghost stands on it
 
   function updateButtons() {
     $('btn-sound').textContent = sound.enabled ? '🔊' : '🔇';
@@ -891,6 +955,8 @@ async function main() {
       if (state.s < LENGTH) state.walkedTime += Math.abs(v * dt) / (tobler / 3.6);
       if (state.s >= LENGTH && state.auto) { state.auto = false; updateButtons(); }
     }
+    const jr = journalTick(dt, dir);
+    state.ghostS = jr.gs; state.ghostTxt = jr.txt;
     if (keys.has('KeyA') || keys.has('ArrowLeft')) state.yawOff += 1.4 * dt;
     if (keys.has('KeyD') || keys.has('ArrowRight')) state.yawOff -= 1.4 * dt;
     if (keys.has('KeyQ')) state.pitchOff = Math.min(1.2, state.pitchOff + dt);
@@ -932,6 +998,7 @@ async function main() {
     hudT -= dt;
     if (hudT <= 0) {
       hudT = 0.2;
+      $('h-ghost').textContent = state.ghostTxt || '–';
       const ie = Math.round(state.s / trail.step);
       $('h-dist').textContent = `${(state.s / 1000).toFixed(2)} / ${(LENGTH / 1000).toFixed(2)} km`;
       $('h-elev').textContent = `${Math.round(profile[ie])} m n.p.m.`;
