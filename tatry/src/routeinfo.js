@@ -74,11 +74,18 @@ export function routeInfo({ route, trail, TH, meta, pois }) {
     return best;
   };
   const ends = (k) => {
-    // a hut near the end names it first (the route ends at the hut, not at the lake beside it)
     const at = k ? L : 0;
-    const hut = dedup.filter((m) => m.kind === 'hut' && Math.abs(m.s - at) < 450).sort((a, b) => Math.abs(a.s - at) - Math.abs(b.s - at))[0];
+    const closest = (list, r) => list.filter((m) => Math.abs(m.s - at) < r).sort((a, b) => Math.abs(a.s - at) - Math.abs(b.s - at))[0];
+    // a summit right at the end, else a hut, else the signpost there, else the nearest named place
+    const peak = closest(dedup.filter((m) => m.kind === 'peak'), 150);
+    if (peak) return peak.name;
+    const hut = closest(dedup.filter((m) => m.kind === 'hut'), 450);
     if (hut) return hut.name;
-    const n = nameNear(at, 450);
+    const p0 = [trail.X[k ? N - 1 : 0], trail.Z[k ? N - 1 : 0]];
+    let sign = null, sd = 300;
+    for (const p of pois) if (p.k === 'sign' && p.n) { const d = Math.hypot(p.xz[0] - p0[0], p.xz[1] - p0[1]); if (d < sd) { sd = d; sign = shortName(p.n); } }
+    if (sign) return sign;
+    const n = closest(dedup, 800);
     if (n) return n.name;
     const nm = route.info[k ? route.info.length - 1 : 0].name;
     const parts = nm.split(/\s+[-–]\s+/);

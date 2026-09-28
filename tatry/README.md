@@ -187,3 +187,10 @@ od pogody: słonecznie 45 %, mgiełka 20 %, pochmurno 88 %, mgła 95 %.
 - szczyty zdobyte po drodze (z nazwami z OSM), komunikaty na ekranie;
 - w planerze: „☆ Dodaj do ulubionych”, lista ulubionych z rekordami, ostatnie przejścia (kliknięcie
   otwiera trasę), zdobyte szczyty, statystyki łączne.
+
+## Słowackie Tatry Wysokie w regionie
+Region planera i widoku 3D obejmuje polskie i słowackie Tatry Wysokie (19,85–20,31°E, 49,08–49,29°N):
+Štrbské Pleso, Popradské pleso, Rysy od południa, Téryho i Zbojnícka chata, Łomnica. Słowacki lidar
+DMR 5.0 i ortofotomapa (ÚGKK SR / GKÚ Bratislava) leżą surowe na gałęzi `dane-zbgis`; przetwarzanie:
+`ZBGIS_EXTRA=<katalog DMR> ZBGIS_ORTO_EXTRA=<katalog orto> tools/run_region.sh` (region liczony w 12
+kawałkach, `CHUNK=i,j`, na koniec `MERGE=1`). Bez lidaru (Bielovodská dolina, podgórze) – Copernicus 30 m.

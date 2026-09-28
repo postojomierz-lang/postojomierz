@@ -36,12 +36,31 @@ LAT0 = (INNER[1] + INNER[3]) / 2
 LON0 = (INNER[0] + INNER[2]) / 2
 INNER_IMG = (1024, 1024)
 if AREA == 'region':
-    INNER = (19.93, 49.165, 20.15, 49.29)
-    INNER_N = (536, 464)
-    INNER_IMG = (1600, 1400)
+    # Polish High Tatras with Kasprowy, and the Slovak High Tatras (Štrbské Pleso to Lomnica)
+    INNER = (19.85, 49.08, 20.31, 49.29)
+    INNER_N = (1120, 780)
+    INNER_IMG = (3300, 2300)
     OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'region')
 MX = 111320 * math.cos(math.radians(LAT0))
 MZ = 110574
+
+def cached(url):
+    """Local copy of a remote raster (downloaded once into tools/.cache/remote): reading big remote COGs
+    breaks now and then on long runs."""
+    import urllib.request, shutil, time
+    d = os.path.join(os.path.dirname(__file__), '.cache', 'remote')
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, url.split('//', 1)[1].replace('/', '_')[-150:])
+    if os.path.exists(path): return path
+    for k in range(5):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'rysy3d-prototype/0.1'}), timeout=300) as r, open(path + '.part', 'wb') as f:
+                shutil.copyfileobj(r, f, 1 << 20)
+            os.replace(path + '.part', path)
+            return path
+        except Exception as e:
+            print('download retry', k, e); time.sleep(5 * (k + 1))
+    raise RuntimeError(url)
 
 def local(lon, lat):
     return (lon - LON0) * MX, -(lat - LAT0) * MZ
@@ -116,7 +135,7 @@ def main():
     print('lakes', len(lakes))
 
     # ---------- elevation ----------
-    dem_srcs = [f'https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM/Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM.tif' for e in (19, 20)]
+    dem_srcs = [cached(u) for u in [f'https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM/Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM.tif' for e in (19, 20)]]
     from scipy.ndimage import gaussian_filter
     def dem(bounds, n, sharpen):
         h, t = warp(dem_srcs, bounds, *n, resampling=Resampling.cubic)
@@ -147,7 +166,7 @@ def main():
     to_u16(inner_h).tofile(os.path.join(OUT, 'inner.u16'))
 
     # ---------- imagery ----------
-    tci = ['https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/34/U/DV/2025/7/S2C_34UDV_20250702_0_L2A/TCI.tif']
+    tci = [cached('https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/34/U/DV/2025/7/S2C_34UDV_20250702_0_L2A/TCI.tif')]
     def img(bounds, w, h, name, q):
         a, _ = warp(tci, bounds, w, h, bands=3, resampling=Resampling.lanczos, dtype='uint8')
         im = Image.fromarray(np.moveaxis(a, 0, -1))
@@ -157,8 +176,8 @@ def main():
     img(INNER, *INNER_IMG, 'inner.sentinel.jpg', 88)  # fallback for Slovakia; prepare_gugik.py writes inner.jpg
 
     # ---------- land cover (inner only) ----------
-    wc = ['https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N48E018_Map.tif']
-    lc, _ = warp(wc, INNER, *((512, 512) if AREA != 'region' else (1600, 1400)), resampling=Resampling.nearest, dtype='uint8')
+    wc = [cached('https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N48E018_Map.tif')]
+    lc, _ = warp(wc, INNER, *((512, 512) if AREA != 'region' else (3300, 2300)), resampling=Resampling.nearest, dtype='uint8')
     Image.fromarray(lc[0]).save(os.path.join(OUT, 'landcover.png'))
 
     # ---------- vectors in local metres ----------
