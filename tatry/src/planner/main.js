@@ -5,6 +5,7 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { TrailGraph, fmtTime } from './graph.js';
+import { loadJournal, saveJournal, routeKey, toggleFav, totals, fmtClock } from '../journal.js';
 
 const $ = (id) => document.getElementById(id);
 const COLOUR_PL = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny', none: 'bez znaków' };
@@ -101,8 +102,8 @@ function update() {
       showSummary();
     }
   }
-  updateGo();
   location.replace('#' + (stops.length ? 'r=' + stops.map((v) => data.v[v][1].toFixed(5) + ',' + data.v[v][0].toFixed(5)).join(';') : ''));
+  updateGo();
 }
 
 function showSummary() {
@@ -211,7 +212,44 @@ $('b-gpx').onclick = () => {
 };
 
 // "walk in 3D": the 3D view loads the region's data around the route (?trasa#r=...)
+// ---------------------------------------------------------------- journal
+const J = loadJournal();
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function openHash(h) { location.hash = h; location.reload(); }
+function routeTitle() {
+  if (!path) return '';
+  const near = (v) => { let best = null, bd = 400; for (const p of data.poi) { if (p.k === 'sign') continue; const d = Math.hypot((p.p[0] - data.v[v][0]) * G.mx, (p.p[1] - data.v[v][1]) * G.mz); if (d < bd) { bd = d; best = p.n; } } return best; };
+  return `${near(path[0]) || 'Start'} → ${near(path[path.length - 1]) || 'Cel'}`;
+}
+function renderJournal() {
+  const t = totals(J);
+  $('j-stats').innerHTML = `<div class="stat"><b>${t.walks}</b><span>przejść</span></div><div class="stat"><b>${t.km.toFixed(1)} km</b><span>razem</span></div>`
+    + `<div class="stat"><b>↗ ${Math.round(t.up)} m</b><span>podejść</span></div><div class="stat"><b>${t.peaks}</b><span>szczytów</span></div>`;
+  const li = (html, onClick) => { const e = document.createElement('li'); e.innerHTML = html; if (onClick) e.onclick = onClick; return e; };
+  const favs = $('j-favs'); favs.innerHTML = '';
+  if (!J.favs.length) favs.appendChild(li('<span class="empty">Wyznacz trasę i kliknij ☆, żeby ją zapisać.</span>'));
+  for (const f of J.favs) {
+    const b = J.best[f.key];
+    favs.appendChild(li(`<span>★ ${esc(f.title)}</span><span class="t">${b ? 'rekord ' + fmtClock(b.time) : ''}</span>`, () => openHash(f.hash)));
+  }
+  const walks = $('j-walks'); walks.innerHTML = '';
+  if (!J.walks.length) walks.appendChild(li('<span class="empty">Tu pojawią się trasy przebyte w widoku 3D.</span>'));
+  for (const w of J.walks.slice(0, 12)) {
+    const rec = J.best[w.key] && w.fair && J.best[w.key].time === w.time;
+    walks.appendChild(li(`<span>${esc(w.title)}<br><small>${w.date} · ${(w.dist / 1000).toFixed(1)} km · ↗ ${w.up} m</small></span>`
+      + `<span class="t">${w.fair ? fmtClock(w.time) : 'podgląd'}${rec ? ' 🏆' : ''}</span>`, w.hash ? () => openHash(w.hash) : null));
+  }
+  const pk = Object.entries(J.peaks).sort((a, b) => (b[1].ele || 0) - (a[1].ele || 0));
+  $('j-peaks').innerHTML = pk.length ? pk.map(([n, p]) => `<span>▲ ${esc(n)}${p.ele ? ' ' + p.ele : ''}</span>`).join('') : '<span class="empty">Jeszcze żadnego – ruszaj!</span>';
+  // favourite button for the current route
+  const key = routeKey(location.hash);
+  $('b-fav').hidden = !path;
+  $('b-fav').textContent = J.favs.some((f) => f.key === key) ? '★ W ulubionych (kliknij, żeby usunąć)' : '☆ Dodaj do ulubionych';
+}
+$('b-fav').onclick = () => { toggleFav(J, routeKey(location.hash), routeTitle(), location.hash); saveJournal(J); renderJournal(); };
+
 function updateGo() {
+  renderJournal();
   const note = $('go-note');
   $('go').disabled = !path;
   note.hidden = !path;
@@ -225,4 +263,5 @@ if (h) {
   const s0 = h[1].split(';').map((p) => { const [la, lo] = p.split(',').map(Number); return G.snap(lo, la, 100); }).filter((v) => v >= 0);
   if (s0.length) { stops = s0; update(); if (path) map.fitBounds(L.latLngBounds(path.map(ll)), { padding: [30, 30] }); }
 }
+renderJournal();
 $('loading').remove();
