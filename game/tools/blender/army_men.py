@@ -457,7 +457,7 @@ def torso(fig, T, pack=True, pouches=True, suspenders=True, jacket=True):
 def head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
     """the head and its headgear (_head), with the national badge painted on it."""
     H = _head(fig, neck, fwd, up, helmet, net, look_up)
-    if helmet: insignia_head(fig, H, helmet == 'cap')
+    if helmet and helmet != 'para': insignia_head(fig, H, helmet == 'cap')
     return H
 
 def _head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
@@ -476,6 +476,9 @@ def _head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
         fig.ball(H.at(2.05, s * 1.45, 3.45), 0.72)                            # cheekbone
         fig.sphere(H.at(0.2, s * 2.3, 4.0), 0.8, scale=(0.45, 0.85, 1.25), q=H.q)   # ear
     fig.limb(H.at(2.55, 0.55, 2.75), H.at(2.55, -0.55, 2.75), 0.2)             # lips
+    if helmet == 'para':
+        para_helmet(fig, H)
+        return H
     if helmet == 'cap' and IT:
         bustina(fig, H)
         return H
@@ -1892,13 +1895,57 @@ def lmg_loader():
     fig.ground(box + P(2.0, 2.0, -1.2), box + P(-2.0, -2.0, -1.2))
     fig.finish()
 
+def para_helmet(fig, H):
+    """paratroopers' headgear: the rimless steel helmets of the German Fallschirmjaeger, the British
+    airborne (with its chin cup), the Italian Folgore (a padded brow) and the Japanese Teishin
+    raiders; the Red Army's padded leather jump helmet with ear flaps; the Free French SAS in the
+    maroon beret."""
+    tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
+    with fig.hard():
+        if FR:
+            b = H.at(-0.2, -0.5, 6.9)
+            fig.sphere(b, 3.1, '#7a1f2b', scale=(1.05, 1.0, 0.36), q=Frame(b, H.f, H.d(0.05, -0.3, 1)).q, seg=20)
+            fig.box(H.at(1.8, 1.2, 6.7), (0.7, 0.2, 0.8), Frame(H.o, H.f, H.u).q, INS['silver'], bevel=0.05)   # the badge
+            return
+        if SU:
+            fig.dome(tip.o, 3.4, tip.q, squash=0.95, cut=-0.25)
+            for s_ in (1, -1): fig.box(tip.at(-0.3, s_ * 3.2, -1.8), (2.2, 0.5, 2.6), Frame(tip.o, tip.f, tip.u).q, bevel=0.3)   # ear flaps
+            fig.ring(tip.at(0, 0, -0.9), tip.u, 3.3, 0.2, seg=30, scale=(1, 1.08, 0.8))                                          # seam
+            return
+        fig.dome(tip.o, 3.3, tip.q, squash=0.97, cut=-0.28)                    # rimless shell
+        fig.ring(tip.at(0, 0, -0.28 * 3.3 * 0.97), tip.u, 3.25, 0.16, seg=36, scale=(1, 1.08, 0.7))
+        if GB: fig.sphere(H.at(2.0, 0, 1.3), 0.9, scale=(0.9, 1.2, 0.6), seg=12)          # chin cup
+        if IT: fig.box(H.at(3.1, 0, 5.4), (0.6, 3.6, 1.2), Frame(H.o, H.f, H.u).q, bevel=0.3)   # padded brow
+    for s_ in (1, -1):                                                                     # Y-shaped chin straps
+        fig.strap([tip.at(-0.8, s_ * 3.1, -1.0), H.at(1.3, s_ * 1.2, 1.6)], 0.15)
+        fig.strap([tip.at(0.9, s_ * 3.0, -1.0), H.at(1.3, s_ * 1.2, 1.6)], 0.15)
+
+def para():
+    """a paratrooper aiming: the rifleman's pose, in his army's jump headgear; the Americans with
+    their oilcloth flag arm band on the right shoulder, as worn in Normandy."""
+    fig = Fig('para')
+    pel = standing(fig, stride=4.2, stance=2.8, lean=0.8)
+    T = Frame(pel, turn(F, -0.55), D(0.1, 0, 1))
+    shR, shL, neck = torso(fig, T)
+    butt = T.at(1.9, -2.6, 10.2)
+    R = rifle(fig, butt, butt + D(1, 0.02, 0.02) * 24, sling=True)
+    elR = arm(fig, shR, R.at(5.0, 0, -1.25), pole=D(-0.2, -1, -0.5), grip_dir=R.f)
+    arm(fig, shL, R.at(11.5, 0, -0.9), pole=D(0.2, 0.4, -1), grip_dir=R.f)
+    head(fig, neck, F, D(0.55, -0.4, 1), helmet=True if US else 'para')
+    if US:
+        c, ax = shR + (elR - shR) * 0.35, (elR - shR).normalized()
+        for k, col in ((-0.45, INS['red']), (0.0, INS['white']), (0.45, INS['red'])): fig.ring(c + ax * k, ax, 1.45, 0.26, col, seg=18)
+        n = (-L - ax * (-L).dot(ax)).normalized()
+        fig.box(c - ax * 0.35 + n * 1.72, (0.7, 0.14, 0.55), Frame(c, n, ax).q, INS['blue'], bevel=0.02)   # the canton
+    fig.finish()
+
 POSES = {'rifleman': rifleman, 'kneel': kneel, 'prone': prone, 'officer': officer, 'mg': mg, 'sniper': sniper,
          'bazooka': lambda: bazooka(False), 'bazooka-stand': lambda: bazooka(True), 'manpads': lambda: manpads(False),
          'manpads-kneel': lambda: manpads(True), 'grenadier': lambda: grenadier(True), 'grenadier-idle': lambda: grenadier(False),
          'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag, 'gunner': gunner, 'lookout': lookout,
          'sapper': sapper, 'driver': driver, 'mgstand': mgstand,
          'bearer-front': lambda: bearer(True), 'bearer-back': lambda: bearer(False), 'mp': mp,
-         'lmg-ammo': lmg_ammo, 'lmg-prone': lmg_prone, 'lmg-loader': lmg_loader}
+         'lmg-ammo': lmg_ammo, 'lmg-prone': lmg_prone, 'lmg-loader': lmg_loader, 'para': para}
 
 if __name__ == '__main__':
     only = [a for a in sys.argv[1:] if not a.startswith('--')]

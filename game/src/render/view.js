@@ -52,8 +52,8 @@ const isAir = def => def.cls === 'air' || def.cls === 'plane';
 
 // Toy-style animation: soldiers stay rigid plastic figures but are swapped between poses,
 // as if a kid repositioned them. Returns the model name to draw.
-const CAN_KNEEL = { rifleman: 'pose-kneel', officer: 'pose-kneel', para: 'pose-kneel', grenadier: 'pose-kneel', manpads: 'pose-manpads-kneel' };
-const CAN_PRONE = new Set(['rifleman', 'officer', 'para', 'grenadier']);
+const CAN_KNEEL = { rifleman: 'pose-kneel', officer: 'pose-kneel', grenadier: 'pose-kneel', manpads: 'pose-manpads-kneel' };
+const CAN_PRONE = new Set(['rifleman', 'officer', 'grenadier']);   // paratroopers keep their own figure
 const LMG_SET = RULES.lmg.setup * RULES.tickRate;   // ticks until the bipod is down
 function basePose(type) { return type === 'grenadier' ? 'pose-grenadier-idle' : type; }
 function poseFor(v, now, battle) {
