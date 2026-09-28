@@ -337,8 +337,7 @@ let painting = false, lastCell = '', downAt = null;
 function cellUnder(e) {
   const g = view.groundAt(e.clientX, e.clientY);
   if (!g || !game.tool) return null;
-  const d = CATALOG[game.tool];
-  const [w, h] = game.rot & 1 ? [d.size[1], d.size[0]] : d.size;
+  const [w, h] = game.sim.footprint(game.tool, 0, 0, game.rot);
   return { cx: Math.round(g.x - w / 2), cy: Math.round(g.z - h / 2) };
 }
 function tryPlace(cell, quiet) {
@@ -439,9 +438,10 @@ window.addEventListener('keydown', e => {
   const sim = game.sim; if (!sim || game.mode !== 'play') return;
   if (e.key === 'Escape') setTool(null);
   else if (e.key === 'r' || e.key === 'R') {
-    // walls, sandbags and wire turn across; everything else turns in steps of 45 degrees (Shift+R back)
+    // walls, sandbags and wire turn along, diagonally, across and the other diagonal; everything
+    // else turns in steps of 45 degrees (Shift+R back)
     const d = game.tool && CATALOG[game.tool];
-    if (d && d.static && d.cls === 'fort') game.rot ^= 1;
+    if (d && d.static && d.cls === 'fort') game.rot = (e.shiftKey ? [3, 2, 0, 1] : [2, 3, 1, 0])[game.rot & 3];   // 0 → 2 → 1 → 3 → 0
     else game.face = (game.face + (e.shiftKey ? 7 : 1)) % 8;
     if (lastMove) showGhost(lastMove);
   }

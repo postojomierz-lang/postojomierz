@@ -55,6 +55,19 @@ for (const type of ['rifleman', 'jeep', 'bearers', 'lmg']) {
   console.log('bearers loaded the wounded man after', loaded, 'ticks');
   check(loaded >= 0, 'bearers never reached the wounded man behind the wall');
 }
+// a wall set down diagonally is tight: pushing straight across it never gets a soldier through
+{
+  const sim = setup(6);
+  sim.phase = 'deploy'; sim.teams[0].money = 1000;
+  const z = sim.teams[0].zone, wx = z.x + 4, wy = z.y + 10;
+  const r = sim.place(0, 'wall', wx, wy, 2);
+  check(!r.error, 'could not place a diagonal wall: ' + r.error);
+  const m = sim.spawn(0, 'rifleman', wx + 2, wy, 0); m.x = wx + 1.6; m.z = wy + 0.4;   // above the staircase
+  for (let i = 0; i < 400; i++) sim.tryMove(m, -0.03, 0.03);                          // straight across it
+  const below = m.z - wy > m.x - wx;                                                   // on the other side of the diagonal?
+  console.log('pushed across a diagonal wall: ends at', m.x.toFixed(2), m.z.toFixed(2), below ? 'THROUGH' : 'held');
+  check(!below, 'a soldier slipped through a diagonal wall');
+}
 // deterministic
 const a = walk(7, 'bearers'), b = walk(7, 'bearers');
 check(a.x === b.x && a.z === b.z && a.ticks === b.ticks, 'not deterministic');
