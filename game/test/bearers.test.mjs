@@ -21,7 +21,7 @@ function run(seed) {
   // three wounded lying out in the open, well away from the base and from the enemy
   const z = sim.teams[0].zone, hurt = [];
   for (let i = 0; i < 3; i++) {
-    const cx = Math.min(sim.W - 2, Math.max(1, Math.round(z.x + z.w / 2 + (sim.W / 2 - z.x - z.w / 2) * 0.35) + i));
+    const cx = Math.min(sim.W - 2, Math.max(1, Math.round(z.x + z.w / 2 + (sim.W / 2 - z.x - z.w / 2) * 0.25) + i));
     const cy = Math.round(z.y + z.h / 2) + i * 2;
     const e = sim.spawn(0, 'rifleman', cx, cy, 0); e.xp = 20 * (i + 1); sim.wound(e, null); e.stable = true; hurt.push(e.id);
   }
