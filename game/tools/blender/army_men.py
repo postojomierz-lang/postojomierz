@@ -1539,6 +1539,39 @@ def lookout():
     rifle(fig, T.at(-3.2, -3.8, -3.5), T.at(-2.5, 3.5, 17.5), up=T.f * -1)
     fig.finish()
 
+def sapper_mark(fig, T, H, shR, elR):
+    """engineers wore no arm band: they were known by their arm-of-service colour - the Royal
+    Engineers' red and blue strip on the sleeve, black collar tabs piped in blue in the Red Army,
+    black piping on German Pioniere shoulder straps, dark brown collar patches in Japan, bright
+    blue collar patches in France in 1940, the Italian Genio's black patches trimmed in red - and
+    the American engineer special brigades' white arc painted on the helmet, front and back."""
+    W, R, B, K = INS['white'], INS['red'], INS['blue'], INS['black']
+    def collar(col, trim=None):
+        for s_ in (1, -1):
+            d = (T.f * 0.8 + T.l * (s_ * 0.6)).normalized(); c = T.at(1.6, s_ * 1.35, 10.4) + d * 0.2
+            q = Frame(c, d, T.u).q
+            if trim: fig.box(c - d * 0.03, (1.05, 0.14, 0.8), q, trim, bevel=0.02)
+            fig.box(c, (0.85, 0.16, 0.62), q, col, bevel=0.02)
+    if US:
+        tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
+        for k in range(18):                                                                       # front and back
+            t = (k % 9) / 4 - 1; b, e = t * 0.85 + (math.pi if k >= 9 else 0), 0.2 + 0.5 * (1 - t * t)
+            d = (tip.f * math.cos(b) * math.cos(e) + tip.l * math.sin(b) * math.cos(e) + tip.u * math.sin(e)).normalized()
+            r = 3.45 * math.hypot(1.08 * math.cos(e), 0.95 * math.sin(e)) + 0.06
+            fig.box(tip.o + d * r, (0.55, 0.2, 0.42), Frame(tip.o, d, tip.u).q, W, bevel=0.02)
+    elif GB:                                                                                      # arm-of-service strip
+        a = (elR - shR).normalized(); out = -T.l - a * (-T.l).dot(a); out.normalize()
+        p = shR + (elR - shR) * 0.3 + out * 1.38; Fr = Frame(p, out, -a)
+        fig.box(p + Fr.l * 0.4, (0.8, 0.14, 0.38), Fr.q, B, bevel=0.01); fig.box(p - Fr.l * 0.4, (0.8, 0.14, 0.38), Fr.q, R, bevel=0.01)
+    elif DE:                                                                                      # black shoulder strap piping
+        for s_ in (1, -1):
+            a, b = T.at(0.1, s_ * 4.2, 11.6), T.at(0.3, s_ * 1.9, 12.3)
+            fig.box((a + b) / 2, (0.75, 0.12, (b - a).length), Frame((a + b) / 2, T.u, b - a).q, K, bevel=0.02)
+    elif SU: collar(K, B)
+    elif JP: collar('#5a3a22')
+    elif FR: collar('#3b8fe0')
+    elif IT: collar(K, R)
+
 def sapper():
     """an engineer kneeling to set an anti-tank mine, shovel across his back."""
     fig = Fig('sapper')
@@ -1547,8 +1580,9 @@ def sapper():
     shR, shL, neck = torso(fig, T)
     m = P(10.5, 0, 0.7)
     mine(fig, m)
-    for s, sh in ((1, shL), (-1, shR)): arm(fig, sh, m + P(-0.4, s * 3.1, 1.2), pole=D(0, s * 1, -0.2), grip_dir=L)
-    head(fig, neck, F, D(0.9, 0, 1))
+    els = [arm(fig, sh, m + P(-0.4, s * 3.1, 1.2), pole=D(0, s * 1, -0.2), grip_dir=L) for s, sh in ((1, shL), (-1, shR))]
+    H = head(fig, neck, F, D(0.9, 0, 1))
+    sapper_mark(fig, T, H, shR, els[1])
     with fig.hard():
         fig.cyl(T.at(-3.0, -3.0, 1.0), T.at(-3.2, 3.4, 11.0), 0.35, seg=10)        # shovel handle
         fig.box(T.at(-3.3, 3.8, 12.2), (2.2, 0.35, 2.6), Frame(T.at(-3.3, 3.8, 12.2), T.f, T.d(0, 0.5, 1)).q, bevel=0.15)
