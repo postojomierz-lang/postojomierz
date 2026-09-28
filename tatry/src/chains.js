@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import { patchShading } from './materials.js';
 
-export function buildChains({ scene, terrain, trail, TH, shade, isPath }) {
+// chainOK(i): whether point i of the trail may carry chains (default: the rocky part above the Bula)
+export function buildChains({ scene, terrain, trail, TH, shade, isPath, chainOK = (i) => TH[i] > 2075 }) {
   const N = trail.X.length, step = trail.step;
   // smoothed grade per metre of trail
   const grade = new Float32Array(N);
@@ -23,8 +24,8 @@ export function buildChains({ scene, terrain, trail, TH, shade, isPath }) {
     if (s >= 0 && last - s >= minLen) out.push([s, last]);
     return out;
   };
-  const chainRuns = runs((i) => TH[i] > 2075 && grade[i] > 0.4, 14, 12);
-  const stapleRuns = runs((i) => TH[i] > 2075 && grade[i] > 0.88, 3, 4);
+  const chainRuns = runs((i) => chainOK(i) && grade[i] > 0.4, 14, 12);
+  const stapleRuns = runs((i) => chainOK(i) && grade[i] > 0.88, 3, 4);
 
   const heading = (i) => {
     const a = Math.max(0, i - 3), b = Math.min(N - 1, i + 3);

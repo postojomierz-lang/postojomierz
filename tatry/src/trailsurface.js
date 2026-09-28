@@ -26,7 +26,7 @@ export function sectionAt(s) {
 const mixSec = (a, b, t) => ({ width: lerp(a[1], b[1], t), paved: lerp(a[2], b[2], t), wear: lerp(a[3], b[3], t) });
 
 // sharp path mask in a window around the camera: R = path (soft edge), G = R * paved
-export function makeTrailWindow({ trail, px = 1024, size = 256 }) {
+export function makeTrailWindow({ trail, px = 1024, size = 256, sections = sectionAt }) {
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = px;
   const g = canvas.getContext('2d');
   const tex = new THREE.CanvasTexture(canvas);
@@ -36,7 +36,7 @@ export function makeTrailWindow({ trail, px = 1024, size = 256 }) {
   // width with a little natural variation
   const W = new Float32Array(N), P = new Float32Array(N), E = new Float32Array(N);
   for (let i = 0; i < N; i++) {
-    const s = i * step, sec = sectionAt(s);
+    const s = i * step, sec = sections(s);
     W[i] = sec.width * (1 + 0.12 * Math.sin(s / 7.3) + 0.08 * Math.sin(s / 2.9 + 1.3));
     P[i] = sec.paved; E[i] = sec.wear;
   }
@@ -67,7 +67,7 @@ export function makeTrailWindow({ trail, px = 1024, size = 256 }) {
 }
 
 // stone steps: horizontal granite treads across the path wherever the paved path climbs steeply
-export function buildSteps({ scene, terrain, trail, TH, shade, rockTex }) {
+export function buildSteps({ scene, terrain, trail, TH, shade, rockTex, sections = sectionAt }) {
   const N = trail.X.length, step = trail.step;
   const r = rng(314);
   const grade = new Float32Array(N);
@@ -79,7 +79,7 @@ export function buildSteps({ scene, terrain, trail, TH, shade, rockTex }) {
   const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), m4 = new THREE.Matrix4();
   let lastY = -Infinity, lastI = -99;
   for (let i = 2; i < N - 2; i++) {
-    const s = i * step, sec = sectionAt(s);
+    const s = i * step, sec = sections(s);
     if (sec.paved < 0.5 || grade[i] < 0.2) { lastY = -Infinity; continue; }
     const rise = 0.2 + r() * 0.08;
     if (TH[i] - lastY < rise || i - lastI < 1) continue;
@@ -90,7 +90,7 @@ export function buildSteps({ scene, terrain, trail, TH, shade, rockTex }) {
     // the tread is level with the ground at its back (uphill) edge, so it stands out at the front
     const bx = trail.X[i] + tx * depth / 2, bz = trail.Z[i] + tz * depth / 2;
     const top = terrain.height(bx, bz) + 0.03;
-    const width = sectionAt(s).width * (0.8 + r() * 0.15);
+    const width = sections(s).width * (0.8 + r() * 0.15);
     // now and then two blocks instead of one
     const parts = r() < 0.35 ? [[-0.25, 0.48], [0.26, 0.5]] : [[0, 1]];
     for (const [off, frac] of parts) {

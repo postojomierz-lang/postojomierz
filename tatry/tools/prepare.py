@@ -20,6 +20,10 @@ from shapely.geometry import shape, Point, LineString
 from shapely.ops import unary_union
 import pyarrow.dataset as ds, pyarrow.fs as pfs, pyarrow.compute as pc
 
+# AREA=rysy (default): the Morskie Oko -> Rysy prototype, data in ../public/data.
+# AREA=region: the whole Polish High Tatras for routes from the planner, data in ../../region
+# (served next to the app, not copied into the build). Same local frame for both.
+AREA = os.environ.get('AREA', 'rysy')
 OUT = os.path.join(os.path.dirname(__file__), '..', 'public', 'data')
 # Outer area: panorama of the High Tatras. Inner area: detailed corridor around the trail.
 OUTER = (19.86, 49.07, 20.34, 49.33)          # lon0, lat0, lon1, lat1
@@ -30,6 +34,12 @@ SHELTER = (20.0717, 49.2012)                   # Schronisko PTTK nad Morskim Oki
 SUMMIT = (20.08813, 49.17952)                  # Rysy, Polish summit 2499 m
 LAT0 = (INNER[1] + INNER[3]) / 2
 LON0 = (INNER[0] + INNER[2]) / 2
+INNER_IMG = (1024, 1024)
+if AREA == 'region':
+    INNER = (19.93, 49.165, 20.15, 49.29)
+    INNER_N = (536, 464)
+    INNER_IMG = (1600, 1400)
+    OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'region')
 MX = 111320 * math.cos(math.radians(LAT0))
 MZ = 110574
 
@@ -83,11 +93,19 @@ def route(segs):
     while path[-1] != s: path.append(prev[path[-1]])
     return path[::-1], dist[t]
 
+def region_trails():
+    # every marked trail of the region (tools/prepare_trails.py), as lines in lon/lat
+    d = json.load(open(os.path.join(os.path.dirname(__file__), '..', 'public', 'data', 'region', 'trails.json')))
+    return [[d['v'][i][:2] for i in e['v']] for e in d['e'] if len(e['v']) > 1]
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     segs, water = overture()
-    trail, length = route(segs)
-    print('trail', len(trail), 'points', round(length), 'm')
+    if AREA == 'region':
+        trail = []
+    else:
+        trail, length = route(segs)
+        print('trail', len(trail), 'points', round(length), 'm')
 
     lakes = []
     for wv in water:
@@ -136,11 +154,11 @@ def main():
         im = im.filter(ImageFilter.UnsharpMask(radius=1.2, percent=60, threshold=2))
         im.save(os.path.join(OUT, name), quality=q, optimize=True, progressive=True)
     img(OUTER, 2048, 2048, 'outer.jpg', 82)
-    img(INNER, 1024, 1024, 'inner.sentinel.jpg', 88)  # fallback for Slovakia; prepare_gugik.py writes inner.jpg
+    img(INNER, *INNER_IMG, 'inner.sentinel.jpg', 88)  # fallback for Slovakia; prepare_gugik.py writes inner.jpg
 
     # ---------- land cover (inner only) ----------
     wc = ['https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N48E018_Map.tif']
-    lc, _ = warp(wc, INNER, 512, 512, resampling=Resampling.nearest, dtype='uint8')
+    lc, _ = warp(wc, INNER, *((512, 512) if AREA != 'region' else (1600, 1400)), resampling=Resampling.nearest, dtype='uint8')
     Image.fromarray(lc[0]).save(os.path.join(OUT, 'landcover.png'))
 
     # ---------- vectors in local metres ----------
@@ -148,6 +166,7 @@ def main():
         'outer': {'bounds': [*local(OUTER[0], OUTER[3]), *local(OUTER[2], OUTER[1])], 'n': OUTER_N},
         'inner': {'bounds': [*local(INNER[0], INNER[3]), *local(INNER[2], INNER[1])], 'n': INNER_N},
         'trail': [[round(v, 1) for v in local(*p)] for p in trail],
+        **({'trails': [[[round(v, 1) for v in local(*p)] for p in l] for l in region_trails()]} if AREA == 'region' else {}),
         'lakes': [],
         'sources': 'Copernicus DEM GLO-30 © DLR/Airbus, ESA; Sentinel-2 © ESA/Copernicus 2025; ESA WorldCover 2021; OpenStreetMap contributors via Overture Maps',
     }

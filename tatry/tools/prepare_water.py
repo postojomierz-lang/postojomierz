@@ -9,14 +9,27 @@ from shapely.geometry import LineString, box
 import pyarrow.dataset as ds, pyarrow.fs as pfs, pyarrow.compute as pc
 import prepare as P
 
-DATA = os.path.join(os.path.dirname(__file__), '..', 'public', 'data')
+DATA = P.OUT                      # public/data, or ../region with AREA=region
 
-def base_heights(meta):
-    w, h = meta['base']['n']
-    raw = zlib.decompress(open(os.path.join(DATA, 'inner4.bin'), 'rb').read())
+def unpack(path, w, h):
+    raw = zlib.decompress(open(path, 'rb').read())
     d = np.frombuffer(raw[:w * h * 2], '<u2').reshape(h, w).astype(np.int32)
     first = d[:, 0].copy(); d = np.where(d > 32767, d - 65536, d); d[:, 0] = first
     return np.cumsum(d, 1) / 10.0
+
+def base_heights(meta):
+    w, h = meta['base']['n']
+    if 'blocks' not in meta['base']:
+        return unpack(os.path.join(DATA, 'inner4.bin'), w, h)
+    # the region: blocks of B x B samples with one shared row and column
+    B = meta['base']['block']
+    H = np.zeros((h, w))
+    for bi, bj in meta['base']['blocks']:
+        a = unpack(os.path.join(DATA, 'base', f'h_{bi}_{bj}.bin'), B + 1, B + 1)
+        r0, c0 = bj * B, bi * B
+        r1, c1 = min(h, r0 + B + 1), min(w, c0 + B + 1)
+        H[r0:r1, c0:c1] = a[:r1 - r0, :c1 - c0]
+    return H
 
 def main():
     meta = json.load(open(os.path.join(DATA, 'meta.json')))
@@ -36,7 +49,7 @@ def main():
         filter=f, columns=['class', 'names', 'geometry', 'is_intermittent']).to_pylist()
 
     clip = box(ib[0] + 60, ib[1] + 60, ib[2] - 60, ib[3] - 60)
-    big = {'Rybí potok', 'Rybi Potok', 'Roztoka', 'Biela voda', 'Białka'}
+    big = {'Rybí potok', 'Rybi Potok', 'Roztoka', 'Biela voda', 'Białka', 'Bystra', 'Sucha Woda', 'Suchá voda'}
     streams, falls = [], []
     for r in rows:
         g = shapely.from_wkb(r['geometry'])
