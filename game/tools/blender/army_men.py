@@ -1105,6 +1105,23 @@ def grenade(fig, c, r=0.85, colour=None):
             fig.cyl(c - U * r * 3.8, c - U * r * 0.3, r * 0.42, colour, seg=12)
             fig.cyl(c - U * r * 3.9, c - U * r * 3.7, r * 0.5, colour, seg=12)
         return
+    if GB:
+        with fig.hard():                                                        # Mills bomb No. 36: an oval
+            fig.sphere(c, r * 0.9, colour, scale=(1, 1, 1.2), seg=14)            # with a centre band, the long
+            fig.ring(c, U, r * 0.93, r * 0.12, colour, seg=14)                   # lever down one side, the base
+            for k in (-0.55, 0.55): fig.ring(c + U * (k * r), U, r * 0.78, r * 0.07, colour, seg=14)   # plug and the ring
+            fig.cyl(c + U * r * 0.95, c + U * r * 1.25, r * 0.3, colour, seg=10)
+            fig.box(c + F * r * 0.95 + U * r * 0.2, (r * 0.35, r * 0.2, r * 1.9), None, colour, bevel=0.02)
+            fig.cyl(c - U * r * 1.2, c - U * r * 1.0, r * 0.4, colour, seg=10)
+            fig.ring(c + U * r * 1.3 - F * r * 0.5, F, r * 0.32, r * 0.06, colour, seg=10)
+        return
+    if FR:
+        with fig.hard():                                                        # F1: a ribbed egg under a tall
+            fig.sphere(c, r * 0.92, colour, scale=(1, 1, 1.3), seg=14)           # fuse with its lever
+            for k in (-0.6, -0.2, 0.2, 0.6): fig.ring(c + U * (k * r * 1.1), U, r * math.sqrt(1 - k * k * 0.8) * 0.95, r * 0.09, colour, seg=14)
+            fig.cyl(c + U * r * 1.1, c + U * r * 2.0, r * 0.28, colour, seg=10)
+            fig.box(c + U * r * 1.4 + F * r * 0.4, (r * 0.3, r * 0.2, r * 1.3), None, colour, bevel=0.02)
+        return
     with fig.hard():
         fig.sphere(c, r, colour, scale=(1, 1, 1.25), seg=14)
         for k in (-0.5, 0, 0.5): fig.ring(c + U * (k * r * 1.2), U, r * math.sqrt(1 - k * k) * 1.02, r * 0.1, colour, seg=14)
@@ -1422,6 +1439,35 @@ def manpads(kneel_=False):
     head(fig, neck, D(1, 0, 0.5), D(-0.25, -0.3, 1))
     fig.finish()
 
+def grenadier_kit(fig, T):
+    """how each army carried its spare grenades: the Americans hooked them on the suspenders, the
+    Germans pushed stick grenades through the belt, the Red Army had a canvas grenade bag on the hip,
+    the British Mills bombs sat in the chest pouches, the Japanese used a pouch on the belt, the French
+    grenadier his grenade haversack, the Italians hung their red devils from the belt."""
+    if US:
+        for s_ in (1.3, -1.3): grenade(fig, T.at(2.85, s_, 5.4), 0.75)        # on the suspenders
+    elif DE:
+        for s_ in (1.7, -0.6): grenade(fig, T.at(2.95, s_, 2.4), 0.72)        # through the belt, handles down
+    elif SU:
+        with fig.hard():
+            fig.box(T.at(0.9, 3.7, 0.4), (2.2, 1.3, 2.6), T.q, bevel=0.3)       # the grenade bag
+            fig.box(T.at(0.9, 3.75, 1.5), (2.3, 1.4, 0.6), T.q, bevel=0.15)     # its flap
+        fig.strap([T.at(0.9, 3.7, 1.6), T.at(2.6, 1.2, 7.5), T.at(0.8, -2.6, 11.5)], 0.22)
+        grenade(fig, T.at(2.85, -1.6, 2.6), 0.62)
+    elif GB:
+        for s_ in (1.4, -1.4): grenade(fig, T.at(2.95, s_, 7.2), 0.62)        # tops out of the chest pouches
+    elif JP:
+        with fig.hard(): fig.box(T.at(2.75, 0.0, 1.0), (2.4, 1.0, 1.5), T.q, bevel=0.2)   # grenade pouch
+        for s_ in (1.3, -1.3): grenade(fig, T.at(2.85, s_, 5.4), 0.6)
+    elif FR:
+        with fig.hard():
+            fig.box(T.at(0.6, -3.8, 0.2), (2.6, 1.3, 2.6), T.q, bevel=0.35)     # the grenade haversack
+            fig.box(T.at(0.6, -3.85, 1.3), (2.7, 1.4, 0.8), T.q, bevel=0.2)
+        fig.strap([T.at(0.6, -3.8, 1.5), T.at(2.6, -1.0, 7.5), T.at(0.8, 2.6, 11.5)], 0.22)
+        grenade(fig, T.at(2.9, 1.5, 2.6), 0.6)
+    elif IT:
+        for s_ in (1.7, -1.7): grenade(fig, T.at(2.95, s_, 0.6), 0.62)        # hanging from the belt
+
 def grenadier(throwing=True):
     fig = Fig('grenadier' if throwing else 'grenadier-idle')
     if throwing:
@@ -1431,7 +1477,7 @@ def grenadier(throwing=True):
         pel = standing(fig, stride=2.6, stance=2.4, lean=0.2)
         T = Frame(pel, F, D(0.03, 0, 1))
     shR, shL, neck = torso(fig, T)
-    for s in (1.3, -1.3): grenade(fig, T.at(2.85, s, 5.4), 0.75)             # clipped to the suspenders
+    grenadier_kit(fig, T)
     if throwing:
         g = T.at(-4.5, -4.8, 17.0)
         arm(fig, shR, g, pole=D(-0.3, -1, 0.2), grip_dir=U)
