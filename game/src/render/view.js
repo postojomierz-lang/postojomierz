@@ -465,6 +465,7 @@ export class View {
       const deploy = this.sim.phase === 'deploy';
       this.zones.visible = deploy;
       this.batches.begin();
+      this.rollers = this.sim.ents.filter(o => o.def.vehicle && !o.dead && !isAir(o.def));   // what flattens the fallen
       for (const v of this.ents.values()) this.updateEnt(v, alpha, now, dt, deploy);
       this.emitMines();
       this.batches.end();
@@ -576,6 +577,20 @@ export class View {
         if (!v.downAt) { v.pivot.rotation.z = ease * Math.PI / 2 * v.fallSide * 0.98; v.pivot.position.y = Math.sin(ease * Math.PI) * 0.15; }
         g.position.y = 0;
         variant = 'dead';
+        // a vehicle rolling over a fallen soldier squashes the plastic flat and shoves it aside
+        if (!v.crushed && k >= 1) for (const o of this.rollers) {
+          const dx = e.x - o.x, dz = e.z - o.z, r = o.def.radius * 0.8;
+          if (dx * dx + dz * dz > r * r) continue;
+          v.crushed = true;
+          const l = Math.hypot(dx, dz) || 1, side = -o.dirZ * dx / l + o.dirX * dz / l >= 0 ? 1 : -1;
+          v.shove = [-o.dirZ * side * 0.35, o.dirX * side * 0.35];
+          this.fx.dust(g.position.clone().setY(0.1));
+          break;
+        }
+        if (v.crushed) {
+          v.pivot.scale.set(0.35, 1.05, 1.1);                       // (lying on his side: local x is up)
+          g.position.x += v.shove[0]; g.position.z -= v.shove[1];
+        }
       } else if (air && v.deadPos && v.deadPos.y > 0.5) {
         // shot down: spin and fall, then burn on the ground
         const kk = Math.min(1, (now - v.deadAt) / (def.cls === 'plane' ? 1300 : 900));
