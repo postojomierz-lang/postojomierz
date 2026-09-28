@@ -10,7 +10,7 @@ import { vehicleFlag, hqFlag, aircraftMarkings, tankMarkings } from './flags.js'
 
 // The army men (tools/blender/army_men.py): which figure each unit type and pose uses.
 const FIGURE_FOR = {
-  rifleman: 'rifleman', para: 'rifleman', officer: 'officer', mg: 'mg', sniper: 'sniper', 'pose-kneel': 'kneel', 'pose-prone': 'prone',
+  rifleman: 'rifleman', para: 'para', officer: 'officer', mg: 'mg', sniper: 'sniper', 'pose-kneel': 'kneel', 'pose-prone': 'prone',
   bazooka: 'bazooka', 'pose-bazooka-stand': 'bazooka-stand', manpads: 'manpads', 'pose-manpads-kneel': 'manpads-kneel',
   grenadier: 'grenadier', 'pose-grenadier-idle': 'grenadier-idle', medic: 'medic', 'pose-medic-heal': 'medic-heal', 'pose-drag': 'drag',
   'pose-sapper': 'sapper', 'pose-driver': 'driver', mp: 'mp',

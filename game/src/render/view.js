@@ -13,6 +13,7 @@ import { model, modelKey, plastic, LITTER_LIFT } from './models.js';
 import { buildTerrain, floorTexture, FLOOR, buildTape } from './terrain.js';
 import { buildDiorama } from './diorama.js';
 import { DIORAMAS } from '../sim/map.js';
+import { turn45 } from '../sim/sim.js';
 import { Fx } from './fx.js';
 import { CATALOG, TEAM_COLORS, RULES } from '../data/catalog.js';
 
@@ -52,8 +53,8 @@ const isAir = def => def.cls === 'air' || def.cls === 'plane';
 
 // Toy-style animation: soldiers stay rigid plastic figures but are swapped between poses,
 // as if a kid repositioned them. Returns the model name to draw.
-const CAN_KNEEL = { rifleman: 'pose-kneel', officer: 'pose-kneel', para: 'pose-kneel', grenadier: 'pose-kneel', manpads: 'pose-manpads-kneel' };
-const CAN_PRONE = new Set(['rifleman', 'officer', 'para', 'grenadier']);
+const CAN_KNEEL = { rifleman: 'pose-kneel', officer: 'pose-kneel', grenadier: 'pose-kneel', manpads: 'pose-manpads-kneel' };
+const CAN_PRONE = new Set(['rifleman', 'officer', 'grenadier']);   // paratroopers keep their own figure
 const LMG_SET = RULES.lmg.setup * RULES.tickRate;   // ticks until the bipod is down
 function basePose(type) { return type === 'grenadier' ? 'pose-grenadier-idle' : type; }
 function poseFor(v, now, battle) {
@@ -109,7 +110,7 @@ const WHITE = new THREE.Color(1, 1, 1);
 function teamPalette(col) {
   const main = new THREE.Color(col.main), dark = new THREE.Color(col.dark);
   const dead = c => c.clone().lerp(new THREE.Color('#6f6c64'), 0.45).multiplyScalar(0.75);
-  const burnt = c => c.clone().lerp(new THREE.Color('#1c1a17'), 0.8);
+  const burnt = c => c.clone().lerp(new THREE.Color('#1c1a17'), 0.92).multiplyScalar(0.7);   // charred black
   return {
     main, dark, accent: WHITE,
     deadMain: dead(main), deadDark: dead(dark), deadAccent: dead(WHITE),
@@ -275,14 +276,26 @@ export class View {
       this.world.add(buildTape(map));
     }
     this.zones = new THREE.Group(); this.world.add(this.zones);
+    // deployment zones, shown while armies are being set up: ours with a bright double border that
+    // reads on any ground and any army colour, the others with a border in their colour
+    const strip = (x0, z0, x1, z1, width, color, y, opacity = 1) => {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(len + width, 0.02, width), new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 }));
+      m.position.set(this.wx((x0 + x1) / 2), y, this.wz((z0 + z1) / 2)); m.rotation.y = -Math.atan2(z1 - z0, x1 - x0) * (this.wz(1) - this.wz(0));
+      this.zones.add(m);
+    };
+    const frame = (z, inset, width, color, y, opacity) => {
+      const x0 = z.x + inset, z0 = z.y + inset, x1 = z.x + z.w - inset, z1 = z.y + z.h - inset;
+      strip(x0, z0, x1, z0, width, color, y, opacity); strip(x0, z1, x1, z1, width, color, y, opacity);
+      strip(x0, z0, x0, z1, width, color, y, opacity); strip(x1, z0, x1, z1, width, color, y, opacity);
+    };
     for (const t of sim.teams) {
       const z = t.zone, col = TEAM_COLORS[t.color].main, own = t.id === human;
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(z.w, z.h), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: own ? 0.16 : 0.08, depthWrite: false }));
-      plane.rotation.x = -Math.PI / 2; plane.position.set(this.wx(z.x + z.w / 2), 0.02, this.wz(z.y + z.h / 2));
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(z.w, z.h), new THREE.MeshBasicMaterial({ color: own ? 0xfff2b0 : col, transparent: true, opacity: own ? 0.2 : 0.1, depthWrite: false }));
+      plane.rotation.x = -Math.PI / 2; plane.position.set(this.wx(z.x + z.w / 2), 0.03, this.wz(z.y + z.h / 2));
       this.zones.add(plane);
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(z.w, z.h)), new THREE.LineDashedMaterial({ color: col, dashSize: 0.6, gapSize: 0.4 }));
-      edges.rotation.x = -Math.PI / 2; edges.position.copy(plane.position); edges.position.y = 0.03; edges.computeLineDistances();
-      this.zones.add(edges);
+      if (own) { frame(z, 0.12, 0.24, 0xffffff, 0.05); frame(z, 0.36, 0.16, 0xf0c13a, 0.05); }
+      else frame(z, 0.1, 0.18, col, 0.05, 0.85);
     }
     this.fx = new Fx(this.scene, map, this.world);
     for (const e of sim.ents) this.addEnt(e);
@@ -356,7 +369,7 @@ export class View {
     if (m.turret) { turret = new THREE.Object3D(); pivot.add(turret); }
     const yaw = Math.atan2(-e.dirZ, e.dirX);
     const v = { e, g, pivot, rotors, tail, chute, turret, tyaw: yaw, key, m, nation, yaw, pose: inf ? basePose(e.type) : e.type, poseAt: 0, lastFire: 0, fireAt: 0, lastHit: 0, wobbleAt: 0, throwUntil: 0, celebrate: false, roll: 0, pal: this.palettes[e.team], deadAt: 0, downAt: 0, flashUntil: 0, trackAcc: 0, lastX: e.x, lastZ: e.z, fallSide: e.id % 2 ? 1 : -1 };
-    if (e.def.static && e.def.cls === 'fort') g.rotation.y = e.rot & 1 ? Math.PI / 2 : 0;
+    if (e.def.static && e.def.cls === 'fort') this.turnFort(g, e.def, e.rot);
     else g.rotation.y = yaw;
     g.position.set(this.wx(e.x), e.y, this.wz(e.z));
     this.ents.set(e.id, v);
@@ -465,6 +478,7 @@ export class View {
       const deploy = this.sim.phase === 'deploy';
       this.zones.visible = deploy;
       this.batches.begin();
+      this.rollers = this.sim.ents.filter(o => o.def.vehicle && !o.dead && !isAir(o.def));   // what flattens the fallen
       for (const v of this.ents.values()) this.updateEnt(v, alpha, now, dt, deploy);
       this.emitMines();
       this.batches.end();
@@ -576,6 +590,20 @@ export class View {
         if (!v.downAt) { v.pivot.rotation.z = ease * Math.PI / 2 * v.fallSide * 0.98; v.pivot.position.y = Math.sin(ease * Math.PI) * 0.15; }
         g.position.y = 0;
         variant = 'dead';
+        // a vehicle rolling over a fallen soldier squashes the plastic flat and shoves it aside
+        if (!v.crushed && k >= 1) for (const o of this.rollers) {
+          const dx = e.x - o.x, dz = e.z - o.z, r = o.def.radius * 0.8;
+          if (dx * dx + dz * dz > r * r) continue;
+          v.crushed = true;
+          const l = Math.hypot(dx, dz) || 1, side = -o.dirZ * dx / l + o.dirX * dz / l >= 0 ? 1 : -1;
+          v.shove = [-o.dirZ * side * 0.35, o.dirX * side * 0.35];
+          this.fx.dust(g.position.clone().setY(0.1));
+          break;
+        }
+        if (v.crushed) {
+          v.pivot.scale.set(0.35, 1.05, 1.1);                       // (lying on his side: local x is up)
+          g.position.x += v.shove[0]; g.position.z -= v.shove[1];
+        }
       } else if (air && v.deadPos && v.deadPos.y > 0.5) {
         // shot down: spin and fall, then burn on the ground
         const kk = Math.min(1, (now - v.deadAt) / (def.cls === 'plane' ? 1300 : 900));
@@ -603,6 +631,13 @@ export class View {
     if (v.chute) {
       if (e.falling) { v.chuteT = 1; v.chute.scale.setScalar(1); }
       else if (v.chuteT > 0) { v.chuteT -= dt * 2; v.chute.scale.set(Math.max(0.01, v.chuteT), Math.max(0.01, v.chuteT * v.chuteT), Math.max(0.01, v.chuteT)); }
+    }
+    // a wreck burns through the rest of the battle (after the first column of smoke), then smoulders
+    if (e.dead && e.wreck && v.deadAt && now > v.deadAt + 2500 && now > (v.nextSmoke || 0)) {
+      const burning = this.sim.burning(e), p = g.position;
+      v.nextSmoke = now + (burning ? 220 : 600);
+      this.fx.puff(p.clone().add(new THREE.Vector3(0, 0.5, 0)), burning ? 0.9 + Math.random() * 0.5 : 0.7, burning ? 0x3d3a36 : 0x77726a, burning ? 0.5 : 0.4, burning ? 2.2 : 1.3, burning ? 2600 : 2200);
+      if (burning) this.fx.puff(p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.35, (Math.random() - 0.5) * 0.5)), 0.45, 0xff7a2a, 0.8, 0.8, 500);
     }
     this.emit(v, variant);
   }
@@ -834,7 +869,7 @@ export class View {
     }
     return 0;
   }
-  setGhost(type, teamId, cx, cy, rot, valid) {
+  setGhost(type, teamId, cx, cy, rot, valid, face = 0) {
     if (!type) { if (this.ghost) this.ghost.g.visible = false; return; }
     if (!this.ghost || this.ghost.type !== type) {
       if (this.ghost) this.world.remove(this.ghost.g);
@@ -850,20 +885,32 @@ export class View {
       this.ghost = { type, g, pad, mat };
     }
     const def = CATALOG[type];
-    const [w, h] = rot & 1 ? [def.size[1], def.size[0]] : def.size;
+    const fort = def.static && def.cls === 'fort', diag = fort && rot >= 2 && def.size[0] > 1;
+    const [w, h] = diag ? [def.size[0], def.size[0]] : rot & 1 ? [def.size[1], def.size[0]] : def.size;
     const gh = this.ghost;
     gh.g.visible = gh.pad.visible = true;
     const col = valid ? 0x9fe06a : 0xf0503a;
     gh.mat.color.setHex(col); gh.pad.material.color.setHex(col);
     gh.g.position.set(this.wx(cx + w / 2), def.cls === 'air' ? def.alt : 0, this.wz(cy + h / 2));
-    gh.pad.position.set(gh.g.position.x, 0.03, gh.g.position.z); gh.pad.scale.set(w, h, 1);
-    if (def.static && def.cls === 'fort') gh.g.rotation.y = rot & 1 ? Math.PI / 2 : 0;
-    else {
-      const z = this.sim.teams[teamId].zone;
-      gh.g.rotation.y = Math.atan2(-(this.map.H / 2 - (z.y + z.h / 2)), this.map.W / 2 - (z.x + z.w / 2));
+    gh.pad.position.set(gh.g.position.x, 0.03, gh.g.position.z);
+    gh.pad.rotation.set(-Math.PI / 2, 0, 0); gh.pad.scale.set(w, h, 1);
+    if (fort) {
+      this.turnFort(gh.g, def, rot);
+      if (diag) { gh.pad.rotation.set(-Math.PI / 2, 0, gh.g.rotation.y); gh.pad.scale.set(w * Math.SQRT2, def.size[1], 1); }   // the diagonal strip
+    } else {
+      // the way the unit will face: towards the middle of the map, turned by the player (R)
+      const [fx, fz] = turn45(this.map.W / 2 - (cx + w / 2), this.map.H / 2 - (cy + h / 2), face);
+      gh.g.rotation.y = Math.atan2(-fz, fx);
     }
   }
   hideGhost() { if (this.ghost) { this.ghost.g.visible = false; this.ghost.pad.visible = false; } }
+  // a wall, sandbags or wire the way it was set down (rot: along x, along z, the two diagonals -
+  // stretched to reach corner to corner of its cells)
+  turnFort(g, def, rot) {
+    const [dx, dz] = [[1, 0], [0, 1], [1, 1], [-1, 1]][rot & 3];
+    g.rotation.y = Math.atan2(-(this.wz(dz) - this.wz(0)), this.wx(dx) - this.wx(0));
+    g.scale.x = rot >= 2 && def.size[0] > 1 ? Math.SQRT2 : 1;
+  }
 }
 
 // Small renders of each catalogue item for the build palette.

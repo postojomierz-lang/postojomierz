@@ -24,7 +24,7 @@ export const CATALOG = {
     blurb: 'Shreds infantry. Slow to move.',
   },
   lmg: {
-    name: 'LMG team', group: 'infantry', cls: 'infantry', team2: true, cost: 45, hp: 20, speed: 1.3, size: [1, 1], radius: 0.45,
+    name: 'LMG team', group: 'infantry', cls: 'infantry', team2: true, cost: 45, hp: 20, speed: 1.3, size: [1, 1], radius: 0.45, len: 0.8,
     weapon: { kind: 'bullet', range: 16, dmg: 1, cd: 0.13, acc: 0.55, air: true },
     blurb: 'Gunner and loader. Once the bipod is down it outshoots anything on foot; slower without the loader.',
   },
@@ -59,7 +59,7 @@ export const CATALOG = {
     blurb: 'Runs to wounded soldiers and patches them up on the spot, so they fight on.',
   },
   bearers: {
-    name: 'Stretcher bearers', group: 'infantry', cls: 'infantry', medic: true, capacity: 1, cost: 25, hp: 16, speed: 1.3, size: [1, 1], radius: 0.45,
+    name: 'Stretcher bearers', group: 'infantry', cls: 'infantry', medic: true, capacity: 1, cost: 25, hp: 16, speed: 1.3, size: [1, 1], radius: 0.45, len: 1.15,
     blurb: 'Two unarmed men with a stretcher: carry a wounded soldier home from where no ambulance can go.',
   },
   mp: {
@@ -240,7 +240,9 @@ export const RULES = {
   aircraftPerRound: 2,
   bleedSeconds: 18,       // a wounded soldier dies if nobody helps in time
   woundChance: 0.55,      // share of 'killed' infantry that are only wounded
-  battleSeconds: 40,
+  battleSeconds: 48,      // (the bigger maps take longer to cross)
+  wreckRounds: 2,         // a destroyed vehicle's wreck stays this many rounds (burning through the first)
+  shoveTicks: 40,         // a medium or heavy tank needs this long to push a wreck out of its way
   maxRounds: 10,
   tickRate: 20,
   // experience: a unit earns the value of the damage it does (the share of a target's health

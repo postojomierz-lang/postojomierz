@@ -457,7 +457,7 @@ def torso(fig, T, pack=True, pouches=True, suspenders=True, jacket=True):
 def head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
     """the head and its headgear (_head), with the national badge painted on it."""
     H = _head(fig, neck, fwd, up, helmet, net, look_up)
-    if helmet: insignia_head(fig, H, helmet == 'cap')
+    if helmet and helmet != 'para': insignia_head(fig, H, helmet == 'cap')
     return H
 
 def _head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
@@ -476,6 +476,9 @@ def _head(fig, neck, fwd, up, helmet=True, net=False, look_up=0.0):
         fig.ball(H.at(2.05, s * 1.45, 3.45), 0.72)                            # cheekbone
         fig.sphere(H.at(0.2, s * 2.3, 4.0), 0.8, scale=(0.45, 0.85, 1.25), q=H.q)   # ear
     fig.limb(H.at(2.55, 0.55, 2.75), H.at(2.55, -0.55, 2.75), 0.2)             # lips
+    if helmet == 'para':
+        para_helmet(fig, H)
+        return H
     if helmet == 'cap' and IT:
         bustina(fig, H)
         return H
@@ -1490,6 +1493,35 @@ def mg():
     mg_kit(fig, T)
     fig.finish()
 
+def at_kit(fig, T):
+    """the tank hunter's ammunition and extras: American (and Free French) bazooka rockets in their
+    tubes on the back, the German Panzerschreck rocket frame with a Panzerfaust across it, the PIAT
+    bomb carrier of three tubes, Red Army RPG-43 anti-tank grenades on the belt, the Japanese
+    magnetic anti-tank mine hanging at the hip, the Italian box of Solothurn magazines."""
+    with fig.hard():
+        if US or FR:
+            for s_ in (0.9, -0.9): fig.cyl(T.at(-3.0, s_, 3.2), T.at(-3.0, s_ * 1.2, 11.2), 0.75, seg=12, bevel=0.08)
+            fig.box(T.at(-3.0, 0, 7.2), (3.4, 0.4, 0.5), T.q, bevel=0.05)
+        elif DE:
+            for s_ in (0.8, -0.8): fig.cyl(T.at(-3.2, s_, 2.8), T.at(-3.2, s_, 11.5), 0.8, seg=12, bevel=0.08)   # two rockets
+            for u in (4.0, 10.0): fig.box(T.at(-3.0, 0, u), (3.2, 0.9, 0.3), T.q, bevel=0.05)               # the carrying frame
+            a, b = T.at(-4.2, 3.0, 2.0), T.at(-4.2, -3.2, 11.8)                                               # Panzerfaust
+            fig.cyl(a, b, 0.4, seg=10); fig.sphere(b + (b - a).normalized() * 0.6, 1.0, scale=(1, 1, 1.5), q=Frame(b, T.f, b - a).q, seg=12)
+        elif GB:
+            for k in range(3): fig.cyl(T.at(-3.1, -1.1 + k * 1.1, 3.4), T.at(-3.1, -1.1 + k * 1.1, 10.4), 0.55, seg=10, bevel=0.06)   # bomb carrier
+            for u in (4.2, 9.6): fig.box(T.at(-3.1, 0, u), (3.6, 1.3, 0.35), T.q, bevel=0.05)
+        elif SU:
+            for s_ in (1.8, -0.4):                                                                           # RPG-43s through the belt
+                c = T.at(2.95, s_, 2.4); fig.cyl(c, c - T.u * 2.6, 0.35, seg=10); fig.cyl(c, c + T.u * 1.4, 0.95, seg=14, bevel=0.1)
+        elif JP:
+            c = T.at(0.9, 3.9, 0.2)                                                                          # hako-bakurai
+            fig.cyl(c - T.l * 0.6, c + T.l * 0.6, 1.9, seg=18, bevel=0.15)
+            for k in range(4):
+                a = k * math.pi / 2 + 0.785; d = T.f * math.cos(a) + T.u * math.sin(a)
+                fig.cyl(c + T.l * 0.7 + d * 1.35, c + T.l * 1.0 + d * 1.35, 0.4, seg=10)                       # its magnets
+        elif IT:
+            fig.box(T.at(2.4, -2.6, 1.6), (2.0, 1.3, 2.4), T.q, bevel=0.15)                                  # magazine box
+
 def bazooka(standing_=False):
     fig = Fig('bazooka-stand' if standing_ else 'bazooka')
     pel = standing(fig, stride=4.0, stance=2.9, lean=0.5) if standing_ else kneeling(fig)
@@ -1501,6 +1533,7 @@ def bazooka(standing_=False):
     arm(fig, shR, top + F * 4.8 + U * (-3.3), pole=D(-0.3, -1, -0.6), grip_dir=F)
     arm(fig, shL, top + F * 8.9 + U * (-2.9) + L * 0.4, pole=D(0.2, 0.3, -1), grip_dir=F)
     head(fig, neck, F, D(0.2, -0.35, 1))
+    at_kit(fig, T)
     fig.finish()
 
 def manpads(kneel_=False):
@@ -1515,7 +1548,31 @@ def manpads(kneel_=False):
     arm(fig, shR, top + d * 4.5 - U * 3.0, pole=D(-0.3, -1, -0.6), grip_dir=d)
     arm(fig, shL, top + d * 8.8 - U * 2.4 + L * 0.3, pole=D(0.2, 0.3, -1), grip_dir=d)
     head(fig, neck, D(1, 0, 0.5), D(-0.25, -0.3, 1))
+    aa_kit(fig, T)
     fig.finish()
+
+def aa_kit(fig, T):
+    """the anti-aircraft soldier's ammunition for his army's weapon: a spare missile tube on the back
+    (American, French), the box of nine-round Fliegerfaust clips at the German's hip, a bandolier of
+    big brass cartridges across the chest for the Boys (British) and the PTRS (Red Army, Japanese,
+    Italian)."""
+    if US or FR:
+        with fig.hard():
+            fig.cyl(T.at(-3.1, -2.2, 2.6), T.at(-3.1, 2.0, 11.6), 1.0, seg=14, bevel=0.1)
+            for k in (0.12, 0.88):
+                a, b = T.at(-3.1, -2.2, 2.6), T.at(-3.1, 2.0, 11.6); c = a + (b - a) * k
+                fig.ring(c, b - a, 1.05, 0.14, seg=16)
+    elif DE:
+        with fig.hard():
+            fig.box(T.at(1.4, -3.6, 0.8), (1.8, 1.4, 2.4), T.q, bevel=0.15)
+            fig.box(T.at(1.4, -3.65, 2.1), (1.9, 1.5, 0.5), T.q, bevel=0.1)
+    else:
+        a, b = T.at(0.9, 3.4, 11.0), T.at(2.7, -2.8, 1.8)                     # the bandolier
+        fig.strap([a, T.at(2.6, 1.0, 7.8), T.at(2.8, -1.4, 4.6), b], 0.35)
+        d = (b - a); n = 11
+        for k in range(1, n):
+            p = a + d * (k / n); p = p + T.f * 0.35
+            fig.cyl(p - T.u * 0.1, p + T.u * 1.25, 0.24, '#c9a24a', seg=8)                        # cartridges
 
 def grenadier_kit(fig, T):
     """how each army carried its spare grenades: the Americans hooked them on the suspenders, the
@@ -1862,13 +1919,57 @@ def lmg_loader():
     fig.ground(box + P(2.0, 2.0, -1.2), box + P(-2.0, -2.0, -1.2))
     fig.finish()
 
+def para_helmet(fig, H):
+    """paratroopers' headgear: the rimless steel helmets of the German Fallschirmjaeger, the British
+    airborne (with its chin cup), the Italian Folgore (a padded brow) and the Japanese Teishin
+    raiders; the Red Army's padded leather jump helmet with ear flaps; the Free French SAS in the
+    maroon beret."""
+    tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
+    with fig.hard():
+        if FR:
+            b = H.at(-0.2, -0.5, 6.9)
+            fig.sphere(b, 3.1, '#7a1f2b', scale=(1.05, 1.0, 0.36), q=Frame(b, H.f, H.d(0.05, -0.3, 1)).q, seg=20)
+            fig.box(H.at(1.8, 1.2, 6.7), (0.7, 0.2, 0.8), Frame(H.o, H.f, H.u).q, INS['silver'], bevel=0.05)   # the badge
+            return
+        if SU:
+            fig.dome(tip.o, 3.4, tip.q, squash=0.95, cut=-0.25)
+            for s_ in (1, -1): fig.box(tip.at(-0.3, s_ * 3.2, -1.8), (2.2, 0.5, 2.6), Frame(tip.o, tip.f, tip.u).q, bevel=0.3)   # ear flaps
+            fig.ring(tip.at(0, 0, -0.9), tip.u, 3.3, 0.2, seg=30, scale=(1, 1.08, 0.8))                                          # seam
+            return
+        fig.dome(tip.o, 3.3, tip.q, squash=0.97, cut=-0.28)                    # rimless shell
+        fig.ring(tip.at(0, 0, -0.28 * 3.3 * 0.97), tip.u, 3.25, 0.16, seg=36, scale=(1, 1.08, 0.7))
+        if GB: fig.sphere(H.at(2.0, 0, 1.3), 0.9, scale=(0.9, 1.2, 0.6), seg=12)          # chin cup
+        if IT: fig.box(H.at(3.1, 0, 5.4), (0.6, 3.6, 1.2), Frame(H.o, H.f, H.u).q, bevel=0.3)   # padded brow
+    for s_ in (1, -1):                                                                     # Y-shaped chin straps
+        fig.strap([tip.at(-0.8, s_ * 3.1, -1.0), H.at(1.3, s_ * 1.2, 1.6)], 0.15)
+        fig.strap([tip.at(0.9, s_ * 3.0, -1.0), H.at(1.3, s_ * 1.2, 1.6)], 0.15)
+
+def para():
+    """a paratrooper aiming: the rifleman's pose, in his army's jump headgear; the Americans with
+    their oilcloth flag arm band on the right shoulder, as worn in Normandy."""
+    fig = Fig('para')
+    pel = standing(fig, stride=4.2, stance=2.8, lean=0.8)
+    T = Frame(pel, turn(F, -0.55), D(0.1, 0, 1))
+    shR, shL, neck = torso(fig, T)
+    butt = T.at(1.9, -2.6, 10.2)
+    R = rifle(fig, butt, butt + D(1, 0.02, 0.02) * 24, sling=True)
+    elR = arm(fig, shR, R.at(5.0, 0, -1.25), pole=D(-0.2, -1, -0.5), grip_dir=R.f)
+    arm(fig, shL, R.at(11.5, 0, -0.9), pole=D(0.2, 0.4, -1), grip_dir=R.f)
+    head(fig, neck, F, D(0.55, -0.4, 1), helmet=True if US else 'para')
+    if US:
+        c, ax = shR + (elR - shR) * 0.35, (elR - shR).normalized()
+        for k, col in ((-0.45, INS['red']), (0.0, INS['white']), (0.45, INS['red'])): fig.ring(c + ax * k, ax, 1.45, 0.26, col, seg=18)
+        n = (-L - ax * (-L).dot(ax)).normalized()
+        fig.box(c - ax * 0.35 + n * 1.72, (0.7, 0.14, 0.55), Frame(c, n, ax).q, INS['blue'], bevel=0.02)   # the canton
+    fig.finish()
+
 POSES = {'rifleman': rifleman, 'kneel': kneel, 'prone': prone, 'officer': officer, 'mg': mg, 'sniper': sniper,
          'bazooka': lambda: bazooka(False), 'bazooka-stand': lambda: bazooka(True), 'manpads': lambda: manpads(False),
          'manpads-kneel': lambda: manpads(True), 'grenadier': lambda: grenadier(True), 'grenadier-idle': lambda: grenadier(False),
          'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag, 'gunner': gunner, 'lookout': lookout,
          'sapper': sapper, 'driver': driver, 'mgstand': mgstand,
          'bearer-front': lambda: bearer(True), 'bearer-back': lambda: bearer(False), 'mp': mp,
-         'lmg-ammo': lmg_ammo, 'lmg-prone': lmg_prone, 'lmg-loader': lmg_loader}
+         'lmg-ammo': lmg_ammo, 'lmg-prone': lmg_prone, 'lmg-loader': lmg_loader, 'para': para}
 
 if __name__ == '__main__':
     only = [a for a in sys.argv[1:] if not a.startswith('--')]

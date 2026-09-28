@@ -9,6 +9,10 @@ const INF = 1e9;
 const SPEED = 1.35;   // global pace of ground movement
 const RESCUERS = new Set(['rifleman', 'officer', 'grenadier', 'bazooka', 'manpads', 'para']);
 const COVER_SEARCH = 7;   // how far (cells) comrades look for cover to drag a wounded soldier behind
+// turn a direction by k steps of 45 degrees (clockwise seen from above), without sin/cos so every
+// machine agrees
+const S45 = 0.7071067811865476, TURN45 = [[1, 0], [S45, S45], [0, 1], [-S45, S45], [-1, 0], [-S45, -S45], [0, -1], [S45, -S45]];
+export function turn45(x, z, k) { const [c, s] = TURN45[((k % 8) + 8) % 8]; return [x * c - z * s, x * s + z * c]; }
 
 export const isAir = e => e.def.cls === 'air' || e.def.cls === 'plane';
 
@@ -57,9 +61,19 @@ export class Sim {
   // ---------------------------------------------------------------- helpers
   cellOf(x, z) { return (Math.floor(z) | 0) * this.W + (Math.floor(x) | 0); }
   inside(cx, cy) { return cx >= 0 && cy >= 0 && cx < this.W && cy < this.H; }
+  // Fortifications (walls, sandbags, wire) turn four ways: rot 0 along x, 1 along z, 2 and 3 on the
+  // two diagonals, where they take the cells of a staircase inside an n x n square (still tight:
+  // nobody gets between two cells that touch at a corner). Everything else: rot 1 swaps the sides.
   footprint(type, cx, cy, rot) {
     const [w, h] = CATALOG[type].size;
+    if (rot >= 2 && CATALOG[type].cls === 'fort') return [w, w];
     return rot & 1 ? [h, w] : [w, h];
+  }
+  cellsOf(type, cx, cy, rot) {
+    const [w, h] = this.footprint(type, cx, cy, rot), out = [];
+    if (rot >= 2 && CATALOG[type].cls === 'fort') { for (let i = 0; i < w; i++) out.push((cy + i) * this.W + cx + (rot === 2 ? i : w - 1 - i)); }
+    else for (let y = cy; y < cy + h; y++) for (let x = cx; x < cx + w; x++) out.push(y * this.W + x);
+    return out;
   }
   inZone(teamId, x, z) {
     const r = this.teams[teamId].zone;
@@ -97,27 +111,27 @@ export class Sim {
     if (def.aircraft && t.aircraft >= RULES.aircraftPerRound) return `Only ${RULES.aircraftPerRound} aircraft per round`;
     const [w, h] = this.footprint(type, cx, cy, rot), z = t.zone;
     if (cx < z.x || cy < z.y || cx + w > z.x + z.w || cy + h > z.y + z.h) return 'Must be inside your deployment zone';
-    for (let y = cy; y < cy + h; y++) for (let x = cx; x < cx + w; x++) {
-      const c = y * this.W + x;
-      if (this.map.grid[c] !== T_OPEN || this.occ[c]) return 'Space is taken';
-    }
+    const cells = this.cellsOf(type, cx, cy, rot);
+    for (const c of cells) if (this.map.grid[c] !== T_OPEN || this.occ[c]) return 'Space is taken';
     for (const e of this.ents) {
       if (e.dead || e.def.static || e.y > 0.5) continue;
       const r = e.def.radius;
-      if (e.x + r > cx && e.x - r < cx + w && e.z + r > cy && e.z - r < cy + h) return 'Space is taken';
+      if (cells.some(c => { const x = c % this.W, y = (c / this.W) | 0; return e.x + r > x && e.x - r < x + 1 && e.z + r > y && e.z - r < y + 1; })) return 'Space is taken';
     }
     return null;
   }
 
-  place(teamId, type, cx, cy, rot = 0) {
+  // face: which way a unit (not a wall or sandbags: they use rot) looks when set down, in steps of
+  // 45 degrees from facing the middle of the map
+  place(teamId, type, cx, cy, rot = 0, face = 0) {
     const err = this.canPlace(teamId, type, cx, cy, rot);
     if (err) return { error: err };
     const t = this.teams[teamId], def = CATALOG[type];
     t.money -= def.cost; t.spent += def.cost;
     if (def.vehicle) t.vehicles++;
     if (def.aircraft) t.aircraft++;
-    this.orders.push({ round: this.round, team: teamId, type, cx, cy, rot });
-    return { ent: this.spawn(teamId, type, cx, cy, rot) };
+    this.orders.push({ round: this.round, team: teamId, type, cx, cy, rot, face });
+    return { ent: this.spawn(teamId, type, cx, cy, rot, face) };
   }
 
   // Undo a placement made during the current deploy phase (full refund).
@@ -134,11 +148,12 @@ export class Sim {
     return true;
   }
 
-  spawn(teamId, type, cx, cy, rot) {
+  spawn(teamId, type, cx, cy, rot, face = 0) {
     const def = CATALOG[type];
     const [w, h] = this.footprint(type, cx, cy, rot);
-    // face towards the middle of the map
-    const fx = this.W / 2 - (cx + w / 2), fz = this.H / 2 - (cy + h / 2);
+    // face towards the middle of the map (turned by the player in steps of 45 degrees)
+    let fx = this.W / 2 - (cx + w / 2), fz = this.H / 2 - (cy + h / 2);
+    if (face) [fx, fz] = turn45(fx, fz, face);
     const fl = Math.sqrt(fx * fx + fz * fz) || 1;
     const e = {
       id: this.nextId++, type, def, team: teamId, cx, cy, rot, w, h,
@@ -151,8 +166,8 @@ export class Sim {
       falling: false, bombs: def.bombs || 0, bombCd: 0, done: false, wp: 0, xp: 0, rank: 0, flee: 0, crew: def.team2 ? 2 : 1, setup: 0,
     };
     if (def.static) {
-      if (def.cls === 'fort') { e.dirX = rot & 1 ? 0 : 1; e.dirZ = rot & 1 ? 1 : 0; }
-      for (let y = cy; y < cy + h; y++) for (let x = cx; x < cx + w; x++) this.occ[y * this.W + x] = e.id;
+      if (def.cls === 'fort') [e.dirX, e.dirZ] = [[1, 0], [0, 1], [S45, S45], [-S45, S45]][rot & 3];   // the way it runs
+      for (const c of this.cellsOf(type, cx, cy, rot)) this.occ[c] = e.id;
     }
     e.px = e.x; e.pz = e.z; e.py = e.y;
     this.ents.push(e); this.byId.set(e.id, e);
@@ -169,6 +184,7 @@ export class Sim {
     this.events.push({ t: 'remove', id: e.id });
   }
   freeCells(e) {
+    if (e.wreckCells) { for (const c of e.wreckCells) if (this.occ[c] === e.id) this.occ[c] = 0; e.wreckCells = []; }
     if (!e.def.static) return;
     for (let y = e.cy; y < e.cy + e.h; y++) for (let x = e.cx; x < e.cx + e.w; x++) if (this.occ[y * this.W + x] === e.id) this.occ[y * this.W + x] = 0;
   }
@@ -293,7 +309,7 @@ export class Sim {
     this.round++;
     this.phase = 'deploy';
     // clear wrecks and fallen soldiers from the previous round
-    for (const e of [...this.ents]) if (e.dead) this.remove(e);
+    for (const e of [...this.ents]) if (e.dead && !(e.wreck && this.round - e.wreckRound < RULES.wreckRounds)) this.remove(e);
     for (const t of this.teams) {
       if (!t.alive) { t.ward = []; continue; }
       t.money += RULES.income + RULES.incomeGrowth * (this.round - 1) + Math.round(t.bounty);
@@ -339,6 +355,7 @@ export class Sim {
     const s = this.occ[c];
     if (!s) return 1;
     const o = this.byId.get(s);
+    if (o && o.wreck) return cls === 'foot' ? 1.2 : 14;               // a wreck: drive round it (a tank can shove it aside)
     if (!o || o.dead) return 1;
     if (o.def.tankTrap && cls === 'foot') return 1.3;                 // soldiers step between the hedgehogs
     if (o.team === team) {
@@ -360,6 +377,7 @@ export class Sim {
     const s = this.occ[c];
     if (!s) return true;
     const o = this.byId.get(s);
+    if (o && o.wreck) return cls === 'foot';                          // soldiers clamber past a wreck, vehicles cannot
     if (!o || o.dead) return true;
     if (o.def.wire) return cls !== 'foot' || o.team === e.team;
     if (o.def.tankTrap) return cls === 'foot';
@@ -423,7 +441,9 @@ export class Sim {
 
   buildBuckets() {
     this.buckets = new Map();
+    this.wounded = [];                                   // lying on the ground: vehicles steer round them
     for (const e of this.ents) {
+      if (e.down && !e.dead && !e.loaded && !e.carrier) this.wounded.push(e);
       if (!this.active(e) || e.def.static || e.y > 0.5) continue;
       const k = this.cellOf(e.x, e.z);
       let b = this.buckets.get(k); if (!b) this.buckets.set(k, b = []);
@@ -464,12 +484,13 @@ export class Sim {
       const c = this.cellOf(x, z);
       if (this.map.grid[c] === T_SOLID) return false;
       if (c !== last && c !== c0 && c !== c1 && this.map.grid[c] === T_RUIN && ++thick >= 3) return false;
-      last = c;
       const s = this.occ[c];
       if (s && s !== o.id && s !== e.id) {
         const b = this.byId.get(s);
         if (b && b.def.blocksLos) return false;
+        if (b && c !== last && this.burning(b) && ++thick >= 3) return false;   // smoke from a burning wreck
       }
+      last = c;
     }
     return true;
   }
@@ -485,7 +506,7 @@ export class Sim {
       const g = this.map.grid[c];
       if (g === T_SOLID || g === T_LOW) return 0.5;   // hiding behind a book, a mug, a pencil...
       const id = this.occ[c];
-      if (id) { const b = this.byId.get(id); if (b && b.def.cover && b.team === o.team) return 0.5; }
+      if (id) { const b = this.byId.get(id); if (b && (b.wreck || (b.def.cover && b.team === o.team))) return 0.5; }   // (or behind a wreck)
     }
     return 1;
   }
@@ -595,6 +616,7 @@ export class Sim {
     if (o.def.explodes) this.explode(o.x, o.z, o.def.explodes.radius, o.def.explodes.dmg, null, 'barrel', 0);
     if (o.cargo.length) { for (const id of o.cargo) { const d = this.byId.get(id); if (d && !d.dead) { d.loaded = false; this.die(d, attacker); } } o.cargo = []; }
     if (isAir(o) && o.y > 0.5) this.events.push({ t: 'crash', id: o.id });
+    if (o.def.vehicle && !isAir(o)) this.makeWreck(o);
     if (o.def.cls === 'hq') {
       t.alive = false;
       this.events.push({ t: 'eliminated', team: o.team, by: attacker ? attacker.team : -1 });
@@ -604,6 +626,20 @@ export class Sim {
       }
     }
   }
+
+  // A destroyed vehicle stays where it died as a wreck (for RULES.wreckRounds rounds): it burns
+  // through the rest of the battle, blocks other vehicles and gives soldiers something to hide behind.
+  makeWreck(o) {
+    o.wreck = true; o.wreckRound = this.round; o.wreckCells = []; o.shove = 0;
+    const r = Math.max(0.7, o.def.radius * 0.85), cx = Math.floor(o.x), cz = Math.floor(o.z);
+    for (let z = cz - 2; z <= cz + 2; z++) for (let x = cx - 2; x <= cx + 2; x++) {
+      if (!this.inside(x, z)) continue;
+      const c = z * this.W + x;
+      if (this.map.grid[c] !== T_OPEN || this.occ[c] || (x + 0.5 - o.x) ** 2 + (z + 0.5 - o.z) ** 2 > r * r) continue;
+      this.occ[c] = o.id; o.wreckCells.push(c);
+    }
+  }
+  burning(o) { return o.wreck && o.wreckRound === this.round; }
 
   // Explosions hurt everyone nearby, friend or foe.
   explode(x, z, radius, dmg, attacker, kind, y = 0) {
@@ -734,15 +770,13 @@ export class Sim {
       this.events.push({ t: 'pickup', id: e.id, wounded: d.id });
       return;
     }
-    const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
-    this.tryMove(e, dx * k, dz * k);
-    e.dirX = dx / l; e.dirZ = dz / l; e.moving = true;
+    this.goTo(e, d.x, d.z);
   }
   isCoverCell(c, team) {
     const g = this.map.grid[c];
     if (g === T_SOLID || g === T_LOW || g === T_RUIN) return true;
     const o = this.occ[c] ? this.byId.get(this.occ[c]) : null;
-    return !!(o && !o.dead && o.team === team && (o.def.cover || o.def.blocksLos || o.def.cls === 'hq'));
+    return !!(o && (o.wreck || (!o.dead && o.team === team && (o.def.cover || o.def.blocksLos || o.def.cls === 'hq'))));
   }
   // Nearest free cell right next to cover, preferring cover that faces the enemy.
   coverSpot(e, d) {
@@ -784,14 +818,12 @@ export class Sim {
     const d = this.byId.get(e.carrying);
     if (!d || !d.down) { e.carrying = 0; return; }
     const dx = e.goalX - e.x, dz = e.goalZ - e.z, l = Math.sqrt(dx * dx + dz * dz);
-    if (l < 0.3 || e.stuck > 30) {
+    if (l < 0.3 || e.stuck > 90) {
       e.carrying = 0;
       if (l < 1.2) this.stabilize(d, e); else { d.carrier = 0; d.noCover = this.tick + 60; }
       return;
     }
-    const s = e.def.speed * SPEED * DT * 0.6, k = Math.min(s, l) / l;
-    if (this.tryMove(e, dx * k, dz * k)) { e.dirX = dx / l; e.dirZ = dz / l; e.stuck = 0; } else e.stuck++;
-    e.moving = true;
+    this.goTo(e, e.goalX, e.goalZ, 0.6);
     d.x = e.x - e.dirX * 0.55; d.z = e.z - e.dirZ * 0.55;
     d.dirX = e.dirX; d.dirZ = e.dirZ;
   }
@@ -818,9 +850,8 @@ export class Sim {
     const dx = d.x - e.x, dz = d.z - e.z, l = Math.sqrt(dx * dx + dz * dz);
     if (l > 0.75) {
       e.healing = false; e.healT = 0;
-      const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
-      if (this.tryMove(e, dx * k, dz * k)) e.stuck = 0; else if (++e.stuck > 30) { d.medicBy = 0; e.heal = 0; return false; }
-      e.dirX = dx / l; e.dirZ = dz / l; e.moving = true;
+      this.goTo(e, d.x, d.z);
+      if (e.stuck > 90) { d.medicBy = 0; e.heal = 0; e.stuck = 0; return false; }
       return true;
     }
     e.moving = false; e.dirX = dx / (l || 1); e.dirZ = dz / (l || 1);
@@ -883,9 +914,8 @@ export class Sim {
         goal.loaded = true; goal.rescuer = 0; e.cargo.push(goal.id); e.target = 0; e.retarget = 0;
         this.events.push({ t: 'load', id: e.id, wounded: goal.id });
       } else {
-        const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
-        if (!this.tryMove(e, dx * k, dz * k)) this.followField(e, home, 0.6);
-        else { e.dirX = dx / l; e.dirZ = dz / l; e.moving = true; }
+        this.goTo(e, goal.x, goal.z);
+        if (e.stuck > 120) { e.target = 0; e.retarget = 40; e.stuck = 0; }       // cannot get there: try another
       }
     } else if (this.inZone(e.team, e.x, e.z)) {
       // home: drive up to the field hospital if there is one, then hand the wounded over
@@ -893,11 +923,7 @@ export class Sim {
       let there = true;
       if (hosp) {
         const dx = hosp.x - e.x, dz = hosp.z - e.z, l = Math.sqrt(dx * dx + dz * dz);
-        if (l > 2.6 && e.stuck < 30) {
-          const s = e.def.speed * SPEED * DT, k = Math.min(s, l) / l;
-          if (this.tryMove(e, dx * k, dz * k)) { e.dirX = dx / l; e.dirZ = dz / l; e.moving = true; e.stuck = 0; } else e.stuck++;
-          there = false;
-        }
+        if (l > 2.6 && e.stuck < 90) { this.goTo(e, hosp.x, hosp.z); there = false; }
       }
       if (there && e.cargo.length) {
         for (const id of e.cargo) {
@@ -1324,16 +1350,25 @@ export class Sim {
           if (field[n] < freeD - 0.01 && this.canEnter(e, n) && (k < 4 || (this.canEnter(e, cy * this.W + nx) && this.canEnter(e, ny * this.W + cx)))) { freeD = field[n]; free = n; }
         }
         // the best cell is blocked by something of our own (a gun, a wall) or a corner: take the next best way
-        if (best >= 0 && !this.canEnter(e, best)) { const o = this.byId.get(this.occ[best]); if ((!o || o.team === e.team) && free >= 0) best = free; }
+        if (best >= 0 && !this.canEnter(e, best)) {
+          const o = this.byId.get(this.occ[best]);
+          if (o && o.wreck && e.def.tracked >= 0.6) {
+            // a medium or heavy tank shoves the wreck out of the way (it takes a couple of seconds)
+            if (++o.shove >= RULES.shoveTicks) { this.events.push({ t: 'shove', id: o.id, by: e.id }); this.remove(o); }
+            e.moving = false; return;
+          }
+          if ((!o || o.team === e.team || o.wreck) && free >= 0) best = free;
+        }
         if (best < 0) {
-          // at a goal or stuck in a local minimum: head straight for the target if we have one
+          // at a goal or stuck in a local minimum: find a way to the target if we have one
           if (!tgt) return;
-          gx = tgt.x; gz = tgt.z;
+          this.goTo(e, tgt.x, tgt.z);
+          return;
         } else {
           // an enemy structure is in the way: attack it
           if (!this.canEnter(e, best)) {
             const b = this.byId.get(this.occ[best]);
-            if (b && b.team !== e.team && e.def.weapon && !e.def.weapon.airOnly) {
+            if (b && !b.dead && b.team !== e.team && e.def.weapon && !e.def.weapon.airOnly) {
               e.target = b.id; e.retarget = 30;
               const dx = b.x - e.x, dz = b.z - e.z, l = Math.sqrt(dx * dx + dz * dz) || 1;
               e.dirX = dx / l; e.dirZ = dz / l;
@@ -1361,11 +1396,118 @@ export class Sim {
     e.moving = true;
   }
 
+  // Walk (or drive) to a point: straight while the way is clear, otherwise along a grid path round
+  // walls, hedges and houses. The path is found again when the goal moves to another cell, every
+  // couple of seconds, and whenever the unit makes no headway. Returns true once there.
+  goTo(e, gx, gz, speedMul = 1, near = 0.05) {
+    if (Math.hypot(gx - e.x, gz - e.z) < near) return true;
+    const s = e.def.speed * SPEED * DT * speedMul, gc = this.cellOf(gx, gz);
+    let tx = gx, tz = gz;
+    if (!this.clearLine(e, e.x, e.z, gx, gz)) {
+      if (!e.path || e.pathGoal !== gc || this.tick >= e.pathAt) {
+        e.path = this.findPath(e, gc); e.pathGoal = gc; e.pathAt = this.tick + 50; e.pathI = 0;
+      }
+      if (e.path) {
+        const W = this.W;
+        while (e.pathI < e.path.length - 1 && Math.hypot(e.path[e.pathI] % W + 0.5 - e.x, ((e.path[e.pathI] / W) | 0) + 0.5 - e.z) < 0.55) e.pathI++;
+        const c = e.path[e.pathI]; tx = c % W + 0.5; tz = ((c / W) | 0) + 0.5;
+        if (e.pathI === e.path.length - 1) { tx = gx; tz = gz; }
+      }
+    } else e.path = null;
+    const dx = tx - e.x, dz = tz - e.z, l = Math.hypot(dx, dz) || 1, k = Math.min(s, l) / l;
+    e.dirX = dx / l; e.dirZ = dz / l; e.moving = true;
+    if (this.tryMove(e, dx * k, dz * k)) { e.stuck = 0; return false; }
+    e.stuck++;
+    if (e.stuck > 8) {                                                   // step aside, alternating sides
+      const side = (e.id + (e.stuck >> 4)) % 2 ? 1 : -1;
+      if (!this.tryMove(e, -dz / l * s * side, dx / l * s * side)) this.tryMove(e, dz / l * s * side, -dx / l * s * side);
+    }
+    if (e.stuck % 40 === 39) e.pathAt = 0;                                // no headway: find the way again
+    return false;
+  }
+  // can this unit walk the straight line between two points (checked every 0.4 cells)?
+  clearLine(e, x0, z0, x1, z1) {
+    const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.4), end = this.cellOf(x1, z1);
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, c = this.cellOf(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t);
+      if (c !== end && !this.canEnter(e, c)) return false;
+    }
+    return true;
+  }
+  // A* on the grid (8 ways, no cutting corners) to the goal cell or right next to it; null if the
+  // way is too long or there is none. Deterministic: ties go to the cell found first.
+  findPath(e, goal) {
+    const W = this.W, H = this.H, gx = goal % W, gy = (goal / W) | 0, start = this.cellOf(e.x, e.z);
+    const g = new Map([[start, 0]]), from = new Map(), heap = [];
+    let seq = 0, found = -1;
+    const less = (a, b) => a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
+    const push = n => {
+      heap.push(n); let i = heap.length - 1;
+      while (i > 0) { const p = (i - 1) >> 1; if (!less(n, heap[p])) break; heap[i] = heap[p]; i = p; }
+      heap[i] = n;
+    };
+    const pop = () => {
+      const top = heap[0], last = heap.pop();
+      if (heap.length) {
+        let i = 0;
+        for (;;) {
+          const a = 2 * i + 1, b = a + 1; let m = -1, best = last;
+          if (a < heap.length && less(heap[a], best)) { m = a; best = heap[a]; }
+          if (b < heap.length && less(heap[b], best)) { m = b; best = heap[b]; }
+          if (m < 0) break;
+          heap[i] = heap[m]; i = m;
+        }
+        heap[i] = last;
+      }
+      return top;
+    };
+    const hOf = c => { const dx = Math.abs(c % W - gx), dy = Math.abs(((c / W) | 0) - gy); return Math.max(dx, dy) + 0.41 * Math.min(dx, dy); };
+    push([hOf(start), seq++, start]);
+    for (let it = 0; heap.length && it < 6000; it++) {
+      const c = pop()[2], cx = c % W, cy = (c / W) | 0;
+      if (Math.abs(cx - gx) <= 1 && Math.abs(cy - gy) <= 1) { found = c; break; }
+      const gc = g.get(c);
+      for (let k = 0; k < 8; k++) {
+        const nx = cx + NX[k], ny = cy + NY[k];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const n = ny * W + nx;
+        if (!this.canEnter(e, n)) continue;
+        if (k >= 4 && (!this.canEnter(e, cy * W + nx) || !this.canEnter(e, ny * W + cx))) continue;
+        const ng = gc + (k < 4 ? 1 : 1.41);
+        if (g.has(n) && g.get(n) <= ng) continue;
+        g.set(n, ng); from.set(n, c); push([ng + hOf(n), seq++, n]);
+      }
+    }
+    if (found < 0) return null;
+    const path = [found];
+    for (let c = found; from.has(c); ) { c = from.get(c); if (c !== start) path.push(c); }
+    path.reverse();
+    if (found !== goal && this.canEnter(e, goal)) path.push(goal);
+    return path;
+  }
+
   tryMove(e, mx, mz) {
     const nx = e.x + mx, nz = e.z + mz;
     if (nx < 0.3 || nz < 0.3 || nx > this.W - 0.3 || nz > this.H - 0.3) return false;
+    // vehicles do not run over the wounded (of either side): they go round
+    if (e.def.vehicle && this.wounded && this.wounded.length) {
+      const r = e.def.radius * 0.7 + 0.25;
+      for (const d of this.wounded) {
+        const dx = d.x - nx, dz = d.z - nz;
+        if (dx * dx + dz * dz < r * r && (d.x - e.x) ** 2 + (d.z - e.z) ** 2 > dx * dx + dz * dz) return false;   // only when getting closer
+      }
+    }
+    // long units (stretcher bearers, an LMG team) must fit end to end, not just at their middle
+    if (e.def.len) {
+      const ml = Math.hypot(mx, mz) || 1, ux = mx / ml, uz = mz / ml, L = e.def.len;
+      const endsFree = (x, z) => this.canEnter(e, this.cellOf(x + ux * L, z + uz * L)) && this.canEnter(e, this.cellOf(x - ux * L, z - uz * L));
+      if (!endsFree(nx, nz) && endsFree(e.x, e.z)) return false;       // would push an end into a wall
+    }
     const c = this.cellOf(nx, nz);
-    if (this.canEnter(e, c)) {
+    // no slipping between two blocked cells that touch at a corner (a diagonal wall stays tight)
+    const ox = Math.floor(e.x), oz = Math.floor(e.z), tx = Math.floor(nx), tz = Math.floor(nz);
+    const corner = ox !== tx && oz !== tz && (!this.canEnter(e, oz * this.W + tx) || !this.canEnter(e, tz * this.W + ox));
+    if (!corner && this.canEnter(e, c)) {
       e.x = nx; e.z = nz;
       // vehicles flatten barbed wire
       const s = this.occ[c];
