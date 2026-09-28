@@ -209,8 +209,13 @@ def main():
     ib = meta['inner']['bounds']              # local metres x0 z0 x1 z1
     ll = (*lonlat(ib[0], ib[3]), *lonlat(ib[2], ib[1]))   # lon0 lat0 lon1 lat1
 
-    mos, mos_t = dtm_mosaic(ib)
-    zb = zbgis_mosaic()
+    # PHOTO_ONLY=1: redo only the photos (base blocks and tiles), keep the heights already written
+    photo_only = os.environ.get('PHOTO_ONLY') == '1'
+    if photo_only:
+        mos = mos_t = zb = None
+    else:
+        mos, mos_t = dtm_mosaic(ib)
+        zb = zbgis_mosaic() if not photo_only else None
     SK = 'EPSG:8353'  # S-JTSK [JTSK03] / Krovak East North
     zb_off = [0.0]
     def lidar(bounds, w, h, resampling):
@@ -243,7 +248,7 @@ def main():
         med = median_filter(a, 5)
         a = np.where((np.abs(a - med) > 4) & (a > 100), med, a)
         return a
-    if zb is not None:
+    if zb is not None and not photo_only:
         # the two height systems (PL-KRON86-NH, Bpv) differ by under a metre: measure it on the overlap
         bw_ = int(round((ib[2] - ib[0]) / 8)) + 1; bh_ = int(round((ib[3] - ib[1]) / 8)) + 1
         a8 = to_local_grid(mos, mos_t, ll, bw_, bh_, Resampling.average)
@@ -255,36 +260,40 @@ def main():
     # ---- base grid, 4 m
     bw = int(round((ib[2] - ib[0]) / BASE_STEP)) + 1
     bh = int(round((ib[3] - ib[1]) / BASE_STEP)) + 1
-    dtm4 = lidar(ll, bw, bh, Resampling.average)
-    cop4 = copernicus(ll, bw, bh)
-    base, have = fuse(dtm4, cop4, BASE_STEP)
-    print('lidar coverage of the detailed area', round(float(have.mean()), 3))
-    # lakes: flat water surface a bit below the shore
-    tb = from_bounds(*ll, bw, bh)
-    from shapely.geometry import Polygon
-    for l in meta['lakes']:
-        ring = [lonlat(x, z) for x, z in l['ring']]
-        m = rasterize([Polygon(ring)], out_shape=base.shape, transform=tb).astype(bool)
-        if not m.any(): continue
-        if (m & have).sum() > 0.5 * m.sum():
-            # the terrain model has the real water surface: use it
-            l['level'] = round(float(np.median(base[m & have])), 2)
-        base[m] = np.minimum(base[m], l['level'] - 1.0)
-    blocks = []
-    if REGION:
-        # blocks of BLOCK x BLOCK samples plus one shared row/column, each with its lidar mask
-        os.makedirs(os.path.join(DATA, 'base'), exist_ok=True)
-        for bj in range(math.ceil((bh - 1) / BLOCK)):
-            for bi in range(math.ceil((bw - 1) / BLOCK)):
-                sl = (slice(bj * BLOCK, bj * BLOCK + BLOCK + 1), slice(bi * BLOCK, bi * BLOCK + BLOCK + 1))
-                hb, mb = base[sl], have[sl]
-                pad = ((0, BLOCK + 1 - hb.shape[0]), (0, BLOCK + 1 - hb.shape[1]))
-                hb, mb = np.pad(hb, pad, mode='edge'), np.pad(mb, pad, mode='constant')
-                open(os.path.join(DATA, 'base', f'h_{bi}_{bj}.bin'), 'wb').write(pack_heights(hb, mb))
-                blocks.append([bi, bj])
+    if photo_only:
+        blocks = meta['base'].get('blocks', [])
+        base = None
     else:
-        open(os.path.join(DATA, 'inner4.bin'), 'wb').write(pack_heights(base, have))
-    print('base', bw, bh, 'max', round(float(base.max()), 1), 'blocks', len(blocks))
+      dtm4 = lidar(ll, bw, bh, Resampling.average)
+      cop4 = copernicus(ll, bw, bh)
+      base, have = fuse(dtm4, cop4, BASE_STEP)
+      print('lidar coverage of the detailed area', round(float(have.mean()), 3))
+      # lakes: flat water surface a bit below the shore
+      tb = from_bounds(*ll, bw, bh)
+      from shapely.geometry import Polygon
+      for l in meta['lakes']:
+          ring = [lonlat(x, z) for x, z in l['ring']]
+          m = rasterize([Polygon(ring)], out_shape=base.shape, transform=tb).astype(bool)
+          if not m.any(): continue
+          if (m & have).sum() > 0.5 * m.sum():
+              # the terrain model has the real water surface: use it
+              l['level'] = round(float(np.median(base[m & have])), 2)
+          base[m] = np.minimum(base[m], l['level'] - 1.0)
+      blocks = []
+      if REGION:
+          # blocks of BLOCK x BLOCK samples plus one shared row/column, each with its lidar mask
+          os.makedirs(os.path.join(DATA, 'base'), exist_ok=True)
+          for bj in range(math.ceil((bh - 1) / BLOCK)):
+              for bi in range(math.ceil((bw - 1) / BLOCK)):
+                  sl = (slice(bj * BLOCK, bj * BLOCK + BLOCK + 1), slice(bi * BLOCK, bi * BLOCK + BLOCK + 1))
+                  hb, mb = base[sl], have[sl]
+                  pad = ((0, BLOCK + 1 - hb.shape[0]), (0, BLOCK + 1 - hb.shape[1]))
+                  hb, mb = np.pad(hb, pad, mode='edge'), np.pad(mb, pad, mode='constant')
+                  open(os.path.join(DATA, 'base', f'h_{bi}_{bj}.bin'), 'wb').write(pack_heights(hb, mb))
+                  blocks.append([bi, bj])
+      else:
+          open(os.path.join(DATA, 'inner4.bin'), 'wb').write(pack_heights(base, have))
+      print('base', bw, bh, 'max', round(float(base.max()), 1), 'blocks', len(blocks))
 
     # ---- orthophoto base, 2 m, in 4 quadrants (WMS max 4096 px)
     ow = int(round((ib[2] - ib[0]) / ORTHO_BASE)); oh = int(round((ib[3] - ib[1]) / ORTHO_BASE))
@@ -336,10 +345,24 @@ def main():
     def nconv(img, m, sig):
         w = gaussian_filter(m.astype(np.float32), sig)
         return np.stack([gaussian_filter(img[..., c] * m, sig) for c in range(3)], -1) / np.maximum(w, 1e-3)[..., None]
-    corr = np.clip(nconv(sen, shadow, 10) / np.maximum(nconv(ortho, shadow, 10), 1.5), 0.8, 10)
+    # one factor for all three channels (per-channel factors copied Sentinel's snow and blue shadow
+    # colours into the corries as turquoise and flat green blots), at most 4x
+    ls, lo = nconv(sen, shadow, 10) @ np.array([0.3, 0.55, 0.15], np.float32), nconv(ortho, shadow, 10) @ np.array([0.3, 0.55, 0.15], np.float32)
+    corr = np.clip(ls / np.maximum(lo, 1.5), 0.8, 4.0)[..., None].repeat(3, -1)
     soft = gaussian_filter(shadow.astype(np.float32), 1.5)[..., None]
     gain = 1 + (corr - 1) * soft                      # also applied to the detailed tiles
     ortho *= gain
+    # colour in the shadows: Sentinel-2's (warm granite, green meadow), but only as a hue within ±15 %
+    # of grey, so its snow and blue shadows cannot turn the corries turquoise
+    W3 = np.array([0.3, 0.55, 0.15], np.float32)
+    sc = nconv(sen, shadow, 10)
+    hue = np.clip(sc / np.maximum((sc @ W3)[..., None], 1.0), 0.85, 1.15)
+    def detint(img, s_, hue_=None):
+        h = hue if hue_ is None else hue_
+        m = (img @ W3)[..., None]
+        own = img / np.maximum(m, 1.0)
+        return m * (own + (h - own) * 0.8 * s_)
+    ortho = detint(ortho, soft)
     print('shadows equalised on', round(float(shadow.sum() / valid.sum()), 3), 'of the Polish photo')
     # Slovak orthophoto (ÚGKK SR / GKÚ Bratislava, 2025, uploaded to ../zbgis_orto) replaces Sentinel-2
     sk = sk_ortho(ll, ow, oh)
@@ -379,6 +402,7 @@ def main():
         line = LineString(meta['trail'])
     nx = math.ceil((ib[2] - ib[0]) / TILE); nz = math.ceil((ib[3] - ib[1]) / TILE)
     tiles = []
+    old_tiles = meta.get('tiles', {}).get('list', [])
     os.makedirs(os.path.join(DATA, 'tiles'), exist_ok=True)
     fused_img = Image.fromarray(fused)
     for j in range(nz):
@@ -391,18 +415,22 @@ def main():
             x1, z1 = x0 + TILE, z0 + TILE
             if x1 > ib[2] or z1 > ib[3]: continue
             tll = (*lonlat(x0, z1), *lonlat(x1, z0))
-            h = lidar(tll, TILE + 1, TILE + 1, Resampling.bilinear)
-            ok = h > 100
-            if ok.mean() < 0.02: continue
+            if photo_only:
+                if [i, j] not in old_tiles: continue
+                h = None
+            else:
+                h = lidar(tll, TILE + 1, TILE + 1, Resampling.bilinear)
+            ok = h > 100 if h is not None else None
+            if h is not None and ok.mean() < 0.02: continue
             # fill the Slovak part of a border tile from the base grid
-            if not ok.all():
+            if h is not None and not ok.all():
                 gx = (np.arange(TILE + 1) + (x0 - ib[0])) / BASE_STEP
                 gz = (np.arange(TILE + 1) + (z0 - ib[1])) / BASE_STEP
                 from scipy.ndimage import map_coordinates
                 GZ, GX = np.meshgrid(gz, gx, indexing='ij')
                 bb = map_coordinates(base, [GZ, GX], order=1)
                 h = np.where(ok, h, bb)
-            open(os.path.join(DATA, 'tiles', f'h_{i}_{j}.bin'), 'wb').write(pack_heights(h))
+            if h is not None: open(os.path.join(DATA, 'tiles', f'h_{i}_{j}.bin'), 'wb').write(pack_heights(h))
             o, ov = wms_filled(*tll, 512, 512, f'{PFX}t_{i}_{j}')
             px0 = (x0 - ib[0]) / ORTHO_BASE; pz0 = (z0 - ib[1]) / ORTHO_BASE
             box = (px0, pz0, px0 + TILE / ORTHO_BASE, pz0 + TILE / ORTHO_BASE)
@@ -410,6 +438,9 @@ def main():
             for c in range(3):
                 g = Image.fromarray(gain[..., c].astype(np.float32)).crop(box).resize((512, 512), Image.BILINEAR)
                 o[..., c] *= np.asarray(g)
+            sg = Image.fromarray(soft[..., 0].astype(np.float32)).crop(box).resize((512, 512), Image.BILINEAR)
+            hs = np.stack([np.asarray(Image.fromarray(hue[..., c].astype(np.float32)).crop(box).resize((512, 512), Image.BILINEAR)) for c in range(3)], -1)
+            o = detint(o, np.asarray(sg)[..., None], hs)
             # background from the fused base where the tile has no data
             bg = np.asarray(fused_img.crop((px0, pz0, px0 + TILE / ORTHO_BASE, pz0 + TILE / ORTHO_BASE)).resize((512, 512), Image.BICUBIC)).astype(np.float32)
             o = np.where(ov[..., None], o, bg)
@@ -417,7 +448,7 @@ def main():
             tiles.append([i, j])
     print('tiles', len(tiles))
 
-    meta['base'] = {'bounds': ib, 'n': [bw, bh], 'step': BASE_STEP, **({'block': BLOCK, 'blocks': blocks} if REGION else {})}
+    if not photo_only: meta['base'] = {'bounds': ib, 'n': [bw, bh], 'step': BASE_STEP, **({'block': BLOCK, 'blocks': blocks} if REGION else {})}
     meta['tiles'] = {'size': TILE, 'origin': ib[:2], 'list': tiles, 'samples': TILE + 1, 'orthoPx': 512}
     if 'GUGiK' not in meta['sources']: meta['sources'] += '; GUGiK: NMT 1 m, ortofotomapa (geoportal.gov.pl)'
     if zb is not None and 'ÚGKK' not in meta['sources']: meta['sources'] += '; Zdroj produktov LLS: ÚGKK SR (DMR 5.0, CC BY 4.0)'
