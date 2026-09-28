@@ -319,6 +319,12 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               // top-down photos smear on walls: there, take their colour from a blurred level
               vec3 satLow = textureLod(satMap, uv, 3.0).rgb * (1.55 - 0.3 * smoothstep(0.35, 0.75, slope)) + 0.01;
               vec3 baseC = mix(col, satLow * (0.8 + 0.4 * nBig), wCliff * 0.85);
+              // the top-down photo smears green and white streaks down the walls: keep only its
+              // brightness there, the colour is Tatra granite (grey, a little warm, lichen spots)
+              float wl = dot(baseC, vec3(0.3, 0.55, 0.15));
+              vec3 granite = vec3(1.02, 1.0, 0.95) * clamp(wl, 0.18, 0.62) * (0.9 + 0.2 * vnoise(w.xz / 7.0 + w.y / 9.0));
+              granite = mix(granite, granite * vec3(0.92, 1.0, 0.8), smoothstep(0.55, 0.8, vnoise(w.xz / 3.0 + w.y / 4.0)) * 0.6);
+              baseC = mix(baseC, granite, wCliff * smoothstep(0.5, 0.75, slope) * 0.8);
               float lt = dot(tm, vec3(0.3, 0.55, 0.15)), ls = dot(baseC, vec3(0.3, 0.55, 0.15));
               vec3 byRatio = baseC * (tc / max(tm, vec3(0.02)));
               vec3 photo = tc * (ls / max(lt, 0.02));
@@ -344,14 +350,18 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
                 vec2 pp = w.xz / 0.5 + wp * 1.4;               // fixed scale: a varying one would swirl at world coordinates
                 vec2 vc = vor(pp);
                 float fade = 1.0 - smoothstep(0.12, 0.35, fwidth(pp.x));
-                float missing = step(vc.y, 0.14 + 0.25 * (1.0 - paved));
+                float missing = step(vc.y, 0.2 + 0.35 * (1.0 - paved));
                 float joint = smoothstep(0.05, 0.17, vc.x + (vnoise(w.xz * 9.0) - 0.5) * 0.07);
                 joint = mix(0.75, joint, fade) * (1.0 - missing);
                 float lum = mix(0.5, vc.y, fade);
-                vec3 stone = vec3(0.36, 0.355, 0.335) * (0.7 + 0.55 * lum) * (0.85 + 0.3 * vnoise(w.xz * 6.0));
-                stone = mix(stone, nearCol, 0.45);            // moss and dirt, as the photo shows them
-                vec3 pave = mix(nearCol * vec3(0.85, 0.8, 0.74), stone, joint);
-                float pw = wTrail * paved;
+                vec3 stone = vec3(0.2, 0.197, 0.185) * (0.7 + 0.5 * lum) * (0.85 + 0.3 * vnoise(w.xz * 6.0));
+                // weathering: moss at the edges of the path and in shaded stones, dirt trodden in the middle
+                float moss = smoothstep(0.45, 0.8, vnoise(w.xz * 1.7 + vc.y * 5.0)) * (0.35 + 0.65 * (1.0 - smoothstep(0.55, 0.95, tr)));
+                stone = mix(stone, stone * vec3(0.72, 0.9, 0.55), moss * 0.7);
+                stone = mix(stone, vec3(0.3, 0.26, 0.21), smoothstep(0.6, 0.9, vnoise(w.xz * 3.3 + 1.7)) * 0.45);
+                stone = mix(stone, nearCol, 0.35);            // moss and dirt, as the photo shows them
+                vec3 pave = mix(nearCol * vec3(0.7, 0.64, 0.56), stone, joint);
+                float pw = wTrail * paved * smoothstep(0.35, 0.8, tr);
                 nearCol = mix(nearCol, pave, pw);
                 vec3 tilt = normalize(Nr + vec3((vc.y - 0.5) * 0.3, 0.0, (fract(vc.y * 7.3) - 0.5) * 0.3));   // relative to the slope
                 tn = normalize(mix(tn, tilt, pw * fade * joint * 0.8));

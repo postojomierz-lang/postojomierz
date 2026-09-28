@@ -126,7 +126,7 @@ export function routeInfo({ route, trail, TH, meta, pois }) {
   const places = [{ s: 0, name: startName }, ...dedup.filter((n) => n.s > 150 && n.s < L - 150).map((n) => ({ s: n.s, name: n.name })), { s: L, name: endName }];
   return {
     sectionAt, colourAt: (s) => colour[idx(s)], sacAt: (s) => SAC[idx(s)],
-    chainAt: (i) => SAC[i] >= 3 && TH[i] > 1950,      // difficult (SAC 3+) rock high up: Zawrat, Rysy, Kozi...
+    chainAt: (i) => SAC[i] >= 3 && TH[i] > 1900,      // difficult (SAC 3+) rock high up: Zawrat, Rysy, Kozi...
     posts, places, startName, endName, named: dedup,
   };
 }

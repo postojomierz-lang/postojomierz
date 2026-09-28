@@ -449,7 +449,7 @@ async function main() {
   }
   const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3 }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3 },
-    grass: { wind: 2.5, brightness: 2.6, upNormal: 0.7 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
+    grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
     mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55 }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
   });
   const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds,
@@ -576,8 +576,8 @@ async function main() {
     light.ambCol.value.copy(amb).multiplyScalar(w.amb * (0.08 + 0.92 * day));
     // scene lights reproduce the tuned sun/ambient colours (Lambert divides by PI)
     sunLight.color.copy(light.sunCol.value); sunLight.intensity = 1.15 * Math.PI;
-    hemi.color.copy(light.ambCol.value).multiplyScalar(1.55);
-    hemi.groundColor.copy(light.ambCol.value).multiplyScalar(0.8);
+    hemi.color.copy(light.ambCol.value).multiplyScalar(1.95);   // sky light fills the shaded slopes
+    hemi.groundColor.copy(light.ambCol.value).multiplyScalar(1.0);
     hemi.intensity = Math.PI;
     // aerial perspective: distant ridges fade into a cool blue haze (warm towards evening)
     const fogDay = new THREE.Color(0.56, 0.67, 0.83).lerp(new THREE.Color(0.86, 0.66, 0.52), low * 0.75);
