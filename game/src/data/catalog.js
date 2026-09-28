@@ -240,7 +240,7 @@ export const RULES = {
   aircraftPerRound: 2,
   bleedSeconds: 18,       // a wounded soldier dies if nobody helps in time
   woundChance: 0.55,      // share of 'killed' infantry that are only wounded
-  battleSeconds: 40,
+  battleSeconds: 48,      // (the bigger maps take longer to cross)
   maxRounds: 10,
   tickRate: 20,
   // experience: a unit earns the value of the damage it does (the share of a target's health

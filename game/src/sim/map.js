@@ -24,9 +24,10 @@ const OBSTACLES = {
 // (No Math.sin/cos: the map must come out identical on every machine.)
 export const MAX_ARMIES = 6;                                 // 2-6 armies per battle
 const ZONE = { 3: 18, 4: 17, 5: 16, 6: 15 };   // zone edge (cells)
-const NEIGHBOUR = 52;                                        // distance between neighbouring HQ zones
+const NEIGHBOUR = 62;                                        // distance between neighbouring HQ zones
+// (room to manoeuvre round the houses, hedges and fortifications: about 40% more ground than at first)
 export function mapSize(n) {
-  if (n <= 2) return { W: 64, H: 40, zw: 16, zh: 40, round: false };
+  if (n <= 2) return { W: 78, H: 48, zw: 16, zh: 48, round: false };
   n = Math.min(MAX_ARMIES, n);
   const z = ZONE[n], d = NEIGHBOUR / (2 * sinT(PI / n));
   const S = 2 * Math.ceil(d + z * 0.70715 + 2);
