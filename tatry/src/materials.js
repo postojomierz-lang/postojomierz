@@ -328,7 +328,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               float wl = dot(baseC, vec3(0.3, 0.55, 0.15));
               vec3 granite = vec3(1.02, 1.0, 0.95) * clamp(wl, 0.18, 0.62) * (0.9 + 0.2 * vnoise(w.xz / 7.0 + w.y / 9.0));
               granite = mix(granite, granite * vec3(0.92, 1.0, 0.8), smoothstep(0.55, 0.8, vnoise(w.xz / 3.0 + w.y / 4.0)) * 0.6);
-              baseC = mix(baseC, granite, wCliff * smoothstep(0.5, 0.75, slope) * 0.8);
+              baseC = mix(baseC, granite, wCliff * smoothstep(0.45, 0.7, max(slope, slopeH)) * 0.8);
               float lt = dot(tm, vec3(0.3, 0.55, 0.15)), ls = dot(baseC, vec3(0.3, 0.55, 0.15));
               vec3 byRatio = baseC * (tc / max(tm, vec3(0.02)));
               vec3 photo = tc * (ls / max(lt, 0.02));
