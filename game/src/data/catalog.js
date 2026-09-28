@@ -241,6 +241,8 @@ export const RULES = {
   bleedSeconds: 18,       // a wounded soldier dies if nobody helps in time
   woundChance: 0.55,      // share of 'killed' infantry that are only wounded
   battleSeconds: 48,      // (the bigger maps take longer to cross)
+  wreckRounds: 2,         // a destroyed vehicle's wreck stays this many rounds (burning through the first)
+  shoveTicks: 40,         // a medium or heavy tank needs this long to push a wreck out of its way
   maxRounds: 10,
   tickRate: 20,
   // experience: a unit earns the value of the damage it does (the share of a target's health

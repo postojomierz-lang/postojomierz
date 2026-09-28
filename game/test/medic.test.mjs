@@ -27,6 +27,8 @@ for (const [seed, teams] of [[3, 2], [11, 4], [21, 4]]) {
         if (ev.t in tot) tot[ev.t]++;
         if (ev.t === 'pickup') { const d = sim.byId.get(ev.wounded); if (d) picked.set(ev.wounded, [d.x, d.z]); }
         if (ev.t === 'stabilized' && picked.has(ev.id)) { const d = sim.byId.get(ev.id), [x, z] = picked.get(ev.id); if (d) tot.maxDrag = Math.max(tot.maxDrag, Math.hypot(d.x - x, d.z - z)); }
+        // that drag is over (or he was never dragged this time): forget where he was picked up
+        if (['stabilized', 'healed', 'down', 'load'].includes(ev.t)) picked.delete(ev.t === 'load' ? ev.wounded : ev.id);
         if (ev.t === 'death') { const e = sim.byId.get(ev.id); if (e && e.type === 'ambulance') tot.ambLost++; }
       }
       sim.events.length = 0;
