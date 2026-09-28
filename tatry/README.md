@@ -177,3 +177,13 @@ Warstwa cumulusów na ~3,4 km (`CLOUDS` w `src/materials.js`), dryfująca z wiat
 gęstość rysuje chmury w shaderze nieba (ciemniejsza podstawa, jaśniejszy brzeg pod słońce) i rzuca ich
 cienie na teren, drzewa, kosówkę i budynki, więc cienie są dokładnie pod chmurami. Zachmurzenie zależy
 od pogody: słonecznie 45 %, mgiełka 20 %, pochmurno 88 %, mgła 95 %.
+
+## Dziennik (rekordy, duch, szczyty)
+`src/journal.js`, zapisywany w pamięci przeglądarki (`localStorage`, klucz `rysy-journal`):
+- przejście trasy do mety w widoku 3D trafia do dziennika (data, długość, podejścia, czas);
+- rekord trasy liczy się tylko bez przyspieszenia (×1) i bez skoków po profilu; `Home` zaczyna od nowa;
+- duch: półprzezroczysta sylwetka idąca najlepszym przejściem trasy (zapis pozycji co 5 s),
+  niebieska kropka na profilu, w HUD „duch N m przed/za Tobą”;
+- szczyty zdobyte po drodze (z nazwami z OSM), komunikaty na ekranie;
+- w planerze: „☆ Dodaj do ulubionych”, lista ulubionych z rekordami, ostatnie przejścia (kliknięcie
+  otwiera trasę), zdobyte szczyty, statystyki łączne.

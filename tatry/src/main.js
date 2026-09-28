@@ -791,7 +791,7 @@ async function main() {
       if (sess.t - sess.sampled >= 5) { sess.trace.push([Math.round(sess.t * 10) / 10, Math.round(state.s)]); sess.sampled = sess.t; }
     }
     const h = profile[Math.round(state.s / trail.step)];
-    if (sess.lastH !== null && h > sess.lastH) sess.up += h - sess.lastH;
+    if (sess.lastH !== null && dir > 0 && h > sess.lastH && h - sess.lastH < 20) sess.up += h - sess.lastH;   // walking only, not jumps
     sess.lastH = h;
     for (const p of peaksOnRoute) {
       if (sess.peaks.has(p.name) || Math.abs(state.s - p.s) > 20) continue;
