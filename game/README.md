@@ -87,6 +87,7 @@ node test/orders.test.mjs # main target steers the army, Defend keeps it home
 node test/veteran.test.mjs # experience from damage dealt, promotions, determinism
 node test/hospital.test.mjs # ward, hospital beds, veterans return with their rank, ambulances unload at the tent
 node test/bearers.test.mjs # stretcher bearers fetch the wounded on foot, one at a time
+node test/lmg.test.mjs # LMG team: hasty fire until the bipod is down, slower without the loader
 node test/morale.test.mjs # badly hurt soldiers break and run; officers and MPs steady them, MPs turn runners back
 npm run build   # writes a single self-contained ../plastic-front/index.html
 ```

@@ -148,7 +148,7 @@ export class Sim {
       salvo: 0, salvoCd: 0, moving: false, aimX: 0, aimZ: 0,
       down: false, bleed: 0, stable: false, carrier: 0, carrying: 0, rescue: 0, rescuer: 0, loaded: false, cargo: [],
       heal: 0, healT: 0, healing: false, medicBy: 0, noCover: 0, goalX: 0, goalZ: 0, stuck: 0, retreat: false,
-      falling: false, bombs: def.bombs || 0, bombCd: 0, done: false, wp: 0, xp: 0, rank: 0, flee: 0,
+      falling: false, bombs: def.bombs || 0, bombCd: 0, done: false, wp: 0, xp: 0, rank: 0, flee: 0, crew: def.team2 ? 2 : 1, setup: 0,
     };
     if (def.static) {
       if (def.cls === 'fort') { e.dirX = rot & 1 ? 0 : 1; e.dirZ = rot & 1 ? 1 : 0; }
@@ -511,8 +511,11 @@ export class Sim {
     if (attacker && attacker.team >= 0 && attacker.team !== o.team) this.gainXp(attacker, Math.min(amount, o.hp) / o.maxHp * (o.def.cost || 100));
     o.hp -= amount;
     if (attacker && attacker.team >= 0 && attacker.team !== o.team) this.teams[o.team].hurtBy[attacker.team] += amount * (o.def.cls === 'hq' ? 2 : 1);
+    if (o.def.team2 && o.crew === 2 && o.hp > 0 && o.hp <= o.maxHp * 0.5) {   // the loader is down
+      o.crew = 1; this.events.push({ t: 'crew', id: o.id, crew: 1 });
+    }
     const M = RULES.morale;
-    if (o.hp > 0 && o.def.cls === 'infantry' && !o.def.medic && !o.def.aura && !o.def.mp && !o.flee && !o.falling && !o.carrying && !o.heal
+    if (o.hp > 0 && o.def.cls === 'infantry' && !o.def.team2 && !o.def.medic && !o.def.aura && !o.def.mp && !o.flee && !o.falling && !o.carrying && !o.heal
         && o.hp < o.maxHp * M.breakAt && o.hp + amount >= o.maxHp * M.breakAt && !this.steadied(o) && this.rng() < M.chance) {
       o.flee = Math.round(M.flee * RULES.tickRate); o.target = 0;
       this.events.push({ t: 'break', id: o.id, team: o.team });
@@ -557,7 +560,7 @@ export class Sim {
 
   kill(o, attacker) {
     if (o.dead) return;
-    if (o.def.cls === 'infantry' && !o.def.medic && !o.down && !o.falling && this.teams[o.team].alive && this.rng() < RULES.woundChance) this.wound(o, attacker);
+    if (o.def.cls === 'infantry' && !o.def.medic && !o.def.team2 && !o.down && !o.falling && this.teams[o.team].alive && this.rng() < RULES.woundChance) this.wound(o, attacker);
     else this.die(o, attacker);
   }
 
@@ -629,6 +632,7 @@ export class Sim {
     if (def.medic) return this.thinkAmbulance(e);
     if (def.engineer) return this.thinkEngineer(e);
     if (e.cd > 0) e.cd -= DT;
+    if (def.team2) e.setup = e.moving ? 0 : e.setup + 1;                        // bipod goes down once they stop
     // salvos (rocket trucks)
     if (e.salvo > 0) {
       e.salvoCd -= DT;
@@ -1194,8 +1198,14 @@ export class Sim {
         if (dx * dx + dz * dz <= f.def.aura * f.def.aura) { cd *= 0.7; break; }
       }
     }
-    const V = RULES.veteran, r = e.rank - 1, acc = Math.min(0.98, w.acc * (r >= 0 ? 1 + V.acc[r] : 1));
+    const V = RULES.veteran, r = e.rank - 1;
+    let acc = Math.min(0.98, w.acc * (r >= 0 ? 1 + V.acc[r] : 1));
     if (r >= 0) cd /= 1 + V.rate[r];                                          // veterans shoot faster and straighter
+    if (e.def.team2) {
+      const M = RULES.lmg;
+      if (!this.deployed(e)) { acc *= M.hastyAcc; cd *= M.hastyRate; }       // bipod not yet down
+      if (e.crew < 2) cd *= M.aloneRate;                                     // nobody feeding the gun
+    }
     e.cd = cd * (0.9 + this.rng() * 0.2);
     if (w.kind === 'bullet' || w.kind === 'flak') {
       const hit = this.rng() < acc * this.inCover(o, e) * (isAir(o) && w.kind === 'bullet' ? 0.7 : 1);
@@ -1208,6 +1218,8 @@ export class Sim {
     if (w.salvo) { e.salvo = w.salvo; e.salvoCd = 0; e.aimX = o.x; e.aimZ = o.z; return; }
     this.launch(e, o.x, o.z, this.rng() < acc, o);
   }
+
+  deployed(e) { return e.setup >= RULES.lmg.setup * RULES.tickRate; }
 
   launch(e, tx, tz, hit, o = null) {
     const w = e.def.weapon;
