@@ -271,7 +271,9 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         float slope = 1.0 - N.y;
         // lift the baked-in satellite shadows a bit, real-time light adds relief back; less on walls,
         // which the sun lights head-on while the photo (taken from above) already shows them bright
-        sat = sat * (1.55 - 0.3 * smoothstep(0.35, 0.75, slope)) + 0.01;
+        // bright photos (light granite scree on the Slovak 2025 photo) are not lifted, or they burn out to white
+        float satL = dot(sat, vec3(0.3, 0.55, 0.15));
+        sat = sat * mix(1.55 - 0.3 * smoothstep(0.35, 0.75, slope), 1.0, smoothstep(0.38, 0.72, satL)) + 0.01;
         // relief normal: from the 4 m heights past the 1 m patch; the panorama keeps its mesh normals
         vec3 Nr = N;
         if (detail > 0.5) Nr = normalize(mix(N, hNormal(vWorld.xz, 4.0), smoothstep(60.0, 200.0, dist)));
@@ -427,6 +429,8 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           fl *= 1.0 - far * 0.7;               // the ribs would re-draw the patches at this distance
         }
         col *= clamp(1.0 + fl * 1.1, 0.45, 1.5);
+        // soft shoulder for very light ground (granite scree, limestone): keeps texture instead of white
+        { float cl = dot(col, vec3(0.3, 0.55, 0.15)); col *= 1.0 / (1.0 + max(cl - 0.42, 0.0) * 1.6); }
         diffuseColor.rgb = col;
         if (detW <= 0.0) { detN = Nr; detW = 1.0; }
         else { detN = normalize(mix(Nr, detN, detW)); detW = 1.0; }
