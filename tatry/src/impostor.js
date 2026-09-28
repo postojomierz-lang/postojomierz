@@ -55,7 +55,7 @@ export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1,
     Object.assign(sh.uniforms, shade, u);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + HEIGHTS + VERT_BB + '\nvarying float vTerrSh;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + billboard() + '\n vTerrSh = terrainShadow(ipos + vec3(0.0, bh * 0.6, 0.0));')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + billboard() + '\n vTerrSh = terrainShadow(ipos + vec3(0.0, bh * 0.6, 0.0)) * cloudShadow(ipos);')
       .replace('#include <project_vertex>', 'vec4 mvPosition = viewMatrix * vec4(bbWorld, 1.0);\ngl_Position = projectionMatrix * mvPosition;')
       .replace('#include <worldpos_vertex>', 'vec4 worldPosition = vec4(bbWorld, 1.0);');
     sh.fragmentShader = sh.fragmentShader

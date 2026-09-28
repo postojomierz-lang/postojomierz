@@ -171,3 +171,9 @@ schody, skała), kolor znaków na kamieniach, łańcuchy na trudnych odcinkach (
 1900 m), drogowskazy w miejscach drogowskazów z OSM, przy mijanych schroniskach i jeziorach oraz na starcie i mecie (nazwy mijanych schronisk,
 przełęczy, szczytów i jezior, czasy z norm), nazwy miejsc w HUD i tytuł trasy. Bez parametru `trasa`
 aplikacja działa jak dotąd (Morskie Oko → Rysy z `public/data`).
+
+## Chmury
+Warstwa cumulusów na ~3,4 km (`CLOUDS` w `src/materials.js`), dryfująca z wiatrem ~8 m/s. Ta sama
+gęstość rysuje chmury w shaderze nieba (ciemniejsza podstawa, jaśniejszy brzeg pod słońce) i rzuca ich
+cienie na teren, drzewa, kosówkę i budynki, więc cienie są dokładnie pod chmurami. Zachmurzenie zależy
+od pogody: słonecznie 45 %, mgiełka 20 %, pochmurno 88 %, mgła 95 %.

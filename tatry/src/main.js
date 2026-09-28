@@ -7,7 +7,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { terrainMaterial, waterMaterial, light, makeEnv, patchShading } from './materials.js';
+import { terrainMaterial, waterMaterial, light, makeEnv, patchShading, CLOUDS } from './materials.js';
 import { buildForest } from './vegetation.js';
 import { loadImpostorKinds } from './impostor.js';
 import { buildGroundCover } from './groundcover.js';
@@ -238,7 +238,27 @@ async function main() {
   sky.material.uniforms.skyGain = { value: 0.4 };
   sky.material.fragmentShader = sky.material.fragmentShader
     .replace('uniform vec3 up;', 'uniform vec3 up;\nuniform float skyGain;')
-    .replace('gl_FragColor = vec4( retColor, 1.0 );', 'gl_FragColor = vec4( retColor * skyGain, 1.0 );');
+    .replace('gl_FragColor = vec4( retColor, 1.0 );', `
+      vec3 outC = retColor * skyGain;
+      // cumulus layer (the same density casts the shadows on the ground, materials.js CLOUDS)
+      if (direction.y > 0.015) {
+        float tc = (CLOUD_Y - cameraPosition.y) / direction.y;
+        vec2 cp = cameraPosition.xz + direction.xz * tc;
+        float d = cloudDensity(cp, time);
+        float dl = cloudDensity(cp + vSunDirection.xz * 380.0, time);      // thicker towards the sun: darker underside
+        float fade = smoothstep(0.015, 0.12, direction.y) * exp(-tc / 60000.0);
+        float lit = clamp(1.0 - (dl - d) * 1.4 - d * 0.35, 0.35, 1.0);
+        float day = clamp(vSunfade, 0.0, 1.0);
+        vec3 sunTint = mix(vec3(1.0, 0.62, 0.38), vec3(1.0, 0.98, 0.95), smoothstep(0.02, 0.35, vSunDirection.y));
+        vec3 cloudC = mix(vec3(0.5, 0.53, 0.58), sunTint * 1.35, lit) * (0.15 + 0.85 * day);
+        // silver lining towards the sun
+        cloudC += sunTint * pow(max(dot(direction, vSunDirection), 0.0), 12.0) * (1.0 - d) * 0.5;
+        outC = mix(outC, cloudC, pow(d, 0.7) * fade);
+      }
+      gl_FragColor = vec4( outC, 1.0 );`)
+    .replace('uniform float skyGain;', 'uniform float skyGain;\nuniform float time;\n' + CLOUDS);
+  sky.material.uniforms.time = light.time;
+  sky.material.uniforms.cloudCover = light.cloudCover;
   scene.add(sky);
 
   const sunLight = new THREE.DirectionalLight(0xffffff, 3.6);
@@ -559,14 +579,15 @@ async function main() {
   // ---------------------------------------------------------------- environment
   const env = { hour: 10.5, weather: 'clear' };
   const WEATHER = {
-    clear: { fog: 2.6e-5, turb: 1.4, ray: 3.2, sun: 1, amb: 1, fogMix: 0 },
-    haze: { fog: 5.5e-5, turb: 8, ray: 2.2, sun: 0.8, amb: 1.1, fogMix: 0.25 },
-    mist: { fog: 1.1e-3, turb: 12, ray: 3, sun: 0.35, amb: 1.35, fogMix: 0.85 },
-    cloudy: { fog: 3.5e-5, turb: 16, ray: 0.6, sun: 0.35, amb: 1.4, fogMix: 0.6 },
+    clear: { fog: 2.6e-5, turb: 1.4, ray: 3.2, sun: 1, amb: 1, fogMix: 0, cloud: 0.45 },
+    haze: { fog: 5.5e-5, turb: 8, ray: 2.2, sun: 0.8, amb: 1.1, fogMix: 0.25, cloud: 0.2 },
+    mist: { fog: 1.1e-3, turb: 12, ray: 3, sun: 0.35, amb: 1.35, fogMix: 0.85, cloud: 0.95 },
+    cloudy: { fog: 3.5e-5, turb: 16, ray: 0.6, sun: 0.35, amb: 1.4, fogMix: 0.6, cloud: 0.88 },
   };
   function applyEnv() {
     const w = WEATHER[env.weather];
     const { el, dir } = sunAt(env.hour);
+    light.cloudCover.value = w.cloud;
     const e = Math.max(el, -0.2);
     const day = THREE.MathUtils.smoothstep(e, -0.1, 0.25);
     // warm low sun: from ~25° down to the horizon (morning and evening)
