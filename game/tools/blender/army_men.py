@@ -1359,9 +1359,11 @@ def officer():
     if US:                                                                       # a captain's two silver bars on the front of his helmet
         H = Frame(neck, turn(F, 0.15), D(0.05, 0.1, 1))
         # and the officer's white vertical stripe down the back of it (the NCOs' ran across)
-        for a in (0.15, 0.45, 0.75):
-            d = (-H.f * math.cos(a) + H.u * math.sin(a)).normalized()
-            fig.box(H.at(0, 0, 4.6) + d * 3.5, (0.55, 0.3, 1.1), Frame(H.o, -H.f, H.u).q, INS['white'], bevel=0.03)
+        tipH = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))          # the shell's own frame (see _head)
+        for a in (-0.1, 0.2, 0.5, 0.8):
+            d = -tipH.f * math.cos(a) + tipH.u * math.sin(a)
+            r = 3.45 * math.hypot(1.08 * math.cos(a), 0.95 * math.sin(a)) + 0.08
+            fig.box(tipH.o + d * r, (0.6, 0.22, 1.15), Frame(tipH.o, d, tipH.u * math.cos(a) + tipH.f * math.sin(a)).q, INS['white'], bevel=0.03)
         tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
         d = (tip.f + tip.u * 0.4).normalized(); p = tip.o + d * 3.5; B = Frame(p, d, tip.u)
         for s_ in (1, -1): fig.box(B.at(0, s_ * 0.3, 0), (0.28, 0.14, 0.9), B.q, INS['silver'], bevel=0.03)
