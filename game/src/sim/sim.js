@@ -148,7 +148,7 @@ export class Sim {
       salvo: 0, salvoCd: 0, moving: false, aimX: 0, aimZ: 0,
       down: false, bleed: 0, stable: false, carrier: 0, carrying: 0, rescue: 0, rescuer: 0, loaded: false, cargo: [],
       heal: 0, healT: 0, healing: false, medicBy: 0, noCover: 0, goalX: 0, goalZ: 0, stuck: 0, retreat: false,
-      falling: false, bombs: def.bombs || 0, bombCd: 0, done: false, wp: 0, xp: 0, rank: 0,
+      falling: false, bombs: def.bombs || 0, bombCd: 0, done: false, wp: 0, xp: 0, rank: 0, flee: 0,
     };
     if (def.static) {
       if (def.cls === 'fort') { e.dirX = rot & 1 ? 0 : 1; e.dirZ = rot & 1 ? 1 : 0; }
@@ -260,7 +260,7 @@ export class Sim {
       else this.die(e, this.attackerOf(e));
     }
     for (const e of this.ents) {
-      e.carrying = 0; e.rescue = 0; e.cargo = []; e.heal = 0; e.healT = 0; e.healing = false; e.medicBy = 0; e.retreat = false; e.working = false;
+      e.carrying = 0; e.rescue = 0; e.cargo = []; e.heal = 0; e.healT = 0; e.healing = false; e.medicBy = 0; e.retreat = false; e.working = false; e.flee = 0;
       if (e.def.cls === 'plane' && !e.dead) {
         if (e.def.sortie) { e.done = true; continue; }
         // planes land back where they were parked
@@ -511,8 +511,34 @@ export class Sim {
     if (attacker && attacker.team >= 0 && attacker.team !== o.team) this.gainXp(attacker, Math.min(amount, o.hp) / o.maxHp * (o.def.cost || 100));
     o.hp -= amount;
     if (attacker && attacker.team >= 0 && attacker.team !== o.team) this.teams[o.team].hurtBy[attacker.team] += amount * (o.def.cls === 'hq' ? 2 : 1);
+    const M = RULES.morale;
+    if (o.hp > 0 && o.def.cls === 'infantry' && !o.def.medic && !o.def.aura && !o.def.mp && !o.flee && !o.falling && !o.carrying && !o.heal
+        && o.hp < o.maxHp * M.breakAt && o.hp + amount >= o.maxHp * M.breakAt && !this.steadied(o) && this.rng() < M.chance) {
+      o.flee = Math.round(M.flee * RULES.tickRate); o.target = 0;
+      this.events.push({ t: 'break', id: o.id, team: o.team });
+    }
     this.events.push({ t: 'hit', id: o.id, amount });
     if (o.hp <= 0) this.kill(o, attacker);
+  }
+
+  // an officer (within his aura) or a military policeman (within his reach) keeps a soldier in the fight
+  // (an MP steadies the men right next to him, and reaches further to turn back those running)
+  steadier(o, rally = false) {
+    for (const f of this.ents) {
+      if (f.team !== o.team || f === o || !this.active(f)) continue;
+      const r = f.def.mp ? f.def.mp * (rally ? 1 : 0.5) : rally ? 0 : f.def.aura;
+      if (r && (f.x - o.x) ** 2 + (f.z - o.z) ** 2 <= r * r) return f;
+    }
+    return null;
+  }
+  steadied(o) { return !!this.steadier(o); }
+  // running for home: an MP who catches up turns him round; once home (or after a while) he steadies
+  thinkFlee(e) {
+    const by = this.steadier(e, true);
+    if (by) { e.flee = 0; this.events.push({ t: 'rally', id: e.id, by: by.id, team: e.team }); return; }
+    e.moving = false;
+    if (--e.flee <= 0 || this.inZone(e.team, e.x, e.z)) { e.flee = 0; return; }
+    this.followField(e, this.fields.get(e.team + ':home:foot'), 1.15);
   }
 
   // experience for the unit that did the damage; it is promoted as it passes each mark
@@ -597,6 +623,7 @@ export class Sim {
     if (e.down) return this.thinkDown(e);
     if (e.falling) return this.thinkFalling(e);
     if (e.loaded) return;
+    if (e.flee > 0) return this.thinkFlee(e);
     const def = e.def, w = def.weapon;
     if (def.cls === 'plane') return this.thinkPlane(e);
     if (def.medic) return this.thinkAmbulance(e);
@@ -644,7 +671,16 @@ export class Sim {
       if (!e.rescue && scan) this.findWounded(e);
       if (e.rescue) return this.goRescue(e);
     }
+    // military police follow a few steps behind their own men instead of leading the charge
+    if (def.mp && this.mpClose(e)) { e.moving = false; return; }
     this.move(e, tgt);
+  }
+  mpClose(e) {
+    for (const o of this.ents) {
+      if (o.team !== e.team || o === e || o.def.cls !== 'infantry' || o.def.mp || o.def.medic || !this.active(o) || o.flee) continue;
+      if ((o.x - e.x) ** 2 + (o.z - e.z) ** 2 < 5 * 5) return true;
+    }
+    return false;
   }
 
   // the nearest cell of a ruined house within a couple of steps from which the target is still in range

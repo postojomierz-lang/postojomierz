@@ -14,7 +14,7 @@ const OUT = path.join(HERE, '..', 'src', 'data', 'figures.js');
 const OUT_VEH = path.join(HERE, '..', 'src', 'data', 'vehicles.js');
 // yaw: degrees to turn the figure so that where it aims ends up along +X (after +Z -> +X)
 const SOURCES = ['rifleman', 'kneel', 'prone', 'officer', 'mg', 'sniper', 'bazooka', 'bazooka-stand', 'manpads', 'manpads-kneel',
-  'grenadier', 'grenadier-idle', 'medic', 'medic-heal', 'drag', 'gunner', 'lookout', 'sapper', 'driver', 'mgstand', 'bearer-front', 'bearer-back']
+  'grenadier', 'grenadier-idle', 'medic', 'medic-heal', 'drag', 'gunner', 'lookout', 'sapper', 'driver', 'mgstand', 'bearer-front', 'bearer-back', 'mp']
   .map(key => ({ key, name: `blender/${key}.stl`, yaw: 0, keepCentre: true }));   // built facing -Y around the hips
 const NEAR_TRIS = 8000, FAR_TRIS = 1500, HEIGHT_MM = 37, HEIGHT = 1.08, Q = 16000;
 
