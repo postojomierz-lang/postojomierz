@@ -1599,12 +1599,53 @@ def bearer(front):
     head(fig, neck, F, U)
     fig.finish()
 
+def mp():
+    """a military policeman: halt! - his left hand up, palm out, the pistol held low in the right,
+    and his army's police marks: the Americans' dark blue MP brassard and white helmet band, the
+    British black arm band lettered in red, the German Feldgendarmerie gorget on its chain, the
+    Japanese Kempeitai white band lettered in red, the Red Army's red commandant band, the
+    French gendarmes' white cross belt and the Carabinieri's flaming grenade on the helmet."""
+    fig = Fig('mp')
+    pel = standing(fig, stride=2.4, stance=2.8, lean=-0.2)
+    T = Frame(pel, F, D(-0.02, 0, 1))
+    shR, shL, neck = torso(fig, T, pack=False)
+    grip = shR + P(3.2, -1.0, -10.5)
+    arm(fig, shR, grip, pole=D(-0.3, -1, -0.3), grip_dir=D(1, 0, -0.55))
+    pistol(fig, grip, D(1, 0, -0.55))
+    elL = arm(fig, shL, shL + P(10.5, 2.6, 2.2), pole=D(0, 1, -0.6), grip_dir=U)          # halt! arm out ahead, palm up
+    H = head(fig, neck, F, U)
+    W, R, S = INS['white'], INS['red'], INS['silver']
+    if US:
+        armband(fig, shL, elL, '#1f2a44', W)
+        tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
+        fig.ring(tip.at(0, 0, 0.35), tip.u, 3.47, 0.3, W, seg=36, scale=(1, 1.08, 0.8))             # white helmet band
+    elif GB: armband(fig, shL, elL, INS['black'], R)
+    elif JP: armband(fig, shL, elL, W, R)
+    elif SU: armband(fig, shL, elL, R, W)
+    elif DE:                                                                                          # the gorget
+        plate = T.at(2.5, 0, 8.4)
+        fig.box(plate, (3.0, 0.3, 1.5), Frame(plate, T.d(1, 0, 0.25), T.u).q, S, bevel=0.2)
+        for s_ in (1, -1):
+            fig.sphere(T.at(2.75, s_ * 1.0, 8.4), 0.3, S)
+            fig.cyl(T.at(2.6, s_ * 1.4, 8.9), T.at(1.4, s_ * 1.9, 11.4), 0.16, S, seg=6)            # the chain
+    elif FR:                                                                                          # white cross belt
+        pts = [T.at(0.4, 3.4, 11.2), T.at(2.4, 1.6, 8.4), T.at(2.6, -0.6, 5.0), T.at(1.8, -2.8, 1.8)]
+        for a, b in zip(pts, pts[1:]):
+            d = b - a; m = (a + b) / 2
+            fig.box(m, (1.1, 0.3, d.length + 0.2), Frame(m, T.f, d).q, W, bevel=0.05)
+    elif IT:                                                                                          # Carabinieri grenade
+        n = H.f; p = H.at(3.3, 0, 5.6)
+        fig.sphere(p + n * 0.15, 0.55, INS['black'])
+        for k, dl in enumerate((-0.3, 0.0, 0.3)):
+            fig.box(p + n * 0.15 + H.u * (0.8 + 0.15 * (k == 1)) + H.l * dl, (0.18, 0.15, 0.6), Frame(p, n, H.u + H.l * dl).q, INS['black'], bevel=0.02)
+    fig.finish()
+
 POSES = {'rifleman': rifleman, 'kneel': kneel, 'prone': prone, 'officer': officer, 'mg': mg, 'sniper': sniper,
          'bazooka': lambda: bazooka(False), 'bazooka-stand': lambda: bazooka(True), 'manpads': lambda: manpads(False),
          'manpads-kneel': lambda: manpads(True), 'grenadier': lambda: grenadier(True), 'grenadier-idle': lambda: grenadier(False),
          'medic': lambda: medic(False), 'medic-heal': lambda: medic(True), 'drag': drag, 'gunner': gunner, 'lookout': lookout,
          'sapper': sapper, 'driver': driver, 'mgstand': mgstand,
-         'bearer-front': lambda: bearer(True), 'bearer-back': lambda: bearer(False)}
+         'bearer-front': lambda: bearer(True), 'bearer-back': lambda: bearer(False), 'mp': mp}
 
 if __name__ == '__main__':
     only = [a for a in sys.argv[1:] if not a.startswith('--')]

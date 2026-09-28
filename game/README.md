@@ -14,6 +14,7 @@ rank kept: next round with a bed in a field hospital (6 beds each), a round late
 across the enemy's way in front of the base. Explosions cause friendly fire. Units earn
 experience from the damage they deal (worth the target's cost) and rise to Veteran, Elite and
 Hero (1×, 3×, 6× their own cost): better aim, faster fire and more toughness, shown as gold chevrons.
+Badly hurt soldiers may break and run home; officers and military police keep them in the fight.
 
 With 3 or more armies the battle is fought on a round table: headquarters sit at the corners of a
 regular polygon, so every army is equally far from its neighbours, and random obstacles are
@@ -86,6 +87,7 @@ node test/orders.test.mjs # main target steers the army, Defend keeps it home
 node test/veteran.test.mjs # experience from damage dealt, promotions, determinism
 node test/hospital.test.mjs # ward, hospital beds, veterans return with their rank, ambulances unload at the tent
 node test/bearers.test.mjs # stretcher bearers fetch the wounded on foot, one at a time
+node test/morale.test.mjs # badly hurt soldiers break and run; officers and MPs steady them, MPs turn runners back
 npm run build   # writes a single self-contained ../plastic-front/index.html
 ```
 

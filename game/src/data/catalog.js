@@ -57,6 +57,11 @@ export const CATALOG = {
     name: 'Stretcher bearers', group: 'infantry', cls: 'infantry', medic: true, capacity: 1, cost: 25, hp: 16, speed: 1.3, size: [1, 1], radius: 0.45,
     blurb: 'Two unarmed men with a stretcher: carry a wounded soldier home from where no ambulance can go.',
   },
+  mp: {
+    name: 'Military police', group: 'infantry', cls: 'infantry', cost: 25, hp: 12, speed: 1.7, size: [1, 1], radius: 0.32, mp: 8,
+    weapon: { kind: 'bullet', range: 7, dmg: 1, cd: 0.8, acc: 0.6 },
+    blurb: 'Soldiers right next to him (4 cells) never break under fire; turns back any running for home within 8.',
+  },
   para: {
     name: 'Paratrooper', group: 'hidden', cls: 'infantry', cost: 10, hp: 10, speed: 1.7, size: [1, 1], radius: 0.32,
     weapon: { kind: 'bullet', range: 9, dmg: 2, cd: 1.1, acc: 0.72, air: true },
@@ -238,6 +243,9 @@ export const RULES = {
   // rescued wounded recover in the base: with a hospital bed they are back the next round,
   // without one they miss a round. They return as themselves, rank and experience kept.
   recovery: { rounds: 2, bed: 2, noBed: 1 },
+  // badly hurt soldiers may break and run for home for a few seconds - unless an officer
+  // (within his aura) or a military policeman (within his reach) is close by
+  morale: { breakAt: 0.4, chance: 0.35, flee: 5 },
   veteran: {
     names: ['Veteran', 'Elite', 'Hero'],
     at: [1, 3, 6],

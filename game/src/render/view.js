@@ -18,7 +18,7 @@ import { CATALOG, TEAM_COLORS } from '../data/catalog.js';
 
 // where each piece's gun is, in its own space (forward = +x)
 const MUZZLE = {
-  rifleman: [0.82, 0.87], para: [0.82, 0.87], officer: [0.51, 0.9], grenadier: [-0.12, 1.04], bazooka: [0.49, 0.68], manpads: [0.36, 1.09], medic: [0.3, 0.8],
+  rifleman: [0.82, 0.87], para: [0.82, 0.87], officer: [0.51, 0.9], grenadier: [-0.12, 1.04], bazooka: [0.49, 0.68], manpads: [0.36, 1.09], medic: [0.3, 0.8], mp: [0.18, 0.57],
   sniper: [0.88, 0.87], mg: [0.78, 0.81], jeep: [0.26, 1.05], apc: [1.26, 0.98], amphib: [0.4, 1.36], tank: [2.1, 1.09], tank_light: [1.14, 0.98], tank_heavy: [2.7, 1.18], rockets: [0.05, 1.37],
   heli: [0.45, -0.16], fighter: [0.5, -0.08], attacker: [0.24, -0.21], bomber: [0, -0.25], transport: [-0.65, -0.1],
   // the German models
@@ -698,6 +698,15 @@ export class View {
         c.fillStyle = safe ? '#3a9a4a' : '#d63a2f'; c.fillRect(sx - 4.5, sy - 1.5, 9, 3); c.fillRect(sx - 1.5, sy - 4.5, 3, 9);
         if (!safe) { c.strokeStyle = '#d63a2f'; c.lineWidth = 2; c.beginPath(); c.arc(sx, sy, 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, e.bleed) / 18); c.stroke(); }
         continue;
+      }
+      if (e.flee > 0 && e.team === this.human) {
+        // one of ours has broken and is running for home
+        p.set(v.g.position.x, 1.55, v.g.position.z).project(this.camera);
+        if (p.z < 1 && Math.abs(p.x) < 1.1 && Math.abs(p.y) < 1.1) {
+          const fx = (p.x + 1) / 2 * w, fy = (1 - p.y) / 2 * h;
+          c.font = '700 14px Rubik, system-ui, sans-serif'; c.textAlign = 'center';
+          c.fillStyle = 'rgba(0,0,0,.6)'; c.fillText('!', fx + 1, fy + 1); c.fillStyle = '#f0c13a'; c.fillText('!', fx, fy);
+        }
       }
       const hurt = hq || e.hp < e.maxHp;
       if (!hurt && !e.rank) continue;

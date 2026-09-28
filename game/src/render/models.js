@@ -13,7 +13,7 @@ const FIGURE_FOR = {
   rifleman: 'rifleman', para: 'rifleman', officer: 'officer', mg: 'mg', sniper: 'sniper', 'pose-kneel': 'kneel', 'pose-prone': 'prone',
   bazooka: 'bazooka', 'pose-bazooka-stand': 'bazooka-stand', manpads: 'manpads', 'pose-manpads-kneel': 'manpads-kneel',
   grenadier: 'grenadier', 'pose-grenadier-idle': 'grenadier-idle', medic: 'medic', 'pose-medic-heal': 'medic-heal', 'pose-drag': 'drag',
-  'pose-sapper': 'sapper', 'pose-driver': 'driver',
+  'pose-sapper': 'sapper', 'pose-driver': 'driver', mp: 'mp',
 };
 // figure data is meshopt-compressed: wait for the (tiny, built-in) decoder before building models
 export const modelsReady = MeshoptDecoder.ready;
