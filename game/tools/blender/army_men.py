@@ -1309,6 +1309,41 @@ def prone():
     fig.ground(elR + P(0, 0, -1.3), elL + P(0, 0, -1.3), pel)
     fig.finish()
 
+def officer_mark(fig, T, shL, elL, elR, grip):
+    """what marks an officer out on each army's sleeve (or across his chest):
+    British: the corps headquarters brassard, red-white-red; Red Army: the red duty arm band with a
+    white 'D'; Japanese: the white duty arm band with its red stripe; French: the tricolour FFI arm
+    band with the cross of Lorraine; German: a black cuff title with silver lettering round the right
+    cuff; Italian: the Savoy-blue sash from the right shoulder to the left hip. (The American officer's
+    mark is the white stripe down the back of his helmet.)"""
+    W, R, B = INS['white'], INS['red'], INS['blue']
+    c, ax = shL + (elL - shL) * 0.45, (elL - shL).normalized()
+    n = (L - ax * L.dot(ax)).normalized(); Fr = Frame(c, n, ax)
+    def bands(cols, w=0.42):                                                                  # rings stacked along the arm
+        for k, col in enumerate(cols): fig.ring(c + ax * (k - (len(cols) - 1) / 2) * w, ax, 1.45, w * 0.62, col, seg=18)
+    out = c + n * 1.9
+    if GB: bands([R, W, R])
+    elif SU:
+        bands([R, R, R])
+        fig.box(out + ax * 0.25, (0.7, 0.12, 0.18), Fr.q, W, bevel=0.02); fig.box(out, (0.45, 0.12, 0.5), Fr.q, W, bevel=0.02)   # Д
+    elif JP: bands([W, R, W])
+    elif FR:
+        bands([B, W, R])
+        fig.box(out, (0.14, 0.12, 0.4), Fr.q, R, bevel=0.01)                                  # cross of Lorraine
+        for dz, w in ((0.1, 0.3), (-0.04, 0.38)): fig.box(out + ax * dz, (w, 0.12, 0.08), Fr.q, R, bevel=0.01)
+    elif DE:
+        ax2 = (grip - elR).normalized(); c2 = elR + (grip - elR) * 0.62
+        fig.ring(c2, ax2, 1.12, 0.36, INS['black'], seg=18)
+        n2 = (-L - ax2 * (-L).dot(ax2)).normalized(); F2 = Frame(c2, n2, ax2)
+        for k in range(4): fig.box(c2 + n2 * 1.45 + F2.l * 0.0 + ax2 * ((k - 1.5) * 0.3), (0.12, 0.1, 0.18), F2.q, INS['silver'], bevel=0.01)
+    elif IT:
+        pts = [T.at(0.4, -3.4, 11.2), T.at(2.4, -1.8, 8.6), T.at(2.7, 0.4, 5.2), T.at(2.2, 2.6, 2.2), T.at(1.0, 3.8, 0.3)]
+        for a, b in zip(pts, pts[1:]):
+            d = b - a; m = (a + b) / 2
+            fig.box(m, (2.2, 0.35, d.length + 0.3), Frame(m, T.f, d).q, '#2a5caa', bevel=0.05)
+        fig.sphere(pts[-1] + T.d(0.5, 0.2, -1.0) * 1.0, 0.45, '#2a5caa')                     # the knot and fringe
+        fig.cyl(pts[-1] + T.d(0.5, 0.2, -1.0) * 1.2, pts[-1] + T.d(0.5, 0.2, -1.0) * 3.2, 0.35, '#2a5caa', seg=10)
+
 def officer():
     """strides forward pointing the way with his pistol, the other arm waving the men on."""
     fig = Fig('officer')
@@ -1316,12 +1351,17 @@ def officer():
     T = Frame(pel, turn(F, -0.25), D(0.06, 0, 1))
     shR, shL, neck = torso(fig, T, pack=False)
     grip = shR + F * 12.2 + U * 0.8 - L * 0.4
-    arm(fig, shR, grip, pole=D(0, -0.6, -1), grip_dir=F)
+    elR = arm(fig, shR, grip, pole=D(0, -0.6, -1), grip_dir=F)
     pistol(fig, grip + F * 0.35, F)
-    arm(fig, shL, shL + P(3.5, 3.5, 9.5), pole=D(-0.5, 1, -0.2), grip_dir=U)   # fist up: follow me
+    elL = arm(fig, shL, shL + P(3.5, 3.5, 9.5), pole=D(-0.5, 1, -0.2), grip_dir=U)   # fist up: follow me
+    officer_mark(fig, T, shL, elL, elR, grip)
     head(fig, neck, turn(F, 0.15), D(0.05, 0.1, 1), helmet='cap' if (DE or SU or GB or JP or FR or IT) else True)
     if US:                                                                       # a captain's two silver bars on the front of his helmet
         H = Frame(neck, turn(F, 0.15), D(0.05, 0.1, 1))
+        # and the officer's white vertical stripe down the back of it (the NCOs' ran across)
+        for a in (0.15, 0.45, 0.75):
+            d = (-H.f * math.cos(a) + H.u * math.sin(a)).normalized()
+            fig.box(H.at(0, 0, 4.6) + d * 3.5, (0.55, 0.3, 1.1), Frame(H.o, -H.f, H.u).q, INS['white'], bevel=0.03)
         tip = Frame(H.at(-0.05, 0, 4.85), H.d(1, 0, -0.2), H.d(0.2, 0, 1))
         d = (tip.f + tip.u * 0.4).normalized(); p = tip.o + d * 3.5; B = Frame(p, d, tip.u)
         for s_ in (1, -1): fig.box(B.at(0, s_ * 0.3, 0), (0.28, 0.14, 0.9), B.q, INS['silver'], bevel=0.03)
