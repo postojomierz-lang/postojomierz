@@ -41,21 +41,27 @@ const status = (t) => { $('loading-text').textContent = t; };
 const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
 const P = new URLSearchParams(location.search);
-// quality tier: ?q=low | high | ultra; without it strong desktop graphics cards get 'ultra' (2K ground
-// textures, finer terrain, more and farther plants, sharper shadows, resolution kept up by frame rate)
+// quality tier: ?q=low | mid | high | ultra. Without it: strong desktop graphics cards get 'ultra' (2K
+// ground textures, finer terrain, more and farther plants, sharper shadows), phones 'mid' when their GPU
+// is a recent one (Adreno 650+, Mali-G7x / Immortalis, Apple, Xclipse) and 'low' otherwise, the rest
+// 'high'. On every tier the resolution follows the frame rate.
 function pickQuality() {
   const q = P.get('q');
-  if (q === 'low' || q === 'high' || q === 'ultra') return q;
+  if (['low', 'mid', 'high', 'ultra'].includes(q)) return q;
+  const phone = matchMedia('(pointer: coarse)').matches && Math.max(screen.width, screen.height) < 1400;
   try {
     const gl = document.createElement('canvas').getContext('webgl2');
     const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
     const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
     const lose = gl && gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
+    if (phone) return /Adreno \(TM\) (6[5-9]\d|[7-9]\d\d)|Mali-G(7[1-9]|[6-9]1\d)|Immortalis|Apple|Xclipse/i.test(name) ? 'mid' : 'low';
     if (/RTX\s*(20[78]0|30[6-9]0|40[6-9]0|50[6-9]0)|RX\s*(6[7-9]|7[7-9]|9[07])\d\d|Apple M\d (Pro|Max|Ultra)/i.test(name)) return 'ultra';
-  } catch (e) { /* no WebGL 2: the default tier */ }
-  return 'high';
+  } catch (e) { return phone ? 'low' : 'high'; }
+  return phone ? 'low' : 'high';
 }
 const QUALITY = pickQuality(), ULTRA = QUALITY === 'ultra';
+// a setting per tier: low, mid, high, ultra
+const tier = (low, mid, high, ultra = high) => ({ low, mid, high, ultra })[QUALITY];
 // ?trasa#r=lat,lon;lat,lon...: a route from the planner, anywhere in the Polish High Tatras
 const STOPS = P.has('trasa') ? routeFromHash() : null;
 
@@ -235,7 +241,7 @@ async function main() {
   // ---------- renderer / scene
   const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
   // ultra renders above the screen resolution (supersampling) while the frame rate allows (tick)
-  const PR_MAX = QUALITY === 'low' ? 1 : ULTRA ? 2 : 1.75;
+  const PR_MAX = tier(1, 1.5, 1.75, 2), PR_MIN = tier(0.6, 0.75, 1, 1);
   renderer.setPixelRatio(ULTRA ? Math.max(1, Math.min(devicePixelRatio * 1.5, PR_MAX)) : Math.min(devicePixelRatio, PR_MAX));
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -283,9 +289,9 @@ async function main() {
   const sunLight = new THREE.DirectionalLight(0xffffff, 3.6);
   const hemi = new THREE.HemisphereLight(0xbcd4ff, 0x3a3a2a, 1);
   // shadow box follows the camera: crisp shadows of trees and rocks nearby
-  const SH = QUALITY === 'low' ? 120 : ULTRA ? 300 : 200;
+  const SH = tier(120, 150, 200, 300);
   sunLight.castShadow = true;
-  const SMAP = QUALITY === 'low' ? 2048 : ULTRA ? Math.min(8192, renderer.capabilities.maxTextureSize) : 4096;
+  const SMAP = tier(2048, 2048, 4096, Math.min(8192, renderer.capabilities.maxTextureSize));
   sunLight.shadow.mapSize.set(SMAP, SMAP);
   Object.assign(sunLight.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH, near: 10, far: 6000 });
   sunLight.shadow.bias = -0.0004; sunLight.shadow.normalBias = 0.6;
@@ -301,20 +307,20 @@ async function main() {
   const blank = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat); blank.needsUpdate = true;
 
   // sharp orthophoto window (canvas composed from tiles) and the 1 m patch rectangle
-  const NEAR_M = 1024, NEAR_PX = QUALITY === 'low' ? 1024 : 2048;
+  const NEAR_M = 1024, NEAR_PX = tier(1024, 2048, 2048);
   const nearCanvas = document.createElement('canvas'); nearCanvas.width = nearCanvas.height = NEAR_PX;
   const nearTex = new THREE.CanvasTexture(nearCanvas);
   nearTex.colorSpace = THREE.SRGBColorSpace; nearTex.flipY = false; nearTex.anisotropy = aniso;
   nearTex.minFilter = THREE.LinearMipmapLinearFilter;
   // sharp path mask around the camera (width and surface per section of the trail)
-  const trailWin = makeTrailWindow({ trail, px: QUALITY === 'low' ? 1024 : ULTRA ? 4096 : 2048, size: 256, sections });
+  const trailWin = makeTrailWindow({ trail, px: tier(1024, 2048, 2048, 4096), size: 256, sections });
   const near = {
     map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: { value: new THREE.Vector4(0, 0, 0, 0) },
     trail: trailWin.map, trailRect: trailWin.rect,
   };
   const noNear = { map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: near.patch,
     trail: trailWin.map, trailRect: { value: new THREE.Vector4(0, 0, 0, 0) } };
-  const step = (QUALITY === 'low' ? 12 : ULTRA ? 4.5 : 6) * Math.sqrt(AREA_K);
+  const step = tier(12, 8, 6, 4.5) * Math.sqrt(AREA_K);
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
   const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, lowerUnderPatch: true });
@@ -324,7 +330,7 @@ async function main() {
 
   // 1 m patch mesh around the camera (laser-scanned detail), rebuilt as the camera moves;
   // the coarse mesh is pushed down underneath it by its shader
-  const PATCH = ULTRA ? 560 : 420, PSTEP = QUALITY === 'low' ? 2.5 : ULTRA ? 1 : 1.25;
+  const PATCH = tier(420, 420, 420, 560), PSTEP = tier(2.5, 1.6, 1.25, 1);
   let patchMesh = null, patchC = { x: Infinity, z: Infinity };
   function updatePatch(cx, cz) {
     if (Math.hypot(cx - patchC.x, cz - patchC.z) < 90) return;
@@ -426,7 +432,7 @@ async function main() {
   const r = rng(7);
   const spruce = [], pine = [];
   const px = (IB[2] - IB[0]) / LW, pz = (IB[3] - IB[1]) / LH;
-  const density = QUALITY === 'low' ? 0.35 : ULTRA ? 1 : 0.9;              // big areas are thinned afterwards, away from the trail
+  const density = tier(0.35, 0.6, 0.9, 1);              // big areas are thinned afterwards, away from the trail
   for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) {
     const c = land[(j * LW + i) * 4];
     if (c !== 10 && c !== 20 && c !== 30) continue;
@@ -448,10 +454,10 @@ async function main() {
     // dwarf pine where the orthophoto shows it: dark, saturated green between 1500 and 1950 m,
     // near the trail (the 10 m land-cover map misses most of the thickets beside the path)
     const ph = pixels(innerBmp), PW = innerBmp.width, PH = innerBmp.height;
-    const G = QUALITY === 'low' ? 7 : ULTRA ? 4 : 5;
+    const G = tier(7, 6, 5, 4);
     const seen = new Set();
     for (let i = 0; i < N; i += 6) {
-      for (let k = 0; k < (QUALITY === 'low' ? 60 : ULTRA ? 170 : 110); k++) {
+      for (let k = 0; k < tier(60, 85, 110, 170); k++) {
         const d = Math.pow(r(), 1.5) * 420, a = r() * 6.283;
         const gx = Math.round((trail.X[i] + Math.cos(a) * d) / G), gz = Math.round((trail.Z[i] + Math.sin(a) * d) / G);
         const key = gx * 100003 + gz;
@@ -486,7 +492,7 @@ async function main() {
     for (let k = 0; k < n; k++) if (isNear[k] || r() < keepFar) for (let q = 0; q < stride; q++) out.push(arr[k * stride + q]);
     return out;
   };
-  const CAP = QUALITY === 'low' ? { spruce: 14000, pine: 7000 } : ULTRA ? { spruce: 60000, pine: 36000 } : { spruce: 26000, pine: 14000 };
+  const CAP = tier({ spruce: 14000, pine: 7000 }, { spruce: 20000, pine: 10000 }, { spruce: 26000, pine: 14000 }, { spruce: 60000, pine: 36000 });
   for (const [arr, stride, cap] of [[spruce, 4, CAP.spruce], [pine, 3, CAP.pine]]) {
     const kept = thin(arr, stride, cap);
     if (kept === arr) continue;
@@ -503,7 +509,7 @@ async function main() {
       || terrain.normal(x, z, 3).y < 0.7) ? null : terrain.height(x, z) });
   // 3D spruces near the camera (vegetation3d.js) in place of the impostors; ?drzewa3d=0 turns them off
   const trees3d = QUALITY !== 'low' && P.get('drzewa3d') !== '0' ? await buildTrees3D({ scene, shade, items: [forest.trees, forest.young],
-    radius: ULTRA ? 110 : 70,
+    radius: tier(0, 45, 70, 110),
     loadTexture: async (url, srgb) => { const t = texture(await bitmap(url), aniso); if (!srgb) t.colorSpace = THREE.NoColorSpace; return t; } }) : null;
   const landPx = { d: pixels(landBmp), w: landBmp.width, h: landBmp.height };
   const photoPx = { d: pixels(innerBmp), w: innerBmp.width, h: innerBmp.height };
@@ -549,7 +555,7 @@ async function main() {
       patchShading(mat, shade);
       variants.push({ geo: o.geometry, mat, size: Math.max(size.x, size.y, size.z), items: [] });
     });
-    const count = QUALITY === 'low' ? 5000 : ULTRA ? 32000 : 16000;
+    const count = tier(5000, 9000, 16000, 32000);
     const ip = pixels(innerBmp), IW = innerBmp.width;
     let k = 0, guard = 0;
     const up = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion(), qy = new THREE.Quaternion();
@@ -888,14 +894,14 @@ async function main() {
   // at a steady ~58 a step up, though not above a level that was too slow in the last minute)
   const dyn = { t: -4, n: 0, cap: PR_MAX, calm: 0 };
   function adaptResolution(dt) {
-    if (!ULTRA || document.hidden) return;
+    if (document.hidden) return;
     dyn.t += dt; dyn.n++;
     if (dyn.t < 2) return;
     const avg = dyn.t / dyn.n, pr = renderer.getPixelRatio();
     dyn.t = 0; dyn.n = 0;
     if ((dyn.calm += 2) > 60) { dyn.cap = PR_MAX; dyn.calm = 0; }
     let np = pr;
-    if (avg > 1 / 48 && pr > 1) { np = Math.max(1, pr - 0.25); dyn.cap = np; dyn.calm = 0; }
+    if (avg > 1 / 48 && pr > PR_MIN) { np = Math.max(PR_MIN, pr - 0.25); dyn.cap = np; dyn.calm = 0; }
     else if (avg < 1 / 57 && pr + 0.25 <= dyn.cap) np = pr + 0.25;
     if (np === pr) return;
     renderer.setPixelRatio(np); composer.setPixelRatio(np);
@@ -904,7 +910,7 @@ async function main() {
   // ---------- post-processing: bloom on sun glints, filmic grade, vignette
   // ambient occlusion (ssao.js): on in ultra, ?ao=1 / ?ao=0 to force it
   const AO = P.has('ao') ? P.get('ao') !== '0' : ULTRA;
-  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 0 : 4,
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: tier(0, 2, 4),
     depthTexture: AO ? new THREE.DepthTexture(1, 1) : null }));
   // the second buffer's clone would share the depth texture's source (one GL texture): a feedback loop
   if (AO) composer.renderTarget2.depthTexture = new THREE.DepthTexture(1, 1);
@@ -934,8 +940,8 @@ async function main() {
   const shadowSnap = (SH * 2) / sunLight.shadow.mapSize.x;
 
   // ---------- planar reflection for the lake nearest to the camera
-  const REFL_SCALE = QUALITY === 'low' ? 0.33 : ULTRA ? 0.75 : 0.5;
-  const reflRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 0 : 2 });
+  const REFL_SCALE = tier(0.33, 0.33, 0.5, 0.75);
+  const reflRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: tier(0, 0, 2) });
   const reflCam = new THREE.PerspectiveCamera();
   const reflClip = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const bias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);

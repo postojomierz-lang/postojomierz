@@ -331,7 +331,7 @@ function updateGo() {
   note.hidden = !path;
   if (path) note.textContent = summary.dist > 14000 ? 'Długa trasa: wczytanie widoku 3D potrwa dłużej (duży obszar terenu).' : 'Widok 3D wczytuje teren wokół trasy (kilkanaście MB).';
 }
-$('go').onclick = () => { location.href = './index.html?trasa' + (matchMedia('(max-width: 760px)').matches ? '&q=low' : '') + location.hash; };
+$('go').onclick = () => { location.href = './index.html?trasa' + location.hash; };   // the 3D view picks its quality for the device
 
 // restore a route from the address (#r=lat,lon;lat,lon...)
 const h = location.hash.match(/r=([^&]+)/);
