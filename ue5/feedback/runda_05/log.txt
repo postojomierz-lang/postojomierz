@@ -1,0 +1,78 @@
+UE5 feedback: runda 05, 2026-09-29 (operator: lokalny Claude przez Unreal MCP)
+==========================================================================
+
+Projekt: Documents\Unreal Projects\Rysy 5.8, poziom /Game/Rysy/Maps/Rysy. UE 5.8.3, RTX 4070 Ti SUPER.
+Python jak w poprzednich rundach (`py "plik.py"` w polu Cmd, dialogi → log).
+
+1. git pull: OK (f4b8725d „UE5 round 5 …”, merge #122).
+
+2. Nowa mapa wysokości do istniejącego krajobrazu (render target + landscape_import_heightmap_from_render_target):
+   - 305 losowych punktów: krajobraz − PNG = −0,54 … +0,01 cm,
+   - 80 punktów spośród 1 008 633 próbek zmienionych względem rundy 4 o >20 jednostek (pasy N/S + brzegi):
+     −0,50 … +0,01 cm.
+   REIMPORT_TEXTURES = True ustawione TYLKO w pamięci na ten jeden przebieg (wrapper podmienia linię przy exec),
+   plik build_scene.py w repozytorium bez zmian. T_RysyOrtho (8192²) i T_RysyMask_* zaimportowane od nowa (19:59).
+
+3. build_scene.py: jeden przebieg, 43 s, bez błędów Pythona, BEZ ostrzeżeń [Rysy] i bez TextureIndex.
+   [Rysy] Daleki teren: sloty {'near': 0, 'far': 1}
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/SM_RysyFar_v4
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/far
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/near
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/TEX_far_near
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/Textures/T_RysyFar_v4
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/TEX_far_terrain
+   [Rysy] Daleki teren: kolizja <CollisionEnabled.NO_COLLISION: 0>, profil NoCollision
+   [Rysy] Daleki teren: osie [0, 1, 2], znaki [1, -1, 1], skala 1/1
+   Podsumowanie: „daleki teren: pas 800 m (10 m, DEM 4 m) + 35 x 29 km + pierscien horyzontu (SM_RysyFar_v5)”;
+   jeziora 14; budynki 23; drogowskazy 4; spruce 38 629; dwarfpine 49 009; rock 10 911.
+   Stan: /Game/Rysy/FarTerrain/ = tylko SM_RysyFar_v5; z dalekiego terenu w Textures tylko T_RysyFar_v5 (8192×6744)
+   i T_RysyNear_v5 (4096×4096). Sloty siatki: near → M_RysyNear, far → M_RysyFar; aktor NoCollision. Poziom zapisany.
+
+   BŁĄD (naprawiony ręcznie): po skrypcie M_RysyFar NIE miał tekstury. get_used_textures = [] i parametr „Photo”
+   = None, a daleki teren (slot far) był bez zdjęcia. W grafie były 2 węzły TextureSampleParameter2D (M_RysyNear
+   ma 1), oba wskazywały T_RysyFar_v5, ale skompilowany materiał tekstury nie używał. Prawdopodobnie usunięcie
+   T_RysyFar_v4 w sprzątaniu po zbudowaniu materiału (oba „Photo”) albo podwójny węzeł. Naprawa: ustawiłem teksturę
+   na obu węzłach, recompile_material + zapis → Photo = T_RysyFar_v5. Sugestia: w photo_material sprawdzać po
+   finish_material, że get_used_textures zawiera teksturę; zbadać, skąd drugi węzeł (fresh_material nie
+   wyczyścił grafu?).
+
+4. Szew
+   - Pomiar (heightmap vs far_terrain.obj wzdłuż 4 krawędzi): po 4033 wierzchołki na krawędź,
+     far − krajobraz = −0,016 … +0,016 m (N, S, W, E).
+   - Wizualnie: gładkiej płachty i załamania już nie ma. 08 (krawędź S): przejście krajobraz → near nieczytelne,
+     rzeźba ciągła. 09 (narożnik NE): krajobraz i near łączą się bez uskoku, ale tekstura near jest wyraźnie
+     bardziej rozmyta i jaśniejsza/bardziej zielona niż ortofoto krajobrazu (granica widoczna jako zmiana ostrości),
+     w samym rogu widać jaśniejszy trójkąt near. 15 (krawędź N, kamera 250 m nad krawędzią, yaw −90):
+     na granicy biegnie cienka, ciemna, poszarpana linia (jakby szczelina/cień fartucha) wzdłuż całej krawędzi,
+     a za nią pas near jest jasnozielony, a krajobraz żółtozielony: różnica koloru wyraźna.
+   - Przejście near → far (~800 m): na 15 widać je jako zmianę ostrości w górnej części kadru, bez uskoku.
+
+5. Pas S krajobrazu z bliska (16, 16b: 3 m nad gruntem, (−500 m, 2580,8 m), yaw 0 / 180; 16c z góry, 150 m):
+   grunt i tekstura wyglądają jak reszta krajobrazu (ortofoto 2 m + tekstury warstw, stok ciągły, ścieżki
+   i rumowiska ciągłe przez pas), 16c: ścieżki przechodzą przez krawędź krajobrazu na near bez przerwania.
+   (Uwaga: pierwsza próba kamery 16c była 60 m od krawędzi skierowana na zewnątrz i pokazała dół fartucha:
+   ciemną ścianę 15 m pod krawędzią, widoczną tylko spod poziomu terenu; nie dotyczy normalnego widoku.)
+
+6. Horyzont (11, 11b): mgła D ze skryptu działa bez ręcznych zmian (sprawdzone wartości w aktorze:
+   0,0012 / 0,1 / 0,7 / 500000 cm / (0,45; 0,55; 0,70)). Obraz jak wariant D w rundzie 4: lekka mgiełka nad
+   kotliną, horyzont szaroniebieski, bez granatowego pasa, pierścienia nie widać.
+
+7. Brzegi
+   - 06, 07: gładkie.
+   - 05 (Play, PlayerStart): próg na środku linii brzegu zniknął; po lewej zostały 2 bardzo drobne ząbki
+     (porównanie wycinka z rundą 4).
+   - 03 (Czarny Staw przy słupku): drobne ząbki nadal widoczne, podobnie jak w rundzie 4.
+
+8. Zrzuty (1920×1080; edytor HighResShot z CameraActor, 05 i 10 w Play, mgła D ze skryptu):
+   01–10 jak w rundzie 4, 11 / 11b horyzont (pitch 0 / −10), 15_szew_krawedz_N (60000, −230000, grunt+250 m,
+   pitch −35, yaw −90), 16_pas_S_z_bliska (−50000, 258080, grunt+3 m, pitch −4, yaw 0),
+   16b_pas_S_z_bliska_na_zachod (to samo, yaw 180), 16c_pas_S_krawedz_z_gory (−50000, 250000, grunt+150 m, pitch −40, yaw 90).
+
+9. Wydajność (Play w nowym oknie 2560×1380, StartFPSChart/StopFPSChart, mgła D)
+   - Morskie Oko: 86,4 FPS (8959 / 103,7 s), GPU 10,5 ms, Game 4,4 ms, 0 % < 60, 28 % < 120, 1 przycięcie 0,32 s.
+     [runda 4: 88,7 FPS, GPU 10,2 ms]
+   - Szczyt: 119,5 FPS (11 622 / 97,2 s), GPU 6,8 ms, Game 4,3 ms, 0,4 % < 120. [runda 4: 119,6]
+   - SM_RysyFar_v5: Nanite tak, 994 328 trójkątów / 506 291 wierzchołków, 2 sloty (near, far).
+
+Po rundzie: ustawienia edytora przywrócone (okno PIE 1280×720, „Use Less CPU when in Background” włączone).
+Czego nie robiłem (zgodnie z ZADANIA.md): Third Person, podmiana tekstur terenu, zmiana liczby drzew.
