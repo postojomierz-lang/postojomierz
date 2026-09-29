@@ -11,8 +11,9 @@ const hash = (i, j, k) => {
 };
 
 export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, masks, blocked = () => false, nearHut = () => false, quality }) {
-  const R = quality === 'low' ? 26 : 42, CELL = quality === 'low' ? 0.95 : 0.7;
-  const R2 = quality === 'low' ? 70 : 95, CELL2 = quality === 'low' ? 2.6 : 2.0;   // outer ring
+  const U = quality === 'ultra';
+  const R = quality === 'low' ? 26 : U ? 60 : 42, CELL = quality === 'low' ? 0.95 : U ? 0.6 : 0.7;
+  const R2 = quality === 'low' ? 70 : U ? 160 : 95, CELL2 = quality === 'low' ? 2.6 : U ? 1.8 : 2.0;   // outer ring
   // herb atlas rows: 0 small shrub (unused, reads as dry twigs), 1-4 sorrel (Rumex, round the huts), 5-8 yellow flowers
   const SORREL = [1, 2, 3, 4], FLOWERS = [5, 6, 7, 8];
   const GRASS_ROWS = [0, 1, 6, 7, 9, 10]; // clumps; the other baked variants are single blades or flower heads

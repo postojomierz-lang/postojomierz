@@ -162,7 +162,7 @@ export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, qu
   scene.add(mesh);
 
   // spray: soft particles drifting up and downstream from the foot of each waterfall
-  const PER = quality === 'low' ? 200 : 500;
+  const PER = quality === 'low' ? 200 : quality === 'ultra' ? 800 : 500;
   const sp = [], seed = [];
   for (const s of sprays) for (let k = 0; k < PER * (s.big ? 1 : 0.4); k++) {
     sp.push(s.x, s.y, s.z); seed.push(Math.random(), Math.random(), Math.random(), s.dx * 0 + Math.atan2(s.dx, s.dz));
