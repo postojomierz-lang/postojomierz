@@ -187,7 +187,10 @@
     // choose the quality tier by hand: kept in this browser, the page reloads
     document.querySelectorAll('#quality-pick button').forEach((b) => b.onclick = () => {
       try { if (b.dataset.q === 'auto') localStorage.removeItem('rysy-quality'); else localStorage.setItem('rysy-quality', b.dataset.q); } catch (e) {}
-      const u = new URL(location.href); u.searchParams.delete('q'); location.replace(u.toString());
+      // a plain reload unless the address carries ?q= (replacing the same address with a #hash would only
+      // jump to the hash and not reload)
+      const u = new URL(location.href);
+      if (u.searchParams.has('q')) { u.searchParams.delete('q'); location.replace(u.toString()); } else location.reload();
     });
   </script>
   <p class="note">Teren: model wysokości 30 m i zdjęcie satelitarne 10 m (dane otwarte). Drobne skały i trawa z bliska
