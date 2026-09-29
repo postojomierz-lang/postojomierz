@@ -904,19 +904,29 @@ async function main() {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); sizeRefl(); streams.setPixelRatio(renderer.getPixelRatio(), innerHeight); drawProfile();
   });
-  // ultra: the supersampling follows the frame rate, measured every 2 s (below ~48 fps a step down,
-  // at a steady ~58 a step up, though not above a level that was too slow in the last minute)
-  const dyn = { t: -4, n: 0, cap: PR_MAX, calm: 0 };
-  function adaptResolution(dt) {
-    if (document.hidden) return;
-    dyn.t += dt; dyn.n++;
-    if (dyn.t < 2) return;
-    const avg = dyn.t / dyn.n, pr = renderer.getPixelRatio();
-    dyn.t = 0; dyn.n = 0;
-    if ((dyn.calm += 2) > 60) { dyn.cap = PR_MAX; dyn.calm = 0; }
+  // the resolution follows the frame rate, measured over 2 s of real time: below ~48 fps a step down; a
+  // step up only after 6 s at a steady ~58 and not above a level that was too slow lately (the wait for
+  // a new try doubles after each failed one, up to 10 min: a warm phone does not stutter every minute)
+  const dyn = { t0: performance.now() + 4000, n: 0, cap: PR_MAX, calm: 0, wait: 60, good: 0, raisedAt: -1e9 };
+  function adaptResolution() {
+    if (document.hidden) { dyn.t0 = performance.now() + 1000; dyn.n = 0; return; }
+    const now = performance.now();
+    if (now < dyn.t0) return;
+    dyn.n++;
+    const el = (now - dyn.t0) / 1000;
+    if (el < 2) return;
+    const fps = dyn.n / el, pr = renderer.getPixelRatio();
+    dyn.t0 = now; dyn.n = 0;
+    const perf = $('perf');
+    if (perf) perf.textContent = `Jakość: ${QUALITY} · rozdzielczość ${pr.toFixed(2)}× · ${Math.round(fps)} kl/s`;
+    if ((dyn.calm += el) > dyn.wait) { dyn.cap = PR_MAX; dyn.calm = 0; }
     let np = pr;
-    if (avg > 1 / 48 && pr > PR_MIN) { np = Math.max(PR_MIN, pr - 0.25); dyn.cap = np; dyn.calm = 0; }
-    else if (avg < 1 / 57 && pr + 0.25 <= dyn.cap) np = pr + 0.25;
+    if (fps < 48 && pr > PR_MIN) {
+      np = Math.max(PR_MIN, pr - 0.25); dyn.cap = np; dyn.calm = 0; dyn.good = 0;
+      if (now - dyn.raisedAt < 8000) dyn.wait = Math.min(600, dyn.wait * 2);   // the last step up failed
+    } else if (fps > 57) {
+      if (++dyn.good >= 3 && pr + 0.25 <= dyn.cap) { np = pr + 0.25; dyn.good = 0; dyn.raisedAt = now; }
+    } else dyn.good = 0;
     if (np === pr) return;
     renderer.setPixelRatio(np); composer.setPixelRatio(np);
     renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); sizeRefl(); streams.setPixelRatio(np, innerHeight);
@@ -1005,7 +1015,19 @@ async function main() {
   let hudT = 0;
   $('loading').classList.add('done');
 
+  // leaving the page (to the planner, another app): free the GPU at once. Phones keep the previous page in
+  // memory for the back button, and a second 3D view on top of the first one crawls; coming back to such
+  // a page reloads it
+  let stopped = false;
+  addEventListener('pagehide', () => {
+    stopped = true;
+    try { sound.ctx && sound.ctx.close(); } catch (e) { /* no audio */ }
+    renderer.dispose(); renderer.forceContextLoss();
+  });
+  addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
+
   function tick() {
+    if (stopped) return;
     const dt = Math.min(0.1, clock.getDelta());
     light.time.value += dt;
     const grade = gradeAt(state.s);
@@ -1099,7 +1121,7 @@ async function main() {
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });
     renderReflection();
     composer.render();
-    adaptResolution(dt);
+    adaptResolution();
     requestAnimationFrame(tick);
   }
   window.__rysy = { composer, ssao, trees3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
