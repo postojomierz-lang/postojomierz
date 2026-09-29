@@ -68,8 +68,8 @@
   "our_local": "x = east, z = south (tatry/tools/prepare.py local()); UE X = x*100, UE Y = z*100"
  },
  "counts": {
-  "spruce": 38629,
-  "dwarfpine": 49063,
+  "spruce": 44023,
+  "dwarfpine": 38328,
   "rocks": 16128,
   "trail_points": 953,
   "lakes": 14,
@@ -92,6 +92,10 @@
    "far_near_masks_a.png",
    "far_near_masks_b.png"
   ],
+  "band_foliage": {
+   "spruce": "foliage_spruce_band.csv",
+   "dwarfpine": "foliage_dwarfpine_band.csv"
+  },
   "slots": {
    "near": "far_near.jpg",
    "far": "far_terrain.jpg"
