@@ -9,7 +9,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { terrainMaterial, waterMaterial, light, makeEnv, patchShading, CLOUDS } from './materials.js';
 import { buildForest } from './vegetation.js';
-import { loadImpostorKinds } from './impostor.js';
+import { loadImpostorKinds, vegFar, treeFade } from './impostor.js';
 import { buildGroundCover } from './groundcover.js';
 import { buildStreams } from './streams.js';
 import { Sound } from './sound.js';
@@ -929,6 +929,8 @@ async function main() {
     const fps = dyn.n / el, pr = renderer.getPixelRatio();
     dyn.t0 = now; dyn.n = 0;
     const perf = $('perf');
+    const fpsEl = $('fps');
+    if (fpsEl) fpsEl.textContent = `${Math.round(fps)} kl/s · ${QUALITY} · ${pr.toFixed(2)}×`;
     if (perf) perf.textContent = `Wersja ${__BUILD__} · jakość: ${QUALITY} · rozdzielczość ${pr.toFixed(2)}× · ${Math.round(fps)} kl/s${FPS_CAP ? ` (limit ${FPS_CAP})` : ''}`;
     if ((dyn.calm += el) > dyn.wait) { dyn.cap = PR_MAX; dyn.calm = 0; }
     let np = pr;
@@ -1039,6 +1041,7 @@ async function main() {
   addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 
   let liteFrame = 0;
+  vegFar.value = tier(1200, 2000, 1e9);
   // phones: at most 30 frames a second (a 120 Hz screen would otherwise drive the GPU flat out, the phone
   // heats up and throttles: the second run was much slower than the first)
   const FPS_CAP = LITE ? 30 : 0;
@@ -1130,6 +1133,7 @@ async function main() {
       sunLight.position.copy(light.sunDir.value).multiplyScalar(3000).add(sunLight.target.position);
     }
     forest.update(camera);
+    treeFade.cam.value.copy(camera.position);
     if (trees3d) trees3d.update(camera.position);
     {
       const fx = state.mode === 'walk' || state.freeCam ? camera.position.x : hiker.position.x;

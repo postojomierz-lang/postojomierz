@@ -9,6 +9,9 @@ import { HEIGHTS } from './materials.js';
 // cross-fade with the 3D trees near the camera (vegetation3d.js): within fadeR of the (view) camera
 // the impostors of the kinds with `fade` dissolve with the same dither the 3D trees appear with
 export const treeFade = { cam: { value: new THREE.Vector3() }, R: { value: 0 } };
+// phones: plants further than this from the (view) camera are not drawn at all (the forest there is on
+// the terrain photo anyway; thousands of overlapping alpha-tested cards on far slopes were the cost)
+export const vegFar = { value: 1e9 };
 const FADE_V = 'uniform vec3 fadeCam; varying float vFadeD;';
 const FADE_F = `uniform float fadeR; varying float vFadeD;`;
 const FADE_TEST = `if (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) < clamp((fadeR - vFadeD) / 12.0, 0.0, 1.0)) discard;`;
@@ -16,7 +19,8 @@ const FADE_TEST = `if (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.0671
 // per-instance attribute aImp: x = variant row, y = rotation (radians), z = tint (0..1), w = wind
 const VERT_BB = /* glsl */`
   attribute vec4 aImp;
-  uniform float impViews, impRows, impTime, impWind;
+  uniform float impViews, impRows, impTime, impWind, impFar;
+  uniform vec3 impCam;
   varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix;
   varying vec3 vBR; varying vec3 vBT; varying float vTint;
 `;
@@ -40,6 +44,7 @@ function billboard() {
     vViewMix = f - k0;
     vec2 cell = vec2(1.0 / impViews, 1.0 / impRows);
     vec2 inCell = vec2(position.x + 0.5, 1.0 - position.y);
+    if (distance(ipos.xz, impCam.xz) > impFar) bbWorld = ipos;     // too far: a zero-size card, nothing drawn
     vUvA = (vec2(k0, aImp.x) + inCell) * cell;
     vUvB = (vec2(k1, aImp.x) + inCell) * cell;
     vBR = bR; vBT = toC; vTint = aImp.z;
@@ -56,7 +61,7 @@ export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1,
   const u = {
     impAlbedo: { value: albedo }, impNormal: { value: normal },
     impViews: { value: views }, impRows: { value: rows }, impTime: shade.time, impWind: { value: wind },
-    impBright: { value: brightness }, fadeCam: treeFade.cam, fadeR: treeFade.R,
+    impBright: { value: brightness }, fadeCam: treeFade.cam, fadeR: treeFade.R, impFar: vegFar, impCam: treeFade.cam,
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, shade, u);
@@ -90,7 +95,7 @@ export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1,
 export function impostorDepthMaterial({ albedo, views, rows, shade, wind = 1, fade = false }) {
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
   const u = { impAlbedo: { value: albedo }, impViews: { value: views }, impRows: { value: rows }, impTime: shade.time, impWind: { value: wind },
-    fadeCam: treeFade.cam, fadeR: treeFade.R };
+    fadeCam: treeFade.cam, fadeR: treeFade.R, impFar: vegFar, impCam: treeFade.cam };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
