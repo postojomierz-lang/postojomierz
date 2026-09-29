@@ -1,0 +1,49 @@
+{
+ "note": "UE cm; yaw = direction the sign text faces (towards the approaching hiker)",
+ "signposts": [
+  {
+   "name": "Morskie Oko",
+   "subtitle": "Schronisko PTTK - 1405 m n.p.m.",
+   "trail_index": 0,
+   "x": -34058.0,
+   "y": -113297.9,
+   "z": 140552.1,
+   "yaw": 7.4,
+   "trail_distance_m": 0,
+   "terrain_m": 1406
+  },
+  {
+   "name": "Czarny Staw pod Rysami",
+   "subtitle": "1583 m n.p.m.",
+   "trail_index": 364,
+   "x": 19675.6,
+   "y": 14353.9,
+   "z": 158168.4,
+   "yaw": -125.2,
+   "trail_distance_m": 2285,
+   "terrain_m": 1584
+  },
+  {
+   "name": "Bula pod Rysami",
+   "subtitle": "2054 m n.p.m.",
+   "trail_index": 689,
+   "x": 40139.8,
+   "y": 106460.6,
+   "z": 205486.8,
+   "yaw": 106.4,
+   "trail_distance_m": 3766,
+   "terrain_m": 2054
+  },
+  {
+   "name": "Rysy",
+   "subtitle": "2499 m n.p.m.",
+   "trail_index": 952,
+   "x": 88041.0,
+   "y": 127023.3,
+   "z": 249617.2,
+   "yaw": -107.0,
+   "trail_distance_m": 4633,
+   "terrain_m": 2492
+  }
+ ]
+}
