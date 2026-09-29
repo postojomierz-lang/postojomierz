@@ -78,7 +78,12 @@ FOG_START_DISTANCE_M = 5000
 FOG_COLOR = (0.45, 0.55, 0.70)   # Fog Inscattering Color (linear)
 
 BAND_FOLIAGE = True         # spruce and dwarf pine also in the far terrain's 800 m band (round 8)
-PHOTO_SATURATION = 1.0      # saturation of the orthophoto in the landscape and far-terrain materials (1 = as is)
+PHOTO_SATURATION = 0.85     # saturation of the orthophoto in the landscape and far-terrain materials (round 8: picked 0.85)
+
+# Walking (round 9): the Third Person content pack (Add -> Add Feature or Content Pack -> Third Person) gives the
+# game mode and the character; the script finds them by name and makes them the level's game mode.
+WALKABLE_FLOOR_DEG = 50.0   # steepest ground the character walks up (template: 44.8; the upper trail is steep)
+WALK_SPEED_CMS = 0          # max walk speed in cm/s; 0 = keep the template's (500 = jog, 140 = hiking pace)
 
 FAR_TERRAIN = True           # the 35 x 29 km terrain around the landscape (far_terrain.obj), no more empty horizon
 
@@ -325,7 +330,7 @@ LAYERS = [
     ("Rock", 0, "R", "rock_04", 6.0, (0.95, 0.95, 0.95)),
     ("Scree", 0, "G", "rock_ground_02", 3.0, (1.0, 1.0, 1.0)),
     ("Grass", 0, "B", "leafy_grass", 2.0, (0.95, 1.0, 0.9)),
-    ("Forest", 1, "R", "forest_leaves_04", 1.5, (0.8, 0.78, 0.72)),
+    ("Forest", 1, "R", "forest_leaves_04", 2.2, (0.8, 0.78, 0.72)),
     ("DwarfPine", 1, "G", "forest_ground_04", 3.2, (0.85, 0.92, 0.8)),
     ("Path", 1, "B", "rocky_trail", 2.5, (1.0, 1.0, 1.0)),
 ]
@@ -340,9 +345,28 @@ def layer_blend(g, ground, mtex, metres, overrides=None):
         d, n = ground[tname]
         if overrides:                                   # LAYER_TEXTURES set at the top of the script
             d, n = load(overrides.get(name, ("", ""))[0]) or d, load(overrides.get(name, ("", ""))[1]) or n
-        alb = g.tex(name + "_Albedo", d, unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, uv, shared=True)
+        # the albedo at two scales (1 and ~0.3) mixed, so the tile's own pattern does not repeat every few
+        # metres (round 8: regular dark spots in the forest floor, a diagonal pattern in the scree); one texture
+        # object parameter feeds both samples (no duplicate parameter names)
+        tobj = g.node(unreal.MaterialExpressionTextureObjectParameter, -1200, parameter_name=name + "_Albedo")
+        tobj.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+        if d is not None:
+            tobj.set_editor_property("texture", d)
+        uv2 = g.op(unreal.MaterialExpressionAdd, g.op(unreal.MaterialExpressionMultiply, uv, "", const_b=0.29), "", const_b=0.37)
+        samples = []
+        for u in (uv, uv2):
+            smp = g.node(unreal.MaterialExpressionTextureSample, -1000,
+                         sampler_source=unreal.SamplerSourceMode.SSM_WRAP_WORLD_GROUP_SETTINGS)
+            smp.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+            g.link(tobj, "", smp, "Tex")
+            g.link(u, "", smp, "UVs")
+            samples.append(smp)
+        mix = g.node(unreal.MaterialExpressionLinearInterpolate, -800)
+        g.link(samples[0], "RGB", mix, "A")
+        g.link(samples[1], "RGB", mix, "B")
+        g.link(g.scalar(name + "_AntiTile", 0.45), "", mix, "Alpha")
         nrm = g.tex(name + "_Normal", n, unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, uv, shared=True)
-        c = g.op(unreal.MaterialExpressionMultiply, alb, "RGB", g.vector(name + "_Tint", tint))
+        c = g.op(unreal.MaterialExpressionMultiply, mix, "", g.vector(name + "_Tint", tint))
         cw = g.op(unreal.MaterialExpressionMultiply, c, "", mtex[mi], ch)
         nw = g.op(unreal.MaterialExpressionMultiply, nrm, "RGB", mtex[mi], ch)
         col_sum = cw if col_sum is None else g.op(unreal.MaterialExpressionAdd, col_sum, "", cw)
@@ -969,6 +993,44 @@ def open_level():
     log("Poziom: " + LEVEL_PATH)
 
 
+def find_asset(name):
+    """Path of the first asset called name anywhere under /Game (the templates move between UE versions)."""
+    for p in EAL.list_assets("/Game", recursive=True, include_folder=False):
+        if str(p).split(".")[-1] == name or str(p).split("/")[-1].split(".")[0] == name:
+            return str(p).split(".")[0]
+    return None
+
+
+def walking():
+    """Third Person game mode on the level + the character's slope limit and speed (round 9)."""
+    gm_path, ch_path = find_asset("BP_ThirdPersonGameMode"), find_asset("BP_ThirdPersonCharacter")
+    if not gm_path:
+        warn("Chodzenie: nie ma BP_ThirdPersonGameMode - dodaj paczke Third Person (Add > Add Feature or Content Pack)")
+        return
+    try:
+        world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+        ws = world.get_world_settings()
+        ws.set_editor_property("default_game_mode", EAL.load_blueprint_class(gm_path))
+        log("Chodzenie: tryb gry %s" % gm_path)
+    except Exception as e:   # noqa: BLE001
+        warn("Chodzenie: nie ustawiono trybu gry: %s" % e)
+    if not ch_path:
+        warn("Chodzenie: nie ma BP_ThirdPersonCharacter")
+        return
+    try:
+        cdo = unreal.get_default_object(EAL.load_blueprint_class(ch_path))
+        cm = cdo.get_editor_property("character_movement")
+        cm.set_editor_property("walkable_floor_angle", WALKABLE_FLOOR_DEG)
+        if WALK_SPEED_CMS:
+            cm.set_editor_property("max_walk_speed", float(WALK_SPEED_CMS))
+        EAL.save_asset(ch_path)
+        log("Chodzenie: postac %s, stok do %.0f st., predkosc %.0f cm/s" % (
+            ch_path, cm.get_editor_property("walkable_floor_angle"), cm.get_editor_property("max_walk_speed")))
+    except Exception as e:   # noqa: BLE001
+        warn("Chodzenie: nie ustawiono ruchu postaci: %s" % e)
+    report.append("chodzenie: Third Person (%s)" % gm_path)
+
+
 # ----------------------------------------------------------------------------------------- main
 EXPORT = find_export_dir()
 log("Dane z " + EXPORT)
@@ -1002,6 +1064,7 @@ if BAND_FOLIAGE and FAR_TERRAIN and band:
 
 ps = SETTINGS["player_start_cm"]
 spawn(unreal.PlayerStart, (ps["x"], ps["y"], ps["z"]), ps["yaw"], "Start_MorskieOko", "Rysy")
+walking()
 
 level_sub.save_current_level()
 EAL.save_directory(CONTENT_ROOT, True, True)
