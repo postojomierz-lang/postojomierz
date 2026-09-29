@@ -82,6 +82,7 @@ FAR_TERRAIN = True           # the 35 x 29 km terrain around the landscape (far_
 # =====================================================================================================
 
 TAG = "RysyAuto"
+GROUND = {}          # ground layer textures (albedo, normal) by name, filled by build_landscape_material
 TEX_DIR = CONTENT_ROOT + "/Textures"
 MAT_DIR = CONTENT_ROOT + "/Materials"
 
@@ -241,11 +242,45 @@ class Graph:
         return e
 
 
+def material_expressions(mat):
+    """All expression nodes of a material, or None if this UE version gives no way to list them."""
+    getters = (lambda: MEL.get_material_expressions(mat),
+               lambda: mat.get_editor_property("expression_collection").get_editor_property("expressions"),
+               lambda: mat.get_editor_property("expressions"))
+    for get in getters:
+        try:
+            r = get()
+        except Exception:   # noqa: BLE001
+            continue
+        if r is not None:
+            return list(r)
+    return None
+
+
 def fresh_material(name):
+    """An empty material. Round 6: in UE 5.8 delete_all_material_expressions leaves some nodes behind (an
+    old "Photo" parameter with no texture won over the new one), so what is left is deleted one by one."""
     mat, created = new_asset(name, MAT_DIR, unreal.Material, unreal.MaterialFactoryNew())
     if not created:
         MEL.delete_all_material_expressions(mat)
+        left = material_expressions(mat)
+        for e in left or []:
+            try:
+                MEL.delete_material_expression(mat, e)
+            except Exception as ex:   # noqa: BLE001
+                warn("%s: nie usunieto wezla %s: %s" % (name, e.get_name(), ex))
+        left = material_expressions(mat)
+        if left is None:
+            warn("%s: nie da sie wylistowac wezlow materialu (sprawdz recznie, czy nie ma duplikatow)" % name)
+        elif left:
+            warn("%s: po czyszczeniu zostalo %d wezlow: %s" % (name, len(left), [e.get_name() for e in left]))
     return mat
+
+
+def used_textures(mat):
+    """Paths of the textures a compiled material uses (get_used_textures is deprecated in 5.8)."""
+    get = getattr(MEL, "get_material_used_textures", None) or MEL.get_used_textures
+    return [str(t.get_path_name()) for t in (get(mat) or [])]
 
 
 def finish_material(mat):
@@ -291,6 +326,35 @@ LAYERS = [
 ]
 
 
+def layer_blend(g, ground, mtex, metres, overrides=None):
+    """Weighted sum of the ground layers' albedo (tinted) and normal maps: weights from the packed masks
+    mtex (masks_a, masks_b), tiling in metres. The landscape and the far terrain's band use the same."""
+    col_sum = nrm_sum = None
+    for name, mi, ch, tname, tile, tint in LAYERS:
+        uv = g.op(unreal.MaterialExpressionDivide, metres, "", g.scalar(name + "_TileMeters", tile))
+        d, n = ground[tname]
+        if overrides:                                   # LAYER_TEXTURES set at the top of the script
+            d, n = load(overrides.get(name, ("", ""))[0]) or d, load(overrides.get(name, ("", ""))[1]) or n
+        alb = g.tex(name + "_Albedo", d, unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, uv, shared=True)
+        nrm = g.tex(name + "_Normal", n, unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, uv, shared=True)
+        c = g.op(unreal.MaterialExpressionMultiply, alb, "RGB", g.vector(name + "_Tint", tint))
+        cw = g.op(unreal.MaterialExpressionMultiply, c, "", mtex[mi], ch)
+        nw = g.op(unreal.MaterialExpressionMultiply, nrm, "RGB", mtex[mi], ch)
+        col_sum = cw if col_sum is None else g.op(unreal.MaterialExpressionAdd, col_sum, "", cw)
+        nrm_sum = nw if nrm_sum is None else g.op(unreal.MaterialExpressionAdd, nrm_sum, "", nw)
+    return col_sum, nrm_sum
+
+
+def photo_alpha(g):
+    """0.4 at the camera -> 1 at 120 m: near the camera the layer textures, further away the photo."""
+    cam = g.node(unreal.MaterialExpressionCameraPositionWS, -900)
+    wp = g.node(unreal.MaterialExpressionWorldPosition, -900)
+    dist = g.op(unreal.MaterialExpressionDistance, cam, "", wp)
+    fade = g.op(unreal.MaterialExpressionDivide, dist, "", g.scalar("OrthoFadeDistance_cm", 20000.0))
+    alpha = g.op(unreal.MaterialExpressionAdd, fade, "", g.scalar("OrthoNear", 0.4))
+    return g.op(unreal.MaterialExpressionMin, alpha, "", const_b=1.0)
+
+
 def build_landscape_material(ex, S):
     quads = S["resolution"][0] - 1
     step_m = S["metres_per_sample"]
@@ -302,6 +366,7 @@ def build_landscape_material(ex, S):
             ground[tname] = (import_texture(os.path.join(ex, "textures", tname + "_diff.jpg"), "T_" + tname + "_D", "color"),
                              import_texture(os.path.join(ex, "textures", tname + "_nor.jpg"), "T_" + tname + "_N", "normal"))
 
+    GROUND.update(ground)
     mat = fresh_material("M_RysyLandscape")
     g = Graph(mat)
     uv01 = g.node(unreal.MaterialExpressionLandscapeLayerCoords, -1800, mapping_scale=float(quads))
@@ -312,25 +377,8 @@ def build_landscape_material(ex, S):
     photo = g.tex("Ortho", ortho, unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, uv01)
     mtex = [g.tex("Mask" + k.upper(), t, unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR, uv01) for k, t in zip("abc", masks)]
 
-    col_sum = nrm_sum = None
-    for name, mi, ch, tname, tile, tint in LAYERS:
-        uv = g.op(unreal.MaterialExpressionDivide, metres, "", g.scalar(name + "_TileMeters", tile))
-        d, n = ground[tname]
-        alb = g.tex(name + "_Albedo", d, unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, uv, shared=True)
-        nrm = g.tex(name + "_Normal", n, unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, uv, shared=True)
-        c = g.op(unreal.MaterialExpressionMultiply, alb, "RGB", g.vector(name + "_Tint", tint))
-        cw = g.op(unreal.MaterialExpressionMultiply, c, "", mtex[mi], ch)
-        nw = g.op(unreal.MaterialExpressionMultiply, nrm, "RGB", mtex[mi], ch)
-        col_sum = cw if col_sum is None else g.op(unreal.MaterialExpressionAdd, col_sum, "", cw)
-        nrm_sum = nw if nrm_sum is None else g.op(unreal.MaterialExpressionAdd, nrm_sum, "", nw)
-
-    # near the camera the layer textures, further away the orthophoto
-    cam = g.node(unreal.MaterialExpressionCameraPositionWS, -900)
-    wp = g.node(unreal.MaterialExpressionWorldPosition, -900)
-    dist = g.op(unreal.MaterialExpressionDistance, cam, "", wp)
-    fade = g.op(unreal.MaterialExpressionDivide, dist, "", g.scalar("OrthoFadeDistance_cm", 20000.0))
-    alpha = g.op(unreal.MaterialExpressionAdd, fade, "", g.scalar("OrthoNear", 0.4))
-    alpha = g.op(unreal.MaterialExpressionMin, alpha, "", const_b=1.0)
+    col_sum, nrm_sum = layer_blend(g, ground, mtex, metres)
+    alpha = photo_alpha(g)
     lerp = g.node(unreal.MaterialExpressionLinearInterpolate, -200)
     g.link(col_sum, "", lerp, "A")
     g.link(photo, "RGB", lerp, "B")
@@ -660,7 +708,7 @@ def photo_material(name, tex):
         mat.set_editor_property("two_sided", True)
         finish_material(mat)
         try:
-            used = [str(u.get_path_name()) for u in (MEL.get_used_textures(mat) or [])]
+            used = used_textures(mat)
         except Exception as e:   # noqa: BLE001
             warn("%s: nie sprawdzono tekstur (%s)" % (name, e))
             return mat
@@ -673,11 +721,54 @@ def photo_material(name, tex):
     return mat
 
 
+def near_material(tex, masks):
+    """The far terrain's 800 m band: the photo, and near the camera the same ground layers as the landscape
+    from the band's own masks (far_near_masks_a/b), so the two look alike at the border."""
+    if len(masks) < 2 or None in masks or not GROUND:
+        warn("M_RysyNear: brak masek pasa albo tekstur warstw, samo zdjecie")
+        return photo_material("M_RysyNear", tex)
+    for attempt in (1, 2):
+        mat = fresh_material("M_RysyNear")
+        g = Graph(mat)
+        uv = g.node(unreal.MaterialExpressionTextureCoordinate, -1800)
+        wp = g.node(unreal.MaterialExpressionWorldPosition, -1800)
+        xy = g.node(unreal.MaterialExpressionComponentMask, -1700, r=True, g=True, b=False, a=False)
+        g.link(wp, "", xy, "")
+        metres = g.op(unreal.MaterialExpressionDivide, xy, "", const_b=100.0)
+        photo = g.tex("Photo", tex, unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, uv)
+        mtex = [g.tex("Mask" + k, t, unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR, uv) for k, t in zip("AB", masks)]
+        col_sum, nrm_sum = layer_blend(g, GROUND, mtex, metres, LAYER_TEXTURES)
+        alpha = photo_alpha(g)
+        lerp = g.node(unreal.MaterialExpressionLinearInterpolate, -200)
+        g.link(col_sum, "", lerp, "A")
+        g.link(photo, "RGB", lerp, "B")
+        g.link(alpha, "", lerp, "Alpha")
+        nlerp = g.node(unreal.MaterialExpressionLinearInterpolate, -150)
+        g.link(nrm_sum, "", nlerp, "A")
+        g.link(g.node(unreal.MaterialExpressionConstant3Vector, -300, constant=unreal.LinearColor(0.0, 0.0, 1.0, 1.0)), "", nlerp, "B")
+        g.link(alpha, "", nlerp, "Alpha")
+        g.out(g.op(unreal.MaterialExpressionMultiply, lerp, "", g.scalar("Brightness", 1.0)), "", unreal.MaterialProperty.MP_BASE_COLOR)
+        g.out(nlerp, "", unreal.MaterialProperty.MP_NORMAL)
+        g.out(g.scalar("Roughness", 0.9), "", unreal.MaterialProperty.MP_ROUGHNESS)
+        g.out(g.scalar("Specular", 0.3), "", unreal.MaterialProperty.MP_SPECULAR)
+        mat.set_editor_property("two_sided", True)
+        finish_material(mat)
+        used = used_textures(mat)
+        if str(tex.get_path_name()) in used and all(str(m.get_path_name()) in used for m in masks):
+            log("M_RysyNear: zdjecie + maski + warstwy (%d tekstur)" % len(used))
+            return mat
+        warn("M_RysyNear: po budowie uzywa %s%s" % (used, ", buduje od nowa" if attempt == 1 else ""))
+        if attempt == 1:
+            EAL.delete_asset(MAT_DIR + "/M_RysyNear")
+    return mat
+
+
 def cleanup_far_assets(info, dest_dir, path, got):
     """Drop what is left over from the far terrain: the OBJ importer's materials and TEX_* textures,
     older SM_RysyFar* and T_RysyFar* / T_RysyNear* versions (by name: a project that already had them
     reuses them on import)."""
-    keep = {path, TEX_DIR + "/" + info.get("texture_asset", "T_RysyFar"), TEX_DIR + "/" + info.get("near_texture_asset", "")}
+    keep = {path, TEX_DIR + "/" + info.get("texture_asset", "T_RysyFar"), TEX_DIR + "/" + info.get("near_texture_asset", ""),
+            TEX_DIR + "/T_RysyNearMask_A", TEX_DIR + "/T_RysyNearMask_B"}
     ours = {MAT_DIR + "/M_RysyFar", MAT_DIR + "/M_RysyNear"}   # rebuilt right after this
     old = [p for p in got if p != path]
     for folder, prefixes in ((dest_dir, ("far", "near", "TEX_", "SM_RysyFar")), (TEX_DIR, ("T_RysyFar", "T_RysyNear"))):
@@ -734,12 +825,14 @@ def far_terrain(ex, S):
     # Textures first, then the clean-up of old versions, then the materials (round 5: deleting the old
     # texture after M_RysyFar was built left the material with no texture)
     texs = {"far": import_texture(os.path.join(ex, info["texture"]), info.get("texture_asset", "T_RysyFar"), "color")}
+    masks = []
     if info.get("near_texture"):
         texs["near"] = import_texture(os.path.join(ex, info["near_texture"]), info["near_texture_asset"], "color")
+        masks = [import_texture(os.path.join(ex, f), "T_RysyNearMask_" + k, "data") for k, f in zip("AB", info.get("near_masks", []))]
     cleanup_far_assets(info, dest_dir, path, got)
     mats = {"far": photo_material("M_RysyFar", texs["far"])}
     if "near" in texs:
-        mats["near"] = photo_material("M_RysyNear", texs["near"])
+        mats["near"] = near_material(texs["near"], masks)
     slots = {}
     try:
         for idx, sm in enumerate(mesh.get_editor_property("static_materials")):

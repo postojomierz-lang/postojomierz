@@ -190,9 +190,9 @@ for lk in lakes_in:
     sd = gaussian_filter(d_out - d_in, 1.5)
     # steep where it crosses the level, so the water line follows the lake's outline instead
     # of the 1.3 m triangles and 2 cm height steps (round 4: small saw teeth on flat shores, 03 and 05)
-    # crossing at 1.5 m, so the ground is >= 0.3 m above the water where the squares end (3.2-5 m; round
+    # crossing at 1 m (round 6: 1.5 m left a few steps on 03), so the ground is >= 0.3 m above the water where the squares end (3.2-5 m; round
     # 5: a crossing at 3 m left 22 % of the squares' outline over ground up to 0.4 m below the water, 03)
-    ramp = lvl + 0.3 * np.tanh((sd - 1.5) / 1.0) + 0.06 * (sd - 1.5)
+    ramp = lvl + 0.3 * np.tanh((sd - 1.0) / 1.0) + 0.06 * (sd - 1.0)
     band = (sd > -1) & (sd < 16)
     H = np.where(band & (ramp < lvl), np.minimum(H, ramp), H)
     # above the level the lift fades out between 6 and 16 m (round 3: a hard cut at 6 m left small
@@ -334,19 +334,39 @@ LW = lc_img.shape[1]; LH = lc_img.shape[0]
 li = np.clip(((GX - IB[0]) / (IB[2] - IB[0]) * LW).astype(int), 0, LW - 1)
 lj = np.clip(((GZ - IB[1]) / (IB[3] - IB[1]) * LH).astype(int), 0, LH - 1)
 lc = lc_img[lj, li]
-lc = np.where(edge < 0, 0, lc)            # no land cover outside the inner area
-P = photo_at(GX, GZ)
-R_, G_, B_ = P[..., 0], P[..., 1], P[..., 2]
-green = (G_ > R_ + 4) & (G_ > B_ + 6) & (R_ + G_ + B_ < 260)
-lum = (R_ + G_ + B_) / 3
-grey = ((np.max(P, -1) - np.min(P, -1)) < 22) & (lum > 105)
+# outside the inner area (the N and S strips) the region's land cover (round 6: there was none, so the
+# strips were all scree: an olive-yellow band along the edge next to the green far terrain)
+reg_lc = np.asarray(Image.open(os.path.join(RG, 'landcover.png')))
+RLB = rm['inner']['bounds']
 
-forest = ((lc == 10) & (H < 1600)).astype(np.float64)
-pine = ((lc == 20) | ((lc == 10) & (H >= 1600)) | (green & (H > 1450) & (H < 1950) & (slope < 38))).astype(np.float64)
-grass = (((lc == 30) | ((lc == 100) & (H < 2150))) & ~green).astype(np.float64) * 0.9
-scree = ((lc == 60) | ((lc == 100) & (H >= 2150)) | (lc == 80)).astype(np.float64) + grey * 0.8 + 0.02
-scree[lake_mask] = 3
-raw = [gaussian_filter(a, 3) for a in (scree, grass, forest, pine)]
+
+def region_lc(x, z):
+    i = np.clip(((x - RLB[0]) / (RLB[2] - RLB[0]) * reg_lc.shape[1]).astype(int), 0, reg_lc.shape[1] - 1)
+    j = np.clip(((z - RLB[1]) / (RLB[3] - RLB[1]) * reg_lc.shape[0]).astype(int), 0, reg_lc.shape[0] - 1)
+    return reg_lc[j, i]
+
+
+lc = np.where(edge < 0, region_lc(GX, GZ), lc)
+P = photo_at(GX, GZ)
+
+
+def classify(P, lc, Hg, slope, lake=None):
+    """Layer rules (scree, grass, forest, dwarf pine) from the photo, the land cover and the height;
+    returns the four blurred raw weights. The same rules for the landscape and the far terrain's band."""
+    R_, G_, B_ = P[..., 0], P[..., 1], P[..., 2]
+    green = (G_ > R_ + 4) & (G_ > B_ + 6) & (R_ + G_ + B_ < 260)
+    lum = (R_ + G_ + B_) / 3
+    grey = ((np.max(P, -1) - np.min(P, -1)) < 22) & (lum > 105)
+    forest = ((lc == 10) & (Hg < 1600)).astype(np.float64)
+    pine = ((lc == 20) | ((lc == 10) & (Hg >= 1600)) | (green & (Hg > 1450) & (Hg < 1950) & (slope < 38))).astype(np.float64)
+    grass = (((lc == 30) | ((lc == 100) & (Hg < 2150))) & ~green).astype(np.float64) * 0.9
+    scree = ((lc == 60) | ((lc == 100) & (Hg >= 2150)) | (lc == 80)).astype(np.float64) + grey * 0.8 + 0.02
+    if lake is not None:
+        scree[lake] = 3
+    return [gaussian_filter(a, 3) for a in (scree, grass, forest, pine)]
+
+
+raw = classify(P, lc, H, slope, lake_mask)
 veg = np.clip(raw[2] + raw[3], 0, 1)
 rock = smoothstep(33, 46, slope) * (1 - 0.7 * veg)
 tot = np.maximum(sum(raw), 1e-6)
@@ -772,6 +792,25 @@ open(os.path.join(OUT, 'far_terrain.mtl'), 'w').write(
 # near texture: the region's orthophoto over the band's square, 4096 px (1.9 m/px)
 near_img = region_photo(NX0, Z0 - NEAR, NXW, 4096)
 Image.fromarray(near_img).save(os.path.join(OUT, 'far_near.jpg'), quality=87, optimize=True)
+# layer masks for the band, same rules and packing as the landscape's (masks_a / masks_b), 2048 px
+# (3.3 m/px) over the band's square: the far terrain's "near" material blends the same ground textures
+# near the camera (round 6: the band showed the bare photo next to the landscape's textured ground)
+NM = 2048
+nc = NX0 + (np.arange(NM) + 0.5) * NXW / NM
+NGX, NGZ = np.meshgrid(nc, nc - X0 + Z0)
+nh = dem(NGX, NGZ)
+nsz, nsx = np.gradient(gaussian_filter(nh, 1.2), NXW / NM)
+nslope = np.degrees(np.arctan(np.hypot(nsx, nsz)))
+nP = np.asarray(Image.fromarray(near_img).resize((NM, NM), Image.BOX)).astype(np.int32)
+nraw = classify(nP, region_lc(NGX, NGZ), nh, nslope)
+nveg = np.clip(nraw[2] + nraw[3], 0, 1)
+nrock = smoothstep(33, 46, nslope) * (1 - 0.7 * nveg)
+ntot = np.maximum(sum(nraw), 1e-6)
+nl = [nrock] + [a / ntot * (1 - nrock) for a in nraw]          # rock, scree, grass, forest, dwarf pine
+n8 = [np.clip(np.round(a * 255), 0, 255).astype(np.uint8) for a in nl]
+Image.fromarray(np.stack(n8[:3], -1), 'RGB').save(os.path.join(OUT, 'far_near_masks_a.png'), optimize=True)
+Image.fromarray(np.stack([n8[3], n8[4], np.zeros_like(n8[0])], -1), 'RGB').save(os.path.join(OUT, 'far_near_masks_b.png'), optimize=True)
+print('near masks: mean rock %.2f scree %.2f grass %.2f forest %.2f pine %.2f' % tuple(float(a.mean()) for a in nl))
 # texture: the region's 2 m orthophoto (the same processing as the landscape's) where it reaches,
 # the old 17 m panorama photo elsewhere; 8192 px across the 35 km (4.3 m/px)
 FW = 8192; FHt = int(round(FW * (OB[3] - OB[1]) / (OB[2] - OB[0])))
@@ -814,7 +853,8 @@ far_img = (far_img * wf + low * (1 - wf)).round().clip(0, 255).astype(np.uint8)
 print('far texture: lowland colour', low.round(1))
 Image.fromarray(far_img).save(os.path.join(OUT, 'far_terrain.jpg'), quality=85, optimize=True)
 far_info = {'file': 'far_terrain.obj', 'texture': 'far_terrain.jpg', 'asset': 'SM_RysyFar_v6', 'texture_asset': 'T_RysyFar_v6',
-            'near_texture': 'far_near.jpg', 'near_texture_asset': 'T_RysyNear_v6', 'slots': {'near': 'far_near.jpg', 'far': 'far_terrain.jpg'},
+            'near_texture': 'far_near.jpg', 'near_texture_asset': 'T_RysyNear_v6',
+            'near_masks': ['far_near_masks_a.png', 'far_near_masks_b.png'], 'slots': {'near': 'far_near.jpg', 'far': 'far_terrain.jpg'},
             'bounds_cm': {'x': [round(float(VX.min()) * 100, 1), round(float(VX.max()) * 100, 1)],
                           'y': [round(float(VZ.min()) * 100, 1), round(float(VZ.max()) * 100, 1)],
                           'z': [round(float(VH.min()) * 100, 1), round(float(VH.max()) * 100, 1)]},
