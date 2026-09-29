@@ -512,7 +512,8 @@ def main():
             box = (px0, pz0, px0 + TILE / ORTHO_BASE, pz0 + TILE / ORTHO_BASE)
             pv = validq[int(pz0):int(pz0 + TILE / ORTHO_BASE), int(px0):int(px0 + TILE / ORTHO_BASE)]
             if pv.size and pv.mean() > 0.005:     # the Polish 0.5 m photo covers some of the tile
-                o, ov = wms_filled(*tll, 512, 512, f'{PFX}t_{gi}_{gj}')
+                # cached under its coordinates: names by tile number went stale when the region's grid moved
+                o, ov = wms_filled(*tll, 512, 512, f'{PFX}tb_{tll[0]:.5f}_{tll[1]:.5f}')
             else:
                 o, ov = np.zeros((512, 512, 3), np.float32), np.zeros((512, 512), bool)
             o = apply_cmap(o, cmap)

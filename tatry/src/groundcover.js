@@ -10,7 +10,7 @@ const hash = (i, j, k) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, masks, blocked = () => false, nearHut = () => false, quality }) {
+export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, masks, blocked = () => false, nearHut = () => false, quality, groundClass = () => null }) {
   const t = (low, mid, high, ultra) => ({ low, mid, high, ultra })[quality] ?? high;
   const R = t(26, 34, 42, 60), CELL = t(0.95, 0.8, 0.7, 0.6);
   const R2 = t(70, 80, 95, 160), CELL2 = t(2.6, 2.3, 2.0, 1.8);   // outer ring
@@ -61,11 +61,18 @@ export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, m
         const lo = px(land, x, z);
         const lc = lo === null ? 0 : land.d[lo];
         const y = terrain.height(x, z);
-        const forest = lc === 10 && y < 1600;
+        let forest = lc === 10 && y < 1600;
         // ESA WorldCover: 20 shrubs, 30 grassland, 90 wetland, 100 moss and lichen; the photo decides
         // between grass and bare rock inside those (olive and yellowish grass counts as green too)
         const vegetated = lc === 20 || lc === 30 || lc === 90 || (lc === 100 && hash(i, j, 5) < 0.5);
-        const green = (g > r - 6 && g > b + 4 && g > 45) || (vegetated && g > b && g > 40);
+        let green = (g > r - 6 && g > b + 4 && g > 45) || (vegetated && g > b && g > 40);
+        // the 1 m ground map where there is one (tools/prepare_classes.py) decides instead of the colours
+        const gc = groundClass(x, z);
+        if (gc) {
+          if (gc.c === 1 || gc.c === 2 || gc.c === 7) continue;          // water, rock faces, snow: bare
+          forest = gc.c === 5 || gc.c === 6;                           // under the pines and trees: ferns, low grass
+          green = gc.c === 4 || (gc.c === 8 && hash(i, j, 11) < 0.25);  // meadows; a little on gravel
+        }
         const n = terrain.normal(x, z, 1.5);
         if (n.y < 0.62) continue;                    // walls and steep slabs stay bare
         // shrink into the distance instead of popping (inner disc at its edge, the ring at both)

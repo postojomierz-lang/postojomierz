@@ -226,3 +226,16 @@ Orla Perć ×1,6); kolejne przejścia dopisuje się jedną linią.
 skale > 35 %), 4,5 min / 100 m zejścia (11 poniżej −30 %); średni błąd ok. 18 %. Poprawki
 (`corrections.js`): Priečne sedlo jednokierunkowo Zbojnícka → Téryho (3:00 h), Orla Perć ×2,1
 (Zawrat → Krzyżne 6:45 h). Te same normy liczą czasy na drogowskazach w 3D.
+
+## Świat budowany ze zdjęcia i lidaru
+Wzdłuż szlaków (kafle 256 m z lidarem 1 m i ortofotomapą 0,5 m) widok 3D wie, co leży na każdym metrze:
+- `python3 tools/prepare_classes.py` (`AREA=region` dla regionu): klasyfikacja terenu ze zdjęcia (kolor,
+  zieloność, tekstura) i lidaru (nachylenie, szorstkość), wysokości i mapy pokrycia ESA: woda, ściana,
+  piarg, łąka, kosodrzewina, las, śnieg, żwir → `tiles/c_i_j.png` (klasa) i `r_i_j.png` (szorstkość).
+  Na tej podstawie kamienie leżą w piargach (więcej i większe na blokowiskach), kosodrzewina i trawa rosną
+  tam, gdzie pokazuje je zdjęcie, a tekstury gruntu idą za klasą (`DEBUG=1` zapisuje obrazki kontrolne).
+- `python3 tools/prepare_trees.py` (`AREA=region`): prawdziwe drzewa. Numeryczny model pokrycia terenu
+  GUGiK (NMPT 0,5 m) minus model terenu (NMT) daje wysokość koron; wierzchołki koron to lokalne maksima
+  powyżej 4 m → `tiles/t_i_j.bin` (u16: x, z w kaflu, wysokość w cm). Każdy świerk stoi tam, gdzie
+  naprawdę rośnie, i ma swoją wysokość (poniżej 9 m młody świerk). Poza kaflami i po słowackiej stronie
+  las rozmieszcza nadal mapa pokrycia.

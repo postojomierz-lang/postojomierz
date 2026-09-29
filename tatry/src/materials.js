@@ -147,7 +147,7 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
 export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1, textures, near, lowerUnderPatch = false }) {
   const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const u = {
-    nearMap: near.map, nearRect: near.rect, patchRect: near.patch, trailNear: near.trail, trailRect: near.trailRect, lowerInside: { value: lowerUnderPatch ? 1 : 0 },
+    nearMap: near.map, nearRect: near.rect, clsNear: near.cls, patchRect: near.patch, trailNear: near.trail, trailRect: near.trailRect, lowerInside: { value: lowerUnderPatch ? 1 : 0 },
     texD: { value: textures.diff }, texN: { value: textures.nor },
     texMean: { value: textures.mean }, texScale: { value: textures.scale },
     satMap: { value: map }, trailMap: { value: trailMap },
@@ -166,7 +166,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
       .replace('#include <common>', `#include <common>
         varying vec3 vWorld; varying vec3 vWN;
         uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail;
-        uniform sampler2D nearMap; uniform vec4 nearRect; uniform sampler2D trailNear; uniform vec4 trailRect;
+        uniform sampler2D nearMap; uniform vec4 nearRect; uniform sampler2D clsNear; uniform sampler2D trailNear; uniform vec4 trailRect;
         uniform sampler2DArray texD; uniform sampler2DArray texN; uniform vec3 texMean[6]; uniform float texScale[6];
         ${NOISE}
         // one texture layer at two scales, blended by noise to hide tiling; returns colour and tangent normal
@@ -318,6 +318,25 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
             wT[3] = 0.0;                                          // trail (below)
             wT[4] = wGreen * (1.0 - forest);                      // alpine grass
             wT[5] = wGreen * forest;                              // forest floor
+            {
+              // the 1 m ground map around the camera (tools/prepare_classes.py) where there is one:
+              // R rock face, G scree / gravel, B meadow, A dwarf pine / forest
+              vec2 cuv = (w.xz - nearRect.xy) / (nearRect.zw - nearRect.xy);
+              float ce = min(min(cuv.x, 1.0 - cuv.x), min(cuv.y, 1.0 - cuv.y));
+              if (ce > 0.0) {
+                vec4 cw = texture2D(clsNear, cuv);
+                float cs = cw.r + cw.g + cw.b + cw.a;
+                if (cs > 0.05) {
+                  cw /= cs;
+                  float kc = smoothstep(0.0, 0.06, ce) * min(1.0, cs * 2.0);
+                  wT[0] = mix(wT[0], cw.r * (1.0 - nC), kc);
+                  wT[1] = mix(wT[1], cw.r * nC + cw.g * (1.0 - nBig) * 0.6, kc);
+                  wT[2] = mix(wT[2], cw.g * (0.4 + 0.6 * nBig), kc);
+                  wT[4] = mix(wT[4], cw.b, kc);
+                  wT[5] = mix(wT[5], cw.a, kc);
+                }
+              }
+            }
             // the path: the sharp window around the camera where there is one (R = path, G = R * paved),
             // with a ragged, trodden edge; the coarse whole-area mask elsewhere
             float tr = texture2D(trailMap, uv).r, paved = 0.0;
