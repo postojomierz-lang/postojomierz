@@ -61,7 +61,7 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
   fałszywy alarm „zostawiam T_RysyFar_v3 (uzywa go M_RysyFar)” (rejestr zasobów z dysku);
 - brzegi 03/05 bez zmian; wydajność 88,7 / 119,6 FPS.
 
-## Runda 5 (wysłana operatorowi, czeka na `feedback/runda_05/`)
+## Runda 5
 - odkrycie: `tatry/public/data` (base 4 m) kończy się na z = ±2543 m, kwadrat na ±2621 m → krajobraz w pasach N/S
   z DEM 55 m i zdjęcia 17 m/px. Teraz tło = `region/base` (DEM 4 m, 33×23 bloki po 1024 m, 257² próbek, format jak
   kafle) i `region/photo` (2 m/px), funkcje `dem()` i `region_photo()` na górze eksportera;
@@ -71,6 +71,23 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
 - brzegi: rampa `lvl + 0.3·tanh((sd−3)/1.2) + 0.06·(sd−3)`;
 - `build_scene.py`: mgła D, `photo_material()`, sloty po nazwie, sprzątanie z pominięciem `M_RysyFar`/`M_RysyNear`.
 - znane: w zdjęciu regionu jest poziomy szew źródła ~60 m na północ od krajobrazu (w danych, jak w przeglądarce).
+
+### Wyniki rundy 5 (`feedback/runda_05/log.txt`)
+- szew ±1,6 cm, bez płachty i załamania na S; pas S z bliska jak reszta krajobrazu; mgła D działa ze skryptu;
+- BŁĄD: M_RysyFar bez tekstury (kasowanie starej tekstury po budowie materiału nulluje odwołania);
+- krawędź N: cienka ciemna linia (fartuch przy LOD krajobrazu), pas near jaśniejszy/zieleńszy (różnica materiałów,
+  nie tekstur: zmierzone 1–5/255); brzegi: ząbki na 03, 2 drobne na 05; wydajność 86 / 119,5 FPS.
+
+## Runda 6 (wysłana operatorowi, czeka na `feedback/runda_06/`)
+- `build_scene.py`: import tekstur → `cleanup_far_assets()` → `photo_material(name, tex)` z kontrolą
+  `get_used_textures` i jednorazową przebudową; normalne warstw krajobrazu wygaszane z odległością (alpha ortofoto);
+  Roughness/Specular dalekiego terenu = krajobraz.
+- eksporter: zakładka zamiast fartucha, przecięcie brzegu na 1,5 m; zasoby `_v6`.
+- **Właściciel (29.09): po wiadomości od C czekać na jego instrukcje** (routine też tylko informuje).
+- Plan zatwierdzony przez właściciela: 1) domknięcie sceny (runda 6, potem siatka dalekiego terenu zamrożona),
+  2) wygląd z bliska (tekstury warstw z darmowych źródeł / Fab bez zakupów bez zgody), 3) chodzenie (Third Person,
+  szlak, drogowskazy-modele, licznik), 4) bieżnia FTMS przez Bluetooth (C++, rozpoznanie modelu), 5) paczka + opcjonalnie
+  Pixel Streaming.
 
 ## Pomysły na kolejne rundy
 - Tekstury warstw terenu z Megascans/Fab (bliskie podłoże jest płaskie, „piaskowe”), mocniejsze przejście ortofoto

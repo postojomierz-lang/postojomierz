@@ -13,6 +13,46 @@ Zasady:
 
 ---
 
+## Runda 6 (po rundzie 5: `feedback/runda_05/log.txt`, zrzuty 01–16c)
+
+Ostatnia runda „sceny” (etap 1 planu): po niej siatka dalekiego terenu zostaje zamrożona, a następne rundy
+zajmą się wyglądem z bliska (tekstury warstw), potem chodzeniem.
+
+Co się zmieniło w repozytorium:
+- **M_RysyFar bez zdjęcia** (błąd z rundy 5): skrypt kasował starą teksturę po zbudowaniu materiału, UE zerował
+  wtedy jego odwołania. Teraz kolejność: import tekstur → sprzątanie starych wersji → budowa materiałów, a po
+  budowie kontrola `get_used_textures` (w logu `[Rysy] M_RysyFar: tekstura T_RysyFar_v6`; jeśli materiał nie używa
+  zdjęcia, skrypt buduje go od nowa i ostrzega).
+- `export/far_terrain.obj` → **`SM_RysyFar_v6`**, tekstury **`T_RysyFar_v6`**, **`T_RysyNear_v6`** (treść jak v5):
+  zamiast pionowego fartucha pod krawędzią jest **zakładka** 4 m w głąb pod krajobrazem, 0,5 m niżej (ciemna
+  poszarpana linia na krawędzi N, 15, to był fartuch widoczny tam, gdzie dalekie LOD krajobrazu odsuwają krawędź).
+- **Kolor pasa near vs krajobraz**: tekstury po obu stronach granicy mają ten sam kolor (różnica 1–5/255), więc
+  różnicę robił materiał: krajobraz nawet z daleka miał normalne z kafelkowanych tekstur warstw. Teraz te normalne
+  wygaszają się razem z przejściem na ortofoto (z daleka tylko geometria, jak w dalekim terenie), a `M_RysyFar` /
+  `M_RysyNear` mają te same Roughness 0,9 / Specular 0,3 co krajobraz.
+- **Brzegi**: przecięcie poziomu wody 1,5 m od brzegu zamiast 3 m. W danych krawędź kwadratów wody nad gruntem
+  niższym od lustra: Morskie Oko 22 % → 0,6 %, Czarny Staw 22 % → 1,2 % obwodu (ząbki na 03).
+  `export/heightmap.png` i maski się zmieniły (**liczby importu bez zmian**).
+
+Zadania:
+1. `git pull`.
+2. Nowa mapa wysokości do istniejącego krajobrazu (jak w rundzie 5); `REIMPORT_TEXTURES = True` na ten jeden
+   przebieg (bez commitowania).
+3. `build_scene.py`. Do `log.txt` linie `[Rysy] …` dalekiego terenu i materiałów (`M_RysyFar: tekstura …`,
+   `M_RysyNear: tekstura …`, sloty, osie, kolizja, usunięte zasoby) i ostrzeżenia. Sprawdź `get_used_textures`
+   obu materiałów sam. Po skrypcie ma zostać tylko `SM_RysyFar_v6`, `T_RysyFar_v6`, `T_RysyNear_v6`. Zapisz poziom.
+4. **Krawędź N** (kamera 15) i **narożnik NE** (09): czy zniknęła ciemna linia; czy kolor/jasność pasa near zgadza
+   się teraz z krajobrazem; czy zakładka gdzieś wystaje nad krajobraz (jasne łaty tuż przy krawędzi).
+5. **Z bliska przy krawędzi** (jak 16, ale krawędź N): czy krajobraz z bliska nadal ma szczegół z tekstur warstw
+   (wygaszanie normalnych nie może go psuć w odległości do ~100 m).
+6. **Brzegi** 03 i 05 (ząbki), 06, 07.
+7. **Zrzuty** 01–11b, 15, 16 jak w rundzie 5, 1920×1080. **Wydajność** jak w rundzie 5.
+8. `ue5/feedback/runda_06/`, commit „UE5 feedback: runda 06”, push, wiadomość do sesji B „runda 06 gotowa”.
+
+Nie rób jeszcze: postaci Third Person, podmiany tekstur terenu, zmian w liczbie drzew.
+
+---
+
 ## Runda 5 (po rundzie 4: `feedback/runda_04/log.txt`, zrzuty 01–14b)
 
 Co się zmieniło w repozytorium:

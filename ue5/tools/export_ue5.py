@@ -188,9 +188,11 @@ for lk in lakes_in:
     # a smooth ramp on a smoothed signed distance (no 1.3 m raster steps in the shore line): under the
     # water up to ~3 m out, then above it; the water squares reach 5 m out and stay hidden
     sd = gaussian_filter(d_out - d_in, 1.5)
-    # steep where it crosses the level (~3 m out), so the water line follows the lake's outline instead
+    # steep where it crosses the level, so the water line follows the lake's outline instead
     # of the 1.3 m triangles and 2 cm height steps (round 4: small saw teeth on flat shores, 03 and 05)
-    ramp = lvl + 0.3 * np.tanh((sd - 3) / 1.2) + 0.06 * (sd - 3)
+    # crossing at 1.5 m, so the ground is >= 0.3 m above the water where the squares end (3.2-5 m; round
+    # 5: a crossing at 3 m left 22 % of the squares' outline over ground up to 0.4 m below the water, 03)
+    ramp = lvl + 0.3 * np.tanh((sd - 1.5) / 1.0) + 0.06 * (sd - 1.5)
     band = (sd > -1) & (sd < 16)
     H = np.where(band & (ramp < lvl), np.minimum(H, ramp), H)
     # above the level the lift fades out between 6 and 16 m (round 3: a hard cut at 6 m left small
@@ -626,7 +628,7 @@ for nm in ['rock_04', 'rocky_terrain_02', 'forrest_ground_01', 'rocky_trail']:
 #    1.9 m/px texture from the region's orthophoto (round 4: a smooth, blurry sheet with a kink where
 #    it met the 60 m grid on the 55 m DEM);
 #  - collar: joins the band's inner rim to the landscape's own border, one vertex per landscape sample
-#    (every 1.3 m, the lidar heights exactly); a skirt 15 m down under the border hides LOD cracks;
+#    (every 1.3 m, the lidar heights exactly), and a lip 4 m in under the landscape hides LOD cracks;
 #  - the rest ("far"): a 60 m grid on the 4 m DEM where the region reaches, the 55 m DEM beyond;
 #  - ring: from the grid's outline out to an asymmetric rectangle (150/120 km in +-x, 140/110 km in
 #    +-z, so the UE script tells the axes and their signs apart), 450 m a.s.l. minus the Earth's
@@ -693,18 +695,21 @@ near_f.append(grid_faces(nn, nn, 0, (na, nb_, na, nb_)))
 near_rim_in = rect_loop(na, nb_, na, nb_, nn, 0)
 near_rim_out = rect_loop(0, nn - 1, 0, nn - 1, nn, 0)
 nv += nn * nn
-# collar + skirt: the landscape's border, every sample, same order as rect_loop
+# collar + lip: the landscape's border, every sample, same order as rect_loop
 kk = np.arange(QUADS)
 bx = np.concatenate([X0 + kk * STEP, np.full(QUADS, X1), X1 - kk * STEP, np.full(QUADS, X0)])
 bz = np.concatenate([np.full(QUADS, Z0), Z0 + kk * STEP, np.full(QUADS, Z1), Z1 - kk * STEP])
 bt = np.concatenate([s_ + kk / QUADS for s_ in range(4)])
 bh = height_at(bx, bz)
 nbd = len(bx)
-VX += [bx, bx]; VZ += [bz, bz]; VH += [bh, bh - 15.0]
+# lip: from the border 4 m in under the landscape, 0.5 m below it (round 5: a vertical skirt showed as a
+# thin dark ragged line where the landscape's distant LODs pull its edge off the exact border, 15)
+lx, lz = np.clip(bx, X0 + 4, X1 - 4), np.clip(bz, Z0 + 4, Z1 - 4)
+VX += [bx, lx]; VZ += [bz, lz]; VH += [bh, height_at(lx, lz) - 0.5]
 near_f.append(stitch([(nv + k, float(bt[k])) for k in range(nbd)], near_rim_in))
 k0 = np.arange(nbd); k1 = (k0 + 1) % nbd
-near_f.append(np.stack([nv + nbd + k0, nv + k1, nv + k0], 1))
-near_f.append(np.stack([nv + nbd + k0, nv + nbd + k1, nv + k1], 1))
+lip = np.concatenate([np.stack([nv + nbd + k0, nv + k0, nv + nbd + k1], 1), np.stack([nv + nbd + k1, nv + k0, nv + k1], 1)])
+near_f.append(lip)
 nv += 2 * nbd
 N_NEAR = nv                                   # these vertices carry near-texture UVs too
 # far grid: 60 m, hole = the near band plus >= 30 m
@@ -808,8 +813,8 @@ wf = smoothstep(FR * 0.1, FR, edge_px)[..., None]
 far_img = (far_img * wf + low * (1 - wf)).round().clip(0, 255).astype(np.uint8)
 print('far texture: lowland colour', low.round(1))
 Image.fromarray(far_img).save(os.path.join(OUT, 'far_terrain.jpg'), quality=85, optimize=True)
-far_info = {'file': 'far_terrain.obj', 'texture': 'far_terrain.jpg', 'asset': 'SM_RysyFar_v5', 'texture_asset': 'T_RysyFar_v5',
-            'near_texture': 'far_near.jpg', 'near_texture_asset': 'T_RysyNear_v5', 'slots': {'near': 'far_near.jpg', 'far': 'far_terrain.jpg'},
+far_info = {'file': 'far_terrain.obj', 'texture': 'far_terrain.jpg', 'asset': 'SM_RysyFar_v6', 'texture_asset': 'T_RysyFar_v6',
+            'near_texture': 'far_near.jpg', 'near_texture_asset': 'T_RysyNear_v6', 'slots': {'near': 'far_near.jpg', 'far': 'far_terrain.jpg'},
             'bounds_cm': {'x': [round(float(VX.min()) * 100, 1), round(float(VX.max()) * 100, 1)],
                           'y': [round(float(VZ.min()) * 100, 1), round(float(VZ.max()) * 100, 1)],
                           'z': [round(float(VH.min()) * 100, 1), round(float(VH.max()) * 100, 1)]},

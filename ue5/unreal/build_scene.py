@@ -342,7 +342,13 @@ def build_landscape_material(ex, S):
     g.link(snow_a, "", snow, "Alpha")
     bright = g.op(unreal.MaterialExpressionMultiply, snow, "", g.scalar("Brightness", 1.0))
     g.out(bright, "", unreal.MaterialProperty.MP_BASE_COLOR)
-    g.out(nrm_sum, "", unreal.MaterialProperty.MP_NORMAL)
+    # the layer normals fade out where the photo takes over (round 5: far from the camera the tiled normals
+    # still shaded the landscape differently from the far terrain next to it, 15)
+    nlerp = g.node(unreal.MaterialExpressionLinearInterpolate, -150)
+    g.link(nrm_sum, "", nlerp, "A")
+    g.link(g.node(unreal.MaterialExpressionConstant3Vector, -300, constant=unreal.LinearColor(0.0, 0.0, 1.0, 1.0)), "", nlerp, "B")
+    g.link(alpha, "", nlerp, "Alpha")
+    g.out(nlerp, "", unreal.MaterialProperty.MP_NORMAL)
     g.out(g.scalar("Roughness", 0.9), "", unreal.MaterialProperty.MP_ROUGHNESS)
     g.out(g.scalar("Specular", 0.3), "", unreal.MaterialProperty.MP_SPECULAR)
     finish_material(mat)
@@ -638,20 +644,64 @@ def sky_and_light(S):
         warn("Mgla: %s" % e)
 
 
-def photo_material(name, file, tex_name):
-    """A photo on a rough, two-sided surface (the far terrain)."""
-    tex = import_texture(file, tex_name, "color")
-    mat = fresh_material(name)
-    g = Graph(mat)
-    t = g.node(unreal.MaterialExpressionTextureSampleParameter2D, -800, parameter_name="Photo")
-    if tex is not None:
-        t.set_editor_property("texture", tex)
-    g.out(g.op(unreal.MaterialExpressionMultiply, t, "RGB", g.scalar("Brightness", 1.0)), "", unreal.MaterialProperty.MP_BASE_COLOR)
-    g.out(g.scalar("Roughness", 1.0), "", unreal.MaterialProperty.MP_ROUGHNESS)
-    g.out(g.scalar("Specular", 0.2), "", unreal.MaterialProperty.MP_SPECULAR)
-    mat.set_editor_property("two_sided", True)
-    finish_material(mat)
+def photo_material(name, tex):
+    """A photo on a rough, two-sided surface (the far terrain); same roughness/specular as the landscape.
+    Checked after the build (round 5: M_RysyFar came out with no texture), rebuilt from scratch once if
+    the compiled material does not use the photo."""
+    for attempt in (1, 2):
+        mat = fresh_material(name)
+        g = Graph(mat)
+        t = g.node(unreal.MaterialExpressionTextureSampleParameter2D, -800, parameter_name="Photo")
+        if tex is not None:
+            t.set_editor_property("texture", tex)
+        g.out(g.op(unreal.MaterialExpressionMultiply, t, "RGB", g.scalar("Brightness", 1.0)), "", unreal.MaterialProperty.MP_BASE_COLOR)
+        g.out(g.scalar("Roughness", 0.9), "", unreal.MaterialProperty.MP_ROUGHNESS)
+        g.out(g.scalar("Specular", 0.3), "", unreal.MaterialProperty.MP_SPECULAR)
+        mat.set_editor_property("two_sided", True)
+        finish_material(mat)
+        try:
+            used = [str(u.get_path_name()) for u in (MEL.get_used_textures(mat) or [])]
+        except Exception as e:   # noqa: BLE001
+            warn("%s: nie sprawdzono tekstur (%s)" % (name, e))
+            return mat
+        if tex is None or str(tex.get_path_name()) in used:
+            log("%s: tekstura %s" % (name, tex.get_name() if tex else None))
+            return mat
+        warn("%s: po budowie nie uzywa %s (uzywa %s)%s" % (name, tex.get_name(), used, ", buduje od nowa" if attempt == 1 else ""))
+        if attempt == 1:
+            EAL.delete_asset(MAT_DIR + "/" + name)
     return mat
+
+
+def cleanup_far_assets(info, dest_dir, path, got):
+    """Drop what is left over from the far terrain: the OBJ importer's materials and TEX_* textures,
+    older SM_RysyFar* and T_RysyFar* / T_RysyNear* versions (by name: a project that already had them
+    reuses them on import)."""
+    keep = {path, TEX_DIR + "/" + info.get("texture_asset", "T_RysyFar"), TEX_DIR + "/" + info.get("near_texture_asset", "")}
+    ours = {MAT_DIR + "/M_RysyFar", MAT_DIR + "/M_RysyNear"}   # rebuilt right after this
+    old = [p for p in got if p != path]
+    for folder, prefixes in ((dest_dir, ("far", "near", "TEX_", "SM_RysyFar")), (TEX_DIR, ("T_RysyFar", "T_RysyNear"))):
+        for p in EAL.list_assets(folder, recursive=False, include_folder=False):
+            p = str(p).split(".")[0]
+            if p.rsplit("/", 1)[-1].startswith(prefixes):
+                old.append(p)
+    # meshes first, then materials (they hold the textures), then textures
+    rank = lambda p: 0 if isinstance(EAL.load_asset(p), unreal.StaticMesh) else (1 if isinstance(EAL.load_asset(p), unreal.MaterialInterface) else 2)
+    for p in sorted(set(old) - keep, key=rank):
+        if not EAL.does_asset_exist(p):
+            continue
+        # the level still lists the old actor until it is saved; that actor is gone (destroyed above)
+        refs = [str(r).split(".")[0] for r in (EAL.find_package_referencers_for_asset(p, False) or [])]
+        # the new mesh still points at the importer's materials until its slots are set right after this
+        refs = [r for r in refs if r not in old and r not in ours and r != path and not r.startswith(LEVEL_PATH)]
+        if refs:
+            warn("Daleki teren: zostawiam %s (uzywa go %s)" % (p, ", ".join(refs)))
+            continue
+        try:
+            EAL.delete_asset(p)
+            log("Daleki teren: usuniety stary zasob %s" % p)
+        except Exception as e:   # noqa: BLE001
+            warn("Daleki teren: nie usunieto %s: %s" % (p, e))
 
 
 def far_terrain(ex, S):
@@ -680,10 +730,16 @@ def far_terrain(ex, S):
     if not isinstance(mesh, unreal.StaticMesh):
         warn("Daleki teren: import %s nie dal siatki (StaticMesh)" % info["file"])
         return
-    # two slots from far_terrain.mtl: "near" (the 800 m band, its own 1.9 m/px photo) and "far"
-    mats = {"far": photo_material("M_RysyFar", os.path.join(ex, info["texture"]), info.get("texture_asset", "T_RysyFar"))}
+    # two slots from far_terrain.mtl: "near" (the 800 m band, its own 1.9 m/px photo) and "far".
+    # Textures first, then the clean-up of old versions, then the materials (round 5: deleting the old
+    # texture after M_RysyFar was built left the material with no texture)
+    texs = {"far": import_texture(os.path.join(ex, info["texture"]), info.get("texture_asset", "T_RysyFar"), "color")}
     if info.get("near_texture"):
-        mats["near"] = photo_material("M_RysyNear", os.path.join(ex, info["near_texture"]), info["near_texture_asset"])
+        texs["near"] = import_texture(os.path.join(ex, info["near_texture"]), info["near_texture_asset"], "color")
+    cleanup_far_assets(info, dest_dir, path, got)
+    mats = {"far": photo_material("M_RysyFar", texs["far"])}
+    if "near" in texs:
+        mats["near"] = photo_material("M_RysyNear", texs["near"])
     slots = {}
     try:
         for idx, sm in enumerate(mesh.get_editor_property("static_materials")):
@@ -697,39 +753,13 @@ def far_terrain(ex, S):
         warn("Daleki teren: nie rozpoznano slotow po nazwie (%s), zakladam near=0, far=1" % slots)
         slots = {"near": 0, "far": 1} if "near" in mats else {"far": 0}
     log("Daleki teren: sloty %s" % slots)
-    # the mesh's own slots point at our materials (the OBJ importer gives it "near"/"far" from the .mtl);
-    # then drop what is left over: the importer's materials and TEX_* textures, older SM_RysyFar* and
-    # T_RysyFar* / T_RysyNear* versions (by name: a project that already had them reuses them on import)
+    # the mesh's own slots point at our materials (the OBJ importer gives it "near"/"far" from the .mtl)
     try:
         for key, idx in slots.items():
             mesh.set_material(idx, mats[key])
         EAL.save_loaded_asset(mesh)
     except Exception as e:   # noqa: BLE001
         warn("Daleki teren: slot materialu: %s" % e)
-    keep = {path, TEX_DIR + "/" + info.get("texture_asset", "T_RysyFar"), TEX_DIR + "/" + info.get("near_texture_asset", "")}
-    ours = {MAT_DIR + "/M_RysyFar", MAT_DIR + "/M_RysyNear"}   # rebuilt above, now on the new textures
-    old = [p for p in got if p != path]
-    for folder, prefixes in ((dest_dir, ("far", "near", "TEX_", "SM_RysyFar")), (TEX_DIR, ("T_RysyFar", "T_RysyNear"))):
-        for p in EAL.list_assets(folder, recursive=False, include_folder=False):
-            p = str(p).split(".")[0]
-            if p.rsplit("/", 1)[-1].startswith(prefixes):
-                old.append(p)
-    # meshes first, then materials (they hold the textures), then textures
-    rank = lambda p: 0 if isinstance(EAL.load_asset(p), unreal.StaticMesh) else (1 if isinstance(EAL.load_asset(p), unreal.MaterialInterface) else 2)
-    for p in sorted(set(old) - keep, key=rank):
-        if not EAL.does_asset_exist(p):
-            continue
-        # the level still lists the old actor until it is saved; that actor is gone (destroyed above)
-        refs = [str(r).split(".")[0] for r in (EAL.find_package_referencers_for_asset(p, False) or [])]
-        refs = [r for r in refs if r not in old and r not in ours and not r.startswith(LEVEL_PATH)]
-        if refs:
-            warn("Daleki teren: zostawiam %s (uzywa go %s)" % (p, ", ".join(refs)))
-            continue
-        try:
-            EAL.delete_asset(p)
-            log("Daleki teren: usuniety stary zasob %s" % p)
-        except Exception as e:   # noqa: BLE001
-            warn("Daleki teren: nie usunieto %s: %s" % (p, e))
     # fit the mesh to the expected bounds whatever axis convention the OBJ importer used
     bb = mesh.get_bounding_box()
     lmin, lmax = [bb.min.x, bb.min.y, bb.min.z], [bb.max.x, bb.max.y, bb.max.z]
