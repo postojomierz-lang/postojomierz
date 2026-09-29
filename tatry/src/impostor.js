@@ -6,6 +6,13 @@
 import * as THREE from 'three';
 import { HEIGHTS } from './materials.js';
 
+// cross-fade with the 3D trees near the camera (vegetation3d.js): within fadeR of the (view) camera
+// the impostors of the kinds with `fade` dissolve with the same dither the 3D trees appear with
+export const treeFade = { cam: { value: new THREE.Vector3() }, R: { value: 0 } };
+const FADE_V = 'uniform vec3 fadeCam; varying float vFadeD;';
+const FADE_F = `uniform float fadeR; varying float vFadeD;`;
+const FADE_TEST = `if (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) < clamp((fadeR - vFadeD) / 12.0, 0.0, 1.0)) discard;`;
+
 // per-instance attribute aImp: x = variant row, y = rotation (radians), z = tint (0..1), w = wind
 const VERT_BB = /* glsl */`
   attribute vec4 aImp;
@@ -44,26 +51,26 @@ const FRAG_SAMPLE = /* glsl */`
   if (impA.a < 0.5) discard;
 `;
 
-export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1, tintAmount = 0.25, brightness = 1, upNormal = 0.2 }) {
+export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1, tintAmount = 0.25, brightness = 1, upNormal = 0.2, fade = false }) {
   const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const u = {
     impAlbedo: { value: albedo }, impNormal: { value: normal },
     impViews: { value: views }, impRows: { value: rows }, impTime: shade.time, impWind: { value: wind },
-    impBright: { value: brightness },
+    impBright: { value: brightness }, fadeCam: treeFade.cam, fadeR: treeFade.R,
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, shade, u);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + HEIGHTS + VERT_BB + '\nvarying float vTerrSh;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + billboard() + '\n vTerrSh = terrainShadow(ipos + vec3(0.0, bh * 0.6, 0.0)) * cloudShadow(ipos);')
+      .replace('#include <common>', '#include <common>\n' + HEIGHTS + VERT_BB + '\nvarying float vTerrSh;\n' + FADE_V)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + billboard() + '\n vTerrSh = terrainShadow(ipos + vec3(0.0, bh * 0.6, 0.0)) * cloudShadow(ipos);\n vFadeD = distance(ipos.xz, fadeCam.xz);')
       .replace('#include <project_vertex>', 'vec4 mvPosition = viewMatrix * vec4(bbWorld, 1.0);\ngl_Position = projectionMatrix * mvPosition;')
       .replace('#include <worldpos_vertex>', 'vec4 worldPosition = vec4(bbWorld, 1.0);');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D impAlbedo; uniform sampler2D impNormal; uniform float impBright;
         varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix;
-        varying vec3 vBR; varying vec3 vBT; varying float vTint; varying float vTerrSh;`)
-      .replace('#include <map_fragment>', FRAG_SAMPLE + `
+        varying vec3 vBR; varying vec3 vBT; varying float vTint; varying float vTerrSh;\n` + FADE_F)
+      .replace('#include <map_fragment>', (fade ? FADE_TEST : '') + FRAG_SAMPLE + `
         diffuseColor.rgb = impA.rgb * impBright * (1.0 + (vTint - 0.5) * ${(tintAmount * 2).toFixed(3)});`)
       .replace('#include <normal_fragment_maps>', `
         {
@@ -75,26 +82,27 @@ export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1,
         }`)
       .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh;');
   };
-  m.customProgramCacheKey = () => 'impostor' + upNormal;
+  m.customProgramCacheKey = () => 'impostor' + upNormal + fade;
   return m;
 }
 
 // shadow caster: the same quad turned towards the light, alpha-tested
-export function impostorDepthMaterial({ albedo, views, rows, shade, wind = 1 }) {
+export function impostorDepthMaterial({ albedo, views, rows, shade, wind = 1, fade = false }) {
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
-  const u = { impAlbedo: { value: albedo }, impViews: { value: views }, impRows: { value: rows }, impTime: shade.time, impWind: { value: wind } };
+  const u = { impAlbedo: { value: albedo }, impViews: { value: views }, impRows: { value: rows }, impTime: shade.time, impWind: { value: wind },
+    fadeCam: treeFade.cam, fadeR: treeFade.R };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + VERT_BB)
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + billboard())
+      .replace('#include <common>', '#include <common>\n' + VERT_BB + FADE_V)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + billboard() + '\n vFadeD = distance(ipos.xz, fadeCam.xz);')
       .replace('#include <project_vertex>', 'vec4 mvPosition = viewMatrix * vec4(bbWorld, 1.0);\ngl_Position = projectionMatrix * mvPosition;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform sampler2D impAlbedo; varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix;`)
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + FRAG_SAMPLE);
+        uniform sampler2D impAlbedo; varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix;\n` + FADE_F)
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + (fade ? FADE_TEST : '') + FRAG_SAMPLE);
   };
-  m.customProgramCacheKey = () => 'impostor-depth';
+  m.customProgramCacheKey = () => 'impostor-depth' + fade;
   return m;
 }
 

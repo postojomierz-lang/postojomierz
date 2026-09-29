@@ -19,8 +19,10 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
     const row = Math.floor(r() * vars.length), v = vars[row];
     const target = isYoung ? 4 + r() * 5 : (1 - 0.35 * high) * (17 + r() * 13);
     const s = target / v.height;
-    list.push({ x, y: y - (canopy ? target * 0.4 : 0.3) - v.base * s, z, w: v.width * s * (0.9 + r() * 0.2), h: v.height * s,
-      row, rot: r() * 6.283, tint: r(), wind: isYoung ? 1.2 : 0.8 });
+    const w = v.width * s * (0.9 + r() * 0.2), ty = y - (canopy ? target * 0.4 : 0.3);
+    // ty, th, cw: foot, height and crown width of the 3D tree that replaces it near the camera
+    list.push({ x, y: ty - v.base * s, z, w, h: v.height * s, row, rot: r() * 6.283, tint: r(), wind: isYoung ? 1.2 : 0.8,
+      ty, th: target, cw: w * 0.9 });
   }
   const treeMesh = impostorMesh(kinds.spruce, trees);
   const youngMesh = impostorMesh(kinds.sapling, young);
@@ -49,5 +51,5 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
   scene.add(mugoMesh);
 
   function update() {}
-  return { update, counts: { spruce: trees.length, young: young.length, mugo: mugo.length }, mugoMesh };
+  return { update, counts: { spruce: trees.length, young: young.length, mugo: mugo.length }, mugoMesh, trees, young };
 }
