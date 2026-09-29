@@ -179,16 +179,29 @@ async function main() {
   const AREA_K = Math.max(1, ((meta.inner.bounds[2] - meta.inner.bounds[0]) * (meta.inner.bounds[3] - meta.inner.bounds[1])) / (5238 * 5086));
   // 1 m terrain and 0.5 m orthophoto tiles along the trail (GUGiK)
   const TS = meta.tiles.size, TO = meta.tiles.origin;
-  const tileGrids = new Map(), tileImgs = new Map();
+  const tileGrids = new Map(), tileImgs = new Map(), tileClass = new Map();
   let loaded = 0;
   await Promise.all(meta.tiles.list.map(async ([i, j]) => {
     const n = meta.tiles.samples;
-    const [t, img] = await Promise.all([heights(`${TILES}h_${i}_${j}.bin`, n, n), bitmap(`${TILES}o_${i}_${j}.jpg`)]);
+    const [t, img, cImg, rImg] = await Promise.all([heights(`${TILES}h_${i}_${j}.bin`, n, n), bitmap(`${TILES}o_${i}_${j}.jpg`),
+      bitmap(`${TILES}c_${i}_${j}.png`).catch(() => null), bitmap(`${TILES}r_${i}_${j}.png`).catch(() => null)]);
     const x0 = TO[0] + i * TS, z0 = TO[1] + j * TS;
     tileGrids.set(i + ',' + j, new Grid(t.h, [n, n], [x0, z0, x0 + TS, z0 + TS]));
     tileImgs.set(i + ',' + j, img);
+    if (cImg && rImg) tileClass.set(i + ',' + j, { c: pixels(cImg), r: pixels(rImg) });
     status(`Pobieranie terenu 1 m… ${++loaded}/${meta.tiles.list.length}`);
   }));
+  // what the ground is, metre by metre, along the trails (tools/prepare_classes.py): 1 water, 2 rock face,
+  // 3 scree, 4 meadow, 5 dwarf pine, 6 forest, 7 snow, 8 gravel; r = ground roughness 0..255 (scree,
+  // boulders). null outside the tiles: the old rules (land cover map, photo colour) apply there
+  const groundClass = (x, z) => {
+    const i = Math.floor((x - TO[0]) / TS), j = Math.floor((z - TO[1]) / TS);
+    const t = tileClass.get(i + ',' + j);
+    if (!t) return null;
+    const u = Math.min(TS - 1, Math.floor(x - TO[0] - i * TS)), v = Math.min(TS - 1, Math.floor(z - TO[1] - j * TS));
+    const o = (v * TS + u) * 4;
+    return { c: t.c[o], r: t.r[o] };
+  };
   status('Wczytywanie tekstur…');
   const textures = await loadTextures();
   const inner = new Grid(base.h, meta.base.n, meta.base.bounds);
@@ -325,12 +338,18 @@ async function main() {
   nearTex.minFilter = THREE.LinearMipmapLinearFilter;
   // sharp path mask around the camera (width and surface per section of the trail)
   const trailWin = makeTrailWindow({ trail, px: tier(1024, 2048, 2048, 4096), size: 256, sections });
+  // the ground map in the same window, 1 m per texel: R rock face, G scree / gravel / snow, B meadow,
+  // A dwarf pine / forest (weights, smoothed by the linear filter); zero where there is no map
+  const clsData = new Uint8Array(NEAR_M * NEAR_M * 4);
+  const clsTex = new THREE.DataTexture(clsData, NEAR_M, NEAR_M, THREE.RGBAFormat);
+  clsTex.magFilter = clsTex.minFilter = THREE.LinearFilter; clsTex.needsUpdate = true;
+  const CLS_W = [[0, 0, 0, 0], [0, 0, 0, 0], [255, 0, 0, 0], [0, 255, 0, 0], [0, 0, 255, 0], [0, 0, 0, 255], [0, 0, 0, 255], [0, 255, 0, 0], [0, 255, 0, 0]];
   const near = {
     map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: { value: new THREE.Vector4(0, 0, 0, 0) },
-    trail: trailWin.map, trailRect: trailWin.rect,
+    trail: trailWin.map, trailRect: trailWin.rect, cls: { value: clsTex },
   };
   const noNear = { map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: near.patch,
-    trail: trailWin.map, trailRect: { value: new THREE.Vector4(0, 0, 0, 0) } };
+    trail: trailWin.map, trailRect: { value: new THREE.Vector4(0, 0, 0, 0) }, cls: { value: clsTex } };
   const step = tier(12, 8, 6, 4.5) * Math.sqrt(AREA_K);
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
@@ -373,6 +392,22 @@ async function main() {
       nearCtx.drawImage(img, (tx - x0) * k, (tz - z0) * k, TS * k, TS * k);
     }
     nearTex.needsUpdate = true;
+    // the ground map for the same window (tiles are on the same 1 m grid, offset by whole metres)
+    clsData.fill(0);
+    for (const [key, t] of tileClass) {
+      const [i, j] = key.split(',').map(Number);
+      const tx = TO[0] + i * TS - x0, tz = TO[1] + j * TS - z0;
+      if (tx + TS < 0 || tz + TS < 0 || tx > NEAR_M || tz > NEAR_M) continue;
+      const ox = Math.round(tx), oz = Math.round(tz);
+      for (let v = Math.max(0, -oz); v < TS && oz + v < NEAR_M; v++) {
+        let o = ((oz + v) * NEAR_M + Math.max(0, ox)) * 4;
+        for (let u = Math.max(0, -ox); u < TS && ox + u < NEAR_M; u++, o += 4) {
+          const wv = CLS_W[t.c[(v * TS + u) * 4]] || CLS_W[0];
+          clsData[o] = wv[0]; clsData[o + 1] = wv[1]; clsData[o + 2] = wv[2]; clsData[o + 3] = wv[3];
+        }
+      }
+    }
+    clsTex.needsUpdate = true;
     near.rect.value.set(x0, z0, x0 + NEAR_M, z0 + NEAR_M);
   }
   scene.add(innerMesh);
@@ -454,6 +489,8 @@ async function main() {
       if (terrain.maskAt(trailWide, x, z) > 0.05 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
       if (houses.inside(x, z, c === 10 ? 6 : 2)) continue;
       if (c === 10 && terrain.maskAt(clearing, x, z) > 0) continue;
+      const gc = groundClass(x, z);
+      if (gc && gc.c !== (c === 10 ? 6 : 5) && !(c === 10 && gc.c === 5)) continue;   // the 1 m map knows better
       const h = terrain.height(x, z);
       // Copernicus is a surface model (includes the canopy), GUGiK is bare ground
       if (c === 10 && h < 1560) spruce.push(x, h, z, terrain.hasDTM(x, z) ? 0 : 1);
@@ -478,9 +515,10 @@ async function main() {
         const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * PW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * PH);
         if (u < 0 || v < 0 || u >= PW || v >= PH) continue;
         const o = (v * PW + u) * 4, R = ph[o], Gc = ph[o + 1], B = ph[o + 2];
-        if (!(Gc > R + 4 && Gc > B + 6 && R + Gc + B < 260)) continue;
+        const gc = groundClass(x, z);
+        if (gc ? gc.c !== 5 : !(Gc > R + 4 && Gc > B + 6 && R + Gc + B < 260)) continue;
         const h = terrain.height(x, z);
-        if (h < 1500 || h > 1950 || terrain.maskAt(trailWide, x, z) > 0.3 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
+        if ((!gc && h < 1500) || h > (gc ? 2150 : 1950) || terrain.maskAt(trailWide, x, z) > 0.3 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
         if (terrain.normal(x, z, 4).y < 0.75) continue;
         pine.push(x, h, z);
       }
@@ -547,7 +585,8 @@ async function main() {
   };
   const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
-    masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY });
+    masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY,
+    groundClass });
   const deadwood = await buildDeadwood({ scene, terrain, trail, shade, quality: QUALITY, isForest: sound.isForest,
     free: (x, z) => terrain.maskAt(clearing, x, z) === 0 && terrain.maskAt(lakeMask, x, z) < 0.02 && !houses.inside(x, z, 3) });
   const dummy = new THREE.Object3D();
@@ -577,11 +616,22 @@ async function main() {
       if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 1.5)) continue;
       const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * IW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * IW);
       const o = (v * IW + u) * 4, R = ip[o], G = ip[o + 1], B = ip[o + 2];
-      if (G > R + 6 && G > B) continue; // green: grass or dwarf pine
-      if (R > 200 && G > 200 && B > 200) continue; // snow patches
+      const gc = groundClass(x, z);
+      let big = 1;
+      if (gc) {
+        // the 1 m map: stones in the scree, more and bigger where the ground is rough (boulder fields),
+        // a few on gravel and at the foot of the walls, hardly any on meadows, none in the pines or the forest
+        const rough = gc.r / 255;
+        const pAccept = gc.c === 3 ? 0.2 + Math.min(0.8, rough * 3) : gc.c === 8 ? 0.25 : gc.c === 2 ? 0.25 : gc.c === 4 ? 0.03 : 0;
+        if (r() > pAccept) continue;
+        if (gc.c === 3) big = 1 + Math.min(2.5, rough * 6);
+      } else {
+        if (G > R + 6 && G > B) continue; // green: grass or dwarf pine
+        if (R > 200 && G > 200 && B > 200) continue; // snow patches
+      }
       const nrm = terrain.normal(x, z, 3);
       if (nrm.y < 0.55) continue; // no boulders glued to cliffs
-      const s = (0.3 + Math.pow(r(), 3) * (d < 8 ? 0.8 : 2.8)) * Math.min(1, (nrm.y - 0.45) * 2.5);
+      const s = (0.3 + Math.pow(r(), 3) * (d < 8 ? 0.8 : 2.8) * big) * Math.min(1, (nrm.y - 0.45) * 2.5);
       const vi = Math.floor(r() * variants.length), vr = variants[vi];
       // rest on the slope: tilt towards the ground normal, random turn, sink a little
       q.setFromUnitVectors(up, nrm.clone().lerp(up, 0.4).normalize());
