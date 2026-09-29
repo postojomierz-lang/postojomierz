@@ -243,7 +243,11 @@ async function main() {
   }
 
   // ---------- renderer / scene
-  const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+  // 'low' (phones): no logarithmic depth (it writes the depth per pixel, which switches off the GPU's early
+  // depth test, costly on phone GPUs), no multisampling, no post-processing, no lake reflection, shadows
+  // renewed every third frame
+  const LITE = QUALITY === 'low';
+  const renderer = new THREE.WebGLRenderer({ antialias: !LITE, logarithmicDepthBuffer: !LITE, powerPreference: 'high-performance' });
   // ultra renders above the screen resolution (supersampling) while the frame rate allows (tick)
   const PR_MAX = tier(1, 1.5, 1.75, 2), PR_MIN = tier(0.6, 0.75, 1, 1);
   renderer.setPixelRatio(ULTRA ? Math.max(1, Math.min(devicePixelRatio * 1.5, PR_MAX)) : Math.min(devicePixelRatio, PR_MAX));
@@ -257,7 +261,7 @@ async function main() {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0xb8c8d8, 2.2e-5);
-  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.3, 120000);
+  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, LITE ? 0.8 : 0.3, LITE ? 40000 : 120000);
 
   const sky = new Sky();
   sky.scale.setScalar(100000);
@@ -1030,6 +1034,8 @@ async function main() {
   });
   addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 
+  let liteFrame = 0;
+  if (LITE) { renderer.shadowMap.autoUpdate = false; water.uniforms.reflOn.value = 0; }
   function tick() {
     if (stopped) return;
     const dt = Math.min(0.1, clock.getDelta());
@@ -1123,8 +1129,13 @@ async function main() {
     wildlife.update(dt, camera);
     labels.update(dt);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });
-    renderReflection();
-    composer.render();
+    if (LITE) {
+      if (liteFrame++ % 3 === 0) renderer.shadowMap.needsUpdate = true;
+      renderer.render(scene, camera);
+    } else {
+      renderReflection();
+      composer.render();
+    }
     adaptResolution();
     requestAnimationFrame(tick);
   }
