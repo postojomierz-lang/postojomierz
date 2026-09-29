@@ -13,6 +13,14 @@ Zasady:
 
 ---
 
+## ⛔ PAUZA (29.09, wieczór): właściciel potrzebuje karty graficznej
+
+**Nie uruchamiaj Unreala ani rundy 9**, dopóki ta sekcja tu jest. Nie rób nic w edytorze, nie wysyłaj wiadomości.
+Pętlę sprawdzania możesz zostawić, ale przy każdym sprawdzeniu tylko `git pull` i koniec, jeśli ta sekcja nadal jest.
+Pauzę zdejmie sesja B (usunie tę sekcję) po decyzji właściciela.
+
+---
+
 ## Runda 9 (po rundzie 8: `feedback/runda_08/log.txt`, zrzuty 01–23)
 
 Koniec etapu 2 (wygląd z bliska) i **początek etapu 3: chodzenie**. Dane w `export/` bez zmian (nic nie wczytuj).
