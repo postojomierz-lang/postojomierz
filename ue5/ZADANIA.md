@@ -13,6 +13,47 @@ Zasady:
 
 ---
 
+## Runda 8 (po rundzie 7: `feedback/runda_07/log.txt`, zrzuty)
+
+Etap 2 planu: wygląd z bliska. Siatka dalekiego terenu nadal `v6` (bez importu). **Heightmapa i maski krajobrazu bez
+zmian** (nie trzeba ich wczytywać).
+
+Diagnoza koloru pasa near z rundy 7: zieleń jest prawdziwa (na północ od krawędzi gęsty las świerkowy doliny
+Roztoki/Rybiego Potoku; stare zdjęcie panoramy pokazuje to samo, G/R ~1,7). Różnica na ekranie bierze się stąd, że
+krajobraz jest pokryty modelami świerków i kosodrzewiny (oliwkowe), a pas near był samym zdjęciem.
+
+Co się zmieniło w repozytorium:
+- **Rośliny w pasie near**: `export/foliage_spruce_band.csv` (44 tys. świerków) i `foliage_dwarfpine_band.csv`
+  (38 tys. kęp), te same reguły co w krajobrazie, z mapy pokrycia regionu; wysokości z powierzchni pasa.
+  Skrypt stawia je jako osobne aktory `Rysy_spruce_band_*`, `Rysy_dwarfpine_band_*` (przełącznik `BAND_FOLIAGE`).
+- **Tekstury warstw** (Poly Haven 2k, CC0; w `export/textures/`): Rock `rock_04`, Scree `rock_ground_02`
+  (granitowy żwir), Grass `leafy_grass` (prawdziwa trawa zamiast zabarwionej ściółki), Forest `forest_leaves_04`
+  (igliwie), DwarfPine `forest_ground_04`, Path `rocky_trail`; łagodniejsze tinty (koniec neonowej zieleni).
+  Skrypt zaimportuje je pod nowymi nazwami (`T_leafy_grass_D` …); stare `T_rocky_terrain_02_*`,
+  `T_forrest_ground_01_*` można potem usunąć.
+- **`PHOTO_SATURATION`** (góra skryptu, domyślnie 1,0): nasycenie ortofoto w krajobrazie i dalekim terenie
+  (parametr `PhotoSaturation` w materiałach).
+
+Zadania:
+1. `git pull`. (Heightmapy nie wczytuj; `REIMPORT_TEXTURES` nie jest potrzebne.)
+2. `build_scene.py`. Do `log.txt`: linie `[Rysy]` materiałów, liczby instancji `spruce_band` / `dwarfpine_band`,
+   ostrzeżenia (szczególnie `Material: nie polaczono …` przy węźle Desaturation: jeśli jest, podaj nazwy wejść węzła).
+3. **Wydajność** najpierw (Morskie Oko, szczyt, jak w rundzie 7) **z roślinami w pasie**; jeśli GPU wzrośnie o więcej niż
+   ~2 ms, zmierz też z ukrytymi aktorami `*_band_*` i podaj obie wartości.
+4. **Krawędź N** (15), **NE** (09), **z ziemi** (17, 17b) i **z pasa** (18): czy granica krajobraz/pas przestała być
+   widoczna; czy rośliny w pasie stoją na ziemi (nie wiszą, nie toną).
+5. **Tekstury z bliska**: 3 zrzuty z wysokości oczu (1,7 m) na szlaku: łąka przy Morskim Oku, piarg/skała pod Rysami,
+   las świerkowy przy Morskim Oku (19, 20, 21). Oceń każdą warstwę: skala (czy kafel się nie powtarza nachalnie),
+   kolor względem ortofoto dalej, ostrość.
+6. **Nasycenie**: ze szczytu (11) i z krawędzi N (15) porównaj `PhotoSaturation` 1,0 / 0,85 / 0,7 (w materiale
+   krajobrazu i obu dalekiego terenu ta sama wartość); wpisz wybraną do `log.txt`.
+7. Zrzuty jak w rundzie 7 + 19–21, 1920×1080. `ue5/feedback/runda_08/`, commit „UE5 feedback: runda 08”, push,
+   wiadomość do sesji B „runda 08 gotowa”.
+
+Nie rób jeszcze: postaci Third Person. Nic nie kupuj.
+
+---
+
 ## Runda 7 (po rundzie 6: `feedback/runda_06/log.txt`, zrzuty)
 
 Początek etapu 2 planu (wygląd z bliska). **Siatka dalekiego terenu zamrożona**: nadal `SM_RysyFar_v6`,

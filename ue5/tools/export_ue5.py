@@ -93,9 +93,13 @@ RG = os.path.join(ROOT, 'region')
 rm = json.load(open(os.path.join(RG, 'meta.json')))
 rb = rm['base']; RB = rb['bounds']; BLK = rb['block']
 reg_h = np.zeros((rb['n'][1], rb['n'][0]), np.float32)
+reg_dtm = np.ones(reg_h.shape, np.uint8)     # 1 = lidar ground, 0 = surface model with the canopy on it
 for rbi, rbj in rb['blocks']:
-    hb, _ = unpack_heights(os.path.join(RG, 'base', f'h_{rbi}_{rbj}.bin'), BLK + 1, BLK + 1)
-    reg_h[rbj * BLK:rbj * BLK + BLK + 1, rbi * BLK:rbi * BLK + BLK + 1] = hb[:reg_h.shape[0] - rbj * BLK, :reg_h.shape[1] - rbi * BLK]
+    hb, hm_ = unpack_heights(os.path.join(RG, 'base', f'h_{rbi}_{rbj}.bin'), BLK + 1, BLK + 1)
+    blk_ = (slice(rbj * BLK, rbj * BLK + BLK + 1), slice(rbi * BLK, rbi * BLK + BLK + 1))
+    reg_h[blk_] = hb[:reg_h.shape[0] - rbj * BLK, :reg_h.shape[1] - rbi * BLK]
+    if hm_ is not None:
+        reg_dtm[blk_] = hm_[:reg_h.shape[0] - rbj * BLK, :reg_h.shape[1] - rbi * BLK]
 reg_ok = gaussian_filter((reg_h > 100).astype(np.float32), 4)    # no-data (0) at the region's ragged edge
 
 
@@ -637,10 +641,24 @@ with open(os.path.join(OUT, 'rocks.csv'), 'w', newline='') as f:
 print('rocks', len(bx))
 
 # ------------------------------------------------------------------ default layer textures (Poly Haven, CC0)
+# 2k (round 8; UE had the browser's 1k). The browser's own set is copied from tatry/public/textures/2k, the
+# rest comes straight from Poly Haven (kept in ue5/export/textures, downloaded only when missing).
+# Round 8: real grass instead of green-tinted forest floor, pine needles, pine-forest ground, granite gravel.
 os.makedirs(os.path.join(OUT, 'textures'), exist_ok=True)
-for nm in ['rock_04', 'rocky_terrain_02', 'forrest_ground_01', 'rocky_trail']:
-    for kind in ('diff', 'nor'):
-        shutil.copyfile(os.path.join(TEX_SRC, f'{nm}_{kind}.jpg'), os.path.join(OUT, 'textures', f'{nm}_{kind}.jpg'))
+for nm in ['rock_04', 'rocky_trail', 'leafy_grass', 'forest_leaves_04', 'forest_ground_04', 'rock_ground_02']:
+    for kind, ph_kind in (('diff', 'diff'), ('nor', 'nor_gl')):
+        dst = os.path.join(OUT, 'textures', f'{nm}_{kind}.jpg')
+        src = os.path.join(TEX_SRC, '2k', f'{nm}_{kind}.jpg')
+        if os.path.isfile(src):
+            shutil.copyfile(src, dst)
+        elif not os.path.isfile(dst):
+            import urllib.request
+            url = f'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/{nm}/{nm}_{ph_kind}_2k.jpg'
+            print('downloading', url)
+            Image.open(urllib.request.urlopen(url)).convert('RGB').save(dst, quality=88, optimize=True)
+for f in os.listdir(os.path.join(OUT, 'textures')):            # the old 1k set no longer used
+    if f.split('_diff')[0].split('_nor')[0] in ('rocky_terrain_02', 'forrest_ground_01'):
+        os.remove(os.path.join(OUT, 'textures', f))
 
 # ------------------------------------------------------------------ far terrain around the landscape
 # The terrain around the 5.2 km landscape as one mesh with two materials, then a horizon ring:
@@ -811,6 +829,57 @@ n8 = [np.clip(np.round(a * 255), 0, 255).astype(np.uint8) for a in nl]
 Image.fromarray(np.stack(n8[:3], -1), 'RGB').save(os.path.join(OUT, 'far_near_masks_a.png'), optimize=True)
 Image.fromarray(np.stack([n8[3], n8[4], np.zeros_like(n8[0])], -1), 'RGB').save(os.path.join(OUT, 'far_near_masks_b.png'), optimize=True)
 print('near masks: mean rock %.2f scree %.2f grass %.2f forest %.2f pine %.2f' % tuple(float(a.mean()) for a in nl))
+
+# foliage in the band (round 8: the landscape is covered with spruce and dwarf-pine models, the band only
+# had the photo, so across the border the colour changed from the models' olive to the photo's green).
+# Same rules as the landscape's, on the region's land cover; heights from the band's surface.
+brng = np.random.default_rng(11)
+RLW, RLH = reg_lc.shape[1], reg_lc.shape[0]
+rpx, rpz = (RLB[2] - RLB[0]) / RLW, (RLB[3] - RLB[1]) / RLH
+ci0, ci1 = int((NX0 - RLB[0]) / rpx), int((NX0 + NXW - RLB[0]) / rpx) + 1
+cj0, cj1 = int((Z0 - NEAR - RLB[1]) / rpz), int((Z0 - NEAR + NXW - RLB[1]) / rpz) + 1
+sub = reg_lc[cj0:cj1, ci0:ci1]
+jj, ii = np.nonzero(np.isin(sub, [10, 20, 30]))
+cls = sub[jj, ii]
+tries = np.where(cls == 20, 2, 1)
+jj, ii, cls = np.repeat(jj, tries), np.repeat(ii, tries), np.repeat(cls, tries)
+keep = brng.random(len(cls)) < np.where(cls == 30, 0.27, 0.9)
+jj, ii, cls = jj[keep], ii[keep], cls[keep]
+fx = RLB[0] + (ci0 + ii + brng.random(len(ii))) * rpx
+fz = RLB[1] + (cj0 + jj + brng.random(len(jj))) * rpz
+outside = (fx < X0 - 3) | (fx > X1 + 3) | (fz < Z0 - 3) | (fz > Z1 + 3)
+inband = (fx > NX0 + 5) & (fx < NX0 + NXW - 5) & (fz > Z0 - NEAR + 5) & (fz < Z0 - NEAR + NXW - 5)
+fx, fz, cls = fx[outside & inband], fz[outside & inband], cls[outside & inband]
+fh = land_blend(fx, fz, dem(fx, fz))
+gx_ = (dem(fx + 4, fz) - dem(fx - 4, fz)) / 8
+gz_ = (dem(fx, fz + 4) - dem(fx, fz - 4)) / 8
+ny = 1 / np.sqrt(1 + gx_ ** 2 + gz_ ** 2)
+canopy = sample(reg_dtm.astype(np.float32), RB, fx, fz, 0) < 0.5
+is_spruce = (cls == 10) & (fh < 1560)
+is_pine = ~is_spruce & ~((cls == 30) & ((fh < 1530) | (fh > 1820))) & (fh < 1950) & (ny > 0.8)
+sx, sz_, sh, scan = fx[is_spruce], fz[is_spruce], fh[is_spruce], canopy[is_spruce]
+high = np.clip((sh - 1430) / 120, 0, 1)
+young = brng.random(len(sx)) < 0.12 + 0.6 * high
+tgt = np.where(young, 4 + brng.random(len(sx)) * 5, (1 - 0.35 * high) * (17 + brng.random(len(sx)) * 13))
+with open(os.path.join(OUT, 'foliage_spruce_band.csv'), 'w', newline='') as f:
+    w = csv.writer(f)
+    w.writerow(['x', 'y', 'z', 'yaw', 'height_m'])
+    for x, z, h, y_, t_ in zip(sx, sz_, sh - np.where(scan, tgt * 0.4, 0.8), brng.random(len(sx)) * 360, tgt):
+        w.writerow([*ue(x, z, h), round(float(y_), 1), round(float(t_), 2)])
+px0, pz0 = fx[is_pine], fz[is_pine]
+hi_ = np.clip((fh[is_pine] - 1650) / 250, 0, 1)
+m = 1 + np.floor(brng.random(len(px0)) * 3 * (1 - 0.5 * hi_)).astype(int)
+qx = np.repeat(px0, m) + (brng.random(m.sum()) - 0.5) * 7
+qz = np.repeat(pz0, m) + (brng.random(m.sum()) - 0.5) * 7
+qh = land_blend(qx, qz, dem(qx, qz))
+okq = (qx < X0 - 2) | (qx > X1 + 2) | (qz < Z0 - 2) | (qz > Z1 + 2)
+qx, qz, qh, qhi = qx[okq], qz[okq], qh[okq], np.repeat(hi_, m)[okq]
+with open(os.path.join(OUT, 'foliage_dwarfpine_band.csv'), 'w', newline='') as f:
+    w = csv.writer(f)
+    w.writerow(['x', 'y', 'z', 'yaw', 'height_m'])
+    for x, z, h, y_, t_ in zip(qx, qz, qh - 0.5, brng.random(len(qx)) * 360, (1.3 + brng.random(len(qx)) * 1.4) * (1 - 0.4 * qhi)):
+        w.writerow([*ue(x, z, h), round(float(y_), 1), round(float(t_), 2)])
+print('band foliage: spruce', len(sx), '(on canopy model', int(scan.sum()), '), dwarf pine', len(qx))
 # texture: the region's 2 m orthophoto (the same processing as the landscape's) where it reaches,
 # the old 17 m panorama photo elsewhere; 8192 px across the 35 km (4.3 m/px)
 FW = 8192; FHt = int(round(FW * (OB[3] - OB[1]) / (OB[2] - OB[0])))
@@ -854,7 +923,8 @@ print('far texture: lowland colour', low.round(1))
 Image.fromarray(far_img).save(os.path.join(OUT, 'far_terrain.jpg'), quality=85, optimize=True)
 far_info = {'file': 'far_terrain.obj', 'texture': 'far_terrain.jpg', 'asset': 'SM_RysyFar_v6', 'texture_asset': 'T_RysyFar_v6',
             'near_texture': 'far_near.jpg', 'near_texture_asset': 'T_RysyNear_v6',
-            'near_masks': ['far_near_masks_a.png', 'far_near_masks_b.png'], 'slots': {'near': 'far_near.jpg', 'far': 'far_terrain.jpg'},
+            'near_masks': ['far_near_masks_a.png', 'far_near_masks_b.png'],
+            'band_foliage': {'spruce': 'foliage_spruce_band.csv', 'dwarfpine': 'foliage_dwarfpine_band.csv'}, 'slots': {'near': 'far_near.jpg', 'far': 'far_terrain.jpg'},
             'bounds_cm': {'x': [round(float(VX.min()) * 100, 1), round(float(VX.max()) * 100, 1)],
                           'y': [round(float(VZ.min()) * 100, 1), round(float(VZ.max()) * 100, 1)],
                           'z': [round(float(VH.min()) * 100, 1), round(float(VH.max()) * 100, 1)]},

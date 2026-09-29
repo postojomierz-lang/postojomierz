@@ -96,13 +96,23 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
 - pas near nadal zieleńszy/rozmyty (krajobraz przy krawędzi oliwkowy: mieszanie z warstwami + pasy N/S bez mapy
   pokrycia = piarg); brzegi: 05 gładki, 03 kilka schodków; 87,5 / 119,4 FPS.
 
-## Runda 7 (wysłana operatorowi, czeka na `feedback/runda_07/`)
+## Runda 7
 - `fresh_material` kasuje resztki węzłów po jednym (`material_expressions()` próbuje 3 sposobów listowania),
   `used_textures()` (get_material_used_textures); `layer_blend()` i `photo_alpha()` wspólne dla krajobrazu i
   `near_material()`; maski pasa `far_near_masks_a/b.png` (funkcja `classify()` w eksporterze, `region_lc()`);
   mapa pokrycia regionu w pasach N/S krajobrazu; brzeg: przecięcie na 1 m.
 - **Siatka dalekiego terenu zamrożona na v6** (OBJ w repo nie jest regenerowany: po eksporcie przywrócić
   `git checkout -- ue5/export/far_terrain.obj`, chyba że siatka ma się celowo zmienić → `_v7`).
+
+### Wyniki rundy 7 (`feedback/runda_07/log.txt`)
+- materiały czyste (0 osieroconych węzłów, 0 duplikatów), M_RysyFar ze zdjęciem, M_RysyNear 11 tekstur, 0 ostrzeżeń;
+- pas near nadal zieleńszy z góry, neonowe łaty z bliska; brzegi 05 gładki, 03 2–3 malutkie załamania; 88,5 / 118,7 FPS.
+- analiza: zieleń na N jest prawdziwa (las; outer.jpg też G/R ~1,7), różnicę robią modele roślin na krajobrazie.
+
+## Runda 8 (wysłana operatorowi, czeka na `feedback/runda_08/`)
+- rośliny w pasie near (`foliage_*_band.csv`, `BAND_FOLIAGE`), maska DSM/DTM regionu (`reg_dtm`) do obniżania drzew;
+- tekstury warstw Poly Haven 2k (pobierane przez eksporter, jeśli nie ma ich w `tatry/public/textures/2k`);
+- `photo_grade()` (Desaturation, `PhotoSaturation`) w trzech materiałach; do wyboru przez operatora.
 
 ## Pomysły na kolejne rundy
 - Tekstury warstw terenu z Megascans/Fab (bliskie podłoże jest płaskie, „piaskowe”), mocniejsze przejście ortofoto

@@ -77,6 +77,9 @@ FOG_MAX_OPACITY = 0.7
 FOG_START_DISTANCE_M = 5000
 FOG_COLOR = (0.45, 0.55, 0.70)   # Fog Inscattering Color (linear)
 
+BAND_FOLIAGE = True         # spruce and dwarf pine also in the far terrain's 800 m band (round 8)
+PHOTO_SATURATION = 1.0      # saturation of the orthophoto in the landscape and far-terrain materials (1 = as is)
+
 FAR_TERRAIN = True           # the 35 x 29 km terrain around the landscape (far_terrain.obj), no more empty horizon
 
 # =====================================================================================================
@@ -317,11 +320,13 @@ def color_instance(name, parent, rgb, roughness=None):
 
 # layer name, weight texture (0 a, 1 b), channel, default texture, tile metres, tint
 LAYERS = [
+    # round 8: Poly Haven 2k; real grass instead of green-tinted forest floor, pine needles under the spruce,
+    # pine-forest ground under the dwarf pine, granite gravel for scree (tiles = the textures' real size)
     ("Rock", 0, "R", "rock_04", 6.0, (0.95, 0.95, 0.95)),
-    ("Scree", 0, "G", "rocky_terrain_02", 4.0, (1.0, 1.0, 1.0)),
-    ("Grass", 0, "B", "forrest_ground_01", 3.0, (0.55, 0.75, 0.35)),
-    ("Forest", 1, "R", "forrest_ground_01", 3.0, (1.0, 1.0, 1.0)),
-    ("DwarfPine", 1, "G", "forrest_ground_01", 3.0, (0.6, 0.8, 0.5)),
+    ("Scree", 0, "G", "rock_ground_02", 3.0, (1.0, 1.0, 1.0)),
+    ("Grass", 0, "B", "leafy_grass", 2.0, (0.95, 1.0, 0.9)),
+    ("Forest", 1, "R", "forest_leaves_04", 1.5, (0.8, 0.78, 0.72)),
+    ("DwarfPine", 1, "G", "forest_ground_04", 3.2, (0.85, 0.92, 0.8)),
     ("Path", 1, "B", "rocky_trail", 2.5, (1.0, 1.0, 1.0)),
 ]
 
@@ -343,6 +348,16 @@ def layer_blend(g, ground, mtex, metres, overrides=None):
         col_sum = cw if col_sum is None else g.op(unreal.MaterialExpressionAdd, col_sum, "", cw)
         nrm_sum = nw if nrm_sum is None else g.op(unreal.MaterialExpressionAdd, nrm_sum, "", nw)
     return col_sum, nrm_sum
+
+
+def photo_grade(g, photo):
+    """The orthophoto's RGB with its saturation set by PhotoSaturation (PHOTO_SATURATION at the top)."""
+    d = g.node(unreal.MaterialExpressionDesaturation, -250)
+    g.link(photo, "RGB", d, "")
+    frac = g.node(unreal.MaterialExpressionOneMinus, -350)
+    g.link(g.scalar("PhotoSaturation", PHOTO_SATURATION), "", frac, "")
+    g.link(frac, "", d, "Fraction")
+    return d
 
 
 def photo_alpha(g):
@@ -381,7 +396,7 @@ def build_landscape_material(ex, S):
     alpha = photo_alpha(g)
     lerp = g.node(unreal.MaterialExpressionLinearInterpolate, -200)
     g.link(col_sum, "", lerp, "A")
-    g.link(photo, "RGB", lerp, "B")
+    g.link(photo_grade(g, photo), "", lerp, "B")
     g.link(alpha, "", lerp, "Alpha")
     snow_a = g.op(unreal.MaterialExpressionMultiply, mtex[2], "R", g.scalar("SnowAmount", 0.0))
     snow = g.node(unreal.MaterialExpressionLinearInterpolate, -150)
@@ -509,7 +524,7 @@ def mesh_bounds(mesh):
     return b.min, b.max
 
 
-def vegetation(ex, kind, csv_name, meshes, color, cull_m, parent_mat):
+def vegetation(ex, kind, csv_name, meshes, color, cull_m, parent_mat, tag=""):
     rows = read_csv(os.path.join(ex, csv_name))
     rnd = random.Random(sum(map(ord, kind)))
     if FOLIAGE_FRACTION < 1:
@@ -531,8 +546,8 @@ def vegetation(ex, kind, csv_name, meshes, color, cull_m, parent_mat):
                 task.enter_progress_frame(min(5000, len(rows) - k))
             per_mesh_add(kind, r, rnd, info, mesh_list, per_mesh, placeholder)
     for vi, (m, tr) in enumerate(zip(mesh_list, per_mesh)):
-        instanced_actor("Rysy_%s_%d" % (kind, vi), m, tr, mat, cull_m)
-    report.append("%s: %d instancji%s" % (kind, len(rows), " (zastepcze ksztalty)" if placeholder else ""))
+        instanced_actor("Rysy_%s%s_%d" % (kind, tag, vi), m, tr, mat, cull_m)
+    report.append("%s%s: %d instancji%s" % (kind, tag, len(rows), " (zastepcze ksztalty)" if placeholder else ""))
 
 
 def per_mesh_add(kind, r, rnd, info, mesh_list, per_mesh, placeholder):
@@ -702,7 +717,7 @@ def photo_material(name, tex):
         t = g.node(unreal.MaterialExpressionTextureSampleParameter2D, -800, parameter_name="Photo")
         if tex is not None:
             t.set_editor_property("texture", tex)
-        g.out(g.op(unreal.MaterialExpressionMultiply, t, "RGB", g.scalar("Brightness", 1.0)), "", unreal.MaterialProperty.MP_BASE_COLOR)
+        g.out(g.op(unreal.MaterialExpressionMultiply, photo_grade(g, t), "", g.scalar("Brightness", 1.0)), "", unreal.MaterialProperty.MP_BASE_COLOR)
         g.out(g.scalar("Roughness", 0.9), "", unreal.MaterialProperty.MP_ROUGHNESS)
         g.out(g.scalar("Specular", 0.3), "", unreal.MaterialProperty.MP_SPECULAR)
         mat.set_editor_property("two_sided", True)
@@ -741,7 +756,7 @@ def near_material(tex, masks):
         alpha = photo_alpha(g)
         lerp = g.node(unreal.MaterialExpressionLinearInterpolate, -200)
         g.link(col_sum, "", lerp, "A")
-        g.link(photo, "RGB", lerp, "B")
+        g.link(photo_grade(g, photo), "", lerp, "B")
         g.link(alpha, "", lerp, "Alpha")
         nlerp = g.node(unreal.MaterialExpressionLinearInterpolate, -150)
         g.link(nrm_sum, "", nlerp, "A")
@@ -980,6 +995,10 @@ signposts(EXPORT)
 vegetation(EXPORT, "spruce", "foliage_spruce.csv", SPRUCE_MESHES, (0.03, 0.09, 0.03), 0, SIMPLE)
 vegetation(EXPORT, "dwarfpine", "foliage_dwarfpine.csv", DWARFPINE_MESHES, (0.05, 0.13, 0.03), 3000, SIMPLE)
 vegetation(EXPORT, "rock", "rocks.csv", ROCK_MESHES, (0.42, 0.41, 0.39), 900, SIMPLE)
+band = (SETTINGS.get("far_terrain") or {}).get("band_foliage", {})
+if BAND_FOLIAGE and FAR_TERRAIN and band:
+    vegetation(EXPORT, "spruce", band["spruce"], SPRUCE_MESHES, (0.03, 0.09, 0.03), 0, SIMPLE, "_band")
+    vegetation(EXPORT, "dwarfpine", band["dwarfpine"], DWARFPINE_MESHES, (0.05, 0.13, 0.03), 3000, SIMPLE, "_band")
 
 ps = SETTINGS["player_start_cm"]
 spawn(unreal.PlayerStart, (ps["x"], ps["y"], ps["z"]), ps["yaw"], "Start_MorskieOko", "Rysy")
