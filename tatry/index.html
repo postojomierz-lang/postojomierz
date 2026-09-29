@@ -90,6 +90,9 @@
   }
   /* phone upright: the facts in one strip at the top, the controls in a bar above the profile, time of
      day and weather behind the ⚙ button */
+  /* frame rate, always on screen */
+  #fps { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; pointer-events: none;
+         font: 600 12px system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.45); border-radius: 10px; padding: 2px 8px; }
   .phone-only { display: none; }
   @media (max-width: 560px) and (orientation: portrait) {
     #hud { left: 8px; right: 8px; top: 8px; padding: 6px 10px; }
@@ -103,6 +106,7 @@
     #controls .phone-only { display: inline-block; }
     #bottom { left: 8px; right: 8px; bottom: 8px; }
     #place { top: 14%; font-size: 19px; }
+    #fps { top: 78px; }
   }
 </style>
 </head>
@@ -110,6 +114,7 @@
 <div id="app"></div>
 
 <div id="toast"></div>
+<div id="fps">…</div>
 <div id="hud" class="panel">
   <h1><span id="route-title">Morskie Oko → Rysy</span> <span>prototyp</span></h1>
   <dl class="stats">
