@@ -83,7 +83,8 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
   `get_used_textures` i jednorazową przebudową; normalne warstw krajobrazu wygaszane z odległością (alpha ortofoto);
   Roughness/Specular dalekiego terenu = krajobraz.
 - eksporter: zakładka zamiast fartucha, przecięcie brzegu na 1,5 m; zasoby `_v6`.
-- **Właściciel (29.09): po wiadomości od C czekać na jego instrukcje** (routine też tylko informuje).
+- ~~Właściciel (29.09): po wiadomości od C czekać na jego instrukcje~~ → **później tego dnia: zgoda na wszystkie
+  kolejne punkty planu, działać samodzielnie** (routine też działa sama); nadal nic nie kupować bez zgody.
 - Plan zatwierdzony przez właściciela: 1) domknięcie sceny (runda 6, potem siatka dalekiego terenu zamrożona),
   2) wygląd z bliska (tekstury warstw z darmowych źródeł / Fab bez zakupów bez zgody), 3) chodzenie (Third Person,
   szlak, drogowskazy-modele, licznik), 4) bieżnia FTMS przez Bluetooth (C++, rozpoznanie modelu), 5) paczka + opcjonalnie
