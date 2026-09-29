@@ -145,10 +145,13 @@ for lk in lakes_in:
     # the shore line is drawn by the terrain, not by the water squares: a 1 m strip just under the
     # water, then the ground rises above the level for the next 3 m (the squares reach 1.5-3.5 m out
     # and their stepped edge stays hidden under it)
-    shore = (~inside) & (d_out < 1.0) & (H < lvl + 0.25)
-    H = np.where(shore, np.minimum(H, lvl - 0.12), H)
-    lip = (~inside) & (d_out >= 1.0) & (d_out < 4.5)
-    H = np.where(lip, np.maximum(H, lvl + 0.08 + 0.04 * (d_out - 1.0)), H)
+    # a smooth ramp on a smoothed signed distance (no 1.3 m raster steps in the shore line): under the
+    # water up to ~3 m out, then above it; the water squares reach 5 m out and stay hidden
+    sd = gaussian_filter(d_out - d_in, 1.5)
+    ramp = lvl - 0.25 + 0.085 * sd
+    band = (sd > -1) & (sd < 6)
+    H = np.where(band & (ramp < lvl), np.minimum(H, ramp), H)
+    H = np.where(band & (ramp >= lvl), np.maximum(H, ramp), H)
 print('lakes in the landscape:', [lk['name'] for lk in lakes_in])
 
 # terraces under the buildings (same rule as tatry/src/buildings.js: 70th percentile of the footprint)
@@ -347,12 +350,12 @@ with open(os.path.join(OUT, 'trail.csv'), 'w', newline='') as f:
 print('trail', len(tr), 'points,', round(float(dist[-1])), 'm, from', round(float(th[0])), 'to', round(float(th[-1])), 'm')
 
 
-# lakes: water planes as a quadtree of squares covering the ring grown by 1.5 m
+# lakes: water planes as a quadtree of squares covering the ring grown by 3.2-5 m
 def lake_cells(ring):
     from shapely.geometry import Polygon, box
     from shapely.prepared import prep
     poly = Polygon(ring).buffer(0)
-    full, touch = prep(poly.buffer(1.5)), prep(poly.buffer(0.4))
+    full, touch = prep(poly.buffer(5.0)), prep(poly.buffer(3.2))
     minx, minz, maxx, maxz = poly.bounds
     size = 64.0
     cells, todo = [], []
@@ -572,10 +575,18 @@ print('far terrain')
 OB = meta['outer']['bounds']
 FAR_STEP = 60.0
 X1, Z1 = X0 + EXT, Z0 + EXT
-fxs = np.unique(np.concatenate([np.arange(OB[0], OB[2], FAR_STEP), [OB[2], X0, X1]]))
-fzs = np.unique(np.concatenate([np.arange(OB[1], OB[3], FAR_STEP), [OB[3], Z0, Z1]]))
+BAND = 240.0                       # blend from the landscape's edge to the 55 m DEM over this width
+dense = lambda a: np.arange(a - BAND, a + BAND + 0.1, 6.0)
+fxs = np.unique(np.round(np.concatenate([np.arange(OB[0], OB[2], FAR_STEP), [OB[2], X0, X1], dense(X0), dense(X1)]), 2))
+fzs = np.unique(np.round(np.concatenate([np.arange(OB[1], OB[3], FAR_STEP), [OB[3], Z0, Z1], dense(Z0), dense(Z1)]), 2))
+fxs = fxs[(fxs >= OB[0]) & (fxs <= OB[2])]; fzs = fzs[(fzs >= OB[1]) & (fzs <= OB[3])]
 FX, FZ = np.meshgrid(fxs, fzs)
 FH = sample(outer, OB, FX, FZ, 3)
+# outside the square, near it: from the landscape's own edge height (lidar) to the DEM
+cx_, cz_ = np.clip(FX, X0, X1), np.clip(FZ, Z0, Z1)
+dout = np.hypot(FX - cx_, FZ - cz_)
+wb = smoothstep(0, BAND, dout)
+FH = np.where(dout > 0, height_at(cx_, cz_) * (1 - wb) + FH * wb, FH)
 on_edge = (np.isclose(FX, X0) | np.isclose(FX, X1)) & (FZ >= Z0 - 1e-6) & (FZ <= Z1 + 1e-6) | \
           (np.isclose(FZ, Z0) | np.isclose(FZ, Z1)) & (FX >= X0 - 1e-6) & (FX <= X1 + 1e-6)
 inner_sq = (FX > X0 + 1e-6) & (FX < X1 - 1e-6) & (FZ > Z0 + 1e-6) & (FZ < Z1 - 1e-6)
@@ -600,11 +611,54 @@ with open(os.path.join(OUT, 'far_terrain.obj'), 'w') as f:
             # winding so the faces point up with Z up and Y south (a left-handed frame, like UE's)
             f.write('f %d/%d %d/%d %d/%d\n' % (a, a, b, b, c, c))
             f.write('f %d/%d %d/%d %d/%d\n' % (b, b, d, d, c, c))
+    # horizon ring: from the mesh's outline out to ~150 km at lowland height, coloured by the edge
+    # (fades into the haze; no more empty band under the sky)
+    edge_idx = [(0, i) for i in range(nxf)] + [(j, nxf - 1) for j in range(1, nzf)] + \
+               [(nzf - 1, i) for i in range(nxf - 2, -1, -1)] + [(j, 0) for j in range(nzf - 2, 0, -1)]
+    base_n = nzf * nxf
+    cxm, czm = (OB[0] + OB[2]) / 2, (OB[1] + OB[3]) / 2
+    ring = []
+    for j, i in edge_idx:
+        dx, dz = FX[j, i] - cxm, FZ[j, i] - czm
+        # a different reach on each side keeps the outline asymmetric (the UE script tells the axes apart by it)
+        if abs(dx) >= abs(dz): k = (150000.0 if dx >= 0 else 120000.0) / max(abs(dx), 1)
+        else: k = (140000.0 if dz >= 0 else 110000.0) / max(abs(dz), 1)
+        ring.append((cxm + dx * k, czm + dz * k))
+        f.write('v %.1f %.1f %.1f\n' % (ring[-1][0] * 100, ring[-1][1] * 100, 45000.0))
+    for j, i in edge_idx:
+        f.write('vt %.6f %.6f\n' % ((FX[j, i] - OB[0]) / (OB[2] - OB[0]), 1 - (FZ[j, i] - OB[1]) / (OB[3] - OB[1])))
+    m = len(edge_idx)
+    for e in range(m):
+        (j0, i0), (j1, i1) = edge_idx[e], edge_idx[(e + 1) % m]
+        a, b = j0 * nxf + i0 + 1, j1 * nxf + i1 + 1
+        vt_a, vt_b = a, b
+        oa, ob = base_n + e + 1, base_n + (e + 1) % m + 1
+        ta, tb = base_n + e + 1, base_n + (e + 1) % m + 1
+        f.write('f %d/%d %d/%d %d/%d\n' % (a, vt_a, oa, ta, b, vt_b))
+        f.write('f %d/%d %d/%d %d/%d\n' % (b, vt_b, oa, ta, ob, tb))
 open(os.path.join(OUT, 'far_terrain.mtl'), 'w').write('newmtl far\nKd 1 1 1\nmap_Kd far_terrain.jpg\n')
-shutil.copyfile(os.path.join(DATA, 'outer.jpg'), os.path.join(OUT, 'far_terrain.jpg'))
-far_info = {'file': 'far_terrain.obj', 'texture': 'far_terrain.jpg',
-            'bounds_cm': {'x': [round(OB[0] * 100, 1), round(OB[2] * 100, 1)], 'y': [round(OB[1] * 100, 1), round(OB[3] * 100, 1)],
-                          'z': [round(float(FH.min()) * 100, 1), round(float(FH.max()) * 100, 1)]},
+# texture: the region's 2 m orthophoto (the same processing as the landscape's) where it reaches,
+# the old 17 m panorama photo elsewhere; 8192 px across the 35 km (4.3 m/px)
+FW = 8192; FHt = int(round(FW * (OB[3] - OB[1]) / (OB[2] - OB[0])))
+far_img = np.asarray(Image.open(os.path.join(DATA, 'outer.jpg')).convert('RGB').resize((FW, FHt), Image.BICUBIC)).copy()
+RG = os.path.join(ROOT, 'region')
+if os.path.isfile(os.path.join(RG, 'meta.json')):
+    rm = json.load(open(os.path.join(RG, 'meta.json')))
+    rb = rm['base']; bm_ = rb['block'] * rb['step']
+    mpp = (OB[2] - OB[0]) / FW
+    for bi, bj in rb['blocks']:
+        bx0, bz0 = rb['bounds'][0] + bi * bm_, rb['bounds'][1] + bj * bm_
+        c0, r0 = int(round((bx0 - OB[0]) / mpp)), int(round((bz0 - OB[1]) / mpp))
+        sz = int(round(bm_ / mpp))
+        if c0 < 0 or r0 < 0 or c0 + sz > FW or r0 + sz > FHt:
+            continue
+        blk = Image.open(os.path.join(RG, 'photo', f'o_{bi}_{bj}.jpg')).convert('RGB').resize((sz, sz), Image.LANCZOS)
+        far_img[r0:r0 + sz, c0:c0 + sz] = np.asarray(blk)
+Image.fromarray(far_img).save(os.path.join(OUT, 'far_terrain.jpg'), quality=85, optimize=True)
+far_info = {'file': 'far_terrain.obj', 'texture': 'far_terrain.jpg', 'asset': 'SM_RysyFar_v3', 'texture_asset': 'T_RysyFar_v3',
+            'bounds_cm': {'x': [round(min(r[0] for r in ring) * 100, 1), round(max(r[0] for r in ring) * 100, 1)],
+                          'y': [round(min(r[1] for r in ring) * 100, 1), round(max(r[1] for r in ring) * 100, 1)],
+                          'z': [45000.0, round(float(FH.max()) * 100, 1)]},
             'note': 'vertices already in UE cm; the script fits the imported mesh to these bounds (axis order and signs)'}
 i_ps = int(np.searchsorted(dist, 15.0))
 
