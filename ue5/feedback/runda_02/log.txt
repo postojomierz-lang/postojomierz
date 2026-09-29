@@ -1,0 +1,109 @@
+UE5 feedback: runda 02, 2026-09-29 (operator: lokalny Claude przez Unreal MCP)
+==========================================================================
+
+Sprzęt / wersja: UE 5.8.3, Windows 11, NVIDIA GeForce RTX 4070 Ti SUPER, pulpit 2560x1440 (skalowanie 125 %).
+Projekt: Documents\Unreal Projects\Rysy, poziom /Game/Rysy/Maps/Rysy. build_scene.py NIE był zmieniany.
+
+Jak sterowałem edytorem
+- Unreal MCP (wtyczka ModelContextProtocol) nie ma narzędzia „uruchom Python”, więc polecenia `py "plik.py"`
+  wpisywałem w pole konsoli Cmd (SlateInspectorToolset.Type). Działa jak Tools → Execute Python Script.
+- Okienka EditorDialog.show_message na czas skryptu podmieniałem na wpis w logu (żeby nie blokowały edytora).
+
+1. git pull: OK (zmiany z rundy 2 pobrane).
+
+2. Nowa mapa wysokości do ISTNIEJĄCEGO krajobrazu (bez tworzenia nowego)
+- Zrobione z Pythona zamiast przez UI: heightmap.png zaimportowany jako tekstura G16 (filtr Nearest, bez mipmap),
+  narysowany materiałem (wartość × 65535) do render targetu RTF_RGBA32F 4033×4033, potem
+  Landscape.landscape_import_heightmap_from_render_target(rt, False, edit_layer_index=0).
+  Tymczasowe zasoby (/Game/Rysy/Temp) usunięte.
+- Kontrola (line trace w edytorze vs wartości odczytane z PNG): 305 losowych punktów: różnica od −0,5 do 0 cm;
+  80 punktów, które zmieniły się między starą a nową mapą (brzegi jezior, 3364 próbek zmienionych o >20 jednostek):
+  różnica od −0,2 do 0 cm. Położenie/skala krajobrazu bez zmian (−262080, −262080, 184000 / 130, 130, 285.2).
+
+3. build_scene.py (jeden przebieg, 23 s, bez błędów Pythona)
+  [Rysy] Daleki teren: osie [0, 1, 2], znaki [1, -1, 1], skala 1/1
+  Podsumowanie: krajobraz znaleziony + MI_RysyLandscape; daleki teren; jeziora 14; budynki 23; drogowskazy 4;
+  szlak 953 pkt / 4633 m; znaczniki 19; spruce 38 620; dwarfpine 49 235; rock 11 052.
+  Ostrzeżenie `get_object is deprecated` zniknęło.
+
+4. Sprawdzenie
+a) Daleki teren (zrzuty 04, 10, 08, 09)
+- Nie jest przesunięty, obrócony ani lustrzany. Transform aktora Rysy_DalekiTeren: loc ≈ (0,0,0), rot roll 180,
+  scale (1, 1, −1); wierzchołki siatki po transformacji dokładnie = współrzędne z far_terrain.obj
+  (sprawdzone na 5 wierzchołkach, błąd < 0,1 cm). Grzbiety i doliny przechodzą ciągle przez granicę.
+- Siatka ma włączone Nanite (fallback tylko 3312 wierzchołków, ale renderuje się Nanite). Brak kolizji (celowo).
+- Szew na granicy 5,2 km: wierzchołki brzegowe dalekiego terenu (co ~60 m) leżą na krawędzi krajobrazu (±0,5–0,8 m),
+  ale MIĘDZY nimi linia 60 m nie nadąża za krawędzią lidaru 1,3 m. Policzone z danych (heightmap vs OBJ) wzdłuż
+  każdej krawędzi: far − krajobraz:
+    N: −12,5 … +6,4 m (|d|>5 m na 3 % długości)    S: −18,4 … +8,4 m (8 %)
+    W:  −6,9 … +8,3 m (3 %)                        E: −17,6 … +10,8 m (7 %)
+  Widać to z bliska jako niskie progi/fałdy wzdłuż granicy (08, 09). Bardziej rzuca się w oczy różnica tekstury:
+  far_terrain.jpg 2048 px na 35 km (~17 m/px) jest rozmyty i ma inny kolor/jasność niż ortofoto krajobrazu,
+  więc granica jest widoczna jako zmiana ostrości (09: narożnik NE z lasem na krajobrazie vs rozmyta zieleń obok;
+  08: krawędź S, na dalekim terenie widać też ciemną plamę-prostokąt w teksturze).
+  Pomysł: gęstsze wierzchołki na pasie przy granicy (np. co 1,3–5 m wzdłuż krawędzi) albo spódnica
+  (skirt) krajobrazu schodząca 20–30 m w dół pod daleki teren.
+- Poza dalekim terenem (> ~15–20 km) nadal jest płaski, ciemnogranatowy pas aż po horyzont (04, 10, 01 u góry).
+  Szarozielony grunt atmosfery tego nie zmienił – ten pas wygląda na mgłę/atmosferę nad pustką za siatką.
+
+b) Ekspozycja (Play, PlayerStart przy Morskim Oku). Porównałem 3 wartości (średnia jasność 0–255 w obszarach
+   trawa / niebo / góry w cieniu, 0 % przepalonych pikseli we wszystkich):
+     Exposure Compensation −1,0: 126 / 108 / 46
+     Exposure Compensation −0,5: 152 / 123 / 61
+     Exposure Compensation  0,0: 174 / 162 / 80
+   WYBRANA WARTOŚĆ: −0,5 (EXPOSURE_BIAS = -0.5). Trawa nie jest biała, niebo nie ciemne, cienie gór czytelniejsze
+   niż przy −1,0. Ustawione w Rysy_PostProcess na poziomie (skrypt przy kolejnym uruchomieniu wróci do −1,0,
+   proszę zmienić stałą w build_scene.py). Auto exposure: histogram, bias override.
+
+c) Brzegi jezior
+- Morskie Oko z bliska (06) i Czarny Staw z bliska (07): kwadratowe schodki zniknęły, brzeg jest gładki.
+- Zostały drobne ząbki na PŁASKICH odcinkach brzegu: 05 (prawy dolny róg, brzeg Morskiego Oka koło PlayerStart,
+  piłokształtna krawędź wody na pasie ~30 m) i 03 (lewa strona, brzeg Czarnego Stawu przy szlaku).
+  Tam grunt przy lustrze jest prawie płaski, więc 1 m pasa nie wystarcza, żeby schować krawędź kwadratów wody.
+
+d) Widok z PlayerStart (05): nic nie wisi w powietrzu. Etykiety nad drogowskazami zniknęły, beżowej belki
+   i poskręcanych kształtów z rundy 1 nie ma. Drogowskaz i czerwony słupek stoją na ziemi. PlayerStart jest tuż przy
+   ścianie schroniska (lewa krawędź kadru), ale nie w środku.
+
+e) M_RysyLandscape: Requesting an invalid TextureIndex
+- Nadal jest, ale TYLKO w trakcie budowania materiału przez skrypt: po przebiegu: „(8 / 8)” (w rundzie 1 było 8 / 6),
+  w teście drugiego przebudowania: „(9 / 8)”. Po restarcie edytora i wczytaniu gotowego materiału z dysku
+  ostrzeżenia nie ma (0 wystąpień w logu), materiał kompiluje się i działa.
+- Ustaliłem miejsce: pojawia się dokładnie po fresh_material() → MEL.delete_all_material_expressions(mat), przy
+  tworzeniu PIERWSZEGO nowego węzła (MaterialExpressionLandscapeLayerCoords, set_editor_property mapping_scale),
+  zanim powstanie jakikolwiek TextureSample. Czyli to stary, nieaktualny zestaw tekstur materiału (po skasowaniu
+  węzłów) odpytany przy PostEditChange nowego węzła, a nie konkretny węzeł grafu. Nieszkodliwe.
+  Możliwa poprawka: po delete_all_material_expressions od razu MEL.recompile_material(mat), albo usuwać i tworzyć
+  zasób materiału od nowa (nie testowałem, patrz niżej).
+- UWAGA: przy drugim przebudowaniu M_RysyLandscape w tej samej sesji edytor się wysypał w MEL.recompile_material
+  (EXCEPTION_ACCESS_VIOLATION w python311.dll, wywołane z MaterialEditor). To był mój skrypt testowy
+  (build_landscape_material uruchomiony ponownie po chwili), nie build_scene.py. Materiał na dysku był już zapisany
+  z poprzedniego przebiegu, nic nie przepadło.
+
+5. Zrzuty (1920×1080, HighResShot z CameraActor w edytorze; 05 i 10 w trybie Play; ekspozycja −0,5)
+   01_widok_z_gory.jpg                         (-110000, -260000, 360000) pitch -35 yaw 63
+   02_brzeg_Morskiego_Oka.jpg                  (-34058, -113297, 140750) pitch 12 yaw 63
+   03_Czarny_Staw_sciezka.jpg                  (13930, 6830, 158780) pitch -8 yaw 68.5
+   04_szczyt_Rysow.jpg                         (88041, 127023, 252000) pitch -20 yaw -117
+   05_PlayerStart_w_strone_jeziora_Play.jpg    Play, nowy PlayerStart (-37760, -115120), yaw 75.2
+   06_Morskie_Oko_brzeg_zblizenie.jpg          (-15500, -75000, grunt+3 m) pitch -12 yaw -100
+   07_Czarny_Staw_brzeg_zblizenie.jpg          (19500, 11000, grunt+3 m) pitch -10 yaw -137
+   08_szew_dalekiego_terenu_krawedz_S.jpg      (60000, 230000, grunt na krawędzi+250 m) pitch -35 yaw 90
+   09_szew_dalekiego_terenu_naroznik_NE.jpg    (230000, -230000, grunt w narożniku+400 m) pitch -40 yaw -45
+   10_szczyt_Rysow_Play.jpg                    Play, pionek na (88041, 127023, 251500) pitch -15 yaw -117
+
+6. Wydajność (Play w nowym oknie na cały ekran: 2560×1380 px, bo Alt+Enter i r.SetRes w oknie PIE nie
+   przełączyły na prawdziwy pełny ekran; r.ScreenPercentage auto (Desktop.Mode 1); pomiar StartFPSChart/StopFPSChart)
+   - Morskie Oko (PlayerStart): 90,6 FPS średnio (330 s, 29 906 klatek), GPU 10,1 ms, Game 4,4 ms,
+     1 przycięcie 0,48 s (render thread), 0 % klatek poniżej 60 FPS, 24,5 % poniżej 120.
+   - Szczyt Rysów: 119,7 FPS (27,5 s, 3295 klatek), GPU 6,7 ms, Game 4,4 ms, 0 przycięć, 0,24 % poniżej 120.
+     (wygląda na ograniczenie edytora do 120 FPS – na szczycie GPU ma zapas).
+   Pełne raporty: Saved/Profiling/FPSChartStats w projekcie (nie commituję).
+
+Inne uwagi
+- Daleki teren importuje się dwa razy jako tekstura: /Game/Rysy/FarTerrain/TEX_far_terrain + materiał „far”
+  (z pliku .mtl przy imporcie OBJ) oraz /Game/Rysy/Textures/T_RysyFar (używana przez M_RysyFar). Pierwsza para jest
+  zbędna (można wyłączyć import materiałów w zadaniu importu OBJ).
+- Na 04/10 szczyt ma jasną, prawie białą plamę ortofoto (piarg/śnieg) – przy −0,5 bez przepaleń.
+
+Czego nie robiłem (zgodnie z ZADANIA.md): Third Person, podmiana tekstur terenu, zmiana liczby drzew.
