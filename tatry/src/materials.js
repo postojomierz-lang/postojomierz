@@ -61,7 +61,7 @@ export function makeEnv({ inner, outer, quality }) {
     nInner: { value: new THREE.Vector2(inner.w, inner.h) },
     nOuter: { value: new THREE.Vector2(outer.w, outer.h) },
     sunDir: light.sunDir, time: light.time, cloudCover: light.cloudCover,
-    shSteps: { value: quality === 'low' ? 14 : quality === 'ultra' ? 40 : 28 },
+    shSteps: { value: { low: 14, mid: 20, high: 28, ultra: 40 }[quality] ?? 28 },
   };
 }
 

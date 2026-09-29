@@ -17,7 +17,7 @@ export async function buildDeadwood({ scene, terrain, trail, shade, isForest, fr
     variants.push({ geo: o.geometry, mat, long: size.x > 2 * size.z, items: [] });
   });
   const r = rng(77), N = trail.X.length;
-  const count = quality === 'low' ? 260 : quality === 'ultra' ? 1200 : 600;
+  const count = { low: 260, mid: 400, high: 600, ultra: 1200 }[quality] ?? 600;
   const up = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion(), qy = new THREE.Quaternion(), m4 = new THREE.Matrix4();
   let k = 0, guard = 0;
   while (k < count && guard++ < count * 40) {

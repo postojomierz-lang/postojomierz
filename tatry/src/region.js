@@ -81,7 +81,7 @@ export async function loadRegionArea(route, { status = () => {}, quality = 'high
   const IB = [rx0 + bi0 * BM, rz0 + bj0 * BM, rx0 + (bi1 + 1) * BM, rz0 + (bj1 + 1) * BM];
   // heights and photo of every block of the area
   const hgt = new Float32Array(W * H), mask = new Uint8Array(W * H);
-  const PB = 512, photoScale = quality === 'low' && nbx * nbz > 16 ? 0.5 : 1;
+  const PB = 512, photoScale = (quality === 'low' || quality === 'mid') && nbx * nbz > 16 ? 0.5 : 1;
   const canvas = new OffscreenCanvas(Math.round(nbx * PB * photoScale), Math.round(nbz * PB * photoScale));
   const g = canvas.getContext('2d');
   g.fillStyle = '#56644c'; g.fillRect(0, 0, canvas.width, canvas.height);
