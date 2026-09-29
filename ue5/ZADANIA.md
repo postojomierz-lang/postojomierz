@@ -13,6 +13,52 @@ Zasady:
 
 ---
 
+## ⛔ PAUZA (29.09, wieczór): właściciel potrzebuje karty graficznej
+
+**Nie uruchamiaj Unreala ani rundy 9**, dopóki ta sekcja tu jest. Nie rób nic w edytorze, nie wysyłaj wiadomości.
+Pętlę sprawdzania możesz zostawić, ale przy każdym sprawdzeniu tylko `git pull` i koniec, jeśli ta sekcja nadal jest.
+Pauzę zdejmie sesja B (usunie tę sekcję) po decyzji właściciela.
+
+---
+
+## Runda 9 (po rundzie 8: `feedback/runda_08/log.txt`, zrzuty 01–23)
+
+Koniec etapu 2 (wygląd z bliska) i **początek etapu 3: chodzenie**. Dane w `export/` bez zmian (nic nie wczytuj).
+
+Co się zmieniło w `build_scene.py`:
+- `PHOTO_SATURATION = 0.85` (Twój wybór z rundy 8).
+- **Przeciw powtarzaniu tekstur**: albedo każdej warstwy próbkowane dwa razy (skala 1 i 0,29, przesunięte) i
+  mieszane (`<Warstwa>_AntiTile` = 0,45); jeden `TextureObjectParameter` na warstwę, więc bez duplikatów parametrów.
+  Ściółka leśna: kafel 2,2 m zamiast 1,5 m.
+- **Chodzenie**: skrypt szuka w `/Game` `BP_ThirdPersonGameMode` i `BP_ThirdPersonCharacter`, ustawia tryb gry
+  poziomu (World Settings → GameMode Override) i w postaci `WalkableFloorAngle = 50°` (`WALKABLE_FLOOR_DEG`);
+  prędkość zostaje z szablonu (`WALK_SPEED_CMS = 0`).
+
+Zadania:
+1. `git pull`.
+2. **Dodaj paczkę Third Person** do projektu: Content Browser → *Add* → *Add Feature or Content Pack* → *Blueprint* →
+   *Third Person* → *Add to Project*. Zapisz, co i gdzie się pojawiło (ścieżki `BP_ThirdPersonGameMode`,
+   `BP_ThirdPersonCharacter`, mapa szablonu). Nie otwieraj mapy szablonu jako głównej.
+3. Uruchom `build_scene.py`. Do `log.txt`: linie `[Rysy] Chodzenie: …` i ostrzeżenia (w tym ewentualne
+   `Material: nie polaczono …` przy nowych węzłach TextureObjectParameter/TextureSample: podaj nazwy wejść).
+   Sprawdź po zapisie i ponownym otwarciu poziomu, czy GameMode Override i kąt stoku postaci zostały zapamiętane.
+4. **Tekstury**: zrzuty 20 (piarg) i 21 (las) z tych samych miejsc: czy powtarzanie zniknęło; czy mieszanie skal
+   nie rozmyło tekstur.
+5. **Przejście szlakiem w Play** (postać, kamera zza pleców), od PlayerStart przy Morskim Oku:
+   - dojdź jak najdalej: Czarny Staw → Bula pod Rysami → Rysy; zapisz czas i miejsca (współrzędne), gdzie postać
+     się zatrzymuje (za stromo, blokuje ją głaz/drzewo/budynek, spada, wchodzi pod teren, chodzi po wodzie albo
+     wpada do jeziora);
+   - jeśli gdzieś nie da się przejść, spróbuj obejść i opisz; możesz tymczasowo podnieść kąt stoku (np. 55°) i
+     sprawdzić, czy to pomaga (zapisz wartość);
+   - wrażenia: skala postaci względem drzew, schroniska, drogowskazów; czy kamera nie wchodzi w teren/drzewa.
+6. **Wydajność w Play z postacią** (Morskie Oko, Czarny Staw, szczyt), jak wcześniej.
+7. Zrzuty: 20, 21 + 24 (postać przy Morskim Oku), 25 (postać nad Czarnym Stawem), 26 (najdalej/najwyżej, gdzie
+   doszła), 1920×1080. `ue5/feedback/runda_09/`, commit „UE5 feedback: runda 09”, push, wiadomość do sesji B.
+
+Nic nie kupuj.
+
+---
+
 ## Runda 8 (po rundzie 7: `feedback/runda_07/log.txt`, zrzuty)
 
 Etap 2 planu: wygląd z bliska. Siatka dalekiego terenu nadal `v6` (bez importu). **Heightmapa i maski krajobrazu bez

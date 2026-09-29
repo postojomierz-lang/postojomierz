@@ -9,6 +9,7 @@
     "data": "python3 tools/prepare.py"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "leaflet": "^1.9.4",
     "three": "^0.170.0"
   },
