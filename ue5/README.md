@@ -193,3 +193,18 @@ Win+Shift+S):
   (NMT 1 m, ortofotomapa), ÚGKK SR (DMR 5.0, CC BY 4.0), GKÚ Bratislava. Tekstury: Poly Haven (CC0).
 
 Nowe dane z repozytorium: `python3 ue5/tools/export_ue5.py` (potrzebne numpy, scipy, Pillow, shapely).
+
+---
+
+## Praca z Unreal MCP (zalecane)
+
+UE 5.8 ma wbudowaną wtyczkę **Unreal MCP**: Claude uruchomiony na tym samym komputerze steruje edytorem
+bez klikania po ekranie.
+
+1. *Edit → Plugins*: włącz **Unreal MCP** i **All Toolsets**, zrestartuj edytor.
+2. *Edit → Editor Preferences → General → Model Context Protocol*: **Auto Start Server** (port 8000).
+3. Konsola edytora (`~`): `ModelContextProtocol.GenerateClientConfig ClaudeCode`, co utworzy `.mcp.json` w folderze projektu.
+4. Claude Code lokalnie w folderze projektu (`Documents\Unreal Projects\Rysy`), zatwierdź serwer MCP.
+
+Serwer słucha tylko na `127.0.0.1` i nie ma logowania, nie wystawiaj go do sieci.
+Zadania dla operatora są w [`ZADANIA.md`](ZADANIA.md), wyniki trafiają do `feedback/`.
