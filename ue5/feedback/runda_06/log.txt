@@ -1,0 +1,85 @@
+UE5 feedback: runda 06, 2026-09-29 (operator: lokalny Claude przez Unreal MCP)
+==========================================================================
+
+Projekt: Documents\Unreal Projects\Rysy 5.8, poziom /Game/Rysy/Maps/Rysy. UE 5.8.3, RTX 4070 Ti SUPER.
+Python jak w poprzednich rundach (`py "plik.py"` w polu Cmd, dialogi → log).
+
+1. git pull: OK (merge #129 „ue5-runda-6”).
+
+2. Nowa mapa wysokości do istniejącego krajobrazu (render target + landscape_import_heightmap_from_render_target):
+   - 305 losowych punktów: krajobraz − PNG = −0,54 … +0,01 cm,
+   - 80 punktów spośród 9045 próbek zmienionych względem rundy 5 o >20 jednostek (brzegi): −0,31 … +0,01 cm.
+   REIMPORT_TEXTURES = True tylko w pamięci na ten przebieg; build_scene.py w repo bez zmian.
+
+3. build_scene.py: 48 s, bez błędów Pythona. Linie dalekiego terenu i materiałów:
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/SM_RysyFar_v5
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/far
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/near
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/TEX_far_near
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/TEX_far_terrain
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/Textures/T_RysyFar_v5
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/Textures/T_RysyNear_v5
+   Warning: [Rysy] M_RysyFar: po budowie nie uzywa T_RysyFar_v6 (uzywa []), buduje od nowa
+   Warning: [Rysy] M_RysyFar: po budowie nie uzywa T_RysyFar_v6 (uzywa [])
+   [Rysy] M_RysyNear: tekstura T_RysyNear_v6
+   [Rysy] Daleki teren: sloty {'near': 0, 'far': 1}
+   [Rysy] Daleki teren: kolizja <CollisionEnabled.NO_COLLISION: 0>, profil NoCollision
+   [Rysy] Daleki teren: osie [0, 1, 2], znaki [1, -1, 1], skala 1/1
+   Inne ostrzeżenie: build_scene.py:663 DeprecationWarning: MaterialEditingLibrary.get_used_textures is
+   deprecated: Use GetMaterialUsedTextures (w Pythonie: MEL.get_material_used_textures).
+   TextureIndex: brak. Podsumowanie: daleki teren SM_RysyFar_v6; jeziora 14; budynki 23; drogowskazy 4;
+   spruce 38 629; dwarfpine 49 052; rock 10 947.
+
+   PRZYCZYNA pustego M_RysyFar (znaleziona w grafie materiału po skrypcie):
+   - MEL.delete_all_material_expressions NIE usuwa wszystkich węzłów w UE 5.8. W M_RysyFar zostały węzły
+     z poprzednich przebiegów: były 3 węzły TextureSampleParameter2D z parameter_name „Photo”
+     (_3: texture=None, _4: T_RysyFar_v6 niepodłączony, _5: T_RysyFar_v6 podłączony do BaseColor)
+     i osierocony Multiply_4. Przy zdublowanej nazwie parametru UE bierze wartość domyślną z PIERWSZEGO węzła
+     (_3 = None), więc skompilowany materiał nie używa żadnej tekstury. Budowanie od nowa nie pomaga, bo
+     fresh_material znowu nie czyści grafu i dokłada kolejny węzeł „Photo”.
+   - W M_RysyNear to samo zjawisko, ale nieszkodliwe: osierocone ScalarParameter Brightness i Roughness
+     (_0, _1) obok podłączonych (_3, _4); ten sam default, więc wynik poprawny.
+   - Naprawa ręczna: usunąłem z obu materiałów wszystkie węzły niepodłączone do wyjść (BaseColor/Roughness/
+     Specular/Normal), recompile + zapis. Po naprawie get_material_used_textures: M_RysyFar = [T_RysyFar_v6],
+     M_RysyNear = [T_RysyNear_v6]; parametr Photo odpowiednio T_RysyFar_v6 / T_RysyNear_v6.
+   - Sugestia do skryptu: w fresh_material usuwać zasób materiału (EAL.delete_asset) i tworzyć od nowa, albo
+     po delete_all_material_expressions iterować MEL.get_material_expressions(mat) i kasować resztę przez
+     MEL.delete_material_expression; ewentualnie kontrola, że nie ma dwóch parametrów o tej samej nazwie.
+     To samo może dotyczyć M_RysyLandscape (dotąd się nie ujawniło).
+
+   Stan po naprawie: /Game/Rysy/FarTerrain/ = tylko SM_RysyFar_v6; w Textures z dalekiego terenu tylko
+   T_RysyFar_v6 (8192×6744) i T_RysyNear_v6 (4096²). SM_RysyFar_v6: Nanite, 994 328 trójkątów, 2 sloty
+   (near → M_RysyNear, far → M_RysyFar). Aktor NoCollision. Mgła D. Poziom zapisany.
+
+4. Krawędź N (15) i narożnik NE (09)
+   - Ciemna poszarpana linia na krawędzi N ZNIKNĘŁA (15 w porównaniu z rundą 5). Zakładka nigdzie nie wystaje nad
+     krajobraz – przy krawędzi brak jasnych łat.
+   - Kolor: pas near nadal wyraźnie inny niż krajobraz – near jest nasycony, jasnozielony, krajobraz przy krawędzi
+     oliwkowo-żółtawy/szarozielony. Na 15 granica biegnie jako wyraźna zmiana koloru przez cały kadr, na 09 near
+     (lewy górny róg, stoki) bardziej zielony i bardziej rozmyty niż krajobraz. Wygląda na różnicę w materiale
+     krajobrazu z bliska/średnio (tekstury warstw + tint, OrthoNear 0,4) a nie w ortofoto – z kamery 250 m nad
+     granicą krajobraz jest jeszcze w strefie mieszania z teksturami warstw.
+
+5. Z bliska przy krawędzi N (17: 3 m nad gruntem 23 m od krawędzi, yaw 0; 17b: 55 m od krawędzi, yaw −90, w stronę
+   krawędzi): krajobraz z bliska ma szczegół z tekstur warstw (trawa, drobne kamienie, cienie) – wygaszanie
+   normalnych go nie psuje. Za krawędzią widać pas near: gładki, rozmyty, jaskrawozielony – różnica koloru
+   i ostrości bardzo wyraźna z poziomu gruntu (17b), a na 17 w połowie kadru stok near i jego przejście.
+
+6. Brzegi
+   - 05 (Play, PlayerStart): linia brzegu gładka, drobne ząbki z rund 4–5 ZNIKNĘŁY (porównanie wycinka).
+   - 03 (Czarny Staw przy słupku): ząbki na lewym, płaskim brzegu nadal widoczne (kilka schodków przy linii wody),
+     mniej niż w rundzie 5.
+   - 06, 07: gładkie.
+
+7. Zrzuty (1920×1080; edytor HighResShot z CameraActor, 05 i 10 w Play, mgła D)
+   01–10 jak w rundzie 5, 11/11b horyzont (pitch 0 / −10), 15_szew_krawedz_N, 16_pas_S_z_bliska (jak w r5),
+   17_krawedz_N_z_bliska (60000, −258080, grunt+3 m, pitch −4, yaw 0),
+   17b_krawedz_N_z_bliska_w_strone_krawedzi (60000, −255000, grunt+3 m, pitch −10, yaw −90).
+
+   Wydajność (Play w nowym oknie 2560×1380, StartFPSChart/StopFPSChart)
+   - Morskie Oko: 87,5 FPS (7259 / 83,0 s), GPU 10,4 ms, Game 5,3 ms, 27 % < 120, 1 przycięcie.  [r5: 86,4]
+   - Szczyt: 119,4 FPS (9631 / 80,7 s), GPU 7,0 ms, Game 5,3 ms, 0,5 % < 120, 1 przycięcie.        [r5: 119,5]
+   - SM_RysyFar_v6: Nanite tak, 994 328 trójkątów, 2 sloty.
+
+Po rundzie: ustawienia edytora przywrócone (okno PIE 1280×720, „Use Less CPU when in Background” włączone).
+Czego nie robiłem (zgodnie z ZADANIA.md): Third Person, podmiana tekstur terenu, zmiana liczby drzew.
