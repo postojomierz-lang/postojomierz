@@ -41,25 +41,29 @@ const status = (t) => { $('loading-text').textContent = t; };
 const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
 const P = new URLSearchParams(location.search);
-// quality tier: ?q=low | mid | high | ultra. Without it: strong desktop graphics cards get 'ultra' (2K
-// ground textures, finer terrain, more and farther plants, sharper shadows), phones 'mid' when their GPU
-// is a recent one (Adreno 650+, Mali-G7x / Immortalis, Apple, Xclipse) and 'low' otherwise, the rest
-// 'high'. On every tier the resolution follows the frame rate.
+// quality tier: ?q=low | mid | high | ultra, else the one chosen in the help panel (kept in this browser),
+// else by the GPU: strong desktop cards 'ultra' (2K ground textures, finer terrain, more and farther
+// plants, sharper shadows), flagship phones 'mid' (Adreno 730+, Mali-G710/G720, Immortalis, Xclipse 9xx,
+// Apple), other phones 'low' (a Galaxy A55's Xclipse 530 stuttered on 'mid'), the rest 'high'. On every
+// tier the resolution follows the frame rate.
+const TIERS = ['low', 'mid', 'high', 'ultra'];
 function pickQuality() {
   const q = P.get('q');
-  if (['low', 'mid', 'high', 'ultra'].includes(q)) return q;
+  if (TIERS.includes(q)) return q;
+  try { const saved = localStorage.getItem('rysy-quality'); if (TIERS.includes(saved)) return saved; } catch (e) { /* private mode */ }
   const phone = matchMedia('(pointer: coarse)').matches && Math.max(screen.width, screen.height) < 1400;
   try {
     const gl = document.createElement('canvas').getContext('webgl2');
     const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
     const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
     const lose = gl && gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
-    if (phone) return /Adreno \(TM\) (6[5-9]\d|[7-9]\d\d)|Mali-G(7[1-9]|[6-9]1\d)|Immortalis|Apple|Xclipse/i.test(name) ? 'mid' : 'low';
+    if (phone) return /Adreno \(TM\) (7[3-9]\d|[89]\d\d)|Mali-G7[12]0|Immortalis|Xclipse 9\d\d|Apple/i.test(name) ? 'mid' : 'low';
     if (/RTX\s*(20[78]0|30[6-9]0|40[6-9]0|50[6-9]0)|RX\s*(6[7-9]|7[7-9]|9[07])\d\d|Apple M\d (Pro|Max|Ultra)/i.test(name)) return 'ultra';
   } catch (e) { return phone ? 'low' : 'high'; }
   return phone ? 'low' : 'high';
 }
 const QUALITY = pickQuality(), ULTRA = QUALITY === 'ultra';
+{ const b = document.querySelector(`#quality-pick [data-q="${QUALITY}"]`); if (b) b.style.outline = '2px solid #e8573a'; }
 // a setting per tier: low, mid, high, ultra
 const tier = (low, mid, high, ultra = high) => ({ low, mid, high, ultra })[QUALITY];
 // ?trasa#r=lat,lon;lat,lon...: a route from the planner, anywhere in the Polish High Tatras
