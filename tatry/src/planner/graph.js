@@ -13,6 +13,8 @@ export function stepMinutes(dist, dh) {
   return t;
 }
 
+import { CORRECTIONS } from './corrections.js';
+
 export class TrailGraph {
   constructor(data) {
     this.data = data;
@@ -41,6 +43,7 @@ export class TrailGraph {
       }
     });
     this.mainPart();
+    this.applyCorrections();
     // grid index for snapping
     this.cell = 0.003;
     this.grid = new Map();
@@ -49,6 +52,33 @@ export class TrailGraph {
       let l = this.grid.get(key); if (!l) this.grid.set(key, l = []);
       l.push(i);
     }
+  }
+  // difficult passages: slower by a factor, some walked one way only (corrections.js); the stretch is
+  // the quickest way from a to b before any correction, restricted to its own trails (route with a
+  // cap on length, so a bad point cannot mark half the network)
+  applyCorrections() {
+    this.corrected = [];
+    for (const c of CORRECTIONS) {
+      const s = this.snapAny(c.a[0], c.a[1], 80), t = this.snapAny(c.b[0], c.b[1], 80);
+      if (s < 0 || t < 0) continue;
+      const p = this.route(s, t);
+      if (!p || p.length > 800) continue;
+      for (let k = 1; k < p.length; k++) {
+        const fw = this.adj[p[k - 1]].find((x) => x[0] === p[k]);
+        const bw = this.adj[p[k]].find((x) => x[0] === p[k - 1]);
+        if (fw) fw[1] *= c.factor;
+        // one way: not on the first and last ~40 m, where the passage starts at a junction that other
+        // trails pass through (Zawrat, the hut)
+        const inner = k > 4 && k < p.length - 4;
+        if (bw) bw[1] = c.oneway && inner ? Infinity : bw[1] * c.factor;
+      }
+      this.corrected.push({ name: c.name, from: s, to: t, steps: p.length - 1 });
+    }
+  }
+  snapAny(lon, lat, maxM) {
+    const V = this.data.v; let best = -1, bd = maxM;
+    for (let i = 0; i < V.length; i++) { const d = Math.hypot((V[i][0] - lon) * this.mx, (V[i][1] - lat) * this.mz); if (d < bd) { bd = d; best = i; } }
+    return best;
   }
   // the largest connected part of the network: clicks snap only to it (the rest are trail ends cut
   // off at the border of the area)
@@ -137,7 +167,8 @@ export class TrailGraph {
     for (let k = 1; k < path.length; k++) {
       const a = path[k - 1], b = path[k];
       const d = this.dist(a, b), dh = H[b] - H[a];
-      dist += d; time += stepMinutes(d, dh);
+      const w = (this.adj[a].find((x) => x[0] === b) || [0, stepMinutes(d, dh)])[1];
+      dist += d; time += isFinite(w) ? w : stepMinutes(d, dh);
       if (dh > 0) up += dh; else down -= dh;
       profile.push([dist, H[b]]);
       // which edge carries this step: the one listed on the adjacency
