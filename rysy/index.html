@@ -55,6 +55,9 @@
     background: rgba(255,255,255,.08); font-family: inherit; font-size: 12px; text-align: center; }
   #help table { border-collapse: collapse; width: 100%; }
   #help td { padding: 3px 0; vertical-align: top; }
+  /* phones and tablets: touch controls instead of the keys */
+  .touch-only { display: none; }
+  @media (pointer: coarse) { .touch-only { display: table; } .keys-only { display: none; } }
   #help td:first-child { white-space: nowrap; padding-right: 12px; }
   #help .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
   .hidden { display: none !important; }
@@ -4974,7 +4977,16 @@ uniform float time;
 
 <div id="help" class="panel">
   <h2>Sterowanie</h2>
-  <table>
+  <table class="touch-only">
+    <tr><td>▶ Idź sam</td><td>marsz szlakiem (drugi raz: zatrzymaj)</td></tr>
+    <tr><td>przeciągnij palcem</td><td>rozglądanie się</td></tr>
+    <tr><td>− / +</td><td>przyspieszenie czasu ×1, ×3, ×10, ×30</td></tr>
+    <tr><td>🚁 Dron</td><td>widok z góry (palec: obrót, dwa palce: zoom)</td></tr>
+    <tr><td>🏷 / 🔊</td><td>nazwy szczytów i miejsc / dźwięk</td></tr>
+    <tr><td>🗺</td><td>planer tras</td></tr>
+    <tr><td>profil na dole</td><td>dotknij, żeby przeskoczyć</td></tr>
+  </table>
+  <table class="keys-only">
     <tr><td><kbd>W</kbd> <kbd>↑</kbd> / <kbd>S</kbd> <kbd>↓</kbd></td><td>idź szlakiem do przodu / do tyłu</td></tr>
     <tr><td><kbd>Spacja</kbd></td><td>idź sam (jak na bieżni)</td></tr>
     <tr><td><kbd>Shift</kbd></td><td>szybciej, dopóki trzymasz</td></tr>
