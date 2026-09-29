@@ -1,0 +1,59 @@
+UE5 feedback 01 – 2026-09-29 (Rafał / Claude jako operator komputera)
+=====================================================================
+
+Sprzęt / wersja
+- Unreal Engine 5.8.3 (launcher Epic, silnik na E:), Windows, karta NVIDIA.
+- Projekt: Games → Blank, Blueprint, "Rysy" w Documents\Unreal Projects\Rysy (poza repozytorium).
+- Wtyczki: Python Editor Script Plugin, Fab, Cesium for Unreal (zainstalowany, w tym projekcie nieużywany),
+  Procedural Vegetation Editor (eksperymentalny – potrzebny do Megaplants), Nanite Foliage (Project Settings → Rendering).
+
+Co zrobiłem
+1. build_scene.py → poziom /Game/Rysy/Maps/Rysy.
+2. Landscape → Import from File: heightmap.png, 63x63 quads, 2x2 sections, 32x32 components (4033x4033),
+   Location 0/0/184000, Scale 130/130/285.2. Drugi przebieg skryptu: "Krajobraz: znaleziony, ustawiony, materiał MI_RysyLandscape przypisany".
+3. Modele z Fab (wpisane w build_scene.py, commit "UE5 feedback: Fab mesh paths in build_scene.py"):
+   - SPRUCE: "Megaplants: Norway Spruce" (Quixel, darmowy). Uwaga: Megaplants w UE 5.8 to SkeletalMesh + Nanite Assembly
+     (gałęzie jako osobne części). Konwersja SkeletalMesh→StaticMesh przez GeometryScript gubi igliwie (zostaje goły pień).
+     Działa dopiero eksport z Procedural Vegetation Editor: otwórz PVE_Norway_Spruce_01 → Wyeksportuj → Export Mesh Type = Static Mesh
+     (Create Nanite Foliage ✓, Voxelize) → SM_Spruce_PVE_A..D (wys. 29 / 24 / 18 / 8 m).
+   - DWARFPINE: "Megaplants: Baltic Pine Saplings" tak samo → SM_PinePVE_A/B (5,7 / 5,4 m); w per_mesh_add dodałem
+     xy = uniform(1.5, 2.1) dla kosodrzewiny z prawdziwym modelem (spłaszczona szeroka kępa).
+   - ROCK: "Dolomites — Free Rock/Boulder Sample" (APEX Nature, Nanite) + "Lone granite boulder stone" (FBX, licencja osobista, import
+     do /Game/Rysy/Rocks/LoneGranite). Megascans "Granite Boulder"/"Norway Spruce" są darmowe tylko dla UEFN – w UE płatne (~14 zł/szt.).
+   - "Fir trees pack" (LOLIPOP) – tylko format Blender, nie da się dodać do UE bez konwersji.
+4. Wynik skryptu: jeziora 14, budynki 23, drogowskazy 4, szlak spline 953 pkt / 4633 m, znaczniki 19,
+   spruce 38 620 (4 x ~9,6 tys.), dwarfpine 49 235 (2 x ~24,5 tys.), rock 11 052 (2 x ~5,5 tys.).
+
+Wydajność – stat fps / stat unit (Play in Editor, start przy Morskim Oku, okno edytora ok. 1415x813, Screen % 60,5)
+- ~107–110 FPS, Frame 9,3 ms, Game 4,2 ms, Draw 9,3 ms, RHIT 2,7 ms, GPU 6,1 ms
+- Draws ~720, Prims ~1,06 M, VRAM 6,2 / 14,9 GB, Mem 7,2 GB
+(nie mierzyłem w pełnym ekranie ani w innych miejscach szlaku)
+
+Zrzuty (HighResShot 1920x1080 z CameraActor, konwersja do JPG):
+- 01_widok_z_gory.jpg          – kamera (-110000, -260000, 360000), pitch -35, yaw 63
+- 02_brzeg_Morskiego_Oka.jpg   – przy PlayerStart, (-34058, -113297, 140750), pitch 12, yaw 63
+- 03_Czarny_Staw_sciezka.jpg   – szlak nad Czarnym Stawem (13930, 6830, 158780), pitch -8, yaw 68.5 (czerwony słupek szlaku widoczny)
+- 04_szczyt_Rysow.jpg          – nad wierzchołkiem (88041, 127023, 252000), pitch -20, yaw -117
+
+Co wygląda źle / uwagi
+- Poza obszarem 5,2 km widać "gołą" płaską płaszczyznę horyzontu (niebieski pas pod chmurami na 04) – brak tła poza terenem.
+- 02: w prawym górnym rogu wiszą w powietrzu dziwne pionowe, poskręcane kształty (prawdopodobnie teksty/drogowskazy lub
+  ich TextRender widoczne w grze) oraz ukośny drążek nad kamerą w PIE (widoczny też w PIE jako beżowa belka) – do sprawdzenia.
+- W PIE i w podglądzie edytora bardzo mocne prześwietlenie (auto exposure) – trawa przy kamerze prawie biała.
+- 03: zbocza przy jeziorach mają płaską, rozmytą teksturę "piasku" z bliska; ortofoto przechodzi w tekstury dość słabo.
+- Czarny Staw i Morskie Oko: brzeg jeziora ma schodkowy kształt (widoczne "stopnie" terenu przy lustrze wody na 03).
+
+Żółte / czerwone linie z Output Log (istotne)
+- LogMaterial: Warning: M_RysyLandscape: Requesting an invalid TextureIndex! (8 / 6)   (przy każdym zapisie)
+- LogPython: Warning: build_scene.py:376 i :383 DeprecationWarning: SubobjectDataBlueprintFunctionLibrary.get_object
+  is deprecated: Use GetAssociatedObject
+- LoadErrors (przed włączeniem wtyczki Procedural Vegetation Editor): MI_Norway_Spruce_* → brak
+  /ProceduralVegetationEditor/SampleAssets/Materials/MasterMaterials/MA_Foliage_Trees; MI_Baltic_Pine_01_Bark → brak
+  /Game/Megaplant_Library/Tree_Aleppo_Pine/Textures/T_Aleppo_Pine_01_Bark_C/_NAH i /Game/Developers/simonbarle/PineTextures/*
+  (materiały z paczki Megaplants odwołują się do nieistniejących tekstur – kora młodej sosny).
+- LogSavePackage: Error saving Rysy.umap / MI_Roof itp. (Error Code 32) – przyczyna: dwie instancje edytora naraz
+  (mój błąd przy restarcie); po zamknięciu drugiej zapis działa. Nie dotyczy skryptu.
+
+Czego nie zrobiłem
+- Nie testowałem Third Person / chodzenia postacią po szlaku (projekt Blank, lot kamerą).
+- Nie podmieniłem tekstur warstw terenu (LAYER_TEXTURES) – nadal Poly Haven z export/textures.
