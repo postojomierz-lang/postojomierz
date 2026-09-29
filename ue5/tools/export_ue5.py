@@ -149,9 +149,12 @@ for lk in lakes_in:
     # water up to ~3 m out, then above it; the water squares reach 5 m out and stay hidden
     sd = gaussian_filter(d_out - d_in, 1.5)
     ramp = lvl - 0.25 + 0.085 * sd
-    band = (sd > -1) & (sd < 6)
+    band = (sd > -1) & (sd < 16)
     H = np.where(band & (ramp < lvl), np.minimum(H, ramp), H)
-    H = np.where(band & (ramp >= lvl), np.maximum(H, ramp), H)
+    # above the level the lift fades out between 6 and 16 m (round 3: a hard cut at 6 m left small
+    # steps along flat shores lower than the lake, 03)
+    lift = np.maximum(ramp - H, 0) * (1 - smoothstep(6, 16, sd))
+    H = np.where(band & (ramp >= lvl), H + lift, H)
 print('lakes in the landscape:', [lk['name'] for lk in lakes_in])
 
 # terraces under the buildings (same rule as tatry/src/buildings.js: 70th percentile of the footprint)
@@ -568,74 +571,115 @@ for nm in ['rock_04', 'rocky_terrain_02', 'forrest_ground_01', 'rocky_trail']:
 
 # ------------------------------------------------------------------ far terrain around the landscape
 # The 55 m DEM of the whole panorama (35 x 29 km, the browser's outer terrain) as a mesh with its
-# photo, so the mountains go on past the 5.2 km landscape. Inside the landscape square the vertices
-# sink 150 m (hidden under it); grid lines run exactly along the square's border, where the heights
-# equal the landscape's own edge (both come from the same DEM there), so there is no gap or step.
+# photo, so the mountains go on past the 5.2 km landscape, then a horizon ring out to 110-150 km.
+#  - grid: 60 m, with a hole over the landscape square (plus ~30-90 m around it);
+#  - collar: joins the hole's rim to the landscape's own border, one vertex per landscape sample
+#    (every 1.3 m, the lidar heights exactly), so the seam has no steps between coarse vertices
+#    (round 3: +-18 m); a skirt 15 m down under the border hides any crack from landscape LODs;
+#  - heights within 240 m outside the square blend from the landscape's edge to the DEM;
+#  - ring: from the grid's outline out to an asymmetric rectangle (150/120 km in +-x, 140/110 km in
+#    +-z, so the UE script tells the axes and their signs apart), 450 m a.s.l. minus the Earth's
+#    curvature (its far edge sits on the true horizon); coloured by the texture's edge, which fades
+#    to one lowland colour (round 3: radial streaks).
 print('far terrain')
 OB = meta['outer']['bounds']
 FAR_STEP = 60.0
 X1, Z1 = X0 + EXT, Z0 + EXT
-BAND = 240.0                       # blend from the landscape's edge to the 55 m DEM over this width
-dense = lambda a: np.arange(a - BAND, a + BAND + 0.1, 6.0)
-fxs = np.unique(np.round(np.concatenate([np.arange(OB[0], OB[2], FAR_STEP), [OB[2], X0, X1], dense(X0), dense(X1)]), 2))
-fzs = np.unique(np.round(np.concatenate([np.arange(OB[1], OB[3], FAR_STEP), [OB[3], Z0, Z1], dense(Z0), dense(Z1)]), 2))
-fxs = fxs[(fxs >= OB[0]) & (fxs <= OB[2])]; fzs = fzs[(fzs >= OB[1]) & (fzs <= OB[3])]
+BAND = 240.0
+R_EARTH = 6371000.0
+fxs = np.unique(np.round(np.concatenate([np.arange(OB[0], OB[2], FAR_STEP), [OB[2]]]), 2))
+fzs = np.unique(np.round(np.concatenate([np.arange(OB[1], OB[3], FAR_STEP), [OB[3]]]), 2))
 FX, FZ = np.meshgrid(fxs, fzs)
 FH = sample(outer, OB, FX, FZ, 3)
-# outside the square, near it: from the landscape's own edge height (lidar) to the DEM
 cx_, cz_ = np.clip(FX, X0, X1), np.clip(FZ, Z0, Z1)
 dout = np.hypot(FX - cx_, FZ - cz_)
 wb = smoothstep(0, BAND, dout)
 FH = np.where(dout > 0, height_at(cx_, cz_) * (1 - wb) + FH * wb, FH)
-on_edge = (np.isclose(FX, X0) | np.isclose(FX, X1)) & (FZ >= Z0 - 1e-6) & (FZ <= Z1 + 1e-6) | \
-          (np.isclose(FZ, Z0) | np.isclose(FZ, Z1)) & (FX >= X0 - 1e-6) & (FX <= X1 + 1e-6)
-inner_sq = (FX > X0 + 1e-6) & (FX < X1 - 1e-6) & (FZ > Z0 + 1e-6) & (FZ < Z1 - 1e-6)
-# on the border use the landscape's own height, inside sink
-FH = np.where(on_edge, height_at(np.clip(FX, X0, X1), np.clip(FZ, Z0, Z1)), FH)
-FH = np.where(inner_sq, FH - 150, FH)
 nzf, nxf = FX.shape
+# the hole: grid lines at least 30 m outside the square
+ia, ib = int(np.nonzero(fxs <= X0 - 30)[0].max()), int(np.nonzero(fxs >= X1 + 30)[0].min())
+ja, jb = int(np.nonzero(fzs <= Z0 - 30)[0].max()), int(np.nonzero(fzs >= Z1 + 30)[0].min())
+
+VX, VZ, VH = [FX.ravel()], [FZ.ravel()], [FH.ravel()]
+nv = nzf * nxf
+faces = []
+jj, ii = np.meshgrid(np.arange(nzf - 1), np.arange(nxf - 1), indexing='ij')
+keep = ~((ii >= ia) & (ii < ib) & (jj >= ja) & (jj < jb))
+a_ = (jj * nxf + ii)[keep]; b_ = a_ + 1; c_ = a_ + nxf; d_ = c_ + 1
+# winding so the faces point up with Z up and Y south (a left-handed frame, like UE's)
+faces.append(np.stack([a_, b_, c_], 1)); faces.append(np.stack([b_, d_, c_], 1))
+
+
+def rect_loop(i0, i1, j0, j1):
+    """Grid indices around a rectangle, clockwise seen from above (N row W->E, E column N->S, ...),
+    with a side number + fraction along the side for each (corners start their side)."""
+    out = []
+    for i in range(i0, i1): out.append((j0 * nxf + i, 0 + (i - i0) / (i1 - i0)))
+    for j in range(j0, j1): out.append((j * nxf + i1, 1 + (j - j0) / (j1 - j0)))
+    for i in range(i1, i0, -1): out.append((j1 * nxf + i, 2 + (i1 - i) / (i1 - i0)))
+    for j in range(j1, j0, -1): out.append((j * nxf + i0, 3 + (j1 - j) / (j1 - j0)))
+    return out
+
+
+def stitch(inner, outer_):
+    """Triangles between two closed loops (vertex index, parameter), same direction; inner loop inside."""
+    tris, i, o, ni, no = [], 0, 0, len(inner), len(outer_)
+    while i < ni or o < no:
+        ti = inner[(i + 1) % ni][1] + (4 if i + 1 >= ni else 0)
+        to = outer_[(o + 1) % no][1] + (4 if o + 1 >= no else 0)
+        if o >= no or (i < ni and ti <= to):
+            tris.append((inner[i % ni][0], outer_[o % no][0], inner[(i + 1) % ni][0])); i += 1
+        else:
+            tris.append((inner[i % ni][0], outer_[o % no][0], outer_[(o + 1) % no][0])); o += 1
+    return np.array(tris)
+
+
+# collar: the landscape's border, every sample, same order as rect_loop
+kk = np.arange(QUADS)
+bx = np.concatenate([X0 + kk * STEP, np.full(QUADS, X1), X1 - kk * STEP, np.full(QUADS, X0)])
+bz = np.concatenate([np.full(QUADS, Z0), Z0 + kk * STEP, np.full(QUADS, Z1), Z1 - kk * STEP])
+bt = np.concatenate([s_ + kk / QUADS for s_ in range(4)])
+bh = height_at(bx, bz)
+nb = len(bx)
+VX += [bx, bx]; VZ += [bz, bz]; VH += [bh, bh - 15.0]
+border = [(nv + k, float(bt[k])) for k in range(nb)]
+faces.append(stitch(border, rect_loop(ia, ib, ja, jb)))
+k0 = np.arange(nb); k1 = (k0 + 1) % nb
+faces.append(np.stack([nv + nb + k0, nv + k1, nv + k0], 1))              # skirt
+faces.append(np.stack([nv + nb + k0, nv + nb + k1, nv + k1], 1))
+nv += 2 * nb
+
+# horizon ring: loops at growing fractions of the way from the grid's outline to the rectangle
+edge = rect_loop(0, nxf - 1, 0, nzf - 1)
+ex_, ez_, eh_ = FX.ravel()[[e for e, _ in edge]], FZ.ravel()[[e for e, _ in edge]], FH.ravel()[[e for e, _ in edge]]
+cxm, czm = (OB[0] + OB[2]) / 2, (OB[1] + OB[3]) / 2
+dx, dz = ex_ - cxm, ez_ - czm
+kr = np.minimum(np.where(dx >= 0, 150000.0, 120000.0) / np.maximum(np.abs(dx), 1),
+                np.where(dz >= 0, 140000.0, 110000.0) / np.maximum(np.abs(dz), 1))
+px, pz = cxm + dx * kr, czm + dz * kr
+prev = [(e, t) for e, t in edge]
+ring_uv_src = [e for e, _ in edge]
+for fr in (0.05, 0.15, 0.3, 0.5, 0.75, 1.0):
+    lx, lz = ex_ + (px - ex_) * fr, ez_ + (pz - ez_) * fr
+    lh = 450.0 + (eh_ - 450.0) * max(0.0, 1 - fr / 0.15) - np.hypot(lx, lz) ** 2 / (2 * R_EARTH)
+    VX.append(lx); VZ.append(lz); VH.append(lh)
+    cur = [(nv + q, t) for q, (_, t) in enumerate(edge)]
+    faces.append(stitch(prev, cur))
+    prev = cur; nv += len(edge)
+VX, VZ, VH = np.concatenate(VX), np.concatenate(VZ), np.concatenate(VH)
+# texture coordinates: the grid's own; the ring's vertices take their outline point's
+UU = (VX - OB[0]) / (OB[2] - OB[0]); VV = 1 - (VZ - OB[1]) / (OB[3] - OB[1])
+nring = len(VX) - (nzf * nxf + 2 * nb)
+src = np.tile(np.array(ring_uv_src), nring // len(edge))
+UU[nzf * nxf + 2 * nb:] = UU[src]; VV[nzf * nxf + 2 * nb:] = VV[src]
+F = np.concatenate(faces) + 1
 with open(os.path.join(OUT, 'far_terrain.obj'), 'w') as f:
     f.write('# far terrain around the Rysy landscape: UE centimetres (X east, Y south, Z altitude)\n')
     f.write('mtllib far_terrain.mtl\nusemtl far\n')
-    for j in range(nzf):
-        for i in range(nxf):
-            f.write('v %.1f %.1f %.1f\n' % (FX[j, i] * 100, FZ[j, i] * 100, FH[j, i] * 100))
-    for j in range(nzf):
-        for i in range(nxf):
-            f.write('vt %.6f %.6f\n' % ((FX[j, i] - OB[0]) / (OB[2] - OB[0]), 1 - (FZ[j, i] - OB[1]) / (OB[3] - OB[1])))
-    for j in range(nzf - 1):
-        for i in range(nxf - 1):
-            if inner_sq[j:j + 2, i:i + 2].all():
-                continue                  # wholly under the landscape: no need for it
-            a = j * nxf + i + 1; b = a + 1; c = a + nxf; d = c + 1
-            # winding so the faces point up with Z up and Y south (a left-handed frame, like UE's)
-            f.write('f %d/%d %d/%d %d/%d\n' % (a, a, b, b, c, c))
-            f.write('f %d/%d %d/%d %d/%d\n' % (b, b, d, d, c, c))
-    # horizon ring: from the mesh's outline out to ~150 km at lowland height, coloured by the edge
-    # (fades into the haze; no more empty band under the sky)
-    edge_idx = [(0, i) for i in range(nxf)] + [(j, nxf - 1) for j in range(1, nzf)] + \
-               [(nzf - 1, i) for i in range(nxf - 2, -1, -1)] + [(j, 0) for j in range(nzf - 2, 0, -1)]
-    base_n = nzf * nxf
-    cxm, czm = (OB[0] + OB[2]) / 2, (OB[1] + OB[3]) / 2
-    ring = []
-    for j, i in edge_idx:
-        dx, dz = FX[j, i] - cxm, FZ[j, i] - czm
-        # pushed out radially onto a rectangle with a different reach on each side (150/120 km in +-x,
-        # 140/110 km in +-z): an asymmetric outline, so the UE script tells the axes and their signs apart
-        k = min((150000.0 if dx >= 0 else 120000.0) / max(abs(dx), 1), (140000.0 if dz >= 0 else 110000.0) / max(abs(dz), 1))
-        ring.append((cxm + dx * k, czm + dz * k))
-        f.write('v %.1f %.1f %.1f\n' % (ring[-1][0] * 100, ring[-1][1] * 100, 45000.0))
-    for j, i in edge_idx:
-        f.write('vt %.6f %.6f\n' % ((FX[j, i] - OB[0]) / (OB[2] - OB[0]), 1 - (FZ[j, i] - OB[1]) / (OB[3] - OB[1])))
-    m = len(edge_idx)
-    for e in range(m):
-        (j0, i0), (j1, i1) = edge_idx[e], edge_idx[(e + 1) % m]
-        a, b = j0 * nxf + i0 + 1, j1 * nxf + i1 + 1
-        vt_a, vt_b = a, b
-        oa, ob = base_n + e + 1, base_n + (e + 1) % m + 1
-        ta, tb = base_n + e + 1, base_n + (e + 1) % m + 1
-        f.write('f %d/%d %d/%d %d/%d\n' % (a, vt_a, oa, ta, b, vt_b))
-        f.write('f %d/%d %d/%d %d/%d\n' % (b, vt_b, oa, ta, ob, tb))
+    f.write(''.join('v %.1f %.1f %.1f\n' % t for t in zip(VX * 100, VZ * 100, VH * 100)))
+    f.write(''.join('vt %.6f %.6f\n' % t for t in zip(UU, VV)))
+    f.write(''.join('f %d/%d %d/%d %d/%d\n' % (a, a, b, b, c, c) for a, b, c in F))
+print('far mesh', len(VX), 'vertices,', len(F), 'triangles')
 open(os.path.join(OUT, 'far_terrain.mtl'), 'w').write('newmtl far\nKd 1 1 1\nmap_Kd far_terrain.jpg\n')
 # texture: the region's 2 m orthophoto (the same processing as the landscape's) where it reaches,
 # the old 17 m panorama photo elsewhere; 8192 px across the 35 km (4.3 m/px)
@@ -667,11 +711,21 @@ if os.path.isfile(os.path.join(RG, 'meta.json')):
     have = distance_transform_edt(~nodata) > 6
     wr = gaussian_filter(have.astype(np.float32), 12)[..., None] * have[..., None]
     far_img = (far_img * (1 - wr) + reg * wr).round().clip(0, 255).astype(np.uint8)
+# the outer ~1.7 km fade to one lowland colour (the mean of that frame): the horizon ring takes the
+# edge's colour, so it is plain instead of streaked
+FR = 400
+yy, xx = np.ogrid[:FHt, :FW]
+edge_px = np.minimum(np.minimum(yy, FHt - 1 - yy), np.minimum(xx, FW - 1 - xx)).astype(np.float32)
+frame = edge_px < FR
+low = far_img[frame].reshape(-1, 3).mean(0)
+wf = smoothstep(FR * 0.1, FR, edge_px)[..., None]
+far_img = (far_img * wf + low * (1 - wf)).round().clip(0, 255).astype(np.uint8)
+print('far texture: lowland colour', low.round(1))
 Image.fromarray(far_img).save(os.path.join(OUT, 'far_terrain.jpg'), quality=85, optimize=True)
-far_info = {'file': 'far_terrain.obj', 'texture': 'far_terrain.jpg', 'asset': 'SM_RysyFar_v3', 'texture_asset': 'T_RysyFar_v3',
-            'bounds_cm': {'x': [round(min(r[0] for r in ring) * 100, 1), round(max(r[0] for r in ring) * 100, 1)],
-                          'y': [round(min(r[1] for r in ring) * 100, 1), round(max(r[1] for r in ring) * 100, 1)],
-                          'z': [round(min(45000.0, float(FH.min()) * 100), 1), round(float(FH.max()) * 100, 1)]},
+far_info = {'file': 'far_terrain.obj', 'texture': 'far_terrain.jpg', 'asset': 'SM_RysyFar_v4', 'texture_asset': 'T_RysyFar_v4',
+            'bounds_cm': {'x': [round(float(VX.min()) * 100, 1), round(float(VX.max()) * 100, 1)],
+                          'y': [round(float(VZ.min()) * 100, 1), round(float(VZ.max()) * 100, 1)],
+                          'z': [round(float(VH.min()) * 100, 1), round(float(VH.max()) * 100, 1)]},
             'note': 'vertices already in UE cm; the script fits the imported mesh to these bounds (axis order and signs)'}
 i_ps = int(np.searchsorted(dist, 15.0))
 

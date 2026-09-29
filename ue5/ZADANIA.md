@@ -13,6 +13,57 @@ Zasady:
 
 ---
 
+## Runda 4 (po rundzie 3: `feedback/runda_03/log.txt`, zrzuty 01–12)
+
+Co się zmieniło w repozytorium:
+- `export/far_terrain.obj`, zasób **`SM_RysyFar_v4`** (618 tys. trójkątów zamiast 904 tys.):
+  - **szew**: zamiast gęstych linii w poprzek granicy jest osobny pas (kołnierz) od krawędzi dziury w siatce 60 m
+    do granicy krajobrazu, z wierzchołkiem w **każdej próbce krawędzi krajobrazu (co 1,3 m)** i wysokością z
+    heightmapy (różnica ≤ 1 cm w danych). Pod granicą fartuch 15 m w dół (na wypadek szczelin od LOD krajobrazu).
+    Wnętrze pod krajobrazem jest teraz puste (bez zatopionej siatki);
+  - **pierścień horyzontu**: 6 pierścieni do 110–150 km, 450 m n.p.m. minus krzywizna Ziemi (daleka krawędź leży
+    na prawdziwym horyzoncie, ok. −2,9 km w narożnikach). Kolor jednolity: brzeg tekstury (ostatnie ~1,7 km)
+    przechodzi w jeden nizinny kolor, więc nie ma już smug.
+- `export/far_terrain.jpg`, zasób **`T_RysyFar_v4`**: jak w v3 plus wygaszenie brzegu do koloru nizin.
+- `export/heightmap.png`: na płaskich brzegach niższych od jeziora podniesienie gruntu wygasa łagodnie do 16 m od
+  brzegu (w rundzie 3 było ostre cięcie na 6 m: drobne progi na 03 i 05). **Liczby importu bez zmian.**
+- `build_scene.py`:
+  - **mgła** jako stałe na górze skryptu: `FOG_DENSITY = 0.0025`, `FOG_HEIGHT_FALLOFF = 0.2`,
+    `FOG_MAX_OPACITY = 0.8`, `FOG_START_DISTANCE_M = 3000`, `FOG_COLOR = (0.32, 0.40, 0.52)` (Fog Inscattering Color);
+  - slot materiału siatki zawsze na `M_RysyFar`; stare zasoby (`far`, `TEX_far_terrain*`, starsze `SM_RysyFar*` i
+    `T_RysyFar*`) kasowane po nazwie, jeśli nic poza poziomem ich nie używa (w logu `[Rysy] Daleki teren: usuniety …`
+    albo `zostawiam … (uzywa go …)`);
+  - kolizja dalekiego terenu: profil `NoCollision` + `NO_COLLISION`, w logu linia `[Rysy] Daleki teren: kolizja …`.
+
+Zadania:
+1. `git pull`.
+2. Wczytaj nową mapę wysokości do istniejącego krajobrazu (jak w rundzie 3), kontrola kilku punktów przy brzegach.
+3. Uruchom `build_scene.py`. Do `log.txt`: linie `[Rysy] Daleki teren: …` (osie/znaki/skala, kolizja, usunięte
+   zasoby) i wszystkie ostrzeżenia `[Rysy]`. Sprawdź, co zostało w `/Game/Rysy/FarTerrain/` i `/Game/Rysy/Textures/`
+   (powinno być tylko `SM_RysyFar_v4` i `T_RysyFar_v4` z dalekiego terenu); resztę `SM_RysyFar_v3` / `T_RysyFar_v3`
+   usuń ręcznie, jeśli skrypt ją zostawił. Zapisz poziom.
+4. **Kolizja**: po zapisaniu poziomu i ponownym otwarciu sprawdź kolizję komponentu `Rysy_DalekiTeren`
+   (ma być NoCollision). Jeśli nadal jest QUERY_AND_PHYSICS, sprawdź, czy da się to zmienić na zasobie siatki
+   (Collision Complexity / usunięcie kolizji w edytorze siatki) i opisz, co zadziałało.
+5. **Szew**: kamery 08 i 09 + pomiar far − krajobraz wzdłuż krawędzi jak w rundzie 3 (oczekiwane ≈ 0 m). Czy z
+   daleka (01, 04) widać szczeliny na granicy albo fartuch?
+6. **Horyzont i mgła** (ze szczytu, kamera 11, pitch 0 i −10): zrób zrzuty z mgłą ze skryptu oraz dwoma wariantami
+   ustawionymi ręcznie w aktorze „Mgla”:
+   - A (skrypt): density 0,0025, falloff 0,2, max opacity 0,8, start 3 km, kolor (0,32; 0,40; 0,52);
+   - B: density 0,0015, falloff 0,2, max opacity 0,7, start 5 km, kolor (0,45; 0,55; 0,70);
+   - C: bez mgły (aktor ukryty, zostaje tylko perspektywa powietrzna atmosfery).
+   Wybierz najlepszy (naturalne zamglenie gór w oddali, bez granatowego pasa, pierścień nie rzuca się w oczy) i
+   **wpisz wybrane liczby do log.txt**; jeśli żaden nie pasuje, dobierz własne. Opisz też sam pierścień: kolor,
+   czy widać jego krawędź, czy styk z dalekim terenem (pas wygaszonej tekstury ~17 km od środka) jest widoczny.
+7. **Brzegi**: 03 i 05 z tych samych kamer (czy zniknęły drobne progi), 06 i 07 dla porównania.
+8. **Zrzuty** 01–12 z tych samych kamer co w rundzie 3 (11: mgła A, 12: wybrany wariant), 1920×1080.
+9. **Wydajność** jak w rundzie 3 (Morskie Oko, szczyt) + trójkąty `SM_RysyFar_v4` i Nanite.
+10. Zapisz w `ue5/feedback/runda_04/`, commit „UE5 feedback: runda 04”, push, wiadomość do sesji B „runda 04 gotowa”.
+
+Nie rób jeszcze: postaci Third Person, podmiany tekstur terenu, zmian w liczbie drzew.
+
+---
+
 ## Runda 3 (po rundzie 2: `feedback/runda_02/log.txt`, zrzuty 01–10)
 
 Co się zmieniło w repozytorium:
