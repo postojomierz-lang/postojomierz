@@ -5,7 +5,7 @@ Korzysta z tych samych danych co wersja przeglądarkowa: lidar 1 m (GUGiK, ÚGKK
 
 | Co | Gdzie |
 |---|---|
-| gotowe dane dla Unreala (commitowane, ~60 MB) | `ue5/export/` |
+| gotowe dane dla Unreala (commitowane, ~130 MB) | `ue5/export/` |
 | skrypt uruchamiany w edytorze Unreala | `ue5/unreal/build_scene.py` |
 | skrypt, który przygotował dane (nie musisz go uruchamiać) | `ue5/tools/export_ue5.py` |
 

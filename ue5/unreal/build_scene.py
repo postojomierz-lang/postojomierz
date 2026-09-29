@@ -64,8 +64,8 @@ LAYER_TEXTURES = {
 REIMPORT_TEXTURES = False    # True = import the export textures again even if they already exist
 
 # Exposure: automatic, shifted by this many stops (negative = darker). The first run of the scene was
-# far too bright; -1.0 is a guess, tune it in the Rysy_PostProcess actor (Exposure -> Exposure Compensation).
-EXPOSURE_BIAS = -1.0
+# far too bright; round 2 compared -1.0 / -0.5 / 0.0 in Play and picked -0.5 (Rysy_PostProcess -> Exposure).
+EXPOSURE_BIAS = -0.5
 
 FAR_TERRAIN = True           # the 35 x 29 km terrain around the landscape (far_terrain.obj), no more empty horizon
 
@@ -621,8 +621,10 @@ def far_terrain(ex, S):
     info = S.get("far_terrain")
     if not FAR_TERRAIN or not info:
         return
-    dest_dir, name = CONTENT_ROOT + "/FarTerrain", "SM_RysyFar"
+    # versioned asset names (SM_RysyFar_v3 ...): a new export gets imported, the old assets stay unused
+    dest_dir, name = CONTENT_ROOT + "/FarTerrain", info.get("asset", "SM_RysyFar")
     path = dest_dir + "/" + name
+    got = []
     if not EAL.does_asset_exist(path):
         task = unreal.AssetImportTask()
         task.set_editor_property("filename", os.path.join(ex, info["file"]))
@@ -641,7 +643,7 @@ def far_terrain(ex, S):
     if not isinstance(mesh, unreal.StaticMesh):
         warn("Daleki teren: import %s nie dal siatki (StaticMesh)" % info["file"])
         return
-    tex = import_texture(os.path.join(ex, info["texture"]), "T_RysyFar", "color")
+    tex = import_texture(os.path.join(ex, info["texture"]), info.get("texture_asset", "T_RysyFar"), "color")
     mat = fresh_material("M_RysyFar")
     g = Graph(mat)
     t = g.node(unreal.MaterialExpressionTextureSampleParameter2D, -800, parameter_name="Photo")
@@ -652,6 +654,23 @@ def far_terrain(ex, S):
     g.out(g.scalar("Specular", 0.2), "", unreal.MaterialProperty.MP_SPECULAR)
     mat.set_editor_property("two_sided", True)
     finish_material(mat)
+    # the OBJ importer also makes a material and a texture from far_terrain.mtl ("far", TEX_far_terrain):
+    # point the mesh's slot at M_RysyFar, then drop them (materials before textures)
+    extra = [p for p in got if p != path and EAL.does_asset_exist(p)]
+    if extra:
+        try:
+            mesh.set_material(0, mat)
+            EAL.save_loaded_asset(mesh)
+        except Exception as e:   # noqa: BLE001
+            warn("Daleki teren: slot materialu: %s" % e)
+        extra.sort(key=lambda p: 0 if isinstance(EAL.load_asset(p), unreal.MaterialInterface) else 1)
+        for p in extra:
+            if isinstance(EAL.load_asset(p), unreal.StaticMesh):
+                continue
+            try:
+                EAL.delete_asset(p)
+            except Exception as e:   # noqa: BLE001
+                warn("Daleki teren: nie usunieto %s: %s" % (p, e))
     # fit the mesh to the expected bounds whatever axis convention the OBJ importer used
     bb = mesh.get_bounding_box()
     lmin, lmax = [bb.min.x, bb.min.y, bb.min.z], [bb.max.x, bb.max.y, bb.max.z]
@@ -688,7 +707,7 @@ def far_terrain(ex, S):
     got_min = [origin.x - extent.x, origin.y - extent.y, origin.z - extent.z]
     a.set_actor_location(unreal.Vector(*[w - g0 for w, g0 in zip(wmin, got_min)]), False, False)
     log("Daleki teren: osie %s, znaki %s, skala 1/%.3g" % (perm, sign, k))
-    report.append("daleki teren: 35 x 29 km wokol krajobrazu")
+    report.append("daleki teren: 35 x 29 km wokol krajobrazu + pierscien horyzontu (%s)" % name)
 
 
 def landscape_step(S, mat):
