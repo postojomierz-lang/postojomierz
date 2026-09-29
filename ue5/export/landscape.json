@@ -27,7 +27,7 @@
  },
  "height_formula": "height_m = mid_m + (value - 32768) / 128 * z_scale / 100",
  "mid_m": 1840.0,
- "height_min_m": 1128.8,
+ "height_min_m": 1124.54,
  "height_max_m": 2556.37,
  "extent_m": 5241.6,
  "metres_per_sample": 1.3,
@@ -68,8 +68,8 @@
   "our_local": "x = east, z = south (tatry/tools/prepare.py local()); UE X = x*100, UE Y = z*100"
  },
  "counts": {
-  "spruce": 38620,
-  "dwarfpine": 49193,
+  "spruce": 38629,
+  "dwarfpine": 49009,
   "rocks": 16128,
   "trail_points": 953,
   "lakes": 14,
@@ -84,8 +84,14 @@
  "far_terrain": {
   "file": "far_terrain.obj",
   "texture": "far_terrain.jpg",
-  "asset": "SM_RysyFar_v4",
-  "texture_asset": "T_RysyFar_v4",
+  "asset": "SM_RysyFar_v5",
+  "texture_asset": "T_RysyFar_v5",
+  "near_texture": "far_near.jpg",
+  "near_texture_asset": "T_RysyNear_v5",
+  "slots": {
+   "near": "far_near.jpg",
+   "far": "far_terrain.jpg"
+  },
   "bounds_cm": {
    "x": [
     -11825395.2,
@@ -97,7 +103,7 @@
    ],
    "z": [
     -287000.1,
-    261067.6
+    263590.5
    ]
   },
   "note": "vertices already in UE cm; the script fits the imported mesh to these bounds (axis order and signs)"

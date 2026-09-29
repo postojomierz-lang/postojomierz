@@ -69,12 +69,13 @@ EXPOSURE_BIAS = -0.5
 
 # Height fog. Round 3: density 0.006 / falloff 0.05 / opacity 1 with the colour taken from the atmosphere
 # covered everything past ~20 km with a flat navy band (the horizon ring was under it). Thinner, starting
-# a few km out, never fully opaque, and a light hazy blue of its own. Tune in the "Mgla" actor.
-FOG_DENSITY = 0.0025
-FOG_HEIGHT_FALLOFF = 0.2
-FOG_MAX_OPACITY = 0.8
-FOG_START_DISTANCE_M = 3000
-FOG_COLOR = (0.32, 0.40, 0.52)   # Fog Inscattering Color (linear)
+# a few km out, never fully opaque, and a light hazy blue of its own. Round 4: the operator compared
+# variants and picked these ("D": a light haze, the basin still visible). Tune in the "Mgla" actor.
+FOG_DENSITY = 0.0012
+FOG_HEIGHT_FALLOFF = 0.1
+FOG_MAX_OPACITY = 0.7
+FOG_START_DISTANCE_M = 5000
+FOG_COLOR = (0.45, 0.55, 0.70)   # Fog Inscattering Color (linear)
 
 FAR_TERRAIN = True           # the 35 x 29 km terrain around the landscape (far_terrain.obj), no more empty horizon
 
@@ -637,6 +638,22 @@ def sky_and_light(S):
         warn("Mgla: %s" % e)
 
 
+def photo_material(name, file, tex_name):
+    """A photo on a rough, two-sided surface (the far terrain)."""
+    tex = import_texture(file, tex_name, "color")
+    mat = fresh_material(name)
+    g = Graph(mat)
+    t = g.node(unreal.MaterialExpressionTextureSampleParameter2D, -800, parameter_name="Photo")
+    if tex is not None:
+        t.set_editor_property("texture", tex)
+    g.out(g.op(unreal.MaterialExpressionMultiply, t, "RGB", g.scalar("Brightness", 1.0)), "", unreal.MaterialProperty.MP_BASE_COLOR)
+    g.out(g.scalar("Roughness", 1.0), "", unreal.MaterialProperty.MP_ROUGHNESS)
+    g.out(g.scalar("Specular", 0.2), "", unreal.MaterialProperty.MP_SPECULAR)
+    mat.set_editor_property("two_sided", True)
+    finish_material(mat)
+    return mat
+
+
 def far_terrain(ex, S):
     info = S.get("far_terrain")
     if not FAR_TERRAIN or not info:
@@ -663,41 +680,50 @@ def far_terrain(ex, S):
     if not isinstance(mesh, unreal.StaticMesh):
         warn("Daleki teren: import %s nie dal siatki (StaticMesh)" % info["file"])
         return
-    tex = import_texture(os.path.join(ex, info["texture"]), info.get("texture_asset", "T_RysyFar"), "color")
-    mat = fresh_material("M_RysyFar")
-    g = Graph(mat)
-    t = g.node(unreal.MaterialExpressionTextureSampleParameter2D, -800, parameter_name="Photo")
-    if tex is not None:
-        t.set_editor_property("texture", tex)
-    g.out(g.op(unreal.MaterialExpressionMultiply, t, "RGB", g.scalar("Brightness", 1.0)), "", unreal.MaterialProperty.MP_BASE_COLOR)
-    g.out(g.scalar("Roughness", 1.0), "", unreal.MaterialProperty.MP_ROUGHNESS)
-    g.out(g.scalar("Specular", 0.2), "", unreal.MaterialProperty.MP_SPECULAR)
-    mat.set_editor_property("two_sided", True)
-    finish_material(mat)
-    # the mesh's own slot points at M_RysyFar (the OBJ importer gives it "far" from far_terrain.mtl);
-    # then drop what is left over: "far", TEX_far_terrain* and older SM_RysyFar* / T_RysyFar* versions
-    # (round 3: in a project that already had "far" the import reused it, so this has to go by name)
+    # two slots from far_terrain.mtl: "near" (the 800 m band, its own 1.9 m/px photo) and "far"
+    mats = {"far": photo_material("M_RysyFar", os.path.join(ex, info["texture"]), info.get("texture_asset", "T_RysyFar"))}
+    if info.get("near_texture"):
+        mats["near"] = photo_material("M_RysyNear", os.path.join(ex, info["near_texture"]), info["near_texture_asset"])
+    slots = {}
     try:
-        mesh.set_material(0, mat)
+        for idx, sm in enumerate(mesh.get_editor_property("static_materials")):
+            nm = str(sm.get_editor_property("material_slot_name")).lower()
+            for key in mats:
+                if key in nm and key not in slots:
+                    slots[key] = idx
+    except Exception as e:   # noqa: BLE001
+        warn("Daleki teren: sloty: %s" % e)
+    if len(slots) < len(mats):
+        warn("Daleki teren: nie rozpoznano slotow po nazwie (%s), zakladam near=0, far=1" % slots)
+        slots = {"near": 0, "far": 1} if "near" in mats else {"far": 0}
+    log("Daleki teren: sloty %s" % slots)
+    # the mesh's own slots point at our materials (the OBJ importer gives it "near"/"far" from the .mtl);
+    # then drop what is left over: the importer's materials and TEX_* textures, older SM_RysyFar* and
+    # T_RysyFar* / T_RysyNear* versions (by name: a project that already had them reuses them on import)
+    try:
+        for key, idx in slots.items():
+            mesh.set_material(idx, mats[key])
         EAL.save_loaded_asset(mesh)
     except Exception as e:   # noqa: BLE001
         warn("Daleki teren: slot materialu: %s" % e)
-    keep = {path, TEX_DIR + "/" + info.get("texture_asset", "T_RysyFar")}
+    keep = {path, TEX_DIR + "/" + info.get("texture_asset", "T_RysyFar"), TEX_DIR + "/" + info.get("near_texture_asset", "")}
+    ours = {MAT_DIR + "/M_RysyFar", MAT_DIR + "/M_RysyNear"}   # rebuilt above, now on the new textures
     old = [p for p in got if p != path]
-    for folder, prefixes in ((dest_dir, ("far", "TEX_far_terrain", "SM_RysyFar")), (TEX_DIR, ("T_RysyFar",))):
+    for folder, prefixes in ((dest_dir, ("far", "near", "TEX_", "SM_RysyFar")), (TEX_DIR, ("T_RysyFar", "T_RysyNear"))):
         for p in EAL.list_assets(folder, recursive=False, include_folder=False):
             p = str(p).split(".")[0]
             if p.rsplit("/", 1)[-1].startswith(prefixes):
                 old.append(p)
-    # materials first (they hold the textures), meshes before their materials
+    # meshes first, then materials (they hold the textures), then textures
     rank = lambda p: 0 if isinstance(EAL.load_asset(p), unreal.StaticMesh) else (1 if isinstance(EAL.load_asset(p), unreal.MaterialInterface) else 2)
     for p in sorted(set(old) - keep, key=rank):
         if not EAL.does_asset_exist(p):
             continue
         # the level still lists the old actor until it is saved; that actor is gone (destroyed above)
-        refs = [r for r in (EAL.find_package_referencers_for_asset(p, False) or []) if str(r).split(".")[0] not in old and not str(r).startswith(LEVEL_PATH)]
+        refs = [str(r).split(".")[0] for r in (EAL.find_package_referencers_for_asset(p, False) or [])]
+        refs = [r for r in refs if r not in old and r not in ours and not r.startswith(LEVEL_PATH)]
         if refs:
-            warn("Daleki teren: zostawiam %s (uzywa go %s)" % (p, ", ".join(str(r) for r in refs)))
+            warn("Daleki teren: zostawiam %s (uzywa go %s)" % (p, ", ".join(refs)))
             continue
         try:
             EAL.delete_asset(p)
@@ -732,15 +758,17 @@ def far_terrain(ex, S):
     if det < 0:                                        # a mirror: flip local Z and give it a negative scale
         cols[2] = [-c for c in cols[2]]; scl[2] = -scl[2]
     rot = unreal.MathLibrary.make_rotation_from_axes(unreal.Vector(*cols[0]), unreal.Vector(*cols[1]), unreal.Vector(*cols[2]))
-    a = mesh_actor(mesh, (0, 0, 0), scl, material=mat, label="Rysy_DalekiTeren", folder="Rysy")
+    a = mesh_actor(mesh, (0, 0, 0), scl, label="Rysy_DalekiTeren", folder="Rysy")
     a.set_actor_rotation(rot, False)
     c = a.static_mesh_component
+    for key, idx in slots.items():
+        c.set_material(idx, mats[key])
     # no collision (round 3: set_collision_enabled alone left QUERY_AND_PHYSICS on the saved actor)
     try:
         c.set_collision_profile_name("NoCollision")
         c.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
         c.set_editor_property("can_character_step_up_on", unreal.CanBeCharacterBase.ECB_NO)
-        c.set_generate_overlap_events(False)
+        c.set_editor_property("generate_overlap_events", False)   # no Python setter in 5.8
     except Exception as e:   # noqa: BLE001
         warn("Daleki teren: kolizja: %s" % e)
     log("Daleki teren: kolizja %s, profil %s" % (c.get_collision_enabled(), c.get_collision_profile_name()))
@@ -748,7 +776,7 @@ def far_terrain(ex, S):
     got_min = [origin.x - extent.x, origin.y - extent.y, origin.z - extent.z]
     a.set_actor_location(unreal.Vector(*[w - g0 for w, g0 in zip(wmin, got_min)]), False, False)
     log("Daleki teren: osie %s, znaki %s, skala 1/%.3g" % (perm, sign, k))
-    report.append("daleki teren: 35 x 29 km wokol krajobrazu + pierscien horyzontu (%s)" % name)
+    report.append("daleki teren: pas 800 m (10 m, DEM 4 m) + 35 x 29 km + pierscien horyzontu (%s)" % name)
 
 
 def landscape_step(S, mat):

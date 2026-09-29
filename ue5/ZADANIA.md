@@ -13,6 +13,49 @@ Zasady:
 
 ---
 
+## Runda 5 (po rundzie 4: `feedback/runda_04/log.txt`, zrzuty 01–14b)
+
+Co się zmieniło w repozytorium:
+- **Przyczyna złego szwu na N i S**: dane bazowe 4 m kończą się ~80 m przed krawędziami N i S kwadratu, więc sam
+  krajobraz w tych pasach był z DEM 55 m, a ortofoto ze starego zdjęcia 17 m/px (jasny, rozmyty pas na 08).
+  Teraz tło krajobrazu to **DEM 4 m regionu** (`region/base`) i **ortofoto regionu 2 m** (z przejściem 25 m).
+  `export/heightmap.png` i `export/ortho.jpg` się zmieniły (**liczby importu bez zmian**).
+- `export/far_terrain.obj`, zasób **`SM_RysyFar_v5`** (1,0 mln trójkątów, Nanite): **dwa materiały**:
+  - `near`: pas 800 m wokół krajobrazu, siatka 10 m na DEM 4 m regionu, własna tekstura
+    `far_near.jpg` → **`T_RysyNear_v5`** (4096 px, ~1,9 m/px, ortofoto regionu), materiał `M_RysyNear`;
+  - `far`: reszta (siatka 60 m, też na DEM 4 m tam, gdzie region sięga) + pierścień, tekstura **`T_RysyFar_v5`**,
+    materiał `M_RysyFar`;
+  - kołnierz nadal ma wierzchołek w każdej próbce krawędzi krajobrazu (w danych ±1,6 cm), a DEM 4 m zgadza się z
+    krawędzią krajobrazu (95 % punktów w ±1 cm), więc nie ma już płachty z załamaniem.
+- Brzegi: podniesienie gruntu przecina poziom wody stromo (~0,3 m na metr), żeby linia wody szła po obrysie jeziora,
+  a nie po trójkątach 1,3 m (drobne ząbki na 03 i 05).
+- `build_scene.py`: mgła **D** (0,0012 / 0,1 / 0,7 / 5 km / (0,45; 0,55; 0,70)); sloty `near`/`far` rozpoznawane
+  po nazwie (w logu `[Rysy] Daleki teren: sloty …`); stare tekstury kasowane bez fałszywego alarmu (odwołania z
+  przebudowanych `M_RysyFar`/`M_RysyNear` pomijane); `generate_overlap_events` przez właściwość.
+
+Zadania:
+1. `git pull`.
+2. Wczytaj nową mapę wysokości do istniejącego krajobrazu (jak w rundzie 4). Ortofoto i maski krajobrazu też się
+   zmieniły (`T_RysyOrtho`, `T_RysyMask_*`): na ten jeden przebieg ustaw w `build_scene.py`
+   `REIMPORT_TEXTURES = True` (bez commitowania tej zmiany), żeby skrypt zaimportował je od nowa.
+3. Uruchom `build_scene.py`. Do `log.txt`: linie `[Rysy] Daleki teren: …` (sloty, osie/znaki/skala, kolizja,
+   usunięte zasoby) i ostrzeżenia `[Rysy]`. Po skrypcie w `/Game/Rysy/FarTerrain/` ma być tylko `SM_RysyFar_v5`,
+   a w `/Game/Rysy/Textures/` z dalekiego terenu tylko `T_RysyFar_v5` i `T_RysyNear_v5`. Zapisz poziom.
+4. **Szew** (08, 09 + pomiar jak w rundzie 4; dodatkowo krawędź N: kamera jak 08, ale (60000, −230000), yaw −90):
+   czy zniknęła gładka płachta i załamanie; czy tekstura pasa `near` łączy się z ortofoto krajobrazu bez wyraźnej
+   zmiany ostrości/koloru; czy widać przejście `near` → `far` (~800 m od krawędzi).
+5. **Pas N i S krajobrazu** z bliska (kamera 3 m nad gruntem ~40 m od krawędzi S, patrząc wzdłuż niej):
+   czy grunt i tekstura wyglądają jak reszta krajobrazu.
+6. **Horyzont**: zrzuty 11/11b z mgłą D ze skryptu; czy dobrana mgła działa bez ręcznych zmian.
+7. **Brzegi** 03, 05 (czy drobne ząbki zniknęły), 06, 07.
+8. **Zrzuty** 01–11b jak w rundzie 4 + nowe z punktów 4 i 5 (15_szew_krawedz_N, 16_pas_S_z_bliska), 1920×1080.
+9. **Wydajność** jak w rundzie 4 + trójkąty `SM_RysyFar_v5`, Nanite, liczba slotów.
+10. `ue5/feedback/runda_05/`, commit „UE5 feedback: runda 05”, push, wiadomość do sesji B „runda 05 gotowa”.
+
+Nie rób jeszcze: postaci Third Person, podmiany tekstur terenu, zmian w liczbie drzew.
+
+---
+
 ## Runda 4 (po rundzie 3: `feedback/runda_03/log.txt`, zrzuty 01–12)
 
 Co się zmieniło w repozytorium:
