@@ -1,0 +1,70 @@
+UE5 feedback: runda 07, 2026-09-29 (operator: lokalny Claude przez Unreal MCP)
+==========================================================================
+
+Projekt: Documents\Unreal Projects\Rysy 5.8, poziom /Game/Rysy/Maps/Rysy. UE 5.8.3, RTX 4070 Ti SUPER.
+Python jak w poprzednich rundach (`py "plik.py"` w polu Cmd, dialogi → log).
+
+1. git pull: OK (5074f550 „UE5 round 7 …”, merge #132).
+
+2. Nowa mapa wysokości do istniejącego krajobrazu (render target + landscape_import_heightmap_from_render_target):
+   - 305 losowych punktów: krajobraz − PNG = −0,54 … +0,01 cm,
+   - 80 punktów spośród 1917 próbek zmienionych względem rundy 6 o >20 jednostek (brzegi): −0,24 … +0,01 cm.
+   REIMPORT_TEXTURES = True tylko w pamięci; build_scene.py w repo bez zmian. T_RysyOrtho, T_RysyMask_A/B/C
+   i nowe T_RysyNearMask_A/B zaimportowane (21:46).
+
+3. build_scene.py: 16 s, bez błędów Pythona, BEZ ostrzeżeń (ani [Rysy], ani Deprecation, ani TextureIndex).
+   Wszystkie linie [Rysy] o materiałach i dalekim terenie (dosłownie):
+   [Rysy] Material krajobrazu gotowy: /Game/Rysy/Materials/MI_RysyLandscape (zachowany)
+   [Rysy] M_RysyFar: tekstura T_RysyFar_v6
+   [Rysy] M_RysyNear: zdjecie + maski + warstwy (11 tekstur)
+   [Rysy] Daleki teren: sloty {'near': 0, 'far': 1}
+   [Rysy] Daleki teren: kolizja <CollisionEnabled.NO_COLLISION: 0>, profil NoCollision
+   [Rysy] Daleki teren: osie [0, 1, 2], znaki [1, -1, 1], skala 1/1
+   Żadnych linii o czyszczeniu węzłów (czyli nic nie zostało po delete_all + kasowaniu po jednym).
+   Podsumowanie: daleki teren SM_RysyFar_v6 (bez ponownego importu); jeziora 14; budynki 23; drogowskazy 4;
+   spruce 38 629; dwarfpine 49 063; rock 10 995.
+
+   Kontrola materiałów PRZED jakąkolwiek ręczną zmianą (węzły osiągalne z wyjść BaseColor/Roughness/Specular/
+   Normal/Metallic/Emissive/Opacity/AO vs wszystkie; zdublowane parameter_name):
+     M_RysyLandscape: 84 węzły, 84 podłączone, osieroconych 0, duplikatów parametrów 0;
+                      używa 12 tekstur (Ortho, Mask_A/B/C, 4× _D, 4× _N)
+     M_RysyFar:        5 / 5, 0, 0; get_material_used_textures = [T_RysyFar_v6]
+     M_RysyNear:      80 / 80, 0, 0; get_material_used_textures = [T_RysyNear_v6, T_RysyNearMask_A/B,
+                      4× tekstury warstw _D, 4× _N] (11)
+     M_RysySimple:     3 / 3, 0, 0
+     M_RysyWater:      3 / 3, 0, 0
+   → Nic nie trzeba było naprawiać ręcznie. Poprawka czyszczenia grafu działa.
+
+4. Krawędź N (15), narożnik NE (09), z poziomu gruntu (17, 17b) + nowy 18 (w pasie near 100 m za krawędzią N)
+   - 15 i 09 z rundy 6 i 7 są praktycznie identyczne (średni kolor w górnej części kadru, pas near:
+     r6 (80,117,76) vs r7 (80,117,76); dolna część, krajobraz przy krawędzi: (84,92,60) vs (84,92,60)).
+     Czyli z kamery 250 m nad krawędzią pas near nadal pokazuje zdjęcie (warstwy są tylko przy kamerze) i jest
+     wyraźnie bardziej zielony (G/R ≈ 1,46) niż krajobraz tuż obok (G/R ≈ 1,10, oliwkowo-żółtawy).
+     Wniosek: z góry różnicę robi jasność/kolor ortofoto krajobrazu po przejściu na zdjęcie (albo tint/Brightness
+     krajobrazu), a nie tekstury warstw; na N pas krajobrazu przy krawędzi z góry nadal oliwkowy.
+   - 17/17b (3 m nad gruntem przy krawędzi N): krajobraz z bliska ma szczegół tekstur warstw (trawa, ziemia),
+     kolor gruntu przy krawędzi zmienił się (r6 (89,88,40) → r7 (108,99,56): mniej żółty, jaśniejszy),
+     ale stok pasa near za krawędzią (odległość ~150–400 m) nadal jaskrawozielony i gładki/rozmyty – z poziomu gruntu
+     granica koloru nadal bardzo wyraźna (17b).
+   - 18 (kamera w pasie near, 100 m za krawędzią N, 3 m nad gruntem, patrząc na S): z bliska near ma szary grunt
+     z drzewami (drzewa to krajobraz za krawędzią), a na stoku po lewej widać jaskrawozielone, neonowe łaty
+     (pasy wzdłuż zbocza) – wyglądają jak warstwa kosodrzewiny/trawy z maski near z mocnym tintem; wyraźnie
+     sztuczne na tle szarej skały.
+
+5. Brzegi
+   - 05 (Play, PlayerStart): gładko, bez ząbków (jak w r6).
+   - 03 (Czarny Staw przy słupku): schodki wyraźnie mniejsze niż w r6; linia wody prawie po obrysie, zostały
+     2–3 bardzo małe załamania przy samym słupku.
+   - 06, 07: gładkie.
+
+6. Zrzuty (1920×1080; edytor HighResShot z CameraActor, 05 i 10 w Play, mgła D)
+   01–10, 11/11b, 15, 16, 17, 17b jak w rundzie 6,
+   18_pas_near_z_bliska_100m_za_krawedzia_N (60000, −272000, grunt+3 m, pitch −6, yaw 90).
+
+   Wydajność (Play w nowym oknie 2560×1380, StartFPSChart/StopFPSChart)
+   - Morskie Oko: 88,5 FPS (7070 / 79,9 s), GPU 10,18 ms, Game 5,5 ms, 26 % < 120, 1 przycięcie.  [r6: 87,5 FPS, GPU 10,38 ms]
+   - Szczyt: 118,7 FPS (9371 / 79,0 s), GPU 7,04 ms, Game 5,7 ms, 1,1 % < 120, 1 przycięcie.      [r6: 119,4, GPU 6,99 ms]
+   Droższy materiał M_RysyNear nie zmienił GPU w granicach szumu (±0,2 ms).
+
+Po rundzie: ustawienia edytora przywrócone (okno PIE 1280×720, „Use Less CPU when in Background” włączone).
+Czego nie robiłem (zgodnie z ZADANIA.md): Third Person, zmiana liczby drzew, podmiana tekstur warstw z Fab.
