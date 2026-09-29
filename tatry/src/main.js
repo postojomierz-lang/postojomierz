@@ -926,7 +926,7 @@ async function main() {
     if ((dyn.calm += el) > dyn.wait) { dyn.cap = PR_MAX; dyn.calm = 0; }
     let np = pr;
     if (fps < 48 && pr > PR_MIN) {
-      np = Math.max(PR_MIN, pr - 0.25); dyn.cap = np; dyn.calm = 0; dyn.good = 0;
+      np = fps < 20 ? PR_MIN : Math.max(PR_MIN, pr - 0.25); dyn.cap = np; dyn.calm = 0; dyn.good = 0;   // far too slow: straight down
       if (now - dyn.raisedAt < 8000) dyn.wait = Math.min(600, dyn.wait * 2);   // the last step up failed
     } else if (fps > 57) {
       if (++dyn.good >= 3 && pr + 0.25 <= dyn.cap) { np = pr + 0.25; dyn.good = 0; dyn.raisedAt = now; }
