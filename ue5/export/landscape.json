@@ -69,7 +69,7 @@
  },
  "counts": {
   "spruce": 38629,
-  "dwarfpine": 49052,
+  "dwarfpine": 49063,
   "rocks": 16128,
   "trail_points": 953,
   "lakes": 14,
@@ -88,6 +88,10 @@
   "texture_asset": "T_RysyFar_v6",
   "near_texture": "far_near.jpg",
   "near_texture_asset": "T_RysyNear_v6",
+  "near_masks": [
+   "far_near_masks_a.png",
+   "far_near_masks_b.png"
+  ],
   "slots": {
    "near": "far_near.jpg",
    "far": "far_terrain.jpg"

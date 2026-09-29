@@ -13,6 +13,47 @@ Zasady:
 
 ---
 
+## Runda 7 (po rundzie 6: `feedback/runda_06/log.txt`, zrzuty)
+
+Początek etapu 2 planu (wygląd z bliska). **Siatka dalekiego terenu zamrożona**: nadal `SM_RysyFar_v6`,
+`T_RysyFar_v6`, `T_RysyNear_v6` (bez ponownego importu).
+
+Co się zmieniło w repozytorium:
+- **Materiały od zera** (`fresh_material`): po `delete_all_material_expressions` skrypt listuje resztę węzłów
+  i kasuje je po jednym (`delete_material_expression`). Jeśli czegoś nie da się wylistować albo zostaną węzły,
+  w logu jest ostrzeżenie `[Rysy] M_…: …`. Kontrola tekstur przez `get_material_used_textures`.
+- **Pas near jak krajobraz**: nowe maski warstw dla pasa (`far_near_masks_a/b.png` → `T_RysyNearMask_A/B`),
+  liczone tymi samymi regułami co maski krajobrazu (zdjęcie, mapa pokrycia regionu, wysokość, nachylenie).
+  `M_RysyNear` miesza przy kamerze te same tekstury warstw co krajobraz, dalej zdjęcie (ta sama odległość
+  przejścia).
+- **Pasy N i S krajobrazu**: mapa pokrycia z `tatry/` tam nie sięgała, więc cały pas był piargiem (oliwkowo-żółty
+  przy krawędzi). Teraz używa mapy pokrycia regionu: las i kosodrzewina jak dalej od krawędzi.
+  `export/masks_*.png` i `weights/` się zmieniły.
+- **Brzegi**: przecięcie poziomu wody 1 m od brzegu. W danych krawędź kwadratów wody nad gruntem niższym od lustra:
+  Morskie Oko 0,1 % (maks. 9 cm), Czarny Staw 0,1 % (maks. 5 cm). `export/heightmap.png` zmieniona
+  (**liczby importu bez zmian**). Uwaga: na krawędzi W, na dnie dwóch jezior przeciętych granicą, 5 z 16 128 próbek
+  granicy różni się od zamrożonej siatki v6 (do 1,6 m, pod wodą).
+
+Zadania:
+1. `git pull`.
+2. Nowa mapa wysokości do istniejącego krajobrazu; `REIMPORT_TEXTURES = True` na ten przebieg (bez commitowania).
+3. Uruchom `build_scene.py`. Do `log.txt` wszystkie linie `[Rysy] M_…` (materiały, czyszczenie węzłów) i ostrzeżenia.
+   Sprawdź w każdym materiale Rysy (`M_RysyLandscape`, `M_RysyFar`, `M_RysyNear`, `M_RysySimple`, `M_RysyWater`), czy
+   nie ma zduplikowanych parametrów/osieroconych węzłów, i `get_material_used_textures` dla `M_RysyFar` i `M_RysyNear`.
+   Nie naprawiaj ręcznie przed zapisaniem tego stanu w logu (potem możesz).
+4. **Krawędź N** (15), **narożnik NE** (09) i **z poziomu gruntu przy krawędzi** (17b z rundy 6): czy pas near ma teraz
+   ten sam kolor i charakter co krajobraz tuż obok (także z bliska, ~50–150 m); czy pasy N/S krajobrazu nie są już
+   żółtawe.
+5. **Brzegi** 03, 05, 06, 07.
+6. **Zrzuty** jak w rundzie 6 (01–11b, 15, 16, 17, 17b), 1920×1080. **Wydajność** jak w rundzie 6 (pas near ma teraz
+   droższy materiał: podaj GPU ms).
+7. `ue5/feedback/runda_07/`, commit „UE5 feedback: runda 07”, push, wiadomość do sesji B „runda 07 gotowa”.
+
+Nie rób jeszcze: postaci Third Person, zmian w liczbie drzew. Tekstur warstw z Fab jeszcze nie podmieniaj
+(to następna runda: najpierw sprawdzimy, jak wyglądają obecne na obu materiałach).
+
+---
+
 ## Runda 6 (po rundzie 5: `feedback/runda_05/log.txt`, zrzuty 01–16c)
 
 Ostatnia runda „sceny” (etap 1 planu): po niej siatka dalekiego terenu zostaje zamrożona, a następne rundy

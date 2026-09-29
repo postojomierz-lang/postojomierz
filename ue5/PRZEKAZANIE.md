@@ -78,7 +78,7 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
 - krawędź N: cienka ciemna linia (fartuch przy LOD krajobrazu), pas near jaśniejszy/zieleńszy (różnica materiałów,
   nie tekstur: zmierzone 1–5/255); brzegi: ząbki na 03, 2 drobne na 05; wydajność 86 / 119,5 FPS.
 
-## Runda 6 (wysłana operatorowi, czeka na `feedback/runda_06/`)
+## Runda 6
 - `build_scene.py`: import tekstur → `cleanup_far_assets()` → `photo_material(name, tex)` z kontrolą
   `get_used_textures` i jednorazową przebudową; normalne warstw krajobrazu wygaszane z odległością (alpha ortofoto);
   Roughness/Specular dalekiego terenu = krajobraz.
@@ -88,6 +88,21 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
   2) wygląd z bliska (tekstury warstw z darmowych źródeł / Fab bez zakupów bez zgody), 3) chodzenie (Third Person,
   szlak, drogowskazy-modele, licznik), 4) bieżnia FTMS przez Bluetooth (C++, rozpoznanie modelu), 5) paczka + opcjonalnie
   Pixel Streaming.
+
+### Wyniki rundy 6 (`feedback/runda_06/log.txt`)
+- ciemna linia na N zniknęła (zakładka działa, nigdzie nie wystaje); normalne z odległością nie psują bliskiego planu;
+- M_RysyFar nadal bez zdjęcia: `delete_all_material_expressions` w UE 5.8 zostawia węzły (stary „Photo” z None
+  wygrywał); operator usunął osierocone węzły ręcznie;
+- pas near nadal zieleńszy/rozmyty (krajobraz przy krawędzi oliwkowy: mieszanie z warstwami + pasy N/S bez mapy
+  pokrycia = piarg); brzegi: 05 gładki, 03 kilka schodków; 87,5 / 119,4 FPS.
+
+## Runda 7 (wysłana operatorowi, czeka na `feedback/runda_07/`)
+- `fresh_material` kasuje resztki węzłów po jednym (`material_expressions()` próbuje 3 sposobów listowania),
+  `used_textures()` (get_material_used_textures); `layer_blend()` i `photo_alpha()` wspólne dla krajobrazu i
+  `near_material()`; maski pasa `far_near_masks_a/b.png` (funkcja `classify()` w eksporterze, `region_lc()`);
+  mapa pokrycia regionu w pasach N/S krajobrazu; brzeg: przecięcie na 1 m.
+- **Siatka dalekiego terenu zamrożona na v6** (OBJ w repo nie jest regenerowany: po eksporcie przywrócić
+  `git checkout -- ue5/export/far_terrain.obj`, chyba że siatka ma się celowo zmienić → `_v7`).
 
 ## Pomysły na kolejne rundy
 - Tekstury warstw terenu z Megascans/Fab (bliskie podłoże jest płaskie, „piaskowe”), mocniejsze przejście ortofoto
