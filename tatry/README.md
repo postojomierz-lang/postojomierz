@@ -194,3 +194,10 @@ Region planera i widoku 3D obejmuje polskie i słowackie Tatry Wysokie (19,85–
 DMR 5.0 i ortofotomapa (ÚGKK SR / GKÚ Bratislava) leżą surowe na gałęzi `dane-zbgis`; przetwarzanie:
 `ZBGIS_EXTRA=<katalog DMR> ZBGIS_ORTO_EXTRA=<katalog orto> tools/run_region.sh` (region liczony w 12
 kawałkach, `CHUNK=i,j`, na koniec `MERGE=1`). Bez lidaru (Bielovodská dolina, podgórze) – Copernicus 30 m.
+
+## Poprawki czasu na trudnych przejściach
+`src/planner/corrections.js`: lista odcinków, na których normy (odległość i przewyższenie) dają dużo
+krótszy czas niż tablice – łańcuchy, klamry, drabinki, kolejki. Odcinek wyznacza trasa od punktu `a`
+do `b`; czas mnożony jest przez `factor`, a odcinki `oneway` (Zawrat → Kozi Wierch, Priečne sedlo
+od Téryho chaty) planer prowadzi tylko w jedną stronę. Mnożniki są szacunkowe (Priečne sedlo 3:00 h,
+Orla Perć ×1,6); kolejne przejścia dopisuje się jedną linią.
