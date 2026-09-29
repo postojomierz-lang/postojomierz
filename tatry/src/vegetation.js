@@ -34,7 +34,7 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
   for (let k = 0; k < pn; k++) {
     const x0 = pine[k * 3], y0 = pine[k * 3 + 1], z0 = pine[k * 3 + 2];
     const high = Math.min(1, Math.max(0, (y0 - 1650) / 250));
-    const m = 1 + Math.floor(r() * (quality === 'low' ? 2 : 3) * (1 - 0.5 * high));
+    const m = 1 + Math.floor(r() * (quality === 'low' ? 2 : quality === 'ultra' ? 3.6 : 3) * (1 - 0.5 * high));
     for (let c = 0; c < m; c++) {
       const x = x0 + (r() - 0.5) * 7, z = z0 + (r() - 0.5) * 7;
       const y = ground(x, z);

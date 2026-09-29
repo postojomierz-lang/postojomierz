@@ -1,0 +1,85 @@
+{
+ "heightmap": "heightmap.png",
+ "resolution": [
+  4033,
+  4033
+ ],
+ "section_size_quads": 63,
+ "sections_per_component": "2x2",
+ "components": [
+  32,
+  32
+ ],
+ "scale": {
+  "x": 130.0,
+  "y": 130.0,
+  "z": 285.2
+ },
+ "location_ui_centre_cm": {
+  "x": 0.0,
+  "y": 0.0,
+  "z": 184000.0
+ },
+ "actor_location_corner_cm": {
+  "x": -262080.0,
+  "y": -262080.0,
+  "z": 184000.0
+ },
+ "height_formula": "height_m = mid_m + (value - 32768) / 128 * z_scale / 100",
+ "mid_m": 1840.0,
+ "height_min_m": 1128.8,
+ "height_max_m": 2556.37,
+ "extent_m": 5241.6,
+ "metres_per_sample": 1.3,
+ "ortho": {
+  "file": "ortho.jpg",
+  "px": 8192,
+  "metres_per_px": 0.6398
+ },
+ "masks": {
+  "a": "masks_a.png (R rock, G scree, B grass)",
+  "b": "masks_b.png (R forest floor, G dwarf pine, B path)",
+  "c": "masks_c.png (R snow potential, G lake, B unused)",
+  "px": 2048
+ },
+ "weights": {
+  "rock": "weights/w_rock.png",
+  "scree": "weights/w_scree.png",
+  "grass": "weights/w_grass.png",
+  "forest": "weights/w_forest.png",
+  "dwarfpine": "weights/w_dwarfpine.png",
+  "path": "weights/w_path.png",
+  "snow": "weights/w_snow.png",
+  "lake": "weights/w_lake.png"
+ },
+ "weight_note": "w_rock..w_path sum to 255 at every sample (weight-blended layers); w_snow and w_lake are separate masks",
+ "frame": {
+  "ue_x": "east, cm",
+  "ue_y": "south, cm (north is -Y)",
+  "ue_z": "altitude above sea level, cm",
+  "origin_lonlat": [
+   20.076,
+   49.191
+  ],
+  "metres_per_degree": {
+   "lon": 72752.018,
+   "lat": 110574
+  },
+  "our_local": "x = east, z = south (tatry/tools/prepare.py local()); UE X = x*100, UE Y = z*100"
+ },
+ "counts": {
+  "spruce": 38620,
+  "dwarfpine": 49235,
+  "rocks": 11052,
+  "trail_points": 953,
+  "lakes": 14,
+  "buildings": 23
+ },
+ "player_start_cm": {
+  "x": -34090.0,
+  "y": -113050.0,
+  "z": 140670.0,
+  "yaw": -172.6
+ },
+ "sources": "Copernicus DEM GLO-30 © DLR/Airbus, ESA; Sentinel-2 © ESA/Copernicus 2025; ESA WorldCover 2021; OpenStreetMap contributors via Overture Maps; GUGiK: NMT 1 m, ortofotomapa (geoportal.gov.pl); Zdroj produktov LLS: ÚGKK SR (DMR 5.0, CC BY 4.0); ortofotomozaika SR: GKÚ Bratislava, NLC"
+}
