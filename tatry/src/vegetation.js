@@ -7,17 +7,18 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
   const r = rng(21);
 
   // spruces (and young spruces near the upper tree line): baked impostors of the Poly Haven models
-  const n = spruce.length / 4; // x, y, z, 1 if the ground height includes the canopy
+  // x, y, z, 1 if the ground height includes the canopy, the measured height (lidar) or 0
+  const n = spruce.length / 5;
   const trees = [], young = [];
   const sv = kinds.spruce.meta.variants, yv = kinds.sapling.meta.variants;
   for (let k = 0; k < n; k++) {
-    const x = spruce[k * 4], y = spruce[k * 4 + 1], z = spruce[k * 4 + 2], canopy = spruce[k * 4 + 3];
+    const x = spruce[k * 5], y = spruce[k * 5 + 1], z = spruce[k * 5 + 2], canopy = spruce[k * 5 + 3], real = spruce[k * 5 + 4];
     // towards the tree line (≈1550 m) the forest thins into smaller, younger trees
     const high = Math.min(1, Math.max(0, (y - 1430) / 120));
-    const isYoung = r() < 0.12 + 0.6 * high;
+    const isYoung = real ? real < 9 : r() < 0.12 + 0.6 * high;
     const list = isYoung ? young : trees, vars = isYoung ? yv : sv;
     const row = Math.floor(r() * vars.length), v = vars[row];
-    const target = isYoung ? 4 + r() * 5 : (1 - 0.35 * high) * (17 + r() * 13);
+    const target = real || (isYoung ? 4 + r() * 5 : (1 - 0.35 * high) * (17 + r() * 13));
     const s = target / v.height;
     const w = v.width * s * (0.9 + r() * 0.2), ty = y - (canopy ? target * 0.4 : 0.3);
     // ty, th, cw: foot, height and crown width of the 3D tree that replaces it near the camera

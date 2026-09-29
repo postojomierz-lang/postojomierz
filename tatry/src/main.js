@@ -179,16 +179,18 @@ async function main() {
   const AREA_K = Math.max(1, ((meta.inner.bounds[2] - meta.inner.bounds[0]) * (meta.inner.bounds[3] - meta.inner.bounds[1])) / (5238 * 5086));
   // 1 m terrain and 0.5 m orthophoto tiles along the trail (GUGiK)
   const TS = meta.tiles.size, TO = meta.tiles.origin;
-  const tileGrids = new Map(), tileImgs = new Map(), tileClass = new Map();
+  const tileGrids = new Map(), tileImgs = new Map(), tileClass = new Map(), tileTrees = new Map();
   let loaded = 0;
   await Promise.all(meta.tiles.list.map(async ([i, j]) => {
     const n = meta.tiles.samples;
-    const [t, img, cImg, rImg] = await Promise.all([heights(`${TILES}h_${i}_${j}.bin`, n, n), bitmap(`${TILES}o_${i}_${j}.jpg`),
-      bitmap(`${TILES}c_${i}_${j}.png`).catch(() => null), bitmap(`${TILES}r_${i}_${j}.png`).catch(() => null)]);
+    const [t, img, cImg, rImg, tBin] = await Promise.all([heights(`${TILES}h_${i}_${j}.bin`, n, n), bitmap(`${TILES}o_${i}_${j}.jpg`),
+      bitmap(`${TILES}c_${i}_${j}.png`).catch(() => null), bitmap(`${TILES}r_${i}_${j}.png`).catch(() => null),
+      fetch(`${TILES}t_${i}_${j}.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null)]);
     const x0 = TO[0] + i * TS, z0 = TO[1] + j * TS;
     tileGrids.set(i + ',' + j, new Grid(t.h, [n, n], [x0, z0, x0 + TS, z0 + TS]));
     tileImgs.set(i + ',' + j, img);
     if (cImg && rImg) tileClass.set(i + ',' + j, { c: pixels(cImg), r: pixels(rImg) });
+    if (tBin) tileTrees.set(i + ',' + j, new Uint16Array(tBin));
     status(`Pobieranie terenu 1 m… ${++loaded}/${meta.tiles.list.length}`);
   }));
   // what the ground is, metre by metre, along the trails (tools/prepare_classes.py): 1 water, 2 rock face,
@@ -489,13 +491,29 @@ async function main() {
       if (terrain.maskAt(trailWide, x, z) > 0.05 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
       if (houses.inside(x, z, c === 10 ? 6 : 2)) continue;
       if (c === 10 && terrain.maskAt(clearing, x, z) > 0) continue;
+      if (c === 10 && tileTrees.has(Math.floor((x - TO[0]) / TS) + ',' + Math.floor((z - TO[1]) / TS))) continue;
       const gc = groundClass(x, z);
       if (gc && gc.c !== (c === 10 ? 6 : 5) && !(c === 10 && gc.c === 5)) continue;   // the 1 m map knows better
       const h = terrain.height(x, z);
       // Copernicus is a surface model (includes the canopy), GUGiK is bare ground
-      if (c === 10 && h < 1560) spruce.push(x, h, z, terrain.hasDTM(x, z) ? 0 : 1);
+      if (c === 10 && h < 1560) spruce.push(x, h, z, terrain.hasDTM(x, z) ? 0 : 1, 0);
       else if (c === 30 && (h < 1530 || h > 1820)) continue;
       else if (h < 1950 && terrain.normal(x, z, 4).y > 0.8) pine.push(x, h, z);
+    }
+  }
+  // real trees along the trails: every spruce where the lidar sees it, as tall as it is
+  // (tools/prepare_trees.py: tree tops of the canopy height, surface model minus terrain). Added after
+  // the thinning below: that keeps the forest further out from being thinned away to make room for them
+  const realTrees = [];
+  for (const [key, a] of tileTrees) {
+    const [i, j] = key.split(',').map(Number), x0 = TO[0] + i * TS, z0 = TO[1] + j * TS;
+    for (let k = 0; k < a.length; k += 3) {
+      const x = x0 + a[k] / 65535 * TS, z = z0 + a[k + 1] / 65535 * TS, th = a[k + 2] / 100;
+      const gc = groundClass(x, z);
+      if (gc && (gc.c === 1 || gc.c === 2 || gc.c === 7)) continue;          // water, rock faces, snow: not a tree
+      if (terrain.maskAt(trailWide, x, z) > 0.3 || terrain.maskAt(lakeMask, x, z) > 0.05 || houses.inside(x, z, 2)) continue;
+      if (terrain.normal(x, z, 3).y < 0.6) continue;
+      realTrees.push(x, terrain.height(x, z), z, 0, th);
     }
   }
   {
@@ -542,12 +560,13 @@ async function main() {
     return out;
   };
   const CAP = tier({ spruce: 14000, pine: 7000 }, { spruce: 20000, pine: 10000 }, { spruce: 26000, pine: 14000 }, { spruce: 60000, pine: 36000 });
-  for (const [arr, stride, cap] of [[spruce, 4, CAP.spruce], [pine, 3, CAP.pine]]) {
+  for (const [arr, stride, cap] of [[spruce, 5, CAP.spruce], [pine, 3, CAP.pine]]) {
     const kept = thin(arr, stride, cap);
     if (kept === arr) continue;
     arr.length = 0;
     for (const v of kept) arr.push(v);
   }
+  for (const v of realTrees) spruce.push(v);
   const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
@@ -603,6 +622,16 @@ async function main() {
       const src = o.material;
       const mat = new THREE.MeshLambertMaterial({ map: src.map, normalMap: src.normalMap });
       patchShading(mat, shade);
+      // Tatra granite is light grey (albedo ~0.3): most of the scans' brown taken out (lichen keeps a hint
+      // of colour) and brought up from their ~0.05
+      const prev = mat.onBeforeCompile;
+      mat.onBeforeCompile = (sh) => {
+        prev(sh);
+        sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+          diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))), diffuseColor.rgb, 0.3) * vec3(4.2, 4.2, 4.35);`);
+      };
+      const prevKey = mat.customProgramCacheKey;
+      mat.customProgramCacheKey = () => prevKey() + 'granite';
       variants.push({ geo: o.geometry, mat, size: Math.max(size.x, size.y, size.z), items: [] });
     });
     const count = tier(5000, 9000, 16000, 32000);
