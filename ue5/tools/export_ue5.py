@@ -142,9 +142,13 @@ for lk in lakes_in:
     lvl = lk['level']
     bed = lvl - (0.4 + np.minimum(10, d_in * 0.12))
     H = np.where(inside, np.minimum(H, bed), H)
-    # a 1.5 m shore strip just under the water, so the jagged plane edge never floats on flat ground
-    shore = (~inside) & (d_out < 1.5) & (H < lvl + 0.25)
+    # the shore line is drawn by the terrain, not by the water squares: a 1 m strip just under the
+    # water, then the ground rises above the level for the next 3 m (the squares reach 1.5-3.5 m out
+    # and their stepped edge stays hidden under it)
+    shore = (~inside) & (d_out < 1.0) & (H < lvl + 0.25)
     H = np.where(shore, np.minimum(H, lvl - 0.12), H)
+    lip = (~inside) & (d_out >= 1.0) & (d_out < 4.5)
+    H = np.where(lip, np.maximum(H, lvl + 0.08 + 0.04 * (d_out - 1.0)), H)
 print('lakes in the landscape:', [lk['name'] for lk in lakes_in])
 
 # terraces under the buildings (same rule as tatry/src/buildings.js: 70th percentile of the footprint)
@@ -436,7 +440,7 @@ for name, sub, i in posts:
     a, b = max(0, i - 3), min(len(tr) - 1, i + 3)
     dx, dz = tr[b, 0] - tr[a, 0], tr[b, 1] - tr[a, 1]
     L = math.hypot(dx, dz) or 1
-    ox, oz = x - dz / L * 2.5, z + dx / L * 2.5
+    ox, oz = x - dz / L * 4.0, z + dx / L * 4.0
     sp.append({'name': name, 'subtitle': sub, 'trail_index': i, 'x': round(ox * 100, 1), 'y': round(oz * 100, 1),
                'z': round(float(height_at(ox, oz)) * 100, 1), 'yaw': yaw_at(i),
                'trail_distance_m': round(float(dist[i])), 'terrain_m': round(float(th[i]))})
@@ -559,6 +563,51 @@ for nm in ['rock_04', 'rocky_terrain_02', 'forrest_ground_01', 'rocky_trail']:
     for kind in ('diff', 'nor'):
         shutil.copyfile(os.path.join(TEX_SRC, f'{nm}_{kind}.jpg'), os.path.join(OUT, 'textures', f'{nm}_{kind}.jpg'))
 
+# ------------------------------------------------------------------ far terrain around the landscape
+# The 55 m DEM of the whole panorama (35 x 29 km, the browser's outer terrain) as a mesh with its
+# photo, so the mountains go on past the 5.2 km landscape. Inside the landscape square the vertices
+# sink 150 m (hidden under it); grid lines run exactly along the square's border, where the heights
+# equal the landscape's own edge (both come from the same DEM there), so there is no gap or step.
+print('far terrain')
+OB = meta['outer']['bounds']
+FAR_STEP = 60.0
+X1, Z1 = X0 + EXT, Z0 + EXT
+fxs = np.unique(np.concatenate([np.arange(OB[0], OB[2], FAR_STEP), [OB[2], X0, X1]]))
+fzs = np.unique(np.concatenate([np.arange(OB[1], OB[3], FAR_STEP), [OB[3], Z0, Z1]]))
+FX, FZ = np.meshgrid(fxs, fzs)
+FH = sample(outer, OB, FX, FZ, 3)
+on_edge = (np.isclose(FX, X0) | np.isclose(FX, X1)) & (FZ >= Z0 - 1e-6) & (FZ <= Z1 + 1e-6) | \
+          (np.isclose(FZ, Z0) | np.isclose(FZ, Z1)) & (FX >= X0 - 1e-6) & (FX <= X1 + 1e-6)
+inner_sq = (FX > X0 + 1e-6) & (FX < X1 - 1e-6) & (FZ > Z0 + 1e-6) & (FZ < Z1 - 1e-6)
+# on the border use the landscape's own height, inside sink
+FH = np.where(on_edge, height_at(np.clip(FX, X0, X1), np.clip(FZ, Z0, Z1)), FH)
+FH = np.where(inner_sq, FH - 150, FH)
+nzf, nxf = FX.shape
+with open(os.path.join(OUT, 'far_terrain.obj'), 'w') as f:
+    f.write('# far terrain around the Rysy landscape: UE centimetres (X east, Y south, Z altitude)\n')
+    f.write('mtllib far_terrain.mtl\nusemtl far\n')
+    for j in range(nzf):
+        for i in range(nxf):
+            f.write('v %.1f %.1f %.1f\n' % (FX[j, i] * 100, FZ[j, i] * 100, FH[j, i] * 100))
+    for j in range(nzf):
+        for i in range(nxf):
+            f.write('vt %.6f %.6f\n' % ((FX[j, i] - OB[0]) / (OB[2] - OB[0]), 1 - (FZ[j, i] - OB[1]) / (OB[3] - OB[1])))
+    for j in range(nzf - 1):
+        for i in range(nxf - 1):
+            if inner_sq[j:j + 2, i:i + 2].all():
+                continue                  # wholly under the landscape: no need for it
+            a = j * nxf + i + 1; b = a + 1; c = a + nxf; d = c + 1
+            # winding so the faces point up with Z up and Y south (a left-handed frame, like UE's)
+            f.write('f %d/%d %d/%d %d/%d\n' % (a, a, b, b, c, c))
+            f.write('f %d/%d %d/%d %d/%d\n' % (b, b, d, d, c, c))
+open(os.path.join(OUT, 'far_terrain.mtl'), 'w').write('newmtl far\nKd 1 1 1\nmap_Kd far_terrain.jpg\n')
+shutil.copyfile(os.path.join(DATA, 'outer.jpg'), os.path.join(OUT, 'far_terrain.jpg'))
+far_info = {'file': 'far_terrain.obj', 'texture': 'far_terrain.jpg',
+            'bounds_cm': {'x': [round(OB[0] * 100, 1), round(OB[2] * 100, 1)], 'y': [round(OB[1] * 100, 1), round(OB[3] * 100, 1)],
+                          'z': [round(float(FH.min()) * 100, 1), round(float(FH.max()) * 100, 1)]},
+            'note': 'vertices already in UE cm; the script fits the imported mesh to these bounds (axis order and signs)'}
+i_ps = int(np.searchsorted(dist, 15.0))
+
 # ------------------------------------------------------------------ landscape.json
 settings = {
     'heightmap': 'heightmap.png',
@@ -583,8 +632,10 @@ settings = {
     },
     'counts': {'spruce': int(len(sx)), 'dwarfpine': int(len(qx)), 'rocks': int(len(bx)),
                'trail_points': int(len(tr)), 'lakes': len(lakes_json), 'buildings': len(bj)},
-    'player_start_cm': {'x': round(tr[0, 0] * 100, 1), 'y': round(tr[0, 1] * 100, 1), 'z': round((th[0] + 1.2) * 100, 1),
-                        'yaw': round(math.degrees(math.atan2(tr[3, 1] - tr[0, 1], tr[3, 0] - tr[0, 0])), 1)},
+    # ~15 m up the trail, clear of the signpost at the start
+    'player_start_cm': {'x': round(tr[i_ps, 0] * 100, 1), 'y': round(tr[i_ps, 1] * 100, 1), 'z': round((th[i_ps] + 1.2) * 100, 1),
+                        'yaw': round(math.degrees(math.atan2(tr[i_ps + 3, 1] - tr[i_ps, 1], tr[i_ps + 3, 0] - tr[i_ps, 0])), 1)},
+    'far_terrain': far_info,
     'sources': meta.get('sources', ''),
 }
 json.dump(settings, open(os.path.join(OUT, 'landscape.json'), 'w'), ensure_ascii=False, indent=1)

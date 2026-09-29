@@ -76,10 +76,29 @@
   "buildings": 23
  },
  "player_start_cm": {
-  "x": -34090.0,
-  "y": -113050.0,
-  "z": 140670.0,
-  "yaw": -172.6
+  "x": -37760.0,
+  "y": -115120.0,
+  "z": 140702.7,
+  "yaw": 75.2
+ },
+ "far_terrain": {
+  "file": "far_terrain.obj",
+  "texture": "far_terrain.jpg",
+  "bounds_cm": {
+   "x": [
+    -1571443.6,
+    1920653.3
+   ],
+   "y": [
+    -1536978.6,
+    1337945.4
+   ],
+   "z": [
+    63493.4,
+    261067.8
+   ]
+  },
+  "note": "vertices already in UE cm; the script fits the imported mesh to these bounds (axis order and signs)"
  },
  "sources": "Copernicus DEM GLO-30 © DLR/Airbus, ESA; Sentinel-2 © ESA/Copernicus 2025; ESA WorldCover 2021; OpenStreetMap contributors via Overture Maps; GUGiK: NMT 1 m, ortofotomapa (geoportal.gov.pl); Zdroj produktov LLS: ÚGKK SR (DMR 5.0, CC BY 4.0); ortofotomozaika SR: GKÚ Bratislava, NLC"
 }

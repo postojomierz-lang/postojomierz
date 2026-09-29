@@ -63,6 +63,12 @@ LAYER_TEXTURES = {
 
 REIMPORT_TEXTURES = False    # True = import the export textures again even if they already exist
 
+# Exposure: automatic, shifted by this many stops (negative = darker). The first run of the scene was
+# far too bright; -1.0 is a guess, tune it in the Rysy_PostProcess actor (Exposure -> Exposure Compensation).
+EXPOSURE_BIAS = -1.0
+
+FAR_TERRAIN = True           # the 35 x 29 km terrain around the landscape (far_terrain.obj), no more empty horizon
+
 # =====================================================================================================
 
 TAG = "RysyAuto"
@@ -373,14 +379,20 @@ def add_component(actor, cls):
     parent = handles[0]
     root = actor.root_component
     for h in handles:
-        if lib.get_object(lib.get_data(h)) == root:
+        if assoc(lib, lib.get_data(h)) == root:
             parent = h
             break
     res = sds.add_new_subobject(unreal.AddNewSubobjectParams(parent_handle=parent, new_class=cls, blueprint_context=None))
     handle = res[0] if isinstance(res, tuple) else res
     if not lib.is_handle_valid(handle):
         raise RuntimeError("add_new_subobject failed: %s" % (res[1] if isinstance(res, tuple) else res))
-    return lib.get_object(lib.get_data(handle))
+    return assoc(lib, lib.get_data(handle))
+
+
+def assoc(lib, data):
+    # UE 5.8: get_object is deprecated in favour of get_associated_object
+    f = getattr(lib, "get_associated_object", None) or lib.get_object
+    return f(data)
 
 
 def instanced_actor(label, mesh, transforms, material=None, cull_m=0, folder="Rysy/Foliage", collision=True, shadows=True):
@@ -559,17 +571,6 @@ def signposts(ex):
                 c.set_text_render_color(unreal.Color(r=20, g=20, b=20, a=255))
             except Exception as e:   # noqa: BLE001
                 warn("Napis %s: %s" % (s["name"], e))
-        # a big floating label for finding the place in the editor
-        big = spawn(unreal.TextRenderActor, (x, y, z + 1500), yaw, label="Etykieta_" + s["name"], folder="Rysy/Drogowskazy")
-        try:
-            c = big.text_render
-            c.set_text(s["name"])
-            c.set_world_size(400.0)
-            c.set_horizontal_alignment(unreal.HorizTextAligment.EHTA_CENTER)
-            c.set_text_render_color(unreal.Color(r=255, g=240, b=200, a=255))
-            big.set_actor_hidden_in_game(True)
-        except Exception as e:   # noqa: BLE001
-            warn("Etykieta %s: %s" % (s["name"], e))
     report.append("drogowskazy: " + ", ".join(s["name"] for s in data))
 
 
@@ -582,7 +583,13 @@ def sky_and_light(S):
         lc.set_intensity(10.0)
     except Exception as e:   # noqa: BLE001
         warn("Slonce: %s" % e)
-    spawn(unreal.SkyAtmosphere, (0, 0, 0), 0, "Atmosfera", "Rysy/Niebo")
+    atm = spawn(unreal.SkyAtmosphere, (0, 0, 0), 0, "Atmosfera", "Rysy/Niebo")
+    try:
+        # the planet surface beyond the far terrain: hazy grey-green lowland instead of the default blue
+        atm.get_component_by_class(unreal.SkyAtmosphereComponent).set_editor_property(
+            "ground_albedo", unreal.Color(r=70, g=78, b=62, a=255))
+    except Exception as e:   # noqa: BLE001
+        warn("Atmosfera: %s" % e)
     sl = spawn(unreal.SkyLight, (0, 0, S["mid_m"] * 100 + 60000), 0, "SkyLight", "Rysy/Niebo")
     try:
         sl.root_component.set_mobility(unreal.ComponentMobility.MOVABLE)
@@ -590,6 +597,17 @@ def sky_and_light(S):
     except Exception as e:   # noqa: BLE001
         warn("SkyLight: %s" % e)
     spawn(unreal.VolumetricCloud, (0, 0, 0), 0, "Chmury", "Rysy/Niebo")
+    pp = spawn(unreal.PostProcessVolume, (0, 0, S["mid_m"] * 100), 0, "Rysy_PostProcess", "Rysy/Niebo")
+    try:
+        pp.set_editor_property("unbound", True)
+        st = pp.get_editor_property("settings")
+        st.set_editor_property("override_auto_exposure_bias", True)
+        st.set_editor_property("auto_exposure_bias", EXPOSURE_BIAS)
+        st.set_editor_property("override_auto_exposure_method", True)
+        st.set_editor_property("auto_exposure_method", unreal.AutoExposureMethod.AEM_HISTOGRAM)
+        pp.set_editor_property("settings", st)
+    except Exception as e:   # noqa: BLE001
+        warn("PostProcess (ekspozycja): %s" % e)
     fog = spawn(unreal.ExponentialHeightFog, (0, 0, 130000), 0, "Mgla", "Rysy/Niebo")
     try:
         fc = fog.component
@@ -597,6 +615,80 @@ def sky_and_light(S):
         fc.set_fog_height_falloff(0.05)
     except Exception as e:   # noqa: BLE001
         warn("Mgla: %s" % e)
+
+
+def far_terrain(ex, S):
+    info = S.get("far_terrain")
+    if not FAR_TERRAIN or not info:
+        return
+    dest_dir, name = CONTENT_ROOT + "/FarTerrain", "SM_RysyFar"
+    path = dest_dir + "/" + name
+    if not EAL.does_asset_exist(path):
+        task = unreal.AssetImportTask()
+        task.set_editor_property("filename", os.path.join(ex, info["file"]))
+        task.set_editor_property("destination_path", dest_dir)
+        task.set_editor_property("destination_name", name)
+        task.set_editor_property("automated", True)
+        task.set_editor_property("replace_existing", True)
+        task.set_editor_property("save", False)
+        asset_tools.import_asset_tasks([task])
+        got = [str(p).split(".")[0] for p in (task.get_editor_property("imported_object_paths") or [])]
+        if not EAL.does_asset_exist(path):
+            meshes = [p for p in got if isinstance(EAL.load_asset(p), unreal.StaticMesh)]
+            if meshes:
+                EAL.rename_asset(meshes[0], path)
+    mesh = EAL.load_asset(path)
+    if not isinstance(mesh, unreal.StaticMesh):
+        warn("Daleki teren: import %s nie dal siatki (StaticMesh)" % info["file"])
+        return
+    tex = import_texture(os.path.join(ex, info["texture"]), "T_RysyFar", "color")
+    mat = fresh_material("M_RysyFar")
+    g = Graph(mat)
+    t = g.node(unreal.MaterialExpressionTextureSampleParameter2D, -800, parameter_name="Photo")
+    if tex is not None:
+        t.set_editor_property("texture", tex)
+    g.out(g.op(unreal.MaterialExpressionMultiply, t, "RGB", g.scalar("Brightness", 1.0)), "", unreal.MaterialProperty.MP_BASE_COLOR)
+    g.out(g.scalar("Roughness", 1.0), "", unreal.MaterialProperty.MP_ROUGHNESS)
+    g.out(g.scalar("Specular", 0.2), "", unreal.MaterialProperty.MP_SPECULAR)
+    mat.set_editor_property("two_sided", True)
+    finish_material(mat)
+    # fit the mesh to the expected bounds whatever axis convention the OBJ importer used
+    bb = mesh.get_bounding_box()
+    lmin, lmax = [bb.min.x, bb.min.y, bb.min.z], [bb.max.x, bb.max.y, bb.max.z]
+    want = info["bounds_cm"]
+    wmin, wmax = [want["x"][0], want["y"][0], want["z"][0]], [want["x"][1], want["y"][1], want["z"][1]]
+    wsize = [b - a for a, b in zip(wmin, wmax)]
+    lsize = [b - a for a, b in zip(lmin, lmax)]
+    k = max(lsize) / max(wsize)                       # importer unit scale
+    perm = [min(range(3), key=lambda a: abs(lsize[a] / k - wsize[T])) for T in range(3)]   # target axis <- local axis
+    if sorted(perm) != [0, 1, 2]:
+        warn("Daleki teren: nie rozpoznano osi (rozmiary %s, oczekiwane %s)" % (lsize, wsize))
+        return
+    sign = []
+    for T in range(3):
+        a = perm[T]
+        plus = abs(lmin[a] / k - wmin[T]) + abs(lmax[a] / k - wmax[T])
+        minus = abs(-lmax[a] / k - wmin[T]) + abs(-lmin[a] / k - wmax[T])
+        sign.append(1 if plus <= minus else -1)
+    cols = [None] * 3                                  # image of each local axis
+    for T in range(3):
+        v = [0.0, 0.0, 0.0]; v[T] = float(sign[T])
+        cols[perm[T]] = v
+    det = (cols[0][0] * (cols[1][1] * cols[2][2] - cols[1][2] * cols[2][1]) - cols[0][1] * (cols[1][0] * cols[2][2] - cols[1][2] * cols[2][0])
+           + cols[0][2] * (cols[1][0] * cols[2][1] - cols[1][1] * cols[2][0]))
+    scl = [1.0 / k] * 3
+    if det < 0:                                        # a mirror: flip local Z and give it a negative scale
+        cols[2] = [-c for c in cols[2]]; scl[2] = -scl[2]
+    rot = unreal.MathLibrary.make_rotation_from_axes(unreal.Vector(*cols[0]), unreal.Vector(*cols[1]), unreal.Vector(*cols[2]))
+    a = mesh_actor(mesh, (0, 0, 0), scl, material=mat, label="Rysy_DalekiTeren", folder="Rysy")
+    a.set_actor_rotation(rot, False)
+    c = a.static_mesh_component
+    c.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+    origin, extent = a.get_actor_bounds(False)[:2]
+    got_min = [origin.x - extent.x, origin.y - extent.y, origin.z - extent.z]
+    a.set_actor_location(unreal.Vector(*[w - g0 for w, g0 in zip(wmin, got_min)]), False, False)
+    log("Daleki teren: osie %s, znaki %s, skala 1/%.3g" % (perm, sign, k))
+    report.append("daleki teren: 35 x 29 km wokol krajobrazu")
 
 
 def landscape_step(S, mat):
@@ -669,6 +761,7 @@ WATER_MI = color_instance("MI_Water", WATER, (0.01, 0.045, 0.05), 0.04)
 LAND_MI = build_landscape_material(EXPORT, SETTINGS)
 landscape_step(SETTINGS, LAND_MI)
 sky_and_light(SETTINGS)
+far_terrain(EXPORT, SETTINGS)
 lakes(EXPORT, WATER_MI)
 buildings(EXPORT)
 trail_spline(EXPORT)
