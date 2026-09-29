@@ -26,6 +26,8 @@ import { routeInfo } from './routeinfo.js';
 import { loadJournal, saveJournal, routeKey, addWalk, addPeak, ghostAt, fmtClock } from './journal.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
+import { SSAOPass } from './ssao.js';
+import { buildTrees3D } from './vegetation3d.js';
 
 // data and textures are served next to index.html (tatry/public -> rysy/)
 const DATA = 'data/';
@@ -492,13 +494,17 @@ async function main() {
     for (const v of kept) arr.push(v);
   }
   const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb'], shade, {
-    spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3 }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3 },
+    spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
     mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55 }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
   });
   const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds,
     ground: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.02 || terrain.maskAt(lakeMask, x, z) > 0.02 || houses.inside(x, z, 2)
       || terrain.normal(x, z, 3).y < 0.7) ? null : terrain.height(x, z) });
+  // 3D spruces near the camera (vegetation3d.js) in place of the impostors; ?drzewa3d=0 turns them off
+  const trees3d = QUALITY !== 'low' && P.get('drzewa3d') !== '0' ? await buildTrees3D({ scene, shade, items: [forest.trees, forest.young],
+    radius: ULTRA ? 110 : 70,
+    loadTexture: async (url, srgb) => { const t = texture(await bitmap(url), aniso); if (!srgb) t.colorSpace = THREE.NoColorSpace; return t; } }) : null;
   const landPx = { d: pixels(landBmp), w: landBmp.width, h: landBmp.height };
   const photoPx = { d: pixels(innerBmp), w: innerBmp.width, h: innerBmp.height };
   const sound = new Sound({
@@ -896,10 +902,17 @@ async function main() {
     renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); sizeRefl(); streams.setPixelRatio(np, innerHeight);
   }
   // ---------- post-processing: bloom on sun glints, filmic grade, vignette
-  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 0 : 4 }));
+  // ambient occlusion (ssao.js): on in ultra, ?ao=1 / ?ao=0 to force it
+  const AO = P.has('ao') ? P.get('ao') !== '0' : ULTRA;
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 0 : 4,
+    depthTexture: AO ? new THREE.DepthTexture(1, 1) : null }));
+  // the second buffer's clone would share the depth texture's source (one GL texture): a feedback loop
+  if (AO) composer.renderTarget2.depthTexture = new THREE.DepthTexture(1, 1);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(innerWidth, innerHeight);
   composer.addPass(new RenderPass(scene, camera));
+  const ssao = AO ? new SSAOPass(camera, { samples: ULTRA ? 16 : 10 }) : null;
+  if (ssao) { composer.addPass(ssao); ssao.combineMat.uniforms.show.value = { show: 1, depth: -1 }[P.get('ao')] || 0; }
   const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.22, 0.5, 1.1);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -1055,6 +1068,7 @@ async function main() {
       sunLight.position.copy(light.sunDir.value).multiplyScalar(3000).add(sunLight.target.position);
     }
     forest.update(camera);
+    if (trees3d) trees3d.update(camera.position);
     {
       const fx = state.mode === 'walk' || state.freeCam ? camera.position.x : hiker.position.x;
       const fz = state.mode === 'walk' || state.freeCam ? camera.position.z : hiker.position.z;
@@ -1068,7 +1082,7 @@ async function main() {
     adaptResolution(dt);
     requestAnimationFrame(tick);
   }
-  window.__rysy = { sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { composer, ssao, trees3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
