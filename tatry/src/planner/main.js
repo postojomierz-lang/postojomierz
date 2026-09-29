@@ -10,6 +10,7 @@ import { TrailGraph, fmtTime } from './graph.js';
 import { loadJournal, saveJournal, routeKey, toggleFav, totals, fmtClock, addWalk, addPeak } from '../journal.js';
 import { setupNav, trackGpx } from './nav.js';
 import { sunTimes, forecast, walkWeather, hhmm, hm } from './daylight.js';
+import { loadProfile, saveProfile, AVATARS, BADGES, rank, photoAvatar } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
 const COLOUR_PL = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny', none: 'bez znaków' };
@@ -368,11 +369,47 @@ function renderJournal() {
   }
   const pk = Object.entries(J.peaks).sort((a, b) => (b[1].ele || 0) - (a[1].ele || 0));
   $('j-peaks').innerHTML = pk.length ? pk.map(([n, p]) => `<span>▲ ${esc(n)}${p.ele ? ' ' + p.ele : ''}</span>`).join('') : '<span class="empty">Jeszcze żadnego – ruszaj!</span>';
+  renderProfile(t);
   // favourite button for the current route
   const key = routeKey(location.hash);
   $('b-fav').hidden = !path;
   $('b-fav').textContent = J.favs.some((f) => f.key === key) ? '★ W ulubionych (kliknij, żeby usunąć)' : '☆ Dodaj do ulubionych';
 }
+// ---------------------------------------------------------------- profile and badges
+const PR = loadProfile();
+function renderProfile(t) {
+  const av = $('p-avatar');
+  if (PR.avatar && PR.avatar.startsWith('data:')) { av.textContent = ''; av.style.backgroundImage = `url(${PR.avatar})`; }
+  else { av.textContent = PR.avatar || '🥾'; av.style.backgroundImage = ''; }
+  $('p-name').textContent = PR.name || 'Turysta (kliknij ✎)';
+  $('p-rank').textContent = `${rank(t.km)} · ${t.km.toFixed(0)} km · ↗ ${Math.round(t.up)} m`;
+  const got = BADGES.filter((b) => b.ok(t, J)).length;
+  $('b-count').textContent = `${got} / ${BADGES.length}`;
+  $('badges').innerHTML = BADGES.map((b) => `<div class="badge${b.ok(t, J) ? '' : ' off'}" title="${esc(b.desc)}"><span class="i">${b.icon}</span><b>${esc(b.name)}</b>${esc(b.desc)}</div>`).join('');
+}
+$('p-edit').onclick = () => {
+  const n = prompt('Twoje imię lub pseudonim (widoczne w grupach, gdy włączymy tryb online):', PR.name || '');
+  if (n === null) return;
+  PR.name = n.trim().slice(0, 40); saveProfile(PR); renderJournal();
+};
+$('p-avatar').onclick = () => {
+  const box = $('p-pick');
+  box.hidden = !box.hidden;
+  box.innerHTML = AVATARS.map((a) => `<button data-a="${a}">${a}</button>`).join('') + '<button data-a="photo" title="Zdjęcie z telefonu">📷</button>';
+};
+$('p-pick').onclick = (ev) => {
+  const a = ev.target.closest('button') && ev.target.closest('button').dataset.a;
+  if (!a) return;
+  if (a === 'photo') { $('p-photo').click(); return; }
+  PR.avatar = a; saveProfile(PR); $('p-pick').hidden = true; renderJournal();
+};
+$('p-photo').onchange = async (ev) => {
+  const f = ev.target.files[0]; ev.target.value = '';
+  if (!f) return;
+  try { PR.avatar = await photoAvatar(f); saveProfile(PR); } catch (e) { msg('Nie udało się wczytać zdjęcia.'); }
+  $('p-pick').hidden = true; renderJournal();
+};
+
 $('b-fav').onclick = () => { toggleFav(J, routeKey(location.hash), routeTitle(), location.hash); saveJournal(J); renderJournal(); };
 
 function updateGo() {
