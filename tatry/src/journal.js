@@ -28,6 +28,7 @@ export const fmtClock = (sec) => {
 };
 
 export function addWalk(j, walk) {
+  if (!walk.id && globalThis.crypto && crypto.randomUUID) walk.id = crypto.randomUUID();   // its identity when synced online
   j.walks.unshift(walk);
   if (j.walks.length > 200) j.walks.length = 200;
   let record = false;

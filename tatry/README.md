@@ -188,6 +188,23 @@ od pogody: słonecznie 45 %, mgiełka 20 %, pochmurno 88 %, mgła 95 %.
 - w planerze: „☆ Dodaj do ulubionych”, lista ulubionych z rekordami, ostatnie przejścia (kliknięcie
   otwiera trasę), zdobyte szczyty, statystyki łączne.
 
+## Tryb online planera (konto, grupy, czat, pozycje)
+`src/planner/online.js` (Supabase, baza opisana w `supabase/`). Bez logowania wszystko działa jak
+dotąd, lokalnie. Adres projektu i publiczny klucz są wbudowywane z `SUPABASE_URL` i
+`SUPABASE_ANON_KEY` w chwili `npm run build` (bez nich planer powstaje bez części online – build to
+ogłasza).
+- Logowanie linkiem z e-maila (PKCE; każdy wysłany link ma własny weryfikator, więc ponowne wysłanie
+  nie psuje pierwszego). Link trzeba otworzyć w tej samej przeglądarce; trasa z adresu (`#r=...`) wraca
+  po zalogowaniu. Pole na kod z e-maila działa, gdy szablon e-maila zawiera `{{ .Token }}`.
+- Synchronizacja: profil (imię, awatar, km/podejścia/szczyty – wygrywa nowsza zmiana), przejścia
+  (każde ma `id`, dokładane w obie strony) i zdobyte szczyty. Ślad ducha zostaje na urządzeniu, które
+  przeszło trasę; na innych rekord ma sam czas. Po powrocie zasięgu synchronizuje się samo.
+- Grupy: „＋ Nowa”, „🔗 Zaproś” (link `planer.html?dolacz=KOD`, działa też przed zalogowaniem),
+  „Dołącz kodem”; członkowie, wspólne trasy (📌 dodaje bieżącą), czat na żywo (Supabase Realtime).
+- Pozycje: w panelu nawigacji „👥 Udostępnij pozycję” (świadomie, tylko otwartej grupie; co ≥15 s,
+  przy ruchu ≥20 m lub co minutę). Po „Zakończ” pozycja jest kasowana, w każdym razie wygasa po 12 h.
+  Członkowie grupy widzą awatary z imionami na mapie (wyblakłe po 15 min bez aktualizacji).
+
 ## Słowackie Tatry Wysokie w regionie
 Region planera i widoku 3D obejmuje polskie i słowackie Tatry Wysokie (19,85–20,31°E, 49,08–49,29°N):
 Štrbské Pleso, Popradské pleso, Rysy od południa, Téryho i Zbojnícka chata, Łomnica. Słowacki lidar
