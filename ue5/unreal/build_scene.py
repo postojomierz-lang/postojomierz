@@ -41,9 +41,10 @@ LEVEL_PATH = CONTENT_ROOT + "/Maps/Rysy"    # the level it creates / opens
 # the part in quotes, e.g. "/Game/Fab/Megascans/3D/Norway_Spruce_xxx/SM_Norway_Spruce_01.SM_Norway_Spruce_01").
 # With several meshes each instance picks one at random. The script scales every instance to the
 # height (trees, dwarf pine) or size (rocks) given in the CSV, whatever the mesh's own size.
-SPRUCE_MESHES = []
-DWARFPINE_MESHES = []
-ROCK_MESHES = []
+SPRUCE_MESHES = ["/Game/Megaplant_Library/Tree_Norway_Spruce/Tree_Norway_Spruce_01/SM_Spruce_PVE_%s.SM_Spruce_PVE_%s" % (c, c) for c in "ABCD"]  # Megaplants: Norway Spruce (Fab, free), exported as Static Mesh from the Procedural Vegetation Editor
+DWARFPINE_MESHES = ["/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_Saplings_01/SM_PinePVE_%s.SM_PinePVE_%s" % (c, c) for c in "AB"]  # Megaplants: Baltic Pine Saplings (Fab, free), squashed into dwarf-pine clumps below
+ROCK_MESHES = ["/Game/ApexNature/Dolomites/Rocks/Large/SM_APXN_DOLR_Rock_Large_02.SM_APXN_DOLR_Rock_Large_02",  # Dolomites Free Rock (Fab, free)
+               "/Game/Rysy/Rocks/LoneGranite/round-boulder1.round-boulder1"]  # Lone granite boulder stone (Fab, personal licence, imported from FBX)
 
 # Keep this fraction of the instances (1.0 = all). Lower it if the editor gets slow.
 FOLIAGE_FRACTION = 1.0
@@ -476,6 +477,8 @@ def per_mesh_add(kind, r, rnd, info, mesh_list, per_mesh, placeholder):
     else:
         s = r["height_m"] * 100 / mh
         xy = {"spruce": 0.38, "dwarfpine": 1.8}[kind] if placeholder else rnd.uniform(0.9, 1.1)
+        if kind == "dwarfpine" and not placeholder:
+            xy = rnd.uniform(1.5, 2.1)   # a pine sapling squashed into a wide, low dwarf-pine clump
         sc = unreal.Vector(s * xy, s * xy, s)
         rot = unreal.Rotator(roll=0, pitch=0, yaw=r["yaw"])
         z = r["z"] - mn.z * s
