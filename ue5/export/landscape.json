@@ -70,7 +70,7 @@
  "counts": {
   "spruce": 38620,
   "dwarfpine": 49193,
-  "rocks": 10973,
+  "rocks": 16128,
   "trail_points": 953,
   "lakes": 14,
   "buildings": 23
@@ -84,8 +84,8 @@
  "far_terrain": {
   "file": "far_terrain.obj",
   "texture": "far_terrain.jpg",
-  "asset": "SM_RysyFar_v3",
-  "texture_asset": "T_RysyFar_v3",
+  "asset": "SM_RysyFar_v4",
+  "texture_asset": "T_RysyFar_v4",
   "bounds_cm": {
    "x": [
     -11825395.2,
@@ -96,7 +96,7 @@
     13900483.4
    ],
    "z": [
-    45000.0,
+    -287000.1,
     261067.6
    ]
   },

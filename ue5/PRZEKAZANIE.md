@@ -41,15 +41,25 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
   - MCP nie ma narzędzia „uruchom Python”: operator wpisuje `py "plik.py"` w konsoli Cmd przez SlateInspector;
     mapę wysokości do istniejącego krajobrazu wczytuje przez render target + `landscape_import_heightmap_from_render_target`.
 
-## Runda 3 (wysłana operatorowi, czeka na `feedback/runda_03/`)
-- eksporter: gładka rampa brzegów (gaussian 1,5 px na odległości ze znakiem), kwadraty wody do 3,2–5 m;
-  pas ±240 m przy granicy z liniami co 6 m i przejściem krawędź lidaru → DEM; pierścień horyzontu rzutowany na
-  asymetryczny prostokąt (150/120 km w ±x, 140/110 km w ±z, 450 m n.p.m.), `bounds_cm` z pierścieniem (sprawdzone:
-  dopasowanie osi w `far_terrain()` odzyskuje wszystkie 48 konwencji osi/znaków); tekstura 8192 px z ortofoto regionu
-  (czarne braki danych na krawędzi regionu maskowane, przejście ~150 m); nazwy `SM_RysyFar_v3` / `T_RysyFar_v3`.
-- `build_scene.py`: nazwy z `landscape.json`, `EXPOSURE_BIAS = -0.5`, sprzątanie materiału/tekstury z importu OBJ.
-- eksport ~132 MB (`far_terrain.obj` 61 MB, `far_terrain.jpg` 12 MB).
-- przy następnej wersji siatki/tekstury podbij sufiks `_vN` w `export_ue5.py` (far_info).
+## Runda 3 (`feedback/runda_03/log.txt`)
+- projekt operatora od tej rundy: `Documents\Unreal Projects\Rysy 5.8` (kopia po rundzie 2);
+- osie dalekiego terenu rozpoznane poprawnie z pierścieniem (`[0, 1, 2]`, `[1, -1, 1]`); ekspozycja −0,5 ze skryptu;
+- szew prawie bez zmian (−18/+11 m): gęste linie `dense()` biegły w poprzek granicy, wzdłuż niej nadal co 60 m;
+- granatowy pas to mgła (density 0,006, falloff 0,05, opacity 1, kolor z atmosfery), zasłaniała pierścień;
+  pierścień bez mgły miał promieniste smugi z kolorów krawędzi;
+- slot SM_RysyFar_v3 wskazywał stare „far” (import OBJ użył istniejących zasobów, `imported_object_paths` miał tylko
+  siatkę); kolizja aktora QUERY_AND_PHYSICS mimo `set_collision_enabled`;
+- brzegi 06/07 gładkie, na płaskich 03/05 drobne progi; wydajność 86 / 118 FPS.
+- Sesja C może pisać do sesji B (wiadomość „runda 03 gotowa” doszła).
+
+## Runda 4 (wysłana operatorowi, czeka na `feedback/runda_04/`)
+- eksporter: siatka 60 m z dziurą nad krajobrazem + kołnierz z wierzchołkami w każdej próbce krawędzi (1,3 m) +
+  fartuch 15 m; pierścień 6 pętli z krzywizną Ziemi; wygaszenie brzegu tekstury (400 px) do koloru nizin;
+  łagodne wygaszanie podniesienia brzegów (6–16 m); zasoby `_v4`; eksport ~110 MB (OBJ 41 MB).
+  Sprawdzone w danych: szew ±1 cm, spójna orientacja ścian, dopasowanie osi dla 48 konwencji.
+- `build_scene.py`: stałe mgły (A: 0,0025 / 0,2 / 0,8 / 3 km / (0,32; 0,40; 0,52)), sprzątanie po nazwie,
+  `NoCollision`.
+- operator porównuje mgłę A/B/C i wybiera; w następnej rundzie wpisać wybrane wartości do stałych.
 
 ## Pomysły na kolejne rundy
 - Tekstury warstw terenu z Megascans/Fab (bliskie podłoże jest płaskie, „piaskowe”), mocniejsze przejście ortofoto

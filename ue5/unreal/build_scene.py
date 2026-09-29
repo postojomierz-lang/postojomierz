@@ -67,6 +67,15 @@ REIMPORT_TEXTURES = False    # True = import the export textures again even if t
 # far too bright; round 2 compared -1.0 / -0.5 / 0.0 in Play and picked -0.5 (Rysy_PostProcess -> Exposure).
 EXPOSURE_BIAS = -0.5
 
+# Height fog. Round 3: density 0.006 / falloff 0.05 / opacity 1 with the colour taken from the atmosphere
+# covered everything past ~20 km with a flat navy band (the horizon ring was under it). Thinner, starting
+# a few km out, never fully opaque, and a light hazy blue of its own. Tune in the "Mgla" actor.
+FOG_DENSITY = 0.0025
+FOG_HEIGHT_FALLOFF = 0.2
+FOG_MAX_OPACITY = 0.8
+FOG_START_DISTANCE_M = 3000
+FOG_COLOR = (0.32, 0.40, 0.52)   # Fog Inscattering Color (linear)
+
 FAR_TERRAIN = True           # the 35 x 29 km terrain around the landscape (far_terrain.obj), no more empty horizon
 
 # =====================================================================================================
@@ -611,8 +620,19 @@ def sky_and_light(S):
     fog = spawn(unreal.ExponentialHeightFog, (0, 0, 130000), 0, "Mgla", "Rysy/Niebo")
     try:
         fc = fog.component
-        fc.set_fog_density(0.006)
-        fc.set_fog_height_falloff(0.05)
+        fc.set_fog_density(FOG_DENSITY)
+        fc.set_fog_height_falloff(FOG_HEIGHT_FALLOFF)
+        fc.set_fog_max_opacity(FOG_MAX_OPACITY)
+        fc.set_start_distance(FOG_START_DISTANCE_M * 100.0)
+        col = unreal.LinearColor(*FOG_COLOR, 1.0)
+        for prop in ("fog_inscattering_luminance", "fog_inscattering_color"):   # renamed in UE 5.x
+            try:
+                fc.set_editor_property(prop, col)
+                break
+            except Exception:   # noqa: BLE001
+                continue
+        else:
+            warn("Mgla: nie ustawiono koloru")
     except Exception as e:   # noqa: BLE001
         warn("Mgla: %s" % e)
 
@@ -654,23 +674,36 @@ def far_terrain(ex, S):
     g.out(g.scalar("Specular", 0.2), "", unreal.MaterialProperty.MP_SPECULAR)
     mat.set_editor_property("two_sided", True)
     finish_material(mat)
-    # the OBJ importer also makes a material and a texture from far_terrain.mtl ("far", TEX_far_terrain):
-    # point the mesh's slot at M_RysyFar, then drop them (materials before textures)
-    extra = [p for p in got if p != path and EAL.does_asset_exist(p)]
-    if extra:
+    # the mesh's own slot points at M_RysyFar (the OBJ importer gives it "far" from far_terrain.mtl);
+    # then drop what is left over: "far", TEX_far_terrain* and older SM_RysyFar* / T_RysyFar* versions
+    # (round 3: in a project that already had "far" the import reused it, so this has to go by name)
+    try:
+        mesh.set_material(0, mat)
+        EAL.save_loaded_asset(mesh)
+    except Exception as e:   # noqa: BLE001
+        warn("Daleki teren: slot materialu: %s" % e)
+    keep = {path, TEX_DIR + "/" + info.get("texture_asset", "T_RysyFar")}
+    old = [p for p in got if p != path]
+    for folder, prefixes in ((dest_dir, ("far", "TEX_far_terrain", "SM_RysyFar")), (TEX_DIR, ("T_RysyFar",))):
+        for p in EAL.list_assets(folder, recursive=False, include_folder=False):
+            p = str(p).split(".")[0]
+            if p.rsplit("/", 1)[-1].startswith(prefixes):
+                old.append(p)
+    # materials first (they hold the textures), meshes before their materials
+    rank = lambda p: 0 if isinstance(EAL.load_asset(p), unreal.StaticMesh) else (1 if isinstance(EAL.load_asset(p), unreal.MaterialInterface) else 2)
+    for p in sorted(set(old) - keep, key=rank):
+        if not EAL.does_asset_exist(p):
+            continue
+        # the level still lists the old actor until it is saved; that actor is gone (destroyed above)
+        refs = [r for r in (EAL.find_package_referencers_for_asset(p, False) or []) if str(r).split(".")[0] not in old and not str(r).startswith(LEVEL_PATH)]
+        if refs:
+            warn("Daleki teren: zostawiam %s (uzywa go %s)" % (p, ", ".join(str(r) for r in refs)))
+            continue
         try:
-            mesh.set_material(0, mat)
-            EAL.save_loaded_asset(mesh)
+            EAL.delete_asset(p)
+            log("Daleki teren: usuniety stary zasob %s" % p)
         except Exception as e:   # noqa: BLE001
-            warn("Daleki teren: slot materialu: %s" % e)
-        extra.sort(key=lambda p: 0 if isinstance(EAL.load_asset(p), unreal.MaterialInterface) else 1)
-        for p in extra:
-            if isinstance(EAL.load_asset(p), unreal.StaticMesh):
-                continue
-            try:
-                EAL.delete_asset(p)
-            except Exception as e:   # noqa: BLE001
-                warn("Daleki teren: nie usunieto %s: %s" % (p, e))
+            warn("Daleki teren: nie usunieto %s: %s" % (p, e))
     # fit the mesh to the expected bounds whatever axis convention the OBJ importer used
     bb = mesh.get_bounding_box()
     lmin, lmax = [bb.min.x, bb.min.y, bb.min.z], [bb.max.x, bb.max.y, bb.max.z]
@@ -702,7 +735,15 @@ def far_terrain(ex, S):
     a = mesh_actor(mesh, (0, 0, 0), scl, material=mat, label="Rysy_DalekiTeren", folder="Rysy")
     a.set_actor_rotation(rot, False)
     c = a.static_mesh_component
-    c.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+    # no collision (round 3: set_collision_enabled alone left QUERY_AND_PHYSICS on the saved actor)
+    try:
+        c.set_collision_profile_name("NoCollision")
+        c.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+        c.set_editor_property("can_character_step_up_on", unreal.CanBeCharacterBase.ECB_NO)
+        c.set_generate_overlap_events(False)
+    except Exception as e:   # noqa: BLE001
+        warn("Daleki teren: kolizja: %s" % e)
+    log("Daleki teren: kolizja %s, profil %s" % (c.get_collision_enabled(), c.get_collision_profile_name()))
     origin, extent = a.get_actor_bounds(False)[:2]
     got_min = [origin.x - extent.x, origin.y - extent.y, origin.z - extent.z]
     a.set_actor_location(unreal.Vector(*[w - g0 for w, g0 in zip(wmin, got_min)]), False, False)
