@@ -929,13 +929,14 @@ async function main() {
     const fps = dyn.n / el, pr = renderer.getPixelRatio();
     dyn.t0 = now; dyn.n = 0;
     const perf = $('perf');
-    if (perf) perf.textContent = `Jakość: ${QUALITY} · rozdzielczość ${pr.toFixed(2)}× · ${Math.round(fps)} kl/s`;
+    if (perf) perf.textContent = `Wersja ${__BUILD__} · jakość: ${QUALITY} · rozdzielczość ${pr.toFixed(2)}× · ${Math.round(fps)} kl/s${FPS_CAP ? ` (limit ${FPS_CAP})` : ''}`;
     if ((dyn.calm += el) > dyn.wait) { dyn.cap = PR_MAX; dyn.calm = 0; }
     let np = pr;
-    if (fps < 48 && pr > PR_MIN) {
-      np = fps < 20 ? PR_MIN : Math.max(PR_MIN, pr - 0.25); dyn.cap = np; dyn.calm = 0; dyn.good = 0;   // far too slow: straight down
+    const target = FPS_CAP || 60;
+    if (fps < target * 0.8 && pr > PR_MIN) {
+      np = fps < target * 0.4 ? PR_MIN : Math.max(PR_MIN, pr - 0.25); dyn.cap = np; dyn.calm = 0; dyn.good = 0;   // far too slow: straight down
       if (now - dyn.raisedAt < 8000) dyn.wait = Math.min(600, dyn.wait * 2);   // the last step up failed
-    } else if (fps > 57) {
+    } else if (fps > target * 0.95) {
       if (++dyn.good >= 3 && pr + 0.25 <= dyn.cap) { np = pr + 0.25; dyn.good = 0; dyn.raisedAt = now; }
     } else dyn.good = 0;
     if (np === pr) return;
@@ -1038,9 +1039,15 @@ async function main() {
   addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 
   let liteFrame = 0;
+  // phones: at most 30 frames a second (a 120 Hz screen would otherwise drive the GPU flat out, the phone
+  // heats up and throttles: the second run was much slower than the first)
+  const FPS_CAP = LITE ? 30 : 0;
+  let lastFrame = 0;
   if (LITE) { renderer.shadowMap.autoUpdate = false; water.uniforms.reflOn.value = 0; }
-  function tick() {
+  function tick(now = performance.now()) {
     if (stopped) return;
+    if (FPS_CAP && now - lastFrame < 1000 / FPS_CAP - 3) { requestAnimationFrame(tick); return; }
+    lastFrame = now;
     const dt = Math.min(0.1, clock.getDelta());
     light.time.value += dt;
     const grade = gradeAt(state.s);
