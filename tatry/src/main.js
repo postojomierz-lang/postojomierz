@@ -243,14 +243,17 @@ async function main() {
   }
 
   // ---------- renderer / scene
-  // 'low' (phones): no logarithmic depth (it writes the depth per pixel, which switches off the GPU's early
-  // depth test, costly on phone GPUs), no multisampling, no post-processing, no lake reflection, shadows
-  // renewed every third frame
-  const LITE = QUALITY === 'low';
-  const renderer = new THREE.WebGLRenderer({ antialias: !LITE, logarithmicDepthBuffer: !LITE, powerPreference: 'high-performance' });
+  // phones ('low', 'mid'): the light way of drawing: no logarithmic depth (it writes the depth per pixel,
+  // which switches off the GPU's early depth test, costly on phone GPUs), no post-processing, no lake
+  // reflection, shadows renewed every third ('low') or second ('mid') frame; 'mid' keeps multisampling
+  // (cheap on phone GPUs, they resolve it on chip)
+  const LITE = QUALITY === 'low' || QUALITY === 'mid';
+  const SHADOW_EVERY = QUALITY === 'low' ? 3 : 2;
+  const renderer = new THREE.WebGLRenderer({ antialias: QUALITY !== 'low', logarithmicDepthBuffer: !LITE, powerPreference: 'high-performance' });
   // ultra renders above the screen resolution (supersampling) while the frame rate allows (tick)
   const PR_MAX = tier(1, 1.5, 1.75, 2), PR_MIN = tier(0.6, 0.75, 1, 1);
-  renderer.setPixelRatio(ULTRA ? Math.max(1, Math.min(devicePixelRatio * 1.5, PR_MAX)) : Math.min(devicePixelRatio, PR_MAX));
+  // phones start at 1× and go up only if the frame rate allows
+  renderer.setPixelRatio(ULTRA ? Math.max(1, Math.min(devicePixelRatio * 1.5, PR_MAX)) : Math.min(devicePixelRatio, QUALITY === 'mid' ? 1 : PR_MAX));
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.55;
@@ -941,7 +944,7 @@ async function main() {
   }
   // ---------- post-processing: bloom on sun glints, filmic grade, vignette
   // ambient occlusion (ssao.js): on in ultra, ?ao=1 / ?ao=0 to force it
-  const AO = P.has('ao') ? P.get('ao') !== '0' : ULTRA;
+  const AO = !LITE && (P.has('ao') ? P.get('ao') !== '0' : ULTRA);   // it decodes the logarithmic depth
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: tier(0, 2, 4),
     depthTexture: AO ? new THREE.DepthTexture(1, 1) : null }));
   // the second buffer's clone would share the depth texture's source (one GL texture): a feedback loop
@@ -1130,7 +1133,7 @@ async function main() {
     labels.update(dt);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });
     if (LITE) {
-      if (liteFrame++ % 3 === 0) renderer.shadowMap.needsUpdate = true;
+      if (liteFrame++ % SHADOW_EVERY === 0) renderer.shadowMap.needsUpdate = true;
       renderer.render(scene, camera);
     } else {
       renderReflection();
