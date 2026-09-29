@@ -59,7 +59,8 @@ export function walkMinutes(profile, step, s0, s1) {
 }
 
 // posts: [{ s, title, ele, side, boards: [{ dest, toS }] }]
-export function buildSigns({ scene, terrain, trail, profile, shade, posts }) {
+// minutes(s0, s1): walking time between two points of the trail; by default the norms over the profile
+export function buildSigns({ scene, terrain, trail, profile, shade, posts, minutes = null }) {
   const group = new THREE.Group();
   const N = trail.X.length, step = trail.step;
   const steel = new THREE.MeshLambertMaterial({ color: 0x9a9da0 });
@@ -87,7 +88,8 @@ export function buildSigns({ scene, terrain, trail, profile, shade, posts }) {
       group.add(plate);
     }
     p.boards.forEach((bd, k) => {
-      const mins = walkMinutes(profile, step, p.s, bd.toS);
+      const mins = minutes ? minutes(p.s, bd.toS) : walkMinutes(profile, step, p.s, bd.toS);
+      bd.minutes = mins;
       const tex = boardTexture(bd.dest, fmt(mins)), texB = boardTexture(bd.dest, fmt(mins), true);
       // the arrow points along the trail towards the destination; the board sticks out from the pole
       const dir = bd.toS >= p.s ? 1 : -1;

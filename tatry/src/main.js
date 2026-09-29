@@ -761,7 +761,21 @@ async function main() {
   // PTTK signposts at the start, at Czarny Staw, at the Bula and on the summit
   const sCzarny = nearestNamed()[0]?.s ?? LENGTH * 0.45;
   const sBula = (chains.chainRuns[0]?.[0] ?? Math.round(LENGTH * 0.83 / trail.step)) * trail.step - 25;
-  const signs = buildSigns({ scene, terrain, trail, profile, shade, posts: RI ? RI.posts : [
+  // on a planned route the signposts use the planner's times, hand corrections included (Orla Perć,
+  // Priečne sedlo…), each way on its own
+  let routeMinutes = null;
+  if (route && route.times) {
+    const { cumD, cumF, cumR } = route.times, n = cumD.length, k = LENGTH / cumD[n - 1];
+    const at = (arr, s) => {
+      const d = Math.max(0, Math.min(cumD[n - 1], s / k));
+      let lo = 0, hi = n - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cumD[m] <= d) lo = m; else hi = m; }
+      const f = cumD[hi] > cumD[lo] ? (d - cumD[lo]) / (cumD[hi] - cumD[lo]) : 0;
+      return arr[lo] + (arr[hi] - arr[lo]) * f;
+    };
+    routeMinutes = (s0, s1) => s1 >= s0 ? at(cumF, s1) - at(cumF, s0) : at(cumR, s0) - at(cumR, s1);
+  }
+  const signs = buildSigns({ scene, terrain, trail, profile, shade, minutes: routeMinutes, posts: RI ? RI.posts : [
     { s: 12, title: 'Morskie Oko', ele: 1395, boards: [{ dest: 'Czarny Staw', toS: sCzarny }, { dest: 'Rysy', toS: LENGTH }] },
     { s: sCzarny + 15, title: 'Czarny Staw pod Rysami', ele: 1583, boards: [{ dest: 'Rysy', toS: LENGTH }, { dest: 'Morskie Oko', toS: 0 }] },
     { s: sBula, title: 'Bula pod Rysami', ele: Math.round(profile[Math.round(sBula / trail.step)]), side: -1,
