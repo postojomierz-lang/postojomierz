@@ -4,7 +4,7 @@
 // height and photo blocks of 1024 m, the 1 m / 0.5 m tiles near the path, and the lakes, streams,
 // buildings and labels of that area. The result has the same shape as the Rysy data, so the rest of
 // the engine does not care where it came from.
-import { TrailGraph } from './planner/graph.js';
+import { TrailGraph, stepMinutes } from './planner/graph.js';
 
 export const REGION_BASE = '../region/';
 const TRAILS = 'data/region/trails.json';
@@ -38,8 +38,18 @@ export async function routePath(stops) {
     const e = data.e[ei];
     info.push({ colour: e.c[0] || 'red', surface: e.s || '', sac: e.d || 0, highway: e.h || '', name: e.n[0] || '', junction: G.adj[v].length > 2 });
   }
+  // walking time to every vertex, both ways, with the planner's hand corrections (planner/corrections.js):
+  // cumF along the route, cumR against it (a one-way stretch walked backwards gets the plain norms)
+  const cumD = new Float64Array(path.length), cumF = new Float64Array(path.length), cumR = new Float64Array(path.length);
+  for (let k = 1; k < path.length; k++) {
+    const a = path[k - 1], b = path[k], d = G.dist(a, b), dh = G.H[b] - G.H[a];
+    const w = (x, y, dd, h) => { const e = G.adj[x].find((q) => q[0] === y); return e && isFinite(e[1]) ? e[1] : stepMinutes(dd, h); };
+    cumD[k] = cumD[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
+    cumF[k] = cumF[k - 1] + w(a, b, d, dh);
+    cumR[k] = cumR[k - 1] + w(b, a, d, -dh);
+  }
   const pois = data.poi.map((p) => ({ ...p, xz: toLocal(p.p[0], p.p[1]) }));
-  return { pts, info, summary, pois, colours: data.colours };
+  return { pts, info, summary, pois, colours: data.colours, times: { cumD, cumF, cumR } };
 }
 
 async function heights(url, w, h) {
