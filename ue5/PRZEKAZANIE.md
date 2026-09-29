@@ -110,10 +110,25 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
 - pas near nadal zieleńszy z góry, neonowe łaty z bliska; brzegi 05 gładki, 03 2–3 malutkie załamania; 88,5 / 118,7 FPS.
 - analiza: zieleń na N jest prawdziwa (las; outer.jpg też G/R ~1,7), różnicę robią modele roślin na krajobrazie.
 
-## Runda 8 (wysłana operatorowi, czeka na `feedback/runda_08/`)
+## Runda 8
 - rośliny w pasie near (`foliage_*_band.csv`, `BAND_FOLIAGE`), maska DSM/DTM regionu (`reg_dtm`) do obniżania drzew;
 - tekstury warstw Poly Haven 2k (pobierane przez eksporter, jeśli nie ma ich w `tatry/public/textures/2k`);
 - `photo_grade()` (Desaturation, `PhotoSaturation`) w trzech materiałach; do wyboru przez operatora.
+
+### Wyniki rundy 8 (`feedback/runda_08/log.txt`)
+- 0 ostrzeżeń, Desaturation podłączony; rośliny w pasie: 44 023 + 38 328 instancji, **bez spadku FPS** (89,1 / 119,3);
+- granica krajobraz/pas niewidoczna (las przechodzi ciągle), drzewa pasa stoją na ziemi;
+- tekstury: łąka dobra; piarg lekko widoczny kafel po przekątnej; ściółka leśna: regularne ciemne plamy co kilka m;
+- nasycenie: operator wybrał 0,85.
+
+## Runda 9 (wysłana operatorowi, czeka na `feedback/runda_09/`)
+- `PHOTO_SATURATION = 0.85`; anty-kafelkowanie w `layer_blend()` (TextureObjectParameter + 2× TextureSample, skala
+  0,29, `<Warstwa>_AntiTile`); Forest kafel 2,2 m;
+- etap 3: `walking()` szuka `BP_ThirdPersonGameMode` / `BP_ThirdPersonCharacter` (`find_asset`), GameMode Override w
+  World Settings, `walkable_floor_angle` na CDO postaci (`WALKABLE_FLOOR_DEG`, `WALK_SPEED_CMS`); operator dodaje
+  paczkę Third Person i przechodzi szlak.
+- dalej w etapie 3: blokada na krawędzi krajobrazu (daleki teren bez kolizji), drogowskazy jako modele, licznik
+  (dystans/przewyższenie/czas; wymaga UMG, być może C++).
 
 ## Pomysły na kolejne rundy
 - Tekstury warstw terenu z Megascans/Fab (bliskie podłoże jest płaskie, „piaskowe”), mocniejsze przejście ortofoto
