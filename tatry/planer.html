@@ -29,6 +29,14 @@
   #nav .btns button { flex: 1; }
   #nav .btns button.on { background: #1f6fd1; border-color: #1f6fd1; color: #fff; }
   .me { width: 18px !important; height: 18px !important; margin: -9px 0 0 -9px !important; border-radius: 50%; background: #1f6fd1; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 1px 5px rgba(0,0,0,.4); }
+  #day { margin: 8px 0; padding: 8px 10px; background: var(--bg); border-radius: 8px; font-size: 13px; }
+  #day .when { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #day select, #day input { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  #day .line { margin-top: 6px; }
+  #day .ok { color: #1f7a33; } #day .late { color: #fff; background: #c8201c; border-radius: 6px; padding: 3px 8px; }
+  #day .tight { color: #9a4b00; font-weight: 600; }
+  #day ul { margin: 4px 0 0; padding-left: 18px; } #day li { margin: 2px 0; }
+  #day .src { color: var(--muted); font-size: 11px; margin-top: 4px; }
   #offline-state { margin: 0 16px 8px; font-size: 12px; color: var(--muted); }
   header { padding: 14px 16px 8px; }
   h1 { font-size: 18px; margin: 0; }
@@ -102,6 +110,14 @@
         <div class="stat"><b id="s-time">–</b><span>czas (normy PTTK)</span></div>
         <div class="stat"><b id="s-up">–</b><span>podejścia</span></div>
         <div class="stat"><b id="s-down">–</b><span>zejścia</span></div>
+      </div>
+      <div id="day">
+        <div class="when">Wyjście
+          <select id="d-day"><option value="0">dziś</option><option value="1">jutro</option><option value="2">pojutrze</option></select>
+          o <input id="d-time" type="time" step="900" value="07:00">
+        </div>
+        <div class="line" id="d-sun"></div>
+        <div class="line" id="d-weather"></div>
       </div>
       <canvas id="profile"></canvas>
       <ul id="sections"></ul>

@@ -6,7 +6,8 @@
 import L from 'leaflet';
 import { fmtTime } from './graph.js';
 
-export function setupNav({ map, G, data, route, $, onFinish }) {
+export function setupNav({ map, G, data, route, $, onFinish, sunset = () => null }) {
+  const hm = (d) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
   const V = data.v;
   const me = L.marker([0, 0], { interactive: false, zIndexOffset: 1000, icon: L.divIcon({ className: 'me', iconSize: null }) });
   const accCircle = L.circle([0, 0], { radius: 1, color: '#1f6fd1', weight: 1, fillOpacity: 0.12, interactive: false });
@@ -72,7 +73,9 @@ export function setupNav({ map, G, data, route, $, onFinish }) {
       const L1 = nav.left;
       const eta = new Date(Date.now() + L1.tMin * 60000);
       big.innerHTML = `<div><b>${(L1.d / 1000).toFixed(1)} km</b> <span>do celu</span></div>`
-        + `<div><b>${fmtTime(L1.tMin)}</b> <span>ETA ${eta.getHours()}:${String(eta.getMinutes()).padStart(2, '0')}</span></div>`;
+        + `<div><b>${fmtTime(L1.tMin)}</b> <span>ETA ${hm(eta)}</span></div>`;
+      const ss = sunset();
+      if (ss) big.innerHTML += `<div><span>zachód ${hm(ss)}${eta > ss ? ' · <b style="color:#c8201c;font-size:14px">po zmroku!</b>' : ''}</span></div>`;
     } else {
       big.innerHTML = `<div><b>${(nav.dist / 1000).toFixed(2)} km</b> <span>przebyte</span></div><div><b>${clock}</b> <span>w drodze</span></div>`;
     }

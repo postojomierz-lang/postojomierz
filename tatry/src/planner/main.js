@@ -9,6 +9,7 @@ import 'leaflet/dist/leaflet.css';
 import { TrailGraph, fmtTime } from './graph.js';
 import { loadJournal, saveJournal, routeKey, toggleFav, totals, fmtClock, addWalk, addPeak } from '../journal.js';
 import { setupNav, trackGpx } from './nav.js';
+import { sunTimes, forecast, walkWeather, hhmm, hm } from './daylight.js';
 
 const $ = (id) => document.getElementById(id);
 const COLOUR_PL = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny', none: 'bez znaków' };
@@ -152,7 +153,57 @@ function showSummary() {
     ul.appendChild(li);
   }
   drawProfile();
+  updateDay();
 }
+
+// ---------------------------------------------------------------- the day: darkness and weather
+// default start: now (rounded up to 15 min) if it is still morning, else tomorrow at 7:00
+{
+  const now = new Date();
+  if (now.getHours() < 10) { const m = Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15) * 15; $('d-time').value = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }
+  else $('d-day').value = '1';
+}
+function startDate() {
+  const [h, m] = $('d-time').value.split(':').map(Number);
+  const d = new Date(); d.setDate(d.getDate() + +$('d-day').value); d.setHours(h || 0, m || 0, 0, 0);
+  return d;
+}
+function sunNow() {
+  if (!path) return null;
+  const mid = data.v[path[Math.floor(path.length / 2)]];
+  return sunTimes(startDate(), mid[1], mid[0]);
+}
+let dayReq = 0;
+async function updateDay() {
+  if (!summary) return;
+  const t0 = startDate(), t1 = new Date(t0.getTime() + summary.time * 60000);
+  const sun = sunNow();
+  let html = `Koniec około <b>${hhmm(t1)}</b> (czas marszu bez postojów) · zachód słońca <b>${hhmm(sun.sunset)}</b>`;
+  const margin = (sun.sunset - t1) / 60000;
+  const latest = new Date(sun.sunset.getTime() - summary.time * 60000);
+  if (margin < 0) html = `<span class="late">Nie zdążysz przed zmrokiem: dotrzesz ok. ${hhmm(t1)}, zachód ${hhmm(sun.sunset)} (zmierzch ${hhmm(sun.dusk)}).`
+    + ` Wyjdź najpóźniej o ${hhmm(latest)} albo weź czołówkę.</span>`;
+  else if (margin < 90) html += ` · <span class="tight">zapas tylko ${hm(margin)}</span>`;
+  else html += ` · <span class="ok">zapas ${hm(margin)}</span>`;
+  if (sun.sunrise && t0 < sun.sunrise) html += `<br>Wyjście przed wschodem słońca (${hhmm(sun.sunrise)}): czołówka.`;
+  $('d-sun').innerHTML = html;
+  // the forecast for the highest point of the route
+  const req = ++dayReq;
+  let top = path[0];
+  for (const v of path) if (G.H[v] > G.H[top]) top = v;
+  $('d-weather').textContent = 'Pobieram prognozę…';
+  const fc = await forecast(data.v[top][1], data.v[top][0], G.H[top]);
+  if (req !== dayReq) return;
+  const w = fc && walkWeather(fc, t0, t1, G.H[path[0]]);
+  if (!w) { $('d-weather').textContent = fc ? 'Prognoza sięga 3 dni naprzód.' : 'Prognoza niedostępna (brak zasięgu).'; return; }
+  const top_n = Math.round(G.H[top]);
+  $('d-weather').innerHTML = `${w.icon} ${w.text} · na górze (${top_n} m) ${Math.round(w.tTop)}°C, odczuwalnie ${Math.round(w.feelsTop)}°C · na starcie ok. ${Math.round(w.tStart)}°C`
+    + `<br>opady ${w.rainP}%${w.rain >= 0.1 ? ` (${w.rain.toFixed(1)} mm)` : ''} · wiatr ${Math.round(w.wind)} km/h, porywy ${Math.round(w.gust)} km/h`
+    + (w.warn.length ? `<ul>${w.warn.map((x) => `<li>${x}</li>`).join('')}</ul>` : '')
+    + `<div class="src">Prognoza Open-Meteo dla ${top_n} m n.p.m${w.stale ? `, zapisana ${w.at.toLocaleString('pl-PL')} (brak zasięgu)` : ''}. Sprawdź też komunikat TOPR / HZS.</div>`;
+}
+$('d-day').onchange = updateDay;
+$('d-time').onchange = updateDay;
 
 // ---------------------------------------------------------------- elevation profile
 const cv = $('profile');
@@ -267,7 +318,7 @@ $('b-offline').onclick = async () => {
 offlineState();
 
 // ---------------------------------------------------------------- GPS navigation along the route
-const NAV = setupNav({ map, G, data, $, route: () => ({ path, summary }), onFinish: (w) => {
+const NAV = setupNav({ map, G, data, $, route: () => ({ path, summary }), sunset: () => { const n = new Date(); const v = data.v[path ? path[0] : 0]; return sunTimes(n, v[1], v[0]).sunset; }, onFinish: (w) => {
   const title = routeTitle() || 'Przejście GPS';
   const walk = { key: path ? routeKey(location.hash) : 'gps', title, date: new Date().toISOString().slice(0, 10), dist: Math.round(w.dist),
     up: w.up, time: Math.round(w.time), fair: w.completed, gps: true, hash: path ? location.hash : '', trace: w.trace };
