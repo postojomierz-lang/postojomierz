@@ -52,14 +52,25 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
 - brzegi 06/07 gładkie, na płaskich 03/05 drobne progi; wydajność 86 / 118 FPS.
 - Sesja C może pisać do sesji B (wiadomość „runda 03 gotowa” doszła).
 
-## Runda 4 (wysłana operatorowi, czeka na `feedback/runda_04/`)
-- eksporter: siatka 60 m z dziurą nad krajobrazem + kołnierz z wierzchołkami w każdej próbce krawędzi (1,3 m) +
-  fartuch 15 m; pierścień 6 pętli z krzywizną Ziemi; wygaszenie brzegu tekstury (400 px) do koloru nizin;
-  łagodne wygaszanie podniesienia brzegów (6–16 m); zasoby `_v4`; eksport ~110 MB (OBJ 41 MB).
-  Sprawdzone w danych: szew ±1 cm, spójna orientacja ścian, dopasowanie osi dla 48 konwencji.
-- `build_scene.py`: stałe mgły (A: 0,0025 / 0,2 / 0,8 / 3 km / (0,32; 0,40; 0,52)), sprzątanie po nazwie,
-  `NoCollision`.
-- operator porównuje mgłę A/B/C i wybiera; w następnej rundzie wpisać wybrane wartości do stałych.
+## Runda 4 (`feedback/runda_04/log.txt`)
+- szew w danych dokładny (±1,2 cm), fartuch i granica niewidoczne z daleka; ale kołnierz = gładka rozmyta płachta
+  z załamaniem przy siatce 60 m (DEM 55 m);
+- mgła: A zalewa kotlinę, C pokazuje pierścień jako ciemnoturkusową taflę z ostrą linią; operator wybrał **D**
+  (0,0012 / 0,1 / 0,7 / 5 km / (0,45; 0,55; 0,70));
+- kolizja `NoCollision` działa i przetrwała zapis; `set_generate_overlap_events` nie istnieje w Pythonie 5.8;
+  fałszywy alarm „zostawiam T_RysyFar_v3 (uzywa go M_RysyFar)” (rejestr zasobów z dysku);
+- brzegi 03/05 bez zmian; wydajność 88,7 / 119,6 FPS.
+
+## Runda 5 (wysłana operatorowi, czeka na `feedback/runda_05/`)
+- odkrycie: `tatry/public/data` (base 4 m) kończy się na z = ±2543 m, kwadrat na ±2621 m → krajobraz w pasach N/S
+  z DEM 55 m i zdjęcia 17 m/px. Teraz tło = `region/base` (DEM 4 m, 33×23 bloki po 1024 m, 257² próbek, format jak
+  kafle) i `region/photo` (2 m/px), funkcje `dem()` i `region_photo()` na górze eksportera;
+- daleki teren v5: pas `near` 800 m (10 m, DEM 4 m, tekstura 4096 px) + `far` 60 m + pierścień; dwa sloty
+  z .mtl; OBJ 66 MB, eksport ~144 MB (repo rośnie o ~60–70 MB na każdą nową wersję siatki: nie zmieniać jej bez
+  potrzeby);
+- brzegi: rampa `lvl + 0.3·tanh((sd−3)/1.2) + 0.06·(sd−3)`;
+- `build_scene.py`: mgła D, `photo_material()`, sloty po nazwie, sprzątanie z pominięciem `M_RysyFar`/`M_RysyNear`.
+- znane: w zdjęciu regionu jest poziomy szew źródła ~60 m na północ od krajobrazu (w danych, jak w przeglądarce).
 
 ## Pomysły na kolejne rundy
 - Tekstury warstw terenu z Megascans/Fab (bliskie podłoże jest płaskie, „piaskowe”), mocniejsze przejście ortofoto
