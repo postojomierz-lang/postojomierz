@@ -391,4 +391,5 @@ if (h) {
   if (s0.length) { stops = s0; update(); if (path) map.fitBounds(L.latLngBounds(path.map(ll)), { padding: [30, 30] }); }
 }
 renderJournal();
+document.querySelector('footer').append(` Wersja ${__BUILD__}.`);
 $('loading').remove();
