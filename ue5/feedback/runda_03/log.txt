@@ -1,0 +1,119 @@
+UE5 feedback: runda 03, 2026-09-29 (operator: lokalny Claude przez Unreal MCP)
+==========================================================================
+
+Projekt: od tej rundy właściciel pracuje w Documents\Unreal Projects\Rysy 5.8 (kopia projektu Rysy ze stanem po
+rundzie 2; ten sam Content/Rysy, poziom /Game/Rysy/Maps/Rysy). Stary projekt Rysy jest zamknięty.
+UE 5.8.3, RTX 4070 Ti SUPER, pulpit 2560x1440. build_scene.py NIE był zmieniany.
+Python uruchamiany jak w rundzie 2: `py "plik.py"` w polu Cmd przez SlateInspectorToolset, okna dialogowe
+skryptu przekierowane do logu.
+
+1. git pull: OK (commit 0ec2c3ea „UE5 round 3 …”, merge #117).
+
+2. Nowa mapa wysokości do istniejącego krajobrazu (render target + landscape_import_heightmap_from_render_target,
+   warstwa edycji 0, tymczasowe /Game/Rysy/Temp usunięte przed build_scene):
+   - 305 losowych punktów: krajobraz − PNG = −0,59 … +0,01 cm,
+   - 80 punktów przy brzegach jezior spośród 14 075 próbek zmienionych względem rundy 2 o >20 jednostek:
+     −0,19 … 0,00 cm.
+   (Uwaga do pomiaru: line trace bez filtra trafiał w Rysy_DalekiTeren, bo stara siatka SM_RysyFar miała w tym
+   projekcie kolizję; sprawdzałem z ignorowaniem wszystkiego poza krajobrazem.)
+
+3. build_scene.py: jeden przebieg, 38 s, bez błędów Pythona.
+   [Rysy] Daleki teren: osie [0, 1, 2], znaki [1, -1, 1], skala 1/1      <- zgodnie z oczekiwaniem
+   Ostrzeżenia z przebiegu: brak linii `[Rysy]` z ostrzeżeniem (warn). Jedyne ostrzeżenie:
+     LogMaterial: Warning: M_RysyLandscape: Requesting an invalid TextureIndex! (9 / 8)   (jak w rundzie 2,
+     przy pierwszym węźle po delete_all_material_expressions; nieszkodliwe)
+   Podsumowanie: krajobraz + MI_RysyLandscape; „daleki teren: 35 x 29 km wokol krajobrazu + pierscien horyzontu
+   (SM_RysyFar_v3)”; jeziora 14; budynki 23; drogowskazy 4; szlak 953 pkt / 4633 m; znaczniki 19;
+   spruce 38 620; dwarfpine 49 193 (było 49 235); rock 10 973 (było 11 052) – mniej, bo brzegi się zmieniły.
+
+   Daleki teren po skrypcie:
+   - Aktor Rysy_DalekiTeren → /Game/Rysy/FarTerrain/SM_RysyFar_v3, loc (−0,2; 0,4; 0), rot roll 180, scale (1,1,−1),
+     materiał (override na komponencie) M_RysyFar → T_RysyFar_v3 (8192×6744 px).
+   - PROBLEM 1: slot materiału w samej siatce SM_RysyFar_v3 wskazywał na STARY materiał „far”, a „far” i
+     TEX_far_terrain nie zostały usunięte. Przyczyna: w tym projekcie były już z rundy 2, więc import OBJ użył
+     istniejących (imported_object_paths zawierało tylko siatkę) → lista `extra` pusta → kod przestawiający slot i
+     kasujący nie wykonał się. W czystym projekcie pewnie zadziała; lepiej nie uzależniać przestawienia slotu od
+     `extra` (zawsze mesh.set_material(0, mat)) i kasować „far”/TEX_far_terrain po nazwie, jeśli istnieją.
+     Zrobiłem to ręcznie: slot SM_RysyFar_v3 → M_RysyFar (zapisane).
+   - PROBLEM 2: komponent aktora ma kolizję QUERY_AND_PHYSICS, mimo że skrypt woła
+     set_collision_enabled(NO_COLLISION) (tak samo było ze starym SM_RysyFar w tym projekcie). Nie szkodzi
+     wizualnie, ale line trace i fizyka trafiają w daleki teren (pod krajobrazem jest zatopiony o 150 m, więc na
+     krajobrazie nie przeszkadza; poza nim – tak). Może ustawienie nie jest zapisywane na komponencie aktora
+     (spróbować c.set_editor_property("body_instance"…) albo mesh.body_setup / collision profile "NoCollision").
+
+   Zasoby SM_RysyFar_v3: Nanite WŁĄCZONE; 904 236 trójkątów / 453 835 wierzchołków (źródło, LOD0; fallback Nanite
+   574 trójkąty). Bounding box siatki (lokalnie) X −118,3 … +151,7 km, Y −139,0 … +111,0 km, Z 450 … 2610,7 m.
+
+4. Usunięcie starych zasobów (po skrypcie):
+   - Odwołania przed kasowaniem: far ← SM_RysyFar i SM_RysyFar_v3 (slot, patrz wyżej); TEX_far_terrain ← far;
+     SM_RysyFar ← nic (poziom już używa v3); T_RysyFar ← nic.
+   - Usunięte (delete_asset = True): /Game/Rysy/FarTerrain/far, /Game/Rysy/FarTerrain/TEX_far_terrain,
+     /Game/Rysy/FarTerrain/SM_RysyFar, /Game/Rysy/Textures/T_RysyFar.
+   - Teraz w /Game/Rysy/FarTerrain/ jest tylko SM_RysyFar_v3; w Textures tylko T_RysyFar_v3 z dalekiego terenu.
+
+5. Sprawdzenie
+a) Szew na granicy 5,2 km (08, 09)
+   - Pomiar jak w rundzie 2 (heightmap vs far_terrain.obj, liniowo między wierzchołkami leżącymi na granicy):
+       N: −12,46 … +6,42 m (|d|>1 m na 41 % długości, >5 m na 2,9 %)
+       S: −18,36 … +8,36 m (45 %, 7,5 %)
+       W:  −6,92 … +8,77 m (39 %, 3,2 %)
+       E: −17,57 … +10,82 m (42 %, 5,8 %)
+     czyli PRAWIE BEZ ZMIAN względem rundy 2 (−18,4/+10,8). Powód w eksporterze: `dense(X0)` dodaje gęste linie
+     co 6 m PROSTOPADŁE do granicy tylko w pasie ±240 m wokół X0/X1 (i Z0/Z1). Wzdłuż krawędzi N/S wierzchołki są
+     więc nadal co 60 m (co 6 m tylko w pasach przy narożnikach) – na granicy jest 169 wierzchołków na krawędź,
+     średnio co 31 m. Wierzchołki leżą na krawędzi lidaru (±0,6–0,8 m), ale linia 60 m między nimi nadal odstaje.
+     Żeby progi zniknęły, gęsto (≤ 6 m, najlepiej 1,3 m) trzeba próbkować WZDŁUŻ granicy, czyli dodać gęste
+     fxs w całym zakresie X0..X1 dla wierszy przy Z0/Z1 (i fzs dla kolumn przy X0/X1) – w siatce prostokątnej to
+     oznacza gęste kolumny na całej wysokości, więc lepiej osobny pas trójkątów (strip) wzdłuż krawędzi.
+   - Wizualnie (08, 09): tekstura dalekiego terenu wyraźnie ostrzejsza (4,3 m/px zamiast 17), kolor bliższy
+     ortofoto krajobrazu; ciemny prostokąt przy S jest teraz ostrym ciemnym stawem (to faktyczny staw na zdjęciu).
+     Nadal widać próg/fałdę na krawędzi S (08, środek: gładki jasny pas biegnący skosem) i przy narożniku NE (09)
+     pas gładkiej, jasnozielonej powierzchni tuż za granicą, bez szczegółów – różnica ostrości jest mniejsza, ale
+     granica nadal czytelna z góry.
+
+b) Horyzont (01, 04, 10, 11, 12)
+   - Granatowy pas NIE zniknął (04, 10, 11 wyglądają jak w rundzie 2).
+   - Diagnoza: zrzut 04 z ukrytym aktorem Rysy_DalekiTeren wygląda identycznie, a 12 (ta sama kamera co 11, ukryta
+     mgła ExponentialHeightFog „Mgla”) pokazuje pierścień. Czyli granat to mgła, która zakrywa pierścień całkowicie.
+     Ustawienia mgły: aktor na Z = 130 000, FogDensity 0,006, HeightFalloff 0,05, FogMaxOpacity 1,0, StartDistance 0,
+     FogInscatteringLuminance (0,0,0) (kolor bierze z atmosfery → ciemny granat), druga mgła gęstość 0.
+     Proponuję: mniejsza gęstość/wyższy falloff, jaśniejszy FogInscatteringLuminance (szaroniebieski, jak niebo
+     przy horyzoncie) albo FogMaxOpacity < 1, żeby pierścień i dalekie szczyty przebijały.
+   - Sam pierścień (12, bez mgły): nie wygląda naturalnie – kolory z krawędzi zdjęcia rozciągnięte promieniście
+     w jasne i ciemne smugi, a na horyzoncie widać jego jasną, prostą krawędź. Z mgłą w obecnej postaci go nie widać.
+
+c) Brzegi (03, 05, 06, 07)
+   - 06 (Morskie Oko z bliska) i 07 (Czarny Staw z bliska): gładkie, bez schodków, teren nie wystaje nad wodę.
+   - 05 (płaski brzeg Morskiego Oka przy PlayerStart): duże ząbki z rundy 2 zniknęły; linia brzegu jest dużo
+     gładsza, zostało kilka pojedynczych drobnych progów (porównałem wycinek 05 z rundy 2 i 3).
+   - 03 (Czarny Staw przy szlaku): na lewym, płaskim brzegu nadal widać drobne ząbki linii wody (mniejsze niż
+     w rundzie 2). Nigdzie nie widziałem terenu wystającego nad wodę w dziwnych miejscach.
+
+d) Ekspozycja: Rysy_PostProcess ma teraz −0,5 ustawione przez skrypt (sprawdzone po przebiegu). W Play (05, 10)
+   jasność jak w rundzie 2 przy −0,5: trawa nie biała, niebo nie ciemne.
+
+6. Zrzuty (1920×1080; 01–04 i 06–09 HighResShot z CameraActor w edytorze, 05 i 10 w Play; kamery jak w rundzie 2)
+   01_widok_z_gory.jpg                         (-110000, -260000, 360000) pitch -35 yaw 63
+   02_brzeg_Morskiego_Oka.jpg                  (-34058, -113297, 140750) pitch 12 yaw 63
+   03_Czarny_Staw_sciezka.jpg                  (13930, 6830, 158780) pitch -8 yaw 68.5
+   04_szczyt_Rysow.jpg                         (88041, 127023, 252000) pitch -20 yaw -117
+   05_PlayerStart_w_strone_jeziora_Play.jpg    Play, PlayerStart
+   06_Morskie_Oko_brzeg_zblizenie.jpg          (-15500, -75000, grunt+3 m) pitch -12 yaw -100
+   07_Czarny_Staw_brzeg_zblizenie.jpg          (19500, 11000, grunt+3 m) pitch -10 yaw -137
+   08_szew_dalekiego_terenu_krawedz_S.jpg      (60000, 230000, grunt na krawędzi+250 m) pitch -35 yaw 90
+   09_szew_dalekiego_terenu_naroznik_NE.jpg    (230000, -230000, grunt w narożniku+400 m) pitch -40 yaw -45
+   10_szczyt_Rysow_Play.jpg                    Play, pionek na (88041, 127023, 251500) pitch -15 yaw -117
+   11_horyzont_ze_szczytu_z_mgla.jpg           (88041, 127023, 252000) pitch 0 yaw -117, jak jest
+   12_horyzont_ze_szczytu_mgla_ukryta.jpg      ta sama kamera, mgła „Mgla” tymczasowo ukryta (diagnoza)
+
+7. Wydajność (Play w nowym oknie na cały ekran 2560×1380, StartFPSChart/StopFPSChart, ~55 s każdy)
+   - Morskie Oko (PlayerStart): 86,0 FPS (4611 klatek / 53,6 s), GPU 10,5 ms, Game 5,8 ms,
+     0 % klatek < 60 FPS, 28 % < 120, 1 przycięcie 0,35 s.   [runda 2: 90,6 FPS, GPU 10,1 ms, Game 4,4 ms]
+   - Szczyt Rysów: 118,1 FPS (6539 / 55,4 s), GPU 7,2 ms, Game 6,0 ms, 1,6 % < 120, 1 przycięcie 0,32 s.
+     [runda 2: 119,7 FPS, GPU 6,7 ms] – nadal oparte o limit 120 FPS edytora.
+   - SM_RysyFar_v3: Nanite tak, 904 236 trójkątów.
+
+Po rundzie: przywróciłem ustawienia edytora (okno PIE 1280×720, pozycja domyślna; „Use Less CPU when in
+Background” z powrotem włączone). Mgła i daleki teren po testach znów widoczne.
+
+Czego nie robiłem (zgodnie z ZADANIA.md): Third Person, podmiana tekstur terenu, zmiana liczby drzew.
