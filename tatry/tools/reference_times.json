@@ -1,0 +1,439 @@
+{
+ "places": {
+  "Palenica Białczańska": [
+   20.103,
+   49.2545
+  ],
+  "Kuźnice": [
+   19.9805,
+   49.2702
+  ],
+  "Wodogrzmoty Mickiewicza": [
+   20.0876,
+   49.2346
+  ],
+  "Morskie Oko": [
+   20.07126,
+   49.201428
+  ],
+  "Dolina Pięciu Stawów": [
+   20.04874,
+   49.213641
+  ],
+  "Szpiglasowa Przełęcz": [
+   20.042185,
+   49.19784
+  ],
+  "Szpiglasowy Wierch": [
+   20.04011,
+   49.19729
+  ],
+  "Wrota Chałubińskiego": [
+   20.044994,
+   49.191758
+  ],
+  "Czarny Staw pod Rysami": [
+   20.079,
+   49.1905
+  ],
+  "Przełęcz pod Chłopkiem": [
+   20.065128,
+   49.183705
+  ],
+  "Bula pod Rysami": [
+   20.080791,
+   49.181919
+  ],
+  "Rysy": [
+   20.08813,
+   49.17952
+  ],
+  "Zawrat": [
+   20.01639,
+   49.219091
+  ],
+  "Murowaniec": [
+   20.00716,
+   49.243418
+  ],
+  "Kozia Przełęcz": [
+   20.02517,
+   49.21961
+  ],
+  "Kozi Wierch": [
+   20.03057,
+   49.21802
+  ],
+  "Czarny Staw Gąsienicowy": [
+   20.014737,
+   49.232573
+  ],
+  "Zadni Granat": [
+   20.032569,
+   49.22477
+  ],
+  "Krzyżne": [
+   20.047278,
+   49.228652
+  ],
+  "Karb": [
+   20.011709,
+   49.228793
+  ],
+  "Kościelec": [
+   20.014583,
+   49.225179
+  ],
+  "Kasprowy Wierch": [
+   19.98166,
+   49.232356
+  ],
+  "Nosal": [
+   19.989459,
+   49.276431
+  ],
+  "Hala Kondratowa": [
+   19.951682,
+   49.249882
+  ],
+  "Wielki Giewont": [
+   19.934102,
+   49.250954
+  ],
+  "Polana Strążyska": [
+   19.929721,
+   49.263032
+  ],
+  "Popradské pleso": [
+   20.079361,
+   49.154934
+  ],
+  "Popradské pleso, stanica TEŽ": [
+   20.074649,
+   49.12608
+  ],
+  "Rázcestie nad Žabím potokom": [
+   20.07097,
+   49.163231
+  ],
+  "Chata pod Rysmi": [
+   20.087186,
+   49.174579
+  ],
+  "Veľké Hincovo pleso": [
+   20.06011,
+   49.175407
+  ],
+  "Wyżnia Koprowa Przełęcz": [
+   20.052762,
+   49.177425
+  ],
+  "Koprowy Wierch": [
+   20.048246,
+   49.182374
+  ],
+  "Štrbské Pleso, stanica": [
+   20.063172,
+   49.11764
+  ],
+  "Jamské pleso": [
+   20.012637,
+   49.134281
+  ],
+  "Tri Studničky": [
+   19.966371,
+   49.139995
+  ],
+  "Starý Smokovec": [
+   20.222155,
+   49.139278
+  ],
+  "Hrebienok": [
+   20.225006,
+   49.158794
+  ],
+  "Zamkovského chata": [
+   20.219717,
+   49.173992
+  ],
+  "Téryho chata": [
+   20.198974,
+   49.190216
+  ],
+  "Zbojnícka chata": [
+   20.167602,
+   49.176634
+  ],
+  "Priečne sedlo": [
+   20.184916,
+   49.188781
+  ],
+  "Skalnaté pleso": [
+   20.233438,
+   49.188265
+  ],
+  "Tatranská Lomnica": [
+   20.270379,
+   49.166492
+  ],
+  "Sliezsky dom": [
+   20.157196,
+   49.156087
+  ]
+ },
+ "times": [
+  [
+   "Palenica Białczańska",
+   "Morskie Oko",
+   140,
+   115
+  ],
+  [
+   "Wodogrzmoty Mickiewicza",
+   "Dolina Pięciu Stawów",
+   125,
+   90
+  ],
+  [
+   "Morskie Oko",
+   "Szpiglasowa Przełęcz",
+   135,
+   100
+  ],
+  [
+   "Szpiglasowa Przełęcz",
+   "Szpiglasowy Wierch",
+   15,
+   12
+  ],
+  [
+   "Dolina Pięciu Stawów",
+   "Szpiglasowa Przełęcz",
+   105,
+   75
+  ],
+  [
+   "Morskie Oko",
+   "Wrota Chałubińskiego",
+   120,
+   95
+  ],
+  [
+   "Morskie Oko",
+   "Czarny Staw pod Rysami",
+   50,
+   40
+  ],
+  [
+   "Czarny Staw pod Rysami",
+   "Przełęcz pod Chłopkiem",
+   150,
+   120
+  ],
+  [
+   "Czarny Staw pod Rysami",
+   "Bula pod Rysami",
+   75,
+   55
+  ],
+  [
+   "Bula pod Rysami",
+   "Rysy",
+   120,
+   90
+  ],
+  [
+   "Dolina Pięciu Stawów",
+   "Zawrat",
+   90,
+   70
+  ],
+  [
+   "Murowaniec",
+   "Zawrat",
+   140,
+   110
+  ],
+  [
+   "Dolina Pięciu Stawów",
+   "Kozia Przełęcz",
+   80,
+   60
+  ],
+  [
+   "Czarny Staw Gąsienicowy",
+   "Kozia Przełęcz",
+   120,
+   95
+  ],
+  [
+   "Dolina Pięciu Stawów",
+   "Kozi Wierch",
+   90,
+   60
+  ],
+  [
+   "Czarny Staw Gąsienicowy",
+   "Zadni Granat",
+   135,
+   105
+  ],
+  [
+   "Dolina Pięciu Stawów",
+   "Krzyżne",
+   110,
+   80
+  ],
+  [
+   "Murowaniec",
+   "Krzyżne",
+   165,
+   125
+  ],
+  [
+   "Kuźnice",
+   "Murowaniec",
+   90,
+   70
+  ],
+  [
+   "Murowaniec",
+   "Czarny Staw Gąsienicowy",
+   30,
+   20
+  ],
+  [
+   "Czarny Staw Gąsienicowy",
+   "Karb",
+   40,
+   30
+  ],
+  [
+   "Karb",
+   "Kościelec",
+   50,
+   40
+  ],
+  [
+   "Murowaniec",
+   "Kasprowy Wierch",
+   85,
+   55
+  ],
+  [
+   "Kuźnice",
+   "Kasprowy Wierch",
+   210,
+   155
+  ],
+  [
+   "Kuźnice",
+   "Nosal",
+   45,
+   30
+  ],
+  [
+   "Kuźnice",
+   "Hala Kondratowa",
+   80,
+   60
+  ],
+  [
+   "Polana Strążyska",
+   "Wielki Giewont",
+   140,
+   105
+  ],
+  [
+   "Popradské pleso, stanica TEŽ",
+   "Popradské pleso",
+   60,
+   50
+  ],
+  [
+   "Popradské pleso",
+   "Rázcestie nad Žabím potokom",
+   30,
+   25
+  ],
+  [
+   "Rázcestie nad Žabím potokom",
+   "Chata pod Rysmi",
+   105,
+   75
+  ],
+  [
+   "Chata pod Rysmi",
+   "Rysy",
+   45,
+   30
+  ],
+  [
+   "Rázcestie nad Žabím potokom",
+   "Veľké Hincovo pleso",
+   60,
+   45
+  ],
+  [
+   "Veľké Hincovo pleso",
+   "Wyżnia Koprowa Przełęcz",
+   45,
+   35
+  ],
+  [
+   "Wyżnia Koprowa Przełęcz",
+   "Koprowy Wierch",
+   30,
+   20
+  ],
+  [
+   "Štrbské Pleso, stanica",
+   "Jamské pleso",
+   75,
+   65
+  ],
+  [
+   "Starý Smokovec",
+   "Hrebienok",
+   45,
+   30
+  ],
+  [
+   "Hrebienok",
+   "Zamkovského chata",
+   45,
+   35
+  ],
+  [
+   "Zamkovského chata",
+   "Téryho chata",
+   120,
+   90
+  ],
+  [
+   "Hrebienok",
+   "Zbojnícka chata",
+   150,
+   110
+  ],
+  [
+   "Téryho chata",
+   "Priečne sedlo",
+   null,
+   75
+  ],
+  [
+   "Priečne sedlo",
+   "Zbojnícka chata",
+   105,
+   null
+  ],
+  [
+   "Tatranská Lomnica",
+   "Skalnaté pleso",
+   165,
+   105
+  ]
+ ],
+ "source": "czasy z tablic podane przez właściciela projektu (2026-09-29)"
+}
