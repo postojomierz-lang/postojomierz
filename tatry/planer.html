@@ -80,6 +80,27 @@
   .badge.off { opacity: .38; filter: grayscale(1); }
   .peaks { font-size: 13px; line-height: 1.7; margin: 0; }
   .peaks span { display: inline-block; background: var(--bg); border-radius: 6px; padding: 0 6px; margin: 0 4px 4px 0; }
+  #account { margin: 6px 0 4px; font-size: 13px; }
+  #account small { color: var(--muted); display: block; }
+  .orow { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .orow input, .row select { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .orow small { flex: 1; }
+  button.link { border: 0; background: none; color: var(--muted); text-decoration: underline; padding: 2px 0; }
+  #groups { padding: 4px 16px 12px; border-top: 1px solid var(--line); }
+  #groups h2 { font-size: 15px; margin: 10px 0 4px; }
+  #groups h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 12px 0 4px; }
+  #groups .empty, #chat-log .empty { color: var(--muted); font-size: 13px; }
+  #g-members { display: flex; flex-wrap: wrap; gap: 4px; }
+  .mem { display: inline-flex; align-items: center; gap: 4px; background: var(--bg); border-radius: 12px; padding: 2px 8px 2px 2px; font-size: 12px; }
+  i.av { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: none; border-radius: 50%; background: #fff center / cover no-repeat; font-style: normal; font-size: 14px; }
+  #chat-log { max-height: 260px; overflow: auto; background: var(--bg); border-radius: 8px; padding: 6px; }
+  .chat-m { display: flex; gap: 6px; margin: 4px 0; } .chat-m > div { background: #fff; border-radius: 8px; padding: 4px 8px; max-width: 85%; }
+  .chat-m.mine { flex-direction: row-reverse; } .chat-m.mine > div { background: #e4efe0; }
+  .chat-m small { color: var(--muted); font-size: 11px; } .chat-m p { margin: 1px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mate { display: flex; align-items: center; gap: 3px; white-space: nowrap; font: 600 12px system-ui; color: #123; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+  .mate i.av { width: 30px; height: 30px; font-size: 18px; border: 3px solid #e07b00; box-shadow: 0 1px 5px rgba(0,0,0,.4); }
+  .mate.stale { opacity: .55; }
+  #nav .btns button#nav-share.on { background: #e07b00; border-color: #e07b00; }
   footer { margin-top: auto; padding: 10px 16px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
   .wp { background: var(--accent); color: #fff; border: 2px solid #fff; border-radius: 50%; width: 22px !important; height: 22px !important; margin: -11px 0 0 -11px !important;
         display: flex; align-items: center; justify-content: center; font: 700 11px system-ui; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
@@ -141,12 +162,41 @@
       </div>
       <div id="p-pick" class="pick" hidden></div>
       <input id="p-photo" type="file" accept="image/*" hidden>
+      <div id="account">
+        <div id="o-login">
+          <small>Zaloguj się, żeby mieć dziennik na wszystkich urządzeniach i chodzić w grupach:</small>
+          <div class="orow"><input id="o-mail" type="email" placeholder="Twój e-mail" autocomplete="email"><button id="o-send">✉ Wyślij link</button></div>
+          <div class="orow" id="o-code-row" hidden><input id="o-code" inputmode="numeric" placeholder="kod z e-maila" autocomplete="one-time-code"><button id="o-verify">Zaloguj kodem</button></div>
+          <small id="o-note"></small>
+        </div>
+        <div id="o-account" hidden>
+          <small>Zalogowano: <b id="o-email"></b> · <span id="o-sync"></span></small>
+          <button id="o-logout" class="link">Wyloguj</button>
+        </div>
+        <small id="o-none" hidden>Tryb online niedostępny w tej wersji.</small>
+      </div>
       <h2>Mój dziennik</h2>
       <div class="stats" id="j-stats"></div>
       <h3>Ulubione trasy</h3><ul id="j-favs" class="jlist"></ul>
       <h3>Ostatnie przejścia</h3><ul id="j-walks" class="jlist"></ul>
       <h3>Zdobyte szczyty</h3><p id="j-peaks" class="peaks"></p>
       <h3>Odznaki <span id="b-count"></span></h3><div id="badges" class="badges"></div>
+    </section>
+    <section id="groups" hidden>
+      <h2>Grupy</h2>
+      <div class="orow"><select id="g-sel" hidden></select><button id="g-new">＋ Nowa</button><button id="g-join">Dołącz kodem</button></div>
+      <p id="g-empty" class="empty">Załóż grupę i wyślij znajomym zaproszenie albo dołącz kodem od nich. W grupie macie wspólny czat, trasy i pozycje na mapie podczas nawigacji.</p>
+      <div id="g-box" hidden>
+        <div class="orow"><small>Kod zaproszenia: <b id="g-code"></b></small><button id="g-invite">🔗 Zaproś</button></div>
+        <div id="g-members"></div>
+        <div class="orow"><small id="g-live"></small><button id="g-show" title="Pokaż na mapie osoby z grupy, które udostępniają pozycję">👥 Pokaż na mapie</button></div>
+        <h3>Trasy grupy</h3><ul id="g-routes" class="jlist"></ul>
+        <button id="g-add-route">📌 Dodaj bieżącą trasę</button>
+        <h3>Czat</h3>
+        <div id="chat-log"></div>
+        <form id="chat-form" class="orow"><input id="chat-in" maxlength="2000" placeholder="Wiadomość do grupy" autocomplete="off"><button>Wyślij</button></form>
+        <button id="g-leave" class="link"></button>
+      </div>
     </section>
     <footer>Szlaki i punkty: © autorzy OpenStreetMap (ODbL). Wysokości: GUGiK NMT, Copernicus DEM. Podkład: OpenTopoMap (CC-BY-SA). Czasy liczone normami w stylu PTTK, orientacyjne.</footer>
   </aside>
@@ -158,6 +208,7 @@
       <div class="warn" id="nav-warn" hidden></div>
       <div class="btns">
         <button id="nav-follow" class="on">◎ Śledź</button>
+        <button id="nav-share" hidden>👥 Udostępnij pozycję</button>
         <button id="nav-stop">⏹ Zakończ</button>
       </div>
     </div>

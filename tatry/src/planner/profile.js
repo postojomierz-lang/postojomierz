@@ -1,12 +1,15 @@
-// The hiker's profile, kept in this browser for now (the online accounts will take it over, see
-// supabase/): a name, an avatar (an emoji or a small photo), a rank by kilometres walked and badges
+// The hiker's profile, kept in this browser and, once signed in, synced with the account (online.js): a name, an avatar (an emoji or a small photo), a rank by kilometres walked and badges
 // earned from the journal (walks in the 3D view and with the GPS, peaks reached, records).
 const KEY = 'tatry-profile';
 
 export function loadProfile() {
   try { return { name: '', avatar: '🥾', ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch (e) { return { name: '', avatar: '🥾' }; }
 }
-export function saveProfile(p) { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* full or private */ } }
+// stamp: a change made here (the newer of this device and the account wins when they are synced)
+export function saveProfile(p, stamp = true) {
+  if (stamp) p.updatedAt = Date.now();
+  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* full or private */ }
+}
 
 export const AVATARS = ['🥾', '🏔', '⛰', '🧗', '🎒', '🦌', '🐐', '🦅', '🐻', '🌲', '⛺', '🧭'];
 

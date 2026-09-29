@@ -6,7 +6,7 @@
 import L from 'leaflet';
 import { fmtTime } from './graph.js';
 
-export function setupNav({ map, G, data, route, $, onFinish, sunset = () => null }) {
+export function setupNav({ map, G, data, route, $, onFinish, sunset = () => null, onPosition = () => {}, onStop = () => {} }) {
   const hm = (d) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
   const V = data.v;
   const me = L.marker([0, 0], { interactive: false, zIndexOffset: 1000, icon: L.divIcon({ className: 'me', iconSize: null }) });
@@ -96,6 +96,7 @@ export function setupNav({ map, G, data, route, $, onFinish, sunset = () => null
     const v = G.snap(lon, lat, 60);
     nav.alt = v >= 0 ? G.H[v] : altitude;
     if (acc > 60) { show('słaby sygnał GPS'); return; }
+    onPosition({ lat, lon, alt: nav.alt, acc });
     const last = nav.track[nav.track.length - 1];
     const x = lon * G.mx, z = lat * G.mz;
     if (last) {
@@ -137,6 +138,7 @@ export function setupNav({ map, G, data, route, $, onFinish, sunset = () => null
     if (nav.lock) nav.lock.release().catch(() => {});
     me.remove(); accCircle.remove();
     $('nav').hidden = true;
+    onStop();
     const n = nav; nav = null;
     if (n.track.length > 3) onFinish({
       time: (Date.now() - n.t0) / 1000, dist: n.dist, up: Math.round(n.up), track: n.track, trace: n.trace,

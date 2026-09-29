@@ -11,6 +11,7 @@ import { loadJournal, saveJournal, routeKey, toggleFav, totals, fmtClock, addWal
 import { setupNav, trackGpx } from './nav.js';
 import { sunTimes, forecast, walkWeather, hhmm, hm } from './daylight.js';
 import { loadProfile, saveProfile, AVATARS, BADGES, rank, photoAvatar } from './profile.js';
+import { setupOnline } from './online.js';
 
 const $ = (id) => document.getElementById(id);
 const COLOUR_PL = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny', none: 'bez znaków' };
@@ -319,7 +320,8 @@ $('b-offline').onclick = async () => {
 offlineState();
 
 // ---------------------------------------------------------------- GPS navigation along the route
-const NAV = setupNav({ map, G, data, $, route: () => ({ path, summary }), sunset: () => { const n = new Date(); const v = data.v[path ? path[0] : 0]; return sunTimes(n, v[1], v[0]).sunset; }, onFinish: (w) => {
+const NAV = setupNav({ map, G, data, $, route: () => ({ path, summary }),
+  onPosition: (p) => ONLINE.onPosition(p), onStop: () => ONLINE.onNavStop(), sunset: () => { const n = new Date(); const v = data.v[path ? path[0] : 0]; return sunTimes(n, v[1], v[0]).sunset; }, onFinish: (w) => {
   const title = routeTitle() || 'Przejście GPS';
   const walk = { key: path ? routeKey(location.hash) : 'gps', title, date: new Date().toISOString().slice(0, 10), dist: Math.round(w.dist),
     up: w.up, time: Math.round(w.time), fair: w.completed, gps: true, hash: path ? location.hash : '', trace: w.trace };
@@ -327,7 +329,7 @@ const NAV = setupNav({ map, G, data, $, route: () => ({ path, summary }), sunset
   // a summit at the end of the walk
   const [, la, lo] = w.track[w.track.length - 1];
   for (const p of data.poi) if (p.k === 'peak' && Math.hypot((p.p[0] - lo) * G.mx, (p.p[1] - la) * G.mz) < 60) addPeak(J, p.n, p.e);
-  saveJournal(J); renderJournal();
+  saveJournal(J); renderJournal(); ONLINE.sync();
   $('msg').innerHTML = `Zapisano w dzienniku: ${(w.dist / 1000).toFixed(1)} km, ${fmtClock(w.time)}${record ? ' · nowy rekord 🏆' : ''}. <a href="#" id="save-track">⤒ Zapisz ślad GPX</a>`;
   $('save-track').onclick = (ev) => {
     ev.preventDefault();
@@ -388,9 +390,9 @@ function renderProfile(t) {
   $('badges').innerHTML = BADGES.map((b) => `<div class="badge${b.ok(t, J) ? '' : ' off'}" title="${esc(b.desc)}"><span class="i">${b.icon}</span><b>${esc(b.name)}</b>${esc(b.desc)}</div>`).join('');
 }
 $('p-edit').onclick = () => {
-  const n = prompt('Twoje imię lub pseudonim (widoczne w grupach, gdy włączymy tryb online):', PR.name || '');
+  const n = prompt('Twoje imię lub pseudonim (widoczne w Twoich grupach):', PR.name || '');
   if (n === null) return;
-  PR.name = n.trim().slice(0, 40); saveProfile(PR); renderJournal();
+  PR.name = n.trim().slice(0, 40); saveProfile(PR); renderJournal(); ONLINE.sync();
 };
 $('p-avatar').onclick = () => {
   const box = $('p-pick');
@@ -401,14 +403,18 @@ $('p-pick').onclick = (ev) => {
   const a = ev.target.closest('button') && ev.target.closest('button').dataset.a;
   if (!a) return;
   if (a === 'photo') { $('p-photo').click(); return; }
-  PR.avatar = a; saveProfile(PR); $('p-pick').hidden = true; renderJournal();
+  PR.avatar = a; saveProfile(PR); $('p-pick').hidden = true; renderJournal(); ONLINE.sync();
 };
 $('p-photo').onchange = async (ev) => {
   const f = ev.target.files[0]; ev.target.value = '';
   if (!f) return;
-  try { PR.avatar = await photoAvatar(f); saveProfile(PR); } catch (e) { msg('Nie udało się wczytać zdjęcia.'); }
+  try { PR.avatar = await photoAvatar(f); saveProfile(PR); ONLINE.sync(); } catch (e) { msg('Nie udało się wczytać zdjęcia.'); }
   $('p-pick').hidden = true; renderJournal();
 };
+
+// ---------------------------------------------------------------- online: account, sync, groups, chat, positions
+const ONLINE = setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfile, totals, render: () => renderJournal(), msg, esc,
+  routeTitle, hasRoute: () => !!path, openHash });
 
 $('b-fav').onclick = () => { toggleFav(J, routeKey(location.hash), routeTitle(), location.hash); saveJournal(J); renderJournal(); };
 
