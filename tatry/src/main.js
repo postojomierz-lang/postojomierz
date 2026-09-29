@@ -692,6 +692,7 @@ async function main() {
     keys.add(e.code);
     if (e.code === 'Space') { state.auto = !state.auto; e.preventDefault(); updateButtons(); }
     if (e.code === 'KeyF') toggleMode();
+    if (e.code === 'KeyP') toggleFly();
     if (e.code === 'KeyR') { state.yawOff = 0; state.pitchOff = 0; }
     if (e.code === 'KeyT') { env.hour = env.hour >= 21 ? 4.5 : env.hour + 1; $('hour').value = env.hour; applyEnv(); }
     if (e.code === 'KeyM') { const ks = Object.keys(WEATHER); env.weather = ks[(ks.indexOf(env.weather) + 1) % ks.length]; $('weather').value = env.weather; applyEnv(); }
@@ -728,7 +729,38 @@ async function main() {
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.enabled = false; orbit.enableDamping = true; orbit.maxDistance = 25000; orbit.minDistance = 20;
   orbit.maxPolarAngle = Math.PI * 0.495;
+  // flyover: the camera glides above and behind the hiker along the whole route, looking ahead, at a
+  // pace that shows a route in one to three minutes (the time speed-up makes it faster)
+  function toggleFly() {
+    if (state.mode === 'fly') { state.mode = 'walk'; state.fly = null; hiker.visible = false; updateButtons(); return; }
+    state.mode = 'fly'; orbit.enabled = false; state.auto = false;
+    if (state.s > LENGTH - 50) state.s = 0;
+    state.fly = { v: LENGTH / Math.min(180, Math.max(50, LENGTH / 60)), pos: null, look: null };
+    hiker.visible = true;
+    updateButtons();
+  }
+  function flyCamera(dt) {
+    const F = state.fly;
+    state.s = Math.min(LENGTH, state.s + F.v * Math.sqrt(state.speedMul) * dt);
+    // behind the hiker along the trail (before the start: straight back along the first heading), high above
+    const back = 280, ahead = 220;
+    let b = at(Math.max(0, state.s - back));
+    if (state.s < back) { const h = headingAt(0), p0 = at(0), k = back - state.s; b = { x: p0.x - Math.sin(h) * k, z: p0.z - Math.cos(h) * k, y: p0.y }; }
+    const a = at(Math.min(LENGTH, state.s + ahead)), p = at(state.s);
+    const want = new THREE.Vector3(b.x, 0, b.z);
+    want.y = Math.max(b.y, p.y, ground(b.x, b.z)) + 170;
+    const look = new THREE.Vector3(a.x, Math.max(a.y, p.y) - 20, a.z);
+    if (!F.pos) { F.pos = want.clone(); F.look = look.clone(); }
+    const k = 1 - Math.exp(-dt * 1.2);
+    F.pos.lerp(want, k); F.look.lerp(look, k);
+    F.pos.y = Math.max(F.pos.y, ground(F.pos.x, F.pos.z) + 60);
+    camera.position.copy(F.pos); camera.lookAt(F.look);
+    if (state.s >= LENGTH) {           // at the destination: stay above it, free to look around (the drone view)
+      state.mode = 'walk'; state.fly = null; toggleMode();
+    }
+  }
   function toggleMode() {
+    if (state.mode === 'fly') { state.mode = 'walk'; state.fly = null; }
     state.mode = state.mode === 'walk' ? 'drone' : 'walk';
     const p = at(state.s);
     if (state.mode === 'drone') {
@@ -882,11 +914,14 @@ async function main() {
     $('btn-labels').classList.toggle('on', labels.enabled);
     $('btn-auto').textContent = state.auto ? '⏸ Stop' : '▶ Idź sam';
     $('btn-auto').classList.toggle('on', state.auto);
-    $('btn-mode').textContent = state.mode === 'walk' ? '🚁 Dron' : '🥾 Spacer';
+    $('btn-mode').textContent = state.mode === 'drone' ? '🥾 Spacer' : '🚁 Dron';
+    $('btn-fly').classList.toggle('on', state.mode === 'fly');
+    $('btn-fly').textContent = state.mode === 'fly' ? '⏹ Stop' : '✈ Przelot';
     $('speed').textContent = `×${state.speedMul}`;
   }
   $('btn-auto').onclick = () => { state.auto = !state.auto; updateButtons(); };
   $('btn-mode').onclick = toggleMode;
+  $('btn-fly').onclick = toggleFly;
   $('btn-faster').onclick = () => setSpeed(1);
   $('btn-slower').onclick = () => setSpeed(-1);
   $('hour').oninput = (e) => { env.hour = +e.target.value; applyEnv(); };
@@ -1084,7 +1119,8 @@ async function main() {
     const cd = camera.position.distanceTo(hiker.position);
     beacon.position.y = 3 + cd * 0.012; beacon.scale.setScalar(Math.max(0.4, cd * 0.006));
 
-    if (state.mode === 'walk') {
+    if (state.mode === 'fly') flyCamera(dt);
+    else if (state.mode === 'walk') {
       // steady camera: no step bobbing, height filtered in time as well
       state.camY = state.camY === undefined || Math.abs(state.camY - p.y) > 20 ? p.y : state.camY + (p.y - state.camY) * Math.min(1, dt * 2.5);
       // at high speed on steep ground the filter lags behind: keep it close to the eye line and the eye
