@@ -88,6 +88,22 @@
     #controls .row:first-child button { padding: 6px 5px; }
     #profile { height: 44px; }
   }
+  /* phone upright: the facts in one strip at the top, the controls in a bar above the profile, time of
+     day and weather behind the ⚙ button */
+  .phone-only { display: none; }
+  @media (max-width: 560px) and (orientation: portrait) {
+    #hud { left: 8px; right: 8px; top: 8px; padding: 6px 10px; }
+    #hud h1 { margin: 0 0 3px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #hud .stats { display: grid; grid-template-columns: auto auto auto auto; gap: 0 8px; font-size: 12px; }
+    #hud .stats dt:nth-of-type(n+3), #hud .stats dd:nth-of-type(n+3) { display: none; }
+    #hud .stats dt:nth-of-type(6), #hud .stats dd:nth-of-type(6) { display: block; }
+    #controls { top: auto; bottom: 86px; left: 8px; right: 8px; width: auto; padding: 8px; gap: 6px; }
+    #controls > label, #controls > #hour, #controls > #weather { display: none; }
+    #controls.more > label, #controls.more > #hour, #controls.more > #weather { display: block; }
+    #controls .phone-only { display: inline-block; }
+    #bottom { left: 8px; right: 8px; bottom: 8px; }
+    #place { top: 14%; font-size: 19px; }
+  }
 </style>
   <script type="module" crossorigin>(function(){const t=document.createElement("link").relList;if(t&&t.supports&&t.supports("modulepreload"))return;for(const i of document.querySelectorAll('link[rel="modulepreload"]'))n(i);new MutationObserver(i=>{for(const r of i)if(r.type==="childList")for(const o of r.addedNodes)o.tagName==="LINK"&&o.rel==="modulepreload"&&n(o)}).observe(document,{childList:!0,subtree:!0});function e(i){const r={};return i.integrity&&(r.integrity=i.integrity),i.referrerPolicy&&(r.referrerPolicy=i.referrerPolicy),i.crossOrigin==="use-credentials"?r.credentials="include":i.crossOrigin==="anonymous"?r.credentials="omit":r.credentials="same-origin",r}function n(i){if(i.ep)return;i.ep=!0;const r=e(i);fetch(i.href,r)}})();/**
  * @license
@@ -4957,6 +4973,7 @@ uniform float time;
     <span id="speed">×1</span>
     <button id="btn-faster" title="Szybciej (+)">+</button>
     <button id="btn-mode" class="grow">🚁 Dron</button>
+    <button class="phone-only" title="Pora dnia i pogoda" onclick="document.getElementById('controls').classList.toggle('more')">⚙</button>
   </div>
   <label>Pora dnia <span id="hour-label">10:30</span></label>
   <input id="hour" type="range" min="4.5" max="21.5" step="0.25" value="10.5">
