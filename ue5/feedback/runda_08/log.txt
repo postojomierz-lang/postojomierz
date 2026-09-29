@@ -1,0 +1,76 @@
+UE5 feedback: runda 08, 2026-09-29 (operator: lokalny Claude przez Unreal MCP)
+==========================================================================
+
+Projekt: Documents\Unreal Projects\Rysy 5.8, poziom /Game/Rysy/Maps/Rysy. UE 5.8.3, RTX 4070 Ti SUPER.
+Python jak w poprzednich rundach (`py "plik.py"` w polu Cmd, dialogi → log).
+
+1. git pull: OK (21e5304b „UE5 round 8 …”, merge #134). Heightmapy nie wczytywałem, REIMPORT_TEXTURES bez zmian (False).
+
+2. build_scene.py: 19 s, bez błędów Pythona, bez ostrzeżeń [Rysy], BEZ „Material: nie polaczono …” (węzeł Desaturation
+   podłączony poprawnie), bez TextureIndex. (W logu są tylko ostrzeżenia LogHttp z telemetrii Epic, niezwiązane.)
+   Linie [Rysy] materiałów / dalekiego terenu:
+   [Rysy] Material krajobrazu gotowy: /Game/Rysy/Materials/MI_RysyLandscape (zachowany)
+   [Rysy] M_RysyFar: tekstura T_RysyFar_v6
+   [Rysy] M_RysyNear: zdjecie + maski + warstwy (15 tekstur)
+   [Rysy] Daleki teren: sloty {'near': 0, 'far': 1}
+   [Rysy] Daleki teren: kolizja <CollisionEnabled.NO_COLLISION: 0>, profil NoCollision
+   [Rysy] Daleki teren: osie [0, 1, 2], znaki [1, -1, 1], skala 1/1
+   Instancje: spruce 38 629 (4 aktory), dwarfpine 49 063 (2), rock 10 995 (2),
+   spruce_band 44 023 (Rysy_spruce_band_0..3: 10 937 / 10 827 / 11 142 / 11 117),
+   dwarfpine_band 38 328 (Rysy_dwarfpine_band_0..1: 19 023 / 19 305).
+
+   Kontrola materiałów (jak w r7): M_RysyLandscape 87/87 węzłów podłączonych, M_RysyFar 8/8, M_RysyNear 83/83,
+   M_RysySimple 3/3, M_RysyWater 3/3; osieroconych 0, duplikatów parametrów 0. Parametr PhotoSaturation jest w
+   M_RysyLandscape, M_RysyFar i M_RysyNear. Nowe tekstury warstw zaimportowane: T_rock_ground_02, T_leafy_grass,
+   T_forest_leaves_04, T_forest_ground_04 (_D/_N) + dotychczasowe T_rock_04, T_rocky_trail. Stare T_rocky_terrain_02_D/N
+   i T_forrest_ground_01_D/N nie mają żadnych odwołań – nie usuwałem (do decyzji; można bezpiecznie skasować).
+
+3. Wydajność Z roślinami w pasie (Play w nowym oknie 2560×1380, StartFPSChart/StopFPSChart)
+   - Morskie Oko: 89,1 FPS (6482 / 72,7 s), GPU 10,13 ms, Game 5,6 ms, 26 % < 120, 1 przycięcie.   [r7: 88,5 FPS, GPU 10,18]
+   - Szczyt: 119,3 FPS (7803 / 65,4 s), GPU 6,91 ms, Game 5,7 ms, 0,6 % < 120, 1 przycięcie.        [r7: 118,7, GPU 7,04]
+   GPU nie wzrosło (±0,1 ms), więc pomiaru z ukrytymi *_band_* nie robiłem.
+
+4. Granica krajobraz / pas near
+   - 15 (krawędź N z 250 m): granica PRZESTAŁA być czytelna jako pas koloru – las świerkowy ciągnie się przez nią
+     bez przerwy; widać tylko, że poza lasem pas near ma bardziej zieloną trawę (zdjęcie) niż polana krajobrazu
+     (piarg/trawa z tekstur), ale to wygląda jak naturalna różnica pokrycia.
+   - 09 (NE): świerki stoją w pasie near na stokach, grzbiet skalny bez drzew; granicy nie widać. Na stokach
+     kosodrzewiny/trawy near nadal jaśniejsze zielone łaty, ale nie neonowe.
+   - 17b (z ziemi przy krawędzi N): stok near jest teraz pokryty lasem świerkowym jak krajobraz obok; widoczna jest
+     jeszcze zielona polana za lasem (zdjęcie near).
+   - 18 (w pasie near 100 m za krawędzią N): wokół kamery gęsty las świerkowy, grunt jasny piaskowo-beżowy (tekstury
+     warstw near). Drzewa stoją na ziemi – nie widać wiszących ani zatopionych (także na 17b i 21).
+   - 17 (z ziemi): grunt krajobrazu brązowo-żółty (igliwie/ściółka), las w tle – bez rażącej granicy.
+
+5. Tekstury z bliska (1,7 m nad szlakiem, pitch −8; kierunek wzdłuż szlaku):
+   19 łąka (punkt szlaku #432, (23060, 59740), maska trawa 199/255, yaw 65,6):
+      leafy_grass: skala dobra (źdźbła/kamyczki drobne, bez nachalnego powtarzania w pierwszych ~20 m), kolor
+      stonowany oliwkowy, dalej płynne przejście w zdjęcie; ostrość OK z bliska, od ~15 m rozmyte (ortofoto).
+      Z bliska trochę płasko (brak geometrii trawy) – to już kwestia roślinności, nie tekstury.
+   20 piarg pod Rysami (#774, (61350, 107860), piarg 37 + ścieżka 216, yaw 99,4):
+      rock_ground_02 / rocky_trail: szare kamienie i żwir w dobrej skali, wyraźne; na dużej płaskiej płaszczyźnie
+      widać jednak powtarzalny wzór drobnych kamieni (kafel lekko czytelny po przekątnej); kolor pasuje do szarego
+      ortofoto; stok w cieniu po prawej ciemny, gładki.
+   21 las przy Morskim Oku (#178, (−39660, −22600), ściółka 220, yaw 70):
+      forest_leaves_04 / forest_ground_04: brązowa ściółka z igłami i patyczkami – wygląda najlepiej; jednak
+      widoczne ciemne plamy (okrągłe, regularne) powtarzające się co kilka metrów – kafel/element tekstury
+      powtarza się nachalnie na średnim planie (5–25 m). Po prawej ścieżka rocky_trail (szare kamienie) – ostre
+      przejście ściółka/ścieżka OK. Kolor względem ortofoto dalej: zgodny (brąz/szarość).
+
+6. Nasycenie PhotoSaturation (MI_RysyLandscape + oba materiały dalekiego terenu tą samą wartością; zrzuty 22/23)
+   - 1,0 / 0,85 / 0,7: ze szczytu różnica mała (średni kolor terenu (69,82,76) → (72,84,80) → (72,82,80));
+     przy 0,7 zielenie w dolinach wyglądają bardziej naturalnie (mniej „trawnikowe”), skała i śnieg bez zmian.
+     Z krawędzi N (23) przy 0,85 zieleń pasa near wyraźnie łagodniejsza, polany nie krzyczą; 0,7 już lekko szare.
+   WYBRANA: PHOTO_SATURATION = 0.85 (kompromis: szczyt naturalny, dolina bez neonowej zieleni).
+   W poziomie zostawiłem 1,0 (jak ze skryptu) – ustawiłem z powrotem po testach.
+
+7. Brzegi i reszta: 03, 05, 06, 07 jak w r7 (bez zmian heightmapy).
+
+Zrzuty (1920×1080; edytor HighResShot z CameraActor, 05 i 10 w Play, mgła D, nasycenie 1,0 poza 22/23)
+   01–10, 11/11b, 15, 16, 17, 17b, 18 jak w r7;
+   19_szlak_laka_z_bliska, 20_szlak_piarg_pod_Rysami_z_bliska, 21_szlak_las_przy_Morskim_Oku_z_bliska (1,7 m);
+   22_nasycenie_{100,085,070}_szczyt (kamera 11), 23_nasycenie_{100,085,070}_krawedz_N (kamera 15).
+
+Po rundzie: ustawienia edytora przywrócone (okno PIE 1280×720, „Use Less CPU when in Background” włączone),
+PhotoSaturation z powrotem 1,0.
+Czego nie robiłem: Third Person; nic nie kupowałem.
