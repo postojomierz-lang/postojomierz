@@ -1,0 +1,90 @@
+UE5 feedback: runda 04, 2026-09-29 (operator: lokalny Claude przez Unreal MCP)
+==========================================================================
+
+Projekt: Documents\Unreal Projects\Rysy 5.8, poziom /Game/Rysy/Maps/Rysy. UE 5.8.3, RTX 4070 Ti SUPER.
+build_scene.py NIE był zmieniany. Python jak w rundach 2–3 (`py "plik.py"` w polu Cmd, dialogi → log).
+
+1. git pull: OK (249f1a24 „UE5 round 4 …”, merge #121).
+
+2. Nowa mapa wysokości do istniejącego krajobrazu (render target + landscape_import_heightmap_from_render_target):
+   - 305 losowych punktów: krajobraz − PNG = −0,59 … +0,01 cm,
+   - 80 punktów spośród 737 próbek zmienionych względem rundy 3 o >20 jednostek (płaskie brzegi): −0,19 … 0,00 cm.
+
+3. build_scene.py: jeden przebieg, 31 s, bez błędów Pythona. Linie dalekiego terenu (dosłownie):
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/SM_RysyFar_v3
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/far
+   [Rysy] Daleki teren: usuniety stary zasob /Game/Rysy/FarTerrain/TEX_far_terrain
+   Warning: [Rysy] Daleki teren: zostawiam /Game/Rysy/Textures/T_RysyFar_v3 (uzywa go /Game/Rysy/Materials/M_RysyFar)
+   Warning: [Rysy] Daleki teren: kolizja: 'StaticMeshComponent' object has no attribute 'set_generate_overlap_events'
+   [Rysy] Daleki teren: kolizja <CollisionEnabled.NO_COLLISION: 0>, profil NoCollision
+   [Rysy] Daleki teren: osie [0, 1, 2], znaki [1, -1, 1], skala 1/1
+   Ostrzeżenia [Rysy] = dwie linie Warning wyżej (obie też w podsumowaniu jako „UWAGA”). TextureIndex: w tym
+   przebiegu BRAK. Podsumowanie: krajobraz + MI; daleki teren „+ pierscien horyzontu (SM_RysyFar_v4)”; jeziora 14;
+   budynki 23; drogowskazy 4; spruce 38 620; dwarfpine 49 193; rock 10 973.
+
+   - „zostawiam T_RysyFar_v3”: fałszywy alarm z kolejności – sprawdzenie odwołań jest robione, zanim M_RysyFar
+     zostanie przebudowany na T_RysyFar_v4 (po skrypcie M_RysyFar używa tylko T_RysyFar_v4, a T_RysyFar_v3 nie
+     miało żadnych odwołań). Usunąłem je ręcznie. Poprawka: kasować stare tekstury po finish_material(M_RysyFar).
+   - set_generate_overlap_events nie istnieje w Pythonie UE 5.8 (to setter BP); właściwość to
+     c.set_editor_property("generate_overlap_events", False). Mimo wyjątku kolizja i profil się ustawiły.
+   - Stan po skrypcie: /Game/Rysy/FarTerrain/ = tylko SM_RysyFar_v4; /Game/Rysy/Textures/ z dalekiego terenu =
+     tylko T_RysyFar_v4 (po ręcznym usunięciu v3). Slot siatki SM_RysyFar_v4 = M_RysyFar. Poziom zapisany.
+   - SM_RysyFar_v4: Nanite WŁĄCZONE, 617 736 trójkątów / 317 995 wierzchołków (fallback Nanite 609 trójkątów);
+     bbox lokalnie X −118,3 … +151,7 km, Y −139,0 … +111,0 km, Z −2870 … +2610,7 m (dno pierścienia z krzywizną).
+
+4. Kolizja po zapisaniu i ponownym otwarciu poziomu (EditorLoadingAndSavingUtils.load_map):
+   Rysy_DalekiTeren: CollisionEnabled = NO_COLLISION, profil = NoCollision, line trace w (4000 m, 0) od 4000 m do
+   −5000 m nic nie trafia. DZIAŁA bez zmian na zasobie siatki (BodySetup: CTF_USE_DEFAULT, nie ruszałem).
+
+5. Szew
+   - Pomiar (heightmap vs far_terrain.obj wzdłuż czterech krawędzi, górny wierzchołek w każdym miejscu):
+       N, S, W, E: po 4033 wierzchołki kołnierza co 1,30 m (+ 4033 wierzchołki fartucha na każdej krawędzi),
+       far − krajobraz = −0,012 … +0,012 m na każdej krawędzi. Czyli w danych szew jest dokładny.
+   - Wizualnie (08, 09): progu na samej granicy już nie ma, ale kołnierz (pas od granicy do siatki 60 m) wygląda
+     jak gładka, jednolita płachta z rozmytą teksturą i ma wyraźne załamanie tam, gdzie łączy się z siatką 60 m
+     (08: jasny, gładki pas po lewej i prosta krawędź trójkąta pionowo w środku kadru; 09: w narożniku NE jasno-
+     zielony gładki pas wzdłuż lasu krajobrazu). Różnica ostrości tekstury krajobraz/daleki teren nadal duża.
+   - Z daleka (01, 04): granicy krajobrazu, szczelin ani fartucha nie widać.
+
+6. Horyzont i mgła (kamera 11: (88041, 127023, 252000), yaw −117, pitch 0 i −10)
+   - A (skrypt: density 0,0025, falloff 0,2, max opacity 0,8, start 3 km, kolor (0,32; 0,40; 0,52)) – 11, 11b:
+     granatowy pas ZNIKNĄŁ; horyzont szaroniebieski, pierścienia nie widać. Ale mgła mocno zalega w niskiej kotlinie
+     (po prawej, Podtatrze): gęsta biała warstwa zakrywa dno doliny – wygląda jak inwersja.
+   - B (0,0015 / 0,2 / 0,7 / 5 km / (0,45; 0,55; 0,70)) – 13, 13b: prawie identycznie jak A, odrobinę jaśniej.
+   - C (mgła ukryta, tylko perspektywa powietrzna) – 14, 14b: pierścień widoczny jako płaska, jednolita, ciemno-
+     turkusowa tafla do horyzontu z ostrą linią na horyzoncie; smug już nie ma; kotlina czysta, widać miasteczka.
+   - D (własny) – 12, 12b: density 0,0012, falloff 0,1, max opacity 0,7, start 5 km, kolor (0,45; 0,55; 0,70):
+     lekkie zamglenie kolejnych pasm, kotlina widoczna przez mgiełkę (nie zalana), horyzont szaroniebieski bez
+     granatowego pasa, pierścień nie rzuca się w oczy.
+   WYBRANY: D →  FOG_DENSITY = 0.0012, FOG_HEIGHT_FALLOFF = 0.1, FOG_MAX_OPACITY = 0.7,
+                 FOG_START_DISTANCE_M = 5000, FOG_COLOR = (0.45, 0.55, 0.70)
+   (w poziomie zostawiłem A ze skryptu; wystarczy zmienić stałe).
+   - Pierścień (z C): kolor jednolity, ciemny zielono-turkusowy, wyraźnie ciemniejszy niż nizina przy krawędzi
+     tekstury; jego daleka krawędź tworzy ostrą, prostą linię tuż pod horyzontem nieba. Styk z dalekim terenem
+     (~17 km) na 14b jest łagodny, widać tylko stopniowe ściemnienie nizin w stronę pierścienia, bez linii.
+     Z mgłą A/B/D pierścienia i jego krawędzi nie widać.
+
+7. Brzegi
+   - 06 (Morskie Oko), 07 (Czarny Staw): gładkie jak w rundzie 3.
+   - 05 (płaski brzeg przy PlayerStart): wycinek linii brzegu identyczny jak w rundzie 3 – te same pojedyncze
+     drobne progi (w tym samym miejscu, po lewej od świerka). Zmiana heightmapy (737 próbek) tego odcinka nie objęła.
+   - 03 (Czarny Staw przy szlaku, lewy brzeg przy czerwonym słupku): drobne ząbki linii wody nadal widoczne,
+     bez zmian względem rundy 3. Nigdzie teren nie wystaje nad wodę.
+
+8. Zrzuty (1920×1080; edytor HighResShot z CameraActor, 05 i 10 w Play; mgła A ze skryptu, o ile nie napisano inaczej)
+   01–10 z tych samych kamer co w rundzie 3 (współrzędne w runda_03/log.txt),
+   11 / 11b  mgła A, pitch 0 / −10
+   12 / 12b  mgła D (wybrana), pitch 0 / −10
+   13 / 13b  mgła B, pitch 0 / −10
+   14 / 14b  bez mgły (C), pitch 0 / −10
+
+9. Wydajność (Play w nowym oknie 2560×1380, StartFPSChart/StopFPSChart, mgła A)
+   - Morskie Oko: 88,7 FPS (8383 klatek / 94,5 s), GPU 10,2 ms, Game 6,1 ms, 0 % < 60 FPS, 26 % < 120, 2 przycięcia ~0,3 s.
+     [runda 3: 86,0 FPS, GPU 10,5 ms]
+   - Szczyt: 119,6 FPS (14 338 / 119,9 s), GPU 6,9 ms, Game 5,6 ms, 0,3 % < 120, 1 przycięcie 0,31 s. [runda 3: 118,1]
+   - SM_RysyFar_v4: Nanite tak, 617 736 trójkątów (v3: 904 236).
+
+Po rundzie: ustawienia edytora przywrócone (okno PIE 1280×720, „Use Less CPU when in Background” włączone),
+mgła z powrotem na wartościach A ze skryptu (warianty B/C/D ustawiałem tylko na czas zrzutów, poziomu z nimi nie zapisywałem).
+
+Czego nie robiłem (zgodnie z ZADANIA.md): Third Person, podmiana tekstur terenu, zmiana liczby drzew.
