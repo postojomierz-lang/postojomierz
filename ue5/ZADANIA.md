@@ -13,6 +13,58 @@ Zasady:
 
 ---
 
+## Runda 3 (po rundzie 2: `feedback/runda_02/log.txt`, zrzuty 01–10)
+
+Co się zmieniło w repozytorium:
+- `export/heightmap.png`: brzegi jezior to teraz gładka rampa (na wygładzonej odległości od brzegu, bez schodków
+  rastra 1,3 m): teren schodzi pod lustro do ~3 m od brzegu, dalej wychodzi nad nie. Kwadraty wody (`lakes.json`)
+  sięgają 3,2–5 m za brzeg, więc ich ząbkowana krawędź chowa się pod ziemią także na płaskich brzegach (05, 03).
+  **Liczby importu bez zmian.**
+- `export/far_terrain.obj` (nowa siatka, zasób **`SM_RysyFar_v3`**):
+  - pas ±240 m wokół granicy krajobrazu z liniami siatki co 6 m i płynnym przejściem od wysokości krawędzi lidaru
+    do DEM 55 m (koniec z progami −18/+11 m na szwie, zrzuty 08/09);
+  - **pierścień horyzontu**: od obrysu siatki do 110–150 km na wysokości 450 m (kolor z krawędzi zdjęcia), ma
+    zasłonić granatowy pas pod niebem (04, 10, 01). Pierścień jest celowo niesymetryczny (150/120 km w ±X,
+    140/110 km w ±Y), żeby skrypt rozpoznał osie i znaki; `landscape.json` → `far_terrain.bounds_cm` liczone
+    razem z nim.
+- `export/far_terrain.jpg` (zasób **`T_RysyFar_v3`**): 8192 px zamiast 2048 (~4,3 m/px). Tam, gdzie sięga
+  ortofoto regionu 2 m (to samo źródło co krajobraz), jest ono; dalej stare zdjęcie, z łagodnym przejściem.
+  Ciemny prostokąt przy krawędzi S powinien zniknąć.
+- `build_scene.py`:
+  - `EXPOSURE_BIAS = -0.5` (Twoja wartość z rundy 2),
+  - daleki teren importowany pod nazwami z `landscape.json` (`SM_RysyFar_v3`, `T_RysyFar_v3`), więc nowy eksport
+    wchodzi bez ręcznego kasowania; po imporcie OBJ skrypt przestawia slot siatki na `M_RysyFar` i usuwa zbędny
+    materiał „far” + `TEX_far_terrain`.
+
+Zadania:
+1. **Pobierz zmiany** (`git pull`).
+2. **Wczytaj nową mapę wysokości do istniejącego krajobrazu** tak jak w rundzie 2 (render target +
+   `landscape_import_heightmap_from_render_target`), sprawdź kilka punktów przy brzegach jezior.
+3. **Usuń stare zasoby dalekiego terenu** (nieużywane po tej rundzie): `/Game/Rysy/FarTerrain/SM_RysyFar`,
+   `/Game/Rysy/FarTerrain/far`, `/Game/Rysy/FarTerrain/TEX_far_terrain`, `/Game/Rysy/Textures/T_RysyFar`.
+   Najpierw uruchom skrypt (punkt 4), potem kasuj, żeby aktor nie został bez siatki. Zanotuj, czy coś jeszcze się
+   do nich odwołuje.
+4. **Uruchom `ue5/unreal/build_scene.py`**. Wklej do `log.txt` linię `[Rysy] Daleki teren: osie …, znaki …, skala …`
+   (oczekiwane jak w rundzie 2: osie `[0, 1, 2]`, znaki `[1, -1, 1]`, skala 1/1) oraz wszystkie ostrzeżenia `[Rysy]`.
+   Sprawdź, czy w `/Game/Rysy/FarTerrain/` jest tylko `SM_RysyFar_v3` (bez nowego „far” i `TEX_far_terrain…`).
+5. **Sprawdź i opisz**:
+   - szew na granicy 5,2 km z tych samych kamer co 08 i 09: czy zniknęły progi/fałdy i czy różnica ostrości oraz koloru
+     tekstury jest mniejsza; jeśli możesz, powtórz pomiar far − krajobraz wzdłuż krawędzi jak w rundzie 2;
+   - horyzont (04, 10, 01): czy granatowy pas zniknął; czy pierścień wygląda naturalnie (za płasko, za jasno,
+     widoczna krawędź?);
+   - brzegi (03, 05, 06, 07): czy zniknęły ząbki kwadratów wody na płaskich brzegach; czy teren nie wystaje nad wodę
+     w dziwnych miejscach;
+   - ekspozycję przy −0,5 (czy skrypt ją teraz ustawia sam).
+6. **Zrzuty** z tych samych kamer co w rundzie 2 (01–10, współrzędne w `feedback/runda_02/log.txt`), 1920×1080.
+7. **Wydajność**: jak w rundzie 2 (Play w nowym oknie, `StartFPSChart/StopFPSChart`) przy Morskim Oku i na szczycie;
+   podaj też liczbę trójkątów `SM_RysyFar_v3` i czy ma Nanite.
+8. Zapisz wszystko w `ue5/feedback/runda_03/`, commit „UE5 feedback: runda 03”, push, potem wiadomość do sesji B
+   „runda 03 gotowa”.
+
+Nie rób jeszcze: postaci Third Person, podmiany tekstur terenu, zmian w liczbie drzew.
+
+---
+
 ## Runda 2 (po rundzie 1: zrzuty 01–04 i `feedback/log.txt`)
 
 Co się zmieniło w repozytorium:

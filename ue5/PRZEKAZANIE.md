@@ -41,24 +41,15 @@ Właściciel pisze po polsku, odpowiadaj po polsku. Zasady repozytorium: `CLAUDE
   - MCP nie ma narzędzia „uruchom Python”: operator wpisuje `py "plik.py"` w konsoli Cmd przez SlateInspector;
     mapę wysokości do istniejącego krajobrazu wczytuje przez render target + `landscape_import_heightmap_from_render_target`.
 
-## W toku: runda 3 (gałąź `ue5-runda-3`, commit WIP c66f700, niescalona)
-Zrobione w `export_ue5.py` (niewygenerowane):
-- brzegi: rampa na wygładzonej odległości ze znakiem (gaussian 1,5 px), lustro przecina ją ~3 m od brzegu;
-  kwadraty wody sięgają 3,2–5 m (bufory 5,0 / 3,2);
-- szew: gęste linie siatki (co 6 m) w pasie ±240 m wokół granicy i płynne przejście od wysokości krawędzi krajobrazu
-  do DEM 55 m;
-- pierścień horyzontu z obrysu siatki do ~150 km na wysokości 450 m (kolor z krawędzi tekstury);
-- tekstura dalekiego terenu 8192 px: ortofoto 2 m regionu (`region/photo`) tam, gdzie sięga, poza nim stare outer.jpg;
-- nazwy zasobów z wersją (`SM_RysyFar_v3`, `T_RysyFar_v3`) w `landscape.json`, żeby skrypt zaimportował nowe.
-Do zrobienia:
-1. **Granice do dopasowania osi**: pierścień zmienia obrys siatki. Zrób pierścień asymetryczny (np. zasięg 150/120 km
-   w ±x i 140/110 km w ±z od środka), a `far_info.bounds_cm` licz z faktycznych wierzchołków razem z pierścieniem
-   (z: od 45000). Inaczej `far_terrain()` w skrypcie nie rozpozna znaków osi.
-2. `build_scene.py`: używaj `info["asset"]` / `info["texture_asset"]` jako nazw (reimport przy nowej wersji),
-   `EXPOSURE_BIAS = -0.5`, opcjonalnie wyłącz import materiałów z OBJ.
-3. Wygeneruj dane (`python3 ue5/tools/export_ue5.py`, ~3 min; potrzebny folder `region/` w repo), sprawdź rozmiary.
-4. Dopisz **Rundę 3** w `ZADANIA.md` (wczytać nową heightmapę jak w rundzie 2, usunąć stare `SM_RysyFar`/`T_RysyFar`,
-   uruchomić skrypt, zrzuty szwu 08/09, horyzontu 04/10, brzegów 03/05, FPS), PR do main, merge.
+## Runda 3 (wysłana operatorowi, czeka na `feedback/runda_03/`)
+- eksporter: gładka rampa brzegów (gaussian 1,5 px na odległości ze znakiem), kwadraty wody do 3,2–5 m;
+  pas ±240 m przy granicy z liniami co 6 m i przejściem krawędź lidaru → DEM; pierścień horyzontu rzutowany na
+  asymetryczny prostokąt (150/120 km w ±x, 140/110 km w ±z, 450 m n.p.m.), `bounds_cm` z pierścieniem (sprawdzone:
+  dopasowanie osi w `far_terrain()` odzyskuje wszystkie 48 konwencji osi/znaków); tekstura 8192 px z ortofoto regionu
+  (czarne braki danych na krawędzi regionu maskowane, przejście ~150 m); nazwy `SM_RysyFar_v3` / `T_RysyFar_v3`.
+- `build_scene.py`: nazwy z `landscape.json`, `EXPOSURE_BIAS = -0.5`, sprzątanie materiału/tekstury z importu OBJ.
+- eksport ~132 MB (`far_terrain.obj` 61 MB, `far_terrain.jpg` 12 MB).
+- przy następnej wersji siatki/tekstury podbij sufiks `_vN` w `export_ue5.py` (far_info).
 
 ## Pomysły na kolejne rundy
 - Tekstury warstw terenu z Megascans/Fab (bliskie podłoże jest płaskie, „piaskowe”), mocniejsze przejście ortofoto
