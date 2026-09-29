@@ -2,10 +2,13 @@
 // their colours; click start, destination and stops, the quickest way along the trails is found
 // (graph.js), with distance, ascent, PTTK-style time, the elevation profile and the trail sections.
 // GPX import (matched onto the trails) and export; the phone's GPS can set the start.
+// On the phone it installs as an app (manifest, service worker), works without signal (our own offline
+// map, tools/prepare_offline_map.py) and navigates along the route with the GPS (nav.js).
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { TrailGraph, fmtTime } from './graph.js';
-import { loadJournal, saveJournal, routeKey, toggleFav, totals, fmtClock } from '../journal.js';
+import { loadJournal, saveJournal, routeKey, toggleFav, totals, fmtClock, addWalk, addPeak } from '../journal.js';
+import { setupNav, trackGpx } from './nav.js';
 
 const $ = (id) => document.getElementById(id);
 const COLOUR_PL = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny', none: 'bez znaków' };
@@ -19,7 +22,25 @@ const map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([49.
 const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
   maxZoom: 17, subdomains: 'abc', attribution: '© OpenStreetMap, SRTM · styl © OpenTopoMap (CC-BY-SA)' }).addTo(map);
 const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
-L.control.layers({ 'Mapa topograficzna': topo, 'OpenStreetMap': osm }, {}, { position: 'topright' }).addTo(map);
+// our own offline map of the whole region (photo, relief, contours), cached for use without signal
+const offIdx = await fetch('offline/index.json').then((r) => r.json()).catch(() => null);
+const ob = offIdx && offIdx.bounds;
+const offMap = L.tileLayer('offline/{z}/{x}/{y}.webp', { minZoom: 11, maxNativeZoom: 15, maxZoom: 17,
+  ...(ob ? { bounds: [[ob[1], ob[0]], [ob[3], ob[2]]] } : {}),
+  attribution: 'Ortofotomapa i rzeźba: GUGiK, ÚGKK SR, GKÚ · mapa offline Tatry' });
+L.control.layers({ 'Mapa topograficzna': topo, 'OpenStreetMap': osm, 'Mapa offline (zdjęcie, poziomice)': offMap }, {}, { position: 'topright' }).addTo(map);
+function useOffline(on) {
+  if (on && !map.hasLayer(offMap)) { topo.remove(); osm.remove(); offMap.addTo(map); }
+  if (!on && map.hasLayer(offMap) && !map.hasLayer(topo)) { offMap.remove(); topo.addTo(map); }
+}
+if (!navigator.onLine) useOffline(true);
+// weak signal: the online tiles keep failing, use ours
+let tileErrors = 0;
+topo.on('tileerror', () => { if (++tileErrors === 8 && offIdx) { useOffline(true); msg('Słaby zasięg: przełączono na mapę offline.'); } });
+topo.on('tileload', () => { tileErrors = Math.max(0, tileErrors - 1); });
+addEventListener('offline', () => { useOffline(true); msg('Brak zasięgu: przełączono na mapę offline.'); });
+addEventListener('online', () => msg(''));
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 L.control.scale({ imperial: false }).addTo(map);
 const [w, s, e, n] = data.region;
 map.setMaxBounds([[s - 0.05, w - 0.08], [n + 0.05, e + 0.08]]);
@@ -211,6 +232,61 @@ $('b-gpx').onclick = () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
 
+// ---------------------------------------------------------------- offline download
+const OFF_KEY = 'tatry-offline-map';
+function offlineState() {
+  const d = (() => { try { return localStorage.getItem(OFF_KEY); } catch (e) { return null; } })();
+  $('offline-state').textContent = d ? `Mapa offline pobrana (${d}). Szlaki i planowanie działają bez zasięgu.`
+    : offIdx ? `Mapa offline: ${Math.round(offIdx.bytes / 1e6)} MB, pobierz przed wyjściem w góry (najlepiej przez Wi-Fi).` : '';
+}
+$('b-offline').onclick = async () => {
+  if (!offIdx || !('caches' in window)) { msg('Ta przeglądarka nie obsługuje zapisu offline.'); return; }
+  const btn = $('b-offline'); btn.disabled = true;
+  try {
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    const cache = await caches.open('tatry-offline-map-v1');
+    const have = new Set((await cache.keys()).map((r) => new URL(r.url).pathname));
+    const base = new URL('offline/', location.href);
+    const todo = offIdx.tiles.map(([z, x, y]) => new URL(`${z}/${x}/${y}.webp`, base)).filter((u) => !have.has(u.pathname));
+    let done = offIdx.tiles.length - todo.length, fail = 0;
+    const next = async () => {
+      for (let u = todo.shift(); u; u = todo.shift()) {
+        try { const r = await fetch(u); if (r.ok) await cache.put(u, r); else fail++; } catch (e) { fail++; }
+        done++;
+        if (done % 20 === 0) btn.textContent = `⤓ Pobieranie… ${Math.round(done / offIdx.tiles.length * 100)}%`;
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, next));
+    // the app and the trail network too (the service worker keeps them, this makes sure)
+    const app = await caches.open('tatry-app-v1');
+    await app.addAll(['planer.html', 'data/region/trails.json', 'offline/index.json', 'manifest.webmanifest']).catch(() => {});
+    if (fail) msg(`Nie pobrano ${fail} kafelków (słaby internet?). Kliknij jeszcze raz, żeby dokończyć.`);
+    else { try { localStorage.setItem(OFF_KEY, new Date().toLocaleDateString('pl-PL')); } catch (e) { /* private mode */ } msg('Gotowe: mapa i szlaki działają teraz bez zasięgu.'); }
+  } finally { btn.disabled = false; btn.textContent = '⤓ Pobierz na offline'; offlineState(); }
+};
+offlineState();
+
+// ---------------------------------------------------------------- GPS navigation along the route
+const NAV = setupNav({ map, G, data, $, route: () => ({ path, summary }), onFinish: (w) => {
+  const title = routeTitle() || 'Przejście GPS';
+  const walk = { key: path ? routeKey(location.hash) : 'gps', title, date: new Date().toISOString().slice(0, 10), dist: Math.round(w.dist),
+    up: w.up, time: Math.round(w.time), fair: w.completed, gps: true, hash: path ? location.hash : '', trace: w.trace };
+  const record = addWalk(J, walk);
+  // a summit at the end of the walk
+  const [, la, lo] = w.track[w.track.length - 1];
+  for (const p of data.poi) if (p.k === 'peak' && Math.hypot((p.p[0] - lo) * G.mx, (p.p[1] - la) * G.mz) < 60) addPeak(J, p.n, p.e);
+  saveJournal(J); renderJournal();
+  $('msg').innerHTML = `Zapisano w dzienniku: ${(w.dist / 1000).toFixed(1)} km, ${fmtClock(w.time)}${record ? ' · nowy rekord 🏆' : ''}. <a href="#" id="save-track">⤒ Zapisz ślad GPX</a>`;
+  $('save-track').onclick = (ev) => {
+    ev.preventDefault();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([trackGpx(w.track, title)], { type: 'application/gpx+xml' }));
+    a.download = `slad-${walk.date}.gpx`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+} });
+$('b-nav').onclick = () => { if (!NAV.active()) NAV.start(); };
+
 // "walk in 3D": the 3D view loads the region's data around the route (?trasa#r=...)
 // ---------------------------------------------------------------- journal
 const J = loadJournal();
@@ -233,11 +309,11 @@ function renderJournal() {
     favs.appendChild(li(`<span>★ ${esc(f.title)}</span><span class="t">${b ? 'rekord ' + fmtClock(b.time) : ''}</span>`, () => openHash(f.hash)));
   }
   const walks = $('j-walks'); walks.innerHTML = '';
-  if (!J.walks.length) walks.appendChild(li('<span class="empty">Tu pojawią się trasy przebyte w widoku 3D.</span>'));
+  if (!J.walks.length) walks.appendChild(li('<span class="empty">Tu pojawią się trasy przebyte w widoku 3D i z nawigacją GPS.</span>'));
   for (const w of J.walks.slice(0, 12)) {
     const rec = J.best[w.key] && w.fair && J.best[w.key].time === w.time;
     walks.appendChild(li(`<span>${esc(w.title)}<br><small>${w.date} · ${(w.dist / 1000).toFixed(1)} km · ↗ ${w.up} m</small></span>`
-      + `<span class="t">${w.fair ? fmtClock(w.time) : 'podgląd'}${rec ? ' 🏆' : ''}</span>`, w.hash ? () => openHash(w.hash) : null));
+      + `<span class="t">${w.gps ? '📍 ' : ''}${w.fair || w.gps ? fmtClock(w.time) : 'podgląd'}${rec ? ' 🏆' : ''}</span>`, w.hash ? () => openHash(w.hash) : null));
   }
   const pk = Object.entries(J.peaks).sort((a, b) => (b[1].ele || 0) - (a[1].ele || 0));
   $('j-peaks').innerHTML = pk.length ? pk.map(([n, p]) => `<span>▲ ${esc(n)}${p.ele ? ' ' + p.ele : ''}</span>`).join('') : '<span class="empty">Jeszcze żadnego – ruszaj!</span>';

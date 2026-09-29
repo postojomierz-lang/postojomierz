@@ -4,13 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Planer tras – Tatry</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#c8201c">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
   :root { --bg: #f6f5f1; --panel: #ffffff; --ink: #1d2327; --muted: #6a7178; --line: #e2e0da; --accent: #c8201c; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--ink); background: var(--bg); }
   #app { display: flex; height: 100%; }
   #side { width: 360px; flex: none; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); overflow: auto; z-index: 2; }
-  #map { flex: 1; min-width: 0; }
+  #mapwrap { flex: 1; min-width: 0; position: relative; }
+  #map { position: absolute; inset: 0; }
+  /* navigation panel over the map */
+  #nav { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; width: min(440px, calc(100% - 20px));
+         background: rgba(255,255,255,.96); border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.25); padding: 10px 12px; }
+  #nav .big { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  #nav .big b { font-size: 22px; }
+  #nav .big span { color: var(--muted); font-size: 12px; }
+  #nav .row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 4px; }
+  #nav .warn { color: #fff; background: #c8201c; border-radius: 6px; padding: 3px 8px; margin-top: 6px; font-weight: 600; }
+  #nav .btns { display: flex; gap: 6px; margin-top: 8px; }
+  #nav .btns button { flex: 1; }
+  #nav .btns button.on { background: #1f6fd1; border-color: #1f6fd1; color: #fff; }
+  .me { width: 18px !important; height: 18px !important; margin: -9px 0 0 -9px !important; border-radius: 50%; background: #1f6fd1; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 1px 5px rgba(0,0,0,.4); }
+  #offline-state { margin: 0 16px 8px; font-size: 12px; color: var(--muted); }
   header { padding: 14px 16px 8px; }
   h1 { font-size: 18px; margin: 0; }
   h1 small { color: var(--muted); font-weight: 400; }
@@ -72,7 +91,10 @@
       <button id="b-clear">✕ Wyczyść</button>
       <label class="btn" title="Wczytaj ślad GPX, np. z mapy turystycznej">⤓ Import GPX<input id="f-gpx" type="file" accept=".gpx,application/gpx+xml" hidden></label>
       <button id="b-gpx">⤒ Eksport GPX</button>
+      <button id="b-nav" class="primary" title="Pokazuje Twoją pozycję, ile zostało do celu i zapisuje ślad przejścia">🧭 Nawigacja GPS</button>
+      <button id="b-offline" title="Mapa i szlaki działają potem bez zasięgu">⤓ Pobierz na offline</button>
     </div>
+    <div id="offline-state"></div>
     <div id="msg"></div>
     <section id="summary" hidden>
       <div class="stats">
@@ -96,7 +118,18 @@
     </section>
     <footer>Szlaki i punkty: © autorzy OpenStreetMap (ODbL). Wysokości: GUGiK NMT, Copernicus DEM. Podkład: OpenTopoMap (CC-BY-SA). Czasy liczone normami w stylu PTTK, orientacyjne.</footer>
   </aside>
-  <div id="map"></div>
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div id="nav" hidden>
+      <div class="big" id="nav-big"></div>
+      <div class="row" id="nav-row"></div>
+      <div class="warn" id="nav-warn" hidden></div>
+      <div class="btns">
+        <button id="nav-follow" class="on">◎ Śledź</button>
+        <button id="nav-stop">⏹ Zakończ</button>
+      </div>
+    </div>
+  </div>
 </div>
 <div id="loading">Wczytywanie sieci szlaków…</div>
 <script type="module" src="/src/planner/main.js"></script>
