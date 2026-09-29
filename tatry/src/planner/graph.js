@@ -2,14 +2,17 @@
 // neighbours along the trail are linked. The cost of a step is its walking time by PTTK-style norms,
 // so the planner picks the quickest way, not the shortest, and uphill differs from downhill.
 
-// minutes for a step of `dist` metres climbing `dh` metres (same norms as the signposts in 3D):
-// 5 km/h on the level, +1 min per 10 m up (per 6 m on steep rock above 35 %), +1 min per 25 m down
-// (per 10 m below -30 %); checked against the PTTK sign times (Kuźnice–Murowaniec, Zawrat, Rysy...)
+// minutes for a step of `dist` metres climbing `dh` metres (same norms as the signposts in 3D);
+// the norms (tools/calibrate_times.mjs fits them to the signpost times in tools/reference_times.json):
+// flat pace (km/h), minutes per 100 m of ascent / descent, steeper rates beyond the steep gradients
+export const NORMS = { flat: 5.5, up: 10, upSteep: 16.7, down: 4.5, downSteep: 11, steepUp: 0.35, steepDown: 0.3 };
+export function setNorms(n) { Object.assign(NORMS, n); }
 export function stepMinutes(dist, dh) {
-  let t = dist / 5000 * 60;
+  const N = NORMS;
+  let t = dist / (N.flat * 1000) * 60;
   const g = dh / Math.max(dist, 1);
-  if (dh > 0) t += dh / (g > 0.35 ? 6 : 10);
-  else t += -dh / (g < -0.3 ? 10 : 25);
+  if (dh > 0) t += dh / 100 * (g > N.steepUp ? N.upSteep : N.up);
+  else t += -dh / 100 * (g < -N.steepDown ? N.downSteep : N.down);
   return t;
 }
 
@@ -67,9 +70,10 @@ export class TrailGraph {
         const fw = this.adj[p[k - 1]].find((x) => x[0] === p[k]);
         const bw = this.adj[p[k]].find((x) => x[0] === p[k - 1]);
         if (fw) fw[1] *= c.factor;
-        // one way: not on the first and last ~40 m, where the passage starts at a junction that other
-        // trails pass through (Zawrat, the hut)
-        const inner = k > 4 && k < p.length - 4;
+        // one way: not on the first and last ~40 m nor within ~30 m of any junction on the way, where
+        // other trails meet or cross it (Zawrat, Kozia Przełęcz, the huts)
+        let inner = k > 4 && k < p.length - 4;
+        for (let j = Math.max(0, k - 3); j <= Math.min(p.length - 1, k + 2) && inner; j++) if (this.adj[p[j]].length > 2) inner = false;
         if (bw) bw[1] = c.oneway && inner ? Infinity : bw[1] * c.factor;
       }
       this.corrected.push({ name: c.name, from: s, to: t, steps: p.length - 1 });

@@ -201,3 +201,11 @@ krótszy czas niż tablice – łańcuchy, klamry, drabinki, kolejki. Odcinek wy
 do `b`; czas mnożony jest przez `factor`, a odcinki `oneway` (Zawrat → Kozi Wierch, Priečne sedlo
 od Téryho chaty) planer prowadzi tylko w jedną stronę. Mnożniki są szacunkowe (Priečne sedlo 3:00 h,
 Orla Perć ×1,6); kolejne przejścia dopisuje się jedną linią.
+
+## Kalibracja czasów
+`tools/reference_times.json`: czasy z tablic dla ~40 odcinków (polskie i słowackie Tatry Wysokie),
+`node tools/calibrate_times.mjs` porównuje je z planerem (`--fit` dopasowuje normy). Normy
+(`NORMS` w `src/planner/graph.js`): 5,5 km/h po płaskim, 10 min / 100 m podejścia (16,7 na stromej
+skale > 35 %), 4,5 min / 100 m zejścia (11 poniżej −30 %); średni błąd ok. 18 %. Poprawki
+(`corrections.js`): Priečne sedlo jednokierunkowo Zbojnícka → Téryho (3:00 h), Orla Perć ×2,1
+(Zawrat → Krzyżne 6:45 h). Te same normy liczą czasy na drogowskazach w 3D.

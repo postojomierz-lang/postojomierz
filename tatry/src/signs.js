@@ -3,6 +3,7 @@
 // profile with PTTK-style norms (see walkMinutes), rounded to 5 minutes; close to, but not, the official times.
 import * as THREE from 'three';
 import { patchShading } from './materials.js';
+import { stepMinutes } from './planner/graph.js';
 
 const fmt = (min) => {
   const m = Math.max(5, Math.round(min / 5) * 5);
@@ -45,19 +46,14 @@ function boardTexture(dest, time, left = false) {
   return t;
 }
 
-// minutes of walking from s0 to s1 along the trail, in the spirit of the PTTK norms used on Tatra signs
-// (the same as the route planner, src/planner/graph.js): 5 km/h on the level, +1 min per 10 m of ascent
-// (per 6 m on steep rock above 35 %), +1 min per 25 m of descent (per 10 m below -30 %)
+// minutes of walking from s0 to s1 along the trail, by the planner's norms (fitted to the signpost times)
 export function walkMinutes(profile, step, s0, s1) {
   const a = Math.round(Math.min(s0, s1) / step), b = Math.round(Math.max(s0, s1) / step);
   const dir = s1 >= s0 ? 1 : -1;
   let t = 0;
   for (let i = a; i < b; i += 10) {
     const j = Math.min(b, i + 10);
-    const dist = (j - i) * step, dh = dir * (profile[j] - profile[i]), grade = dh / dist;
-    t += dist / 5000 * 60;
-    if (dh > 0) t += dh / (grade > 0.35 ? 6 : 10);
-    else t += -dh / (grade < -0.3 ? 10 : 25);
+    t += stepMinutes((j - i) * step, dir * (profile[j] - profile[i]));
   }
   return t;
 }
