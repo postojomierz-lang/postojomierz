@@ -269,3 +269,10 @@ woda, żwir) i dodatkami (przy potoku, przy stawie lub konkretnym stawie, tylko 
 `spots.js` wybiera dla trasy miejsca występowania zgodne z siedliskiem (stałe dla gatunku), `discover.js` zalicza odkrycie
 po zbliżeniu (rośliny 15 m, zwierzęta 40 m, ptaki 70 m; szczyty, przełęcze, stawy, schroniska i wodospady też) i zapisuje
 je w przeglądarce (`rysy-discoveries`). Etykiety nieodkrytych pokazują „?” i grupę; menu 🏷 włącza kategorie osobno.
+- Karty (`src/nature/card.js`): kliknięcie etykiety pokazuje zdjęcie, opis, rzadkość i datę odkrycia (nieodkryte: tylko grupa
+  i odległość). Zdjęcia: `python3 tools/fetch_nature_photos.py` szuka w Wikimedia Commons (najpierw zdjęć z Tatr), tylko wolne
+  licencje, z autorem i licencją na karcie → `public/nature/<id>.jpg`, `photos.json`.
+- Wspólne miejsca występowania dla całej sieci szlaków: `python3 tools/prepare_spots.py` → `public/nature/spots.json`
+  (widok 3D i nawigacja GPS w planerze, `src/nature/gps.js`, odkrywają te same okazy; odkrycia wspólne w przeglądarce).
+- Odznaki przyrodnicze w profilu planera: odkrycia (1/10/25/50), botanik, ornitolog, tropiciel, herpetolog, łowca rzadkości,
+  unikat, tatrzańska piątka, stawy, schroniska.

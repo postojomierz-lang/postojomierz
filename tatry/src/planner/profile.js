@@ -1,5 +1,7 @@
 // The hiker's profile, kept in this browser and, once signed in, synced with the account (online.js): a name, an avatar (an emoji or a small photo), a rank by kilometres walked and badges
 // earned from the journal (walks in the 3D view and with the GPS, peaks reached, records).
+import { BY_ID } from '../nature/catalog.js';
+
 const KEY = 'tatry-profile';
 
 export function loadProfile() {
@@ -21,7 +23,11 @@ export function rank(km) {
   return 'Nowicjusz';
 }
 
-// t: totals(journal); J: the journal
+// t: totals(journal); J: the journal; D: the nature discoveries (src/nature/discover.js)
+const sp = (D) => Object.keys(D).map((id) => BY_ID[id]).filter(Boolean);
+const inGroup = (D, g) => sp(D).filter((s) => s.group === g).length;
+const places = (D, kind) => Object.keys(D).filter((id) => id.startsWith(kind + ':')).length;
+const FIVE = ['kozica', 'swistak', 'niedzwiedz', 'orzel', 'pomurnik'];
 export const BADGES = [
   { icon: '🥾', name: 'Pierwsze kroki', desc: 'pierwsze przejście trasy', ok: (t) => t.walks >= 1 },
   { icon: '🎒', name: 'Wytrwały', desc: '10 przejść', ok: (t) => t.walks >= 10 },
@@ -35,6 +41,20 @@ export const BADGES = [
   { icon: '🇵🇱', name: 'Rysy', desc: 'najwyższy szczyt Polski', ok: (t, J) => !!J.peaks.Rysy },
   { icon: '🐐', name: 'Kozi Wierch', desc: 'najwyższy szczyt w całości w Polsce', ok: (t, J) => !!J.peaks['Kozi Wierch'] },
   { icon: '🏆', name: 'Rekordzista', desc: 'rekord przejścia trasy', ok: (t, J) => Object.keys(J.best || {}).length >= 1 },
+  // nature: discovered along the trails (labels in the 3D view)
+  { icon: '🔍', name: 'Pierwsze odkrycie', desc: 'pierwszy odkryty gatunek', ok: (t, J, D) => sp(D).length >= 1 },
+  { icon: '🌱', name: 'Przyrodnik', desc: '10 odkrytych gatunków', ok: (t, J, D) => sp(D).length >= 10 },
+  { icon: '📗', name: 'Znawca Tatr', desc: '25 odkrytych gatunków', ok: (t, J, D) => sp(D).length >= 25 },
+  { icon: '📚', name: 'Encyklopedia', desc: '50 odkrytych gatunków', ok: (t, J, D) => sp(D).length >= 50 },
+  { icon: '🌼', name: 'Botanik', desc: '20 gatunków roślin', ok: (t, J, D) => sp(D).filter((s) => s.kind === 'flora').length >= 20 },
+  { icon: '🐦', name: 'Ornitolog', desc: '10 gatunków ptaków', ok: (t, J, D) => inGroup(D, 'bird') >= 10 },
+  { icon: '🐾', name: 'Tropiciel', desc: '8 gatunków ssaków', ok: (t, J, D) => inGroup(D, 'mammal') >= 8 },
+  { icon: '🦎', name: 'Herpetolog', desc: '4 gatunki płazów i gadów', ok: (t, J, D) => inGroup(D, 'herp') >= 4 },
+  { icon: '💎', name: 'Łowca rzadkości', desc: '5 rzadkich gatunków', ok: (t, J, D) => sp(D).filter((s) => s.rarity >= 3).length >= 5 },
+  { icon: '🦄', name: 'Unikat', desc: 'gatunek najrzadszej kategorii', ok: (t, J, D) => sp(D).some((s) => s.rarity === 4) },
+  { icon: '🖐', name: 'Tatrzańska piątka', desc: 'kozica, świstak, niedźwiedź, orzeł przedni i pomurnik', ok: (t, J, D) => FIVE.every((id) => D[id]) },
+  { icon: '💧', name: 'Stawy', desc: '5 odwiedzonych stawów', ok: (t, J, D) => places(D, 'lake') >= 5 },
+  { icon: '🏠', name: 'Po schroniskach', desc: '3 schroniska', ok: (t, J, D) => places(D, 'hut') >= 3 },
 ];
 const peaksOver = (J, m) => Object.values(J.peaks).filter((p) => (p.ele || 0) >= m).length;
 

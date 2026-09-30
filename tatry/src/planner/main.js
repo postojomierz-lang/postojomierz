@@ -11,12 +11,16 @@ import { loadJournal, saveJournal, routeKey, toggleFav, totals, fmtClock, addWal
 import { setupNav, trackGpx } from './nav.js';
 import { sunTimes, forecast, walkWeather, hhmm, hm } from './daylight.js';
 import { loadProfile, saveProfile, AVATARS, BADGES, rank, photoAvatar } from './profile.js';
+import { loadFound } from '../nature/discover.js';
+import { buildGpsDiscovery } from '../nature/gps.js';
 import { setupOnline } from './online.js';
 
 const $ = (id) => document.getElementById(id);
 const COLOUR_PL = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny', none: 'bez znaków' };
 
 const data = await (await fetch('data/region/trails.json')).json();
+// discoveries on the real trail (plants, animals, peaks, passes, huts): the same as in the 3D view
+const GPSD = await buildGpsDiscovery({ poi: data.poi });
 const G = new TrailGraph(data);
 const C = data.colours;
 
@@ -321,7 +325,7 @@ offlineState();
 
 // ---------------------------------------------------------------- GPS navigation along the route
 const NAV = setupNav({ map, G, data, $, route: () => ({ path, summary }),
-  onPosition: (p) => ONLINE.onPosition(p), onStop: () => ONLINE.onNavStop(), sunset: () => { const n = new Date(); const v = data.v[path ? path[0] : 0]; return sunTimes(n, v[1], v[0]).sunset; }, onFinish: (w) => {
+  onPosition: (p) => { ONLINE.onPosition(p); GPSD.onPosition(p); }, onStop: () => ONLINE.onNavStop(), sunset: () => { const n = new Date(); const v = data.v[path ? path[0] : 0]; return sunTimes(n, v[1], v[0]).sunset; }, onFinish: (w) => {
   const title = routeTitle() || 'Przejście GPS';
   const walk = { key: path ? routeKey(location.hash) : 'gps', title, date: new Date().toISOString().slice(0, 10), dist: Math.round(w.dist),
     up: w.up, time: Math.round(w.time), fair: w.completed, gps: true, hash: path ? location.hash : '', trace: w.trace };
@@ -385,9 +389,10 @@ function renderProfile(t) {
   else { av.textContent = PR.avatar || '🥾'; av.style.backgroundImage = ''; }
   $('p-name').textContent = PR.name || 'Turysta (kliknij ✎)';
   $('p-rank').textContent = `${rank(t.km)} · ${t.km.toFixed(0)} km · ↗ ${Math.round(t.up)} m`;
-  const got = BADGES.filter((b) => b.ok(t, J)).length;
+  const D = loadFound();
+  const got = BADGES.filter((b) => b.ok(t, J, D)).length;
   $('b-count').textContent = `${got} / ${BADGES.length}`;
-  $('badges').innerHTML = BADGES.map((b) => `<div class="badge${b.ok(t, J) ? '' : ' off'}" title="${esc(b.desc)}"><span class="i">${b.icon}</span><b>${esc(b.name)}</b>${esc(b.desc)}</div>`).join('');
+  $('badges').innerHTML = BADGES.map((b) => `<div class="badge${b.ok(t, J, D) ? '' : ' off'}" title="${esc(b.desc)}"><span class="i">${b.icon}</span><b>${esc(b.name)}</b>${esc(b.desc)}</div>`).join('');
 }
 $('p-edit').onclick = () => {
   const n = prompt('Twoje imię lub pseudonim (widoczne w Twoich grupach):', PR.name || '');
