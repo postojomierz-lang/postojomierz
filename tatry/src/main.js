@@ -7,7 +7,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { terrainMaterial, waterMaterial, light, makeEnv, patchShading, CLOUDS } from './materials.js';
+import { terrainMaterial, waterMaterial, light, makeEnv, patchShading, rockDetail, CLOUDS } from './materials.js';
 import { buildForest } from './vegetation.js';
 import { loadImpostorKinds, vegFar, treeFade } from './impostor.js';
 import { buildGroundCover } from './groundcover.js';
@@ -741,6 +741,7 @@ async function main() {
       const bb = o.geometry.boundingBox, size = new THREE.Vector3(); bb.getSize(size);
       const mat = new THREE.MeshLambertMaterial({ map: o.material.map, normalMap: o.material.normalMap });
       patchShading(mat, shade);
+      if (QUALITY !== 'low') rockDetail(mat);
       variants.push({ geo: o.geometry, geoFar: far[o.name] || o.geometry, mat, size: Math.max(size.x, size.y, size.z), big: o.name.startsWith('boulder'), items: [] });
     });
     const stones = variants.filter((v) => !v.big), boulders = variants.filter((v) => v.big);
@@ -1021,6 +1022,21 @@ async function main() {
     return Math.atan2(b.x - a.x, b.z - a.z);
   };
   state.yaw = headingAt(0);
+  // time goes by with the walk: the clock is the hour chosen plus the walking time (PTTK norms) to the
+  // place one is at, so the sun moves on and the shadows turn and lengthen along the way
+  const flow = { on: true, base: env.hour };
+  try { flow.on = localStorage.getItem('rysy-time-flow') !== '0'; } catch (e) { /* private mode */ }
+  function setHour(h) {
+    if (env.forecast) fc.shift += h - env.hour;
+    env.hour = h; flow.base = h - TT[at(state.s).i] / 60;
+    $('hour').value = h; applyEnv();
+  }
+  function flowTick() {
+    if (!flow.on || env.forecast) return;
+    const h = flow.base + TT[at(state.s).i] / 60;
+    if (Math.abs(h - env.hour) < 1 / 60) return;
+    env.hour = Math.min(23.9, Math.max(0, h)); $('hour').value = Math.min(21.5, Math.max(4.5, env.hour)); applyEnv();
+  }
   // the weather: ?pogoda=rain etc., or the forecast when the planner passed the start time
   if (P.get('pogoda')) setWeather(P.get('pogoda'));
   else if (fc.start) setWeather('forecast');
@@ -1034,7 +1050,7 @@ async function main() {
     if (e.code === 'KeyG') toggleFree();
     if (e.code === 'KeyP') toggleFly();
     if (e.code === 'KeyR') { state.yawOff = 0; state.pitchOff = 0; }
-    if (e.code === 'KeyT') { const h = env.hour >= 21 ? 4.5 : env.hour + 1; if (env.forecast) fc.shift += h - env.hour; env.hour = h; $('hour').value = env.hour; applyEnv(); }
+    if (e.code === 'KeyT') setHour(env.hour >= 21 ? 4.5 : env.hour + 1);
     if (e.code === 'KeyM') { const ks = Object.keys(WEATHER); setWeather(ks[(ks.indexOf(env.weather) + 1) % ks.length]); }
     if (e.code === 'Equal' || e.code === 'NumpadAdd') setSpeed(1);
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') setSpeed(-1);
@@ -1342,7 +1358,9 @@ async function main() {
   $('btn-fly').onclick = toggleFly;
   $('btn-faster').onclick = () => setSpeed(1);
   $('btn-slower').onclick = () => setSpeed(-1);
-  $('hour').oninput = (e) => { if (env.forecast) fc.shift += +e.target.value - env.hour; env.hour = +e.target.value; applyEnv(); };
+  $('hour').oninput = (e) => setHour(+e.target.value);
+  $('time-flow').checked = flow.on;
+  $('time-flow').onchange = (e) => { flow.on = e.target.checked; flow.base = env.hour - TT[at(state.s).i] / 60; try { localStorage.setItem('rysy-time-flow', flow.on ? '1' : '0'); } catch (err) { /* private mode */ } };
   $('weather').onchange = (e) => setWeather(e.target.value);
   $('btn-help').onclick = () => $('help').classList.toggle('hidden');
   $('btn-sound').onclick = () => { sound.setEnabled(!sound.enabled); updateButtons(); };
@@ -1607,7 +1625,7 @@ async function main() {
     labels.update(dt);
     discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
     weatherFx.update(dt, camera.position);
-    if (env.forecast) forecastTick();
+    if (env.forecast) forecastTick(); else flowTick();
     renderer.toneMappingExposure = 0.55 * (1 + 2.2 * weatherFx.flash);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3,
       wind: light.windK.value, rain: (env.fx ? env.fx.rain : WEATHER[env.weather].rain) || 0 });

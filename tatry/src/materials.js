@@ -577,3 +577,80 @@ export function waterMaterial() {
   Object.assign(m.uniforms, { sunDir: light.sunDir, sunCol: light.sunCol, ambCol: light.ambCol, time: light.time, windK: light.windK, rainK: light.rainK });
   return m;
 }
+
+// Granite close up, over the baked texture of the rocks: the grain of the stone (black biotite, white
+// feldspar and grey quartz specks, a few millimetres), a fine rough relief in the normal, and lichens on
+// the faces turned to the sky: the yellow-green map lichen (Rhizocarpon) in patches with dark rims, grey
+// crusts, now and then the orange Xanthoria. Fades out beyond ~40 m, where it would only flicker.
+export function rockDetail(material) {
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (sh, r) => {
+    prev && prev(sh, r);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRW; varying vec3 vRN;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        {
+          vec4 rw = vec4(transformed, 1.0);
+          #ifdef USE_INSTANCING
+            rw = instanceMatrix * rw;
+          #endif
+          vRW = (modelMatrix * rw).xyz;
+          mat3 nm = mat3(modelMatrix);
+          #ifdef USE_INSTANCING
+            nm = nm * mat3(instanceMatrix);
+          #endif
+          vRN = normalize(nm * objectNormal);
+        }`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vRW; varying vec3 vRN;
+        ${NOISE}
+        // value noise on the three planes, weighted by the normal (no stretching on steep faces)
+        float tri(vec3 p, vec3 n, float f) {
+          vec3 w = abs(n); w /= (w.x + w.y + w.z);
+          return vnoise(p.yz * f) * w.x + vnoise(p.xz * f) * w.y + vnoise(p.xy * f) * w.z;
+        }
+        float trifbm(vec3 p, vec3 n, float f) {
+          vec3 w = abs(n); w /= (w.x + w.y + w.z);
+          return fbm2(p.yz * f) * w.x + fbm2(p.xz * f) * w.y + fbm2(p.xy * f) * w.z;
+        }`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        float rdist = length(vRW - cameraPosition);
+        float rnear = 1.0 - smoothstep(18.0, 45.0, rdist);
+        vec3 rn = normalize(vRN);
+        if (rnear > 0.0) {
+          // grains: dark and light specks
+          float g1 = tri(vRW + 3.1, rn, 90.0), g2 = tri(vRW - 7.7, rn, 55.0);
+          float dark = smoothstep(0.72, 0.8, g1), light = smoothstep(0.7, 0.78, g2);
+          vec3 gcol = diffuseColor.rgb * (1.0 - 0.45 * dark) + vec3(0.08) * light;
+          diffuseColor.rgb = mix(diffuseColor.rgb, gcol, rnear);
+        }
+        {
+          // lichens on the faces open to the sky (they fade into the baked texture far away)
+          float upf = smoothstep(0.1, 0.7, rn.y);
+          float patchN = trifbm(vRW * 1.0 + 11.0, rn, 1.6);
+          float mapL = smoothstep(0.58, 0.63, patchN) * upf;
+          float rim = smoothstep(0.56, 0.58, patchN) - smoothstep(0.58, 0.6, patchN);
+          float crust = smoothstep(0.55, 0.62, trifbm(vRW + 41.0, rn, 3.0)) * (0.4 + 0.6 * upf);
+          float orange = smoothstep(0.72, 0.75, trifbm(vRW - 23.0, rn, 2.2)) * upf;
+          vec3 c = diffuseColor.rgb;
+          c = mix(c, c * 1.15 + vec3(0.05), crust * 0.5);
+          c = mix(c, vec3(0.52, 0.58, 0.18) * (0.8 + 0.4 * tri(vRW, rn, 20.0)), mapL * 0.85);
+          c = mix(c, vec3(0.05), rim * upf * 0.7 * (0.3 + 0.7 * rnear));
+          c = mix(c, vec3(0.75, 0.35, 0.08), orange * 0.8);
+          diffuseColor.rgb = c;
+        }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        if (rnear > 0.0) {
+          // a fine rough relief: the gradient of the noise tilts the normal
+          float e = 0.02, h0 = trifbm(vRW, rn, 6.0);
+          vec3 gr = vec3(trifbm(vRW + vec3(e, 0.0, 0.0), rn, 6.0) - h0, trifbm(vRW + vec3(0.0, e, 0.0), rn, 6.0) - h0, trifbm(vRW + vec3(0.0, 0.0, e), rn, 6.0) - h0) / e;
+          gr -= rn * dot(gr, rn);
+          vec3 nw = normalize(rn - gr * 0.06 * rnear);
+          normal = normalize(mix(normal, normalize((viewMatrix * vec4(nw, 0.0)).xyz), 0.5 * rnear));
+        }`);
+  };
+  const key = material.customProgramCacheKey ? material.customProgramCacheKey.bind(material) : () => '';
+  material.customProgramCacheKey = () => key() + '-rockdetail';
+  return material;
+}

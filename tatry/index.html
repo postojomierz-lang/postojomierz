@@ -136,6 +136,7 @@
     #fps { top: 78px; }
   }
   #fc-info { font-size: 12px; line-height: 1.35; margin-top: 6px; max-width: 300px; opacity: .92; }
+  #controls label.flow { display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: .9; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -178,6 +179,7 @@
   </div>
   <label>Pora dnia <span id="hour-label">10:30</span></label>
   <input id="hour" type="range" min="4.5" max="21.5" step="0.25" value="10.5">
+  <label class="flow"><input type="checkbox" id="time-flow" checked> ⏱ czas płynie z marszem</label>
   <select id="weather">
     <option value="clear">☀️ Słonecznie</option>
     <option value="haze">🌤 Lekka mgiełka</option>
