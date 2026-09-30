@@ -1,4 +1,7 @@
-# Rysy 3D (prototyp)
+# Szlakownik: planer tras i Rysy 3D (prototyp)
+
+**Szlakownik** to nazwa aplikacji: planer tras z nawigacją GPS (`planer.html`) i widok 3D (`index.html`);
+na początek polskie Tatry, docelowo także inne góry.
 
 Wirtualny spacer szlakiem **Morskie Oko → Rysy** w przeglądarce (three.js). Teren, zdjęcie
 satelitarne i przebieg szlaku pochodzą z otwartych danych; to, czego w danych nie ma

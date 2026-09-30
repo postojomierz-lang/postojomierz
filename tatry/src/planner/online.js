@@ -255,7 +255,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     const g = groups.find((x) => x.id === gid);
     if (!g) return;
     const link = `${location.origin}${location.pathname}?dolacz=${g.invite_code}`;
-    const text = `Dołącz do grupy „${g.name}” w planerze tras Tatry: ${link} (kod: ${g.invite_code})`;
+    const text = `Dołącz do grupy „${g.name}” w Szlakowniku: ${link} (kod: ${g.invite_code})`;
     if (navigator.share) { navigator.share({ title: 'Zaproszenie do grupy', text }).catch(() => {}); return; }
     try { await navigator.clipboard.writeText(link); msg('Link zaproszenia skopiowany.'); } catch (e) { prompt('Link zaproszenia:', link); }
   };

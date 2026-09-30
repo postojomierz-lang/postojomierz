@@ -283,7 +283,7 @@ $('f-gpx').onchange = async (ev) => {
 $('b-gpx').onclick = () => {
   if (!path) { msg('Najpierw wyznacz trasę.'); return; }
   const pts = path.map((v) => `<trkpt lat="${data.v[v][1]}" lon="${data.v[v][0]}"><ele>${data.v[v][2]}</ele></trkpt>`).join('\n');
-  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rysy 3D planer" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>Trasa Tatry</name><trkseg>\n${pts}\n</trkseg></trk>\n</gpx>\n`;
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Szlakownik" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>Trasa Tatry</name><trkseg>\n${pts}\n</trkseg></trk>\n</gpx>\n`;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([gpx], { type: 'application/gpx+xml' }));
   a.download = 'trasa-tatry.gpx'; a.click();
