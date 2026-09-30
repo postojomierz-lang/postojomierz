@@ -28,6 +28,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 import { SSAOPass } from './ssao.js';
 import { buildTrees3D, buildMugo3D } from './vegetation3d.js';
+import { buildGrass } from './grass.js';
 
 // data and textures are served next to index.html (tatry/public -> rysy/)
 const DATA = 'data/';
@@ -642,7 +643,10 @@ async function main() {
   const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
     masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY,
-    groundClass });
+    groundClass, grass: P.get('trawa') === '0' });
+  // blade grass (?trawa=0: the old grass clumps instead)
+  const grass = P.get('trawa') !== '0' ? buildGrass({ scene, terrain, shade, quality: QUALITY, photo: photoPx, bounds: IB, groundClass,
+    masks: { path: trailVisWide, pathSide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.5) }) : null;
   const deadwood = await buildDeadwood({ scene, terrain, trail, shade, quality: QUALITY, isForest: sound.isForest,
     free: (x, z) => terrain.maskAt(clearing, x, z) === 0 && terrain.maskAt(lakeMask, x, z) < 0.02 && !houses.inside(x, z, 3) });
   const dummy = new THREE.Object3D();
@@ -1305,6 +1309,7 @@ async function main() {
     treeFade.cam.value.copy(camera.position);
     if (trees3d) trees3d.update(camera.position);
     if (mugo3d) mugo3d.update(camera.position);
+    if (grass) grass.update(camera.position);
     {
       const fx = state.mode === 'walk' || state.freeCam ? camera.position.x : hiker.position.x;
       const fz = state.mode === 'walk' || state.freeCam ? camera.position.z : hiker.position.z;
@@ -1323,7 +1328,7 @@ async function main() {
     adaptResolution();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { groundClass, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { groundClass, grass, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
