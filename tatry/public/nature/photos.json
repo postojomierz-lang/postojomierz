@@ -352,5 +352,89 @@
   "author": "Cullen Hanks",
   "license": "CC BY 4.0",
   "url": "https://www.inaturalist.org/photos/34825790"
+ },
+ "gronostaj": {
+  "file": "Røyskatt (Mustela erminea erminea), Lista, Norway.jpg",
+  "author": "Marton Berntsen, crop by User:MPF",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:R%C3%B8yskatt_(Mustela_erminea_erminea),_Lista,_Norway.jpg"
+ },
+ "lasica": {
+  "file": "inaturalist-447409430",
+  "author": "Marcin Zuwała",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/447409430"
+ },
+ "borsuk": {
+  "file": "Борсук.jpg",
+  "author": "Byrdyak",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:%D0%91%D0%BE%D1%80%D1%81%D1%83%D0%BA.jpg"
+ },
+ "kuna": {
+  "file": "inaturalist-88058450",
+  "author": "Jiri Klimes",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/88058450"
+ },
+ "wydra": {
+  "file": "European otter 02.jpg",
+  "author": "Alexander Leisser",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:European_otter_02.jpg"
+ },
+ "ryjowka": {
+  "file": "Sorex alpinus - Martin Scheuch (cropped).jpeg",
+  "author": "Martin Scheuch (iNaturalist user ma_sche)",
+  "license": "CC BY 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Sorex_alpinus_-_Martin_Scheuch_(cropped).jpeg"
+ },
+ "podkowiec": {
+  "file": "Bat(20070605).jpg",
+  "author": "Lylambda (lylambda@gmail.com)",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Bat(20070605).jpg"
+ },
+ "mroczek": {
+  "file": "Eptesicus nilssoni.jpg",
+  "author": "Mnolf",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Eptesicus_nilssoni.jpg"
+ },
+ "pomurnik": {
+  "file": "Tichodrome échelette Tichodroma muraria aDSC 1009 (50997238804).jpg",
+  "author": "Pierre-Marie Epiney",
+  "license": "CC BY-SA 2.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Tichodrome_%C3%A9chelette_Tichodroma_muraria_aDSC_1009_(50997238804).jpg"
+ },
+ "plochacz": {
+  "file": "inaturalist-438221474",
+  "author": "Grzegorz Grzejszczak",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/438221474"
+ },
+ "siwerniak": {
+  "file": "inaturalist-395908194",
+  "author": "K.P.",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/395908194"
+ },
+ "orzel": {
+  "file": "Maakotka (Aquila chrysaetos) by Jarkko Järvinen (crop).jpg",
+  "author": "Jarkko Järvinen",
+  "license": "CC BY-SA 2.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Maakotka_(Aquila_chrysaetos)_by_Jarkko_J%C3%A4rvinen_(crop).jpg"
+ },
+ "sokol": {
+  "file": "American Peregrine Falcon (Falco peregrinus) (10700651733).jpg",
+  "author": "Gregory \"Slobirdr\" Smith",
+  "license": "CC BY-SA 2.0",
+  "url": "https://commons.wikimedia.org/wiki/File:American_Peregrine_Falcon_(Falco_peregrinus)_(10700651733).jpg"
+ },
+ "puchacz": {
+  "file": "inaturalist-448216166",
+  "author": "Marcin Zuwała",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/448216166"
  }
 }
