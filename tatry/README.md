@@ -318,7 +318,7 @@ Wzdłuż szlaków (kafle 256 m z lidarem 1 m i ortofotomapą 0,5 m) widok 3D wie
   las rozmieszcza nadal mapa pokrycia.
 
 ## Odkrywanie przyrody (etykiety fauny i flory)
-`src/nature/catalog.js`: 50 roślin i 50 zwierząt Tatr (lista właściciela) z grupą, rzadkością (pospolity 10 pkt,
+`src/nature/catalog.js`: 70 roślin i 80 zwierząt Tatr (dwie listy właściciela) z grupą, rzadkością (pospolity 10 pkt,
 nierzadki 20, rzadki 40, unikat 80), zakresem wysokości, podłożem z mapy klas (łąka, piarg, ściana, kosodrzewina, las,
 woda, żwir) i dodatkami (przy potoku, przy stawie lub konkretnym stawie, tylko wapień, przy najwyższych szczytach).
 `spots.js` wybiera dla trasy miejsca występowania zgodne z siedliskiem (stałe dla gatunku), `discover.js` zalicza odkrycie

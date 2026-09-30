@@ -28,6 +28,15 @@ const LOOK = {
   'wierzba-zylkowana': ['shrub', 0, 0.06, 7, 0x6f8f4e], 'wierzba-wykrojona': ['shrub', 0, 0.06, 7, 0x5f8a3e],
   wawrzynek: ['shrub', 0xd8231c, 0.8, 3, 0x3f6a2e], 'porzeczka-skalna': ['shrub', 0xb8201c, 1.0, 3, 0x4f7a2e],
   rokitnik: ['shrub', 0xf08a1c, 1.4, 3, 0x8a9a7a],
+  // the owner's second list
+  'czysciec-alpejski': ['spike', 0xb0506a, 0.6, 6], 'kuklik-gorski': ['star', 0xf2c41c, 0.2, 9], 'kuklik-rozeslany': ['star', 0xf6d02a, 0.12, 7],
+  'przelot-alpejski': ['umbel', 0xe8c040, 0.15, 8], 'lepnica-rozdeta': ['bell', 0xeeeadc, 0.35, 8], 'gozdzik-lsniacy': ['star', 0xd24a8a, 0.15, 6],
+  'gozdzik-wczesny': ['star', 0xe07ab0, 0.2, 7], 'skalnica-tatrzanska': ['cushion', 0xf4f2ea, 0.06, 6, 0x5a7a3a],
+  'skalnica-gronkowa': ['rosette', 0xf0eee4, 0.2, 6, 0x7a9a6a], 'skalnica-nakrapiana': ['cushion', 0xf0b42a, 0.1, 7, 0x5f8a3e],
+  rzezuszka: ['cushion', 0xfafaf4, 0.05, 7], mikolajek: ['umbel', 0x5a7ab8, 0.6, 4, 0x5a7a8a], wierzbownica: ['spike', 0xd26a9a, 0.7, 6],
+  goryczuszka: ['cup', 0x3a6ad8, 0.2, 7], 'tojad-moldawski': ['spike', 0x6a4ab0, 1.0, 5], wroniec: ['tuft', 0, 0.12, 8, 0x4f7a2e],
+  widlak: ['fern', 0, 0.1, 9, 0x4f7a2e], paprotnik: ['fern', 0, 0.4, 5, 0x3f6a2e], bielistka: ['cushion', 0, 0.06, 6, 0x9ab89a],
+  wielosil: ['umbel', 0x6a7ae0, 0.9, 5],
 };
 
 export function buildFlowers({ scene, spots, groundAt, shade, patchShading }) {

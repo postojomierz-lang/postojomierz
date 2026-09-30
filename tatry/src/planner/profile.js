@@ -46,6 +46,7 @@ export const BADGES = [
   { icon: '🌱', name: 'Przyrodnik', desc: '10 odkrytych gatunków', ok: (t, J, D) => sp(D).length >= 10 },
   { icon: '📗', name: 'Znawca Tatr', desc: '25 odkrytych gatunków', ok: (t, J, D) => sp(D).length >= 25 },
   { icon: '📚', name: 'Encyklopedia', desc: '50 odkrytych gatunków', ok: (t, J, D) => sp(D).length >= 50 },
+  { icon: '🏛', name: 'Kompendium', desc: '100 odkrytych gatunków', ok: (t, J, D) => sp(D).length >= 100 },
   { icon: '🌼', name: 'Botanik', desc: '20 gatunków roślin', ok: (t, J, D) => sp(D).filter((s) => s.kind === 'flora').length >= 20 },
   { icon: '🐦', name: 'Ornitolog', desc: '10 gatunków ptaków', ok: (t, J, D) => inGroup(D, 'bird') >= 10 },
   { icon: '🐾', name: 'Tropiciel', desc: '8 gatunków ssaków', ok: (t, J, D) => inGroup(D, 'mammal') >= 8 },
