@@ -274,6 +274,16 @@ Bez zasięgu zgłoszenie czeka w telefonie. Odczyt: `python3 tools/bug_reports.p
 - **Stawy:** fale rosną i płyną szybciej z wiatrem (`light.windK`), podmuchy przyciemniają płaty wody, przy
   wichurze białe grzywy; w deszczu kręgi od kropel (`light.rainK`); przy niskim słońcu migocząca ścieżka blasku.
 
+## Skały z bliska i upływ czasu
+
+- **Granit z bliska** (`rockDetail` w `materials.js`, jakość średnia i wyżej): na wypalonej teksturze głazów ziarna
+  (ciemny biotyt, jasny skaleń), drobna szorstka rzeźba w normalnej i porosty na ścianach zwróconych ku niebu:
+  żółtozielony wzorzec (Rhizocarpon) z ciemnymi obwódkami, szare skorupy, czasem pomarańczowa złotorost.
+  Wszystko w przestrzeni świata (trójplanarnie), wygaszane dalej niż ~40 m.
+- **Czas płynie z marszem** (pole pod suwakiem pory dnia, domyślnie włączone): godzina = wybrana godzina + czas
+  przejścia do miejsca, w którym jesteś (normy PTTK), więc słońce idzie dalej, a cienie obracają się i wydłużają.
+  W trybie „Z prognozy” zegar liczy się od godziny wyjścia z planera.
+
 ## Dziennik (rekordy, duch, szczyty)
 `src/journal.js`, zapisywany w pamięci przeglądarki (`localStorage`, klucz `rysy-journal`):
 - przejście trasy do mety w widoku 3D trafia do dziennika (data, długość, podejścia, czas);
