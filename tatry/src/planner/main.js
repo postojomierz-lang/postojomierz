@@ -455,7 +455,12 @@ function updateGo() {
   note.hidden = !path;
   if (path) note.textContent = summary.dist > 14000 ? 'Długa trasa: wczytanie widoku 3D potrwa dłużej (duży obszar terenu).' : 'Widok 3D wczytuje teren wokół trasy (kilkanaście MB).';
 }
-$('go').onclick = () => { location.href = './index.html?trasa&v=' + Date.now().toString(36) + location.hash; };   // always the newest 3D view   // the 3D view picks its quality for the device
+$('go').onclick = () => {
+  // the start time goes along: the 3D view shows the forecast's weather for the hour one is at each place
+  const d = startDate(), p2 = (n) => String(n).padStart(2, '0');
+  const start = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  location.href = `./index.html?trasa&start=${start}&v=` + Date.now().toString(36) + location.hash;
+};   // always the newest 3D view   // the 3D view picks its quality for the device
 
 // restore a route from the address (#r=lat,lon;lat,lon...)
 const h = location.hash.match(/r=([^&]+)/);

@@ -514,5 +514,77 @@
   "author": "Juan Cruzado Cortés",
   "license": "CC BY-SA 4.0",
   "url": "https://www.inaturalist.org/photos/321610"
+ },
+ "traszka-karpacka": {
+  "file": "inaturalist-7642672",
+  "author": "Conrad Altmann",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/7642672"
+ },
+ "traszka-gorska": {
+  "file": "inaturalist-145209381",
+  "author": "Daniel Linzbauer",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/145209381"
+ },
+ "kumak": {
+  "file": "BombinaVariegataJuv.jpg",
+  "author": "Christian Fischer",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:BombinaVariegataJuv.jpg"
+ },
+ "zaba-trawna": {
+  "file": "inaturalist-526760852",
+  "author": "Johannes",
+  "license": "CC0",
+  "url": "https://www.inaturalist.org/photos/526760852"
+ },
+ "zmija": {
+  "file": "inaturalist-51718281",
+  "author": "SK53",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/51718281"
+ },
+ "jaszczurka": {
+  "file": "inaturalist-413128230",
+  "author": "Ewan Shilland",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/413128230"
+ },
+ "padalec": {
+  "file": "inaturalist-463596860",
+  "author": "C. Oppermann",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/463596860"
+ },
+ "pstrag": {
+  "file": "inaturalist-258713988",
+  "author": "Alex Sosnovshchenko",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/258713988"
+ },
+ "glowacz": {
+  "file": "20070609 Poland Hancza Glowacz pregopletwy (Cottus poecilopus)001.JPG",
+  "author": "Jwojna1",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:20070609_Poland_Hancza_Glowacz_pregopletwy_(Cottus_poecilopus)001.JPG"
+ },
+ "apollo": {
+  "file": "inaturalist-540908668",
+  "author": "Scheufler Stefan",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/540908668"
+ },
+ "skrzelopływka": {
+  "file": "Branchinecta paludosa 148830865.jpg",
+  "author": "Spencer Quayle",
+  "license": "CC0",
+  "url": "https://commons.wikimedia.org/wiki/File:Branchinecta_paludosa_148830865.jpg"
+ },
+ "biegacz": {
+  "file": "inaturalist-203589434",
+  "author": "Piotr Lukasik",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/203589434"
  }
 }

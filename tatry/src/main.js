@@ -36,6 +36,9 @@ import { rng } from './noise.js';
 import { SSAOPass } from './ssao.js';
 import { buildTrees3D, buildMugo3D } from './vegetation3d.js';
 import { buildGrass } from './grass.js';
+import { buildWeather } from './weather.js';
+import { forecast } from './planner/daylight.js';
+import { stepMinutes } from './planner/graph.js';
 
 // data and textures are served next to index.html (tatry/public -> rysy/)
 const DATA = 'data/';
@@ -808,17 +811,29 @@ async function main() {
   scene.add(hiker);
 
   // ---------------------------------------------------------------- environment
-  const env = { hour: 10.5, weather: 'clear' };
+  const env = { hour: 10.5, weather: 'clear', forecast: false, fx: null };
+  // wind: grass and tree sway (and the wind's sound); rain / snow: how much falls; wet: dark wet rock;
+  // snowCover: fresh snow on the ground above the snow line; flat: an overcast, grey sky
   const WEATHER = {
-    clear: { fog: 2.6e-5, turb: 1.4, ray: 3.2, sun: 1, amb: 1, fogMix: 0, cloud: 0.45 },
-    haze: { fog: 5.5e-5, turb: 8, ray: 2.2, sun: 0.8, amb: 1.1, fogMix: 0.25, cloud: 0.2 },
-    mist: { fog: 1.1e-3, turb: 12, ray: 3, sun: 0.35, amb: 1.35, fogMix: 0.85, cloud: 0.95 },
-    cloudy: { fog: 3.5e-5, turb: 16, ray: 0.6, sun: 0.35, amb: 1.4, fogMix: 0.6, cloud: 0.88 },
+    clear: { fog: 2.6e-5, turb: 1.4, ray: 3.2, sun: 1, amb: 1, fogMix: 0, cloud: 0.45, wind: 1 },
+    haze: { fog: 5.5e-5, turb: 8, ray: 2.2, sun: 0.8, amb: 1.1, fogMix: 0.25, cloud: 0.2, wind: 0.8 },
+    mist: { fog: 1.1e-3, turb: 12, ray: 3, sun: 0.35, amb: 1.35, fogMix: 0.85, cloud: 0.95, wind: 0.5, wet: 0.4 },
+    cloudy: { fog: 3.5e-5, turb: 16, ray: 0.6, sun: 0.35, amb: 1.4, fogMix: 0.6, cloud: 0.88, wind: 1.2, flat: true },
+    rain: { fog: 1.6e-4, turb: 18, ray: 0.5, sun: 0.22, amb: 1.15, fogMix: 0.78, cloud: 0.97, wind: 1.4, rain: 0.7, wet: 1, flat: true, dark: 0.72 },
+    snow: { fog: 3.2e-4, turb: 16, ray: 0.6, sun: 0.3, amb: 1.45, fogMix: 0.88, cloud: 0.98, wind: 1.2, snow: 0.8, snowCover: 1, snowLine: 1500, flat: true },
+    storm: { fog: 1.3e-4, turb: 20, ray: 0.3, sun: 0.1, amb: 0.75, fogMix: 0.82, cloud: 1, wind: 2.2, rain: 1, wet: 1, storm: 1, flat: true, dark: 0.48 },
   };
+  const weatherFx = buildWeather({ scene, quality: QUALITY, groundAt: drawnHeight, onThunder: (d) => sound.thunder(d) });
   function applyEnv() {
     const w = WEATHER[env.weather];
+    const o = env.fx || {};                           // what the forecast says for this hour, over the preset
     const { el, dir } = sunAt(env.hour);
-    light.cloudCover.value = w.cloud;
+    light.cloudCover.value = o.cloud ?? w.cloud;
+    light.windK.value = o.wind ?? w.wind;
+    light.wetK.value = o.wet ?? (w.wet || 0);
+    light.snowK.value = o.snowCover ?? (w.snowCover || 0);
+    light.snowLine.value = o.snowLine ?? (w.snowLine || 9000);
+    weatherFx.set({ rain: o.rain ?? (w.rain || 0), snow: o.snow ?? (w.snow || 0), storm: w.storm || 0, wind: light.windK.value });
     const e = Math.max(el, -0.2);
     const day = THREE.MathUtils.smoothstep(e, -0.1, 0.25);
     // warm low sun: from ~25° down to the horizon (morning and evening)
@@ -841,7 +856,7 @@ async function main() {
     // aerial perspective: distant ridges fade into a cool blue haze (warm towards evening)
     const fogDay = new THREE.Color(0.56, 0.67, 0.83).lerp(new THREE.Color(0.86, 0.66, 0.52), low * 0.75);
     const fogGrey = new THREE.Color(0.7, 0.72, 0.74);
-    const fc = fogDay.lerp(fogGrey, w.fogMix).multiplyScalar(0.12 + 0.88 * day);
+    const fc = fogDay.lerp(fogGrey, w.fogMix).multiplyScalar((0.12 + 0.88 * day) * (w.dark || 1));
     scene.fog.color.copy(fc);
     scene.fog.density = w.fog;
     water.uniforms.skyCol.value.copy(fc).multiplyScalar(0.55);
@@ -850,10 +865,92 @@ async function main() {
     renderer.toneMappingExposure = 0.55;
     sky.material.uniforms.up.value.set(0, 1, 0);
     // cloudy: flatten the sky toward grey by blending with fog colour via exposure trick
-    if (env.weather === 'cloudy') { u.turbidity.value = 20; u.rayleigh.value = 0.3; }
+    if (w.flat) { u.turbidity.value = 20; u.rayleigh.value = 0.3; }
     $('hour-label').textContent = `${String(Math.floor(env.hour)).padStart(2, '0')}:${String(Math.round((env.hour % 1) * 60)).padStart(2, '0')}`;
   }
   applyEnv();
+
+  // ---------------------------------------------------------------- weather from the forecast
+  // The planner passes the start time (?start=YYYY-MM-DDTHH:MM). The clock then follows the hiker: at
+  // every point of the trail it is the start time plus the walking time there by the PTTK norms, and the
+  // weather is the forecast's for that hour (Open-Meteo, for the route's highest point).
+  const TT = new Float32Array(N);                     // minutes from the trail's start
+  for (let i = 1; i < N; i++) TT[i] = TT[i - 1] + stepMinutes(trail.step, profile[i] - profile[i - 1]);
+  const fc = { data: null, start: null, shift: 0, key: '', topEle: 0 };
+  {
+    const st = P.get('start');
+    const d = st ? new Date(st) : null;
+    fc.start = d && !isNaN(d) ? d : null;
+  }
+  const WMO_PRESET = (c) => (c >= 95 ? 'storm' : (c >= 71 && c <= 77) || c === 85 || c === 86 ? 'snow' : c >= 51 ? 'rain' : c >= 45 ? 'mist' : c === 3 ? 'cloudy' : 'clear');
+  const WMO_TEXT = { clear: 'pogodnie', cloudy: 'pochmurno', mist: 'mgła', rain: 'deszcz', snow: 'śnieg', storm: 'burza' };
+  const pad2 = (n) => String(n).padStart(2, '0');
+  function fxAt(t) {
+    const H = fc.data.hourly;
+    const key = `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}T${pad2(t.getHours())}:00`;
+    const i = H.time.indexOf(key);
+    if (i < 0) return null;
+    const code = H.weather_code[i], preset = WMO_PRESET(code);
+    const mm = H.precipitation[i] || 0, gust = H.wind_gusts_10m[i] || 0, freeze = H.freezing_level_height[i] ?? 9000;
+    const fall = preset === 'rain' || preset === 'storm' ? 'rain' : preset === 'snow' ? 'snow' : null;
+    const amount = Math.min(1, 0.3 + mm * 0.35);
+    // fresh snow lies where it has been snowing, or where it is freezing after rain
+    let snowCover = 0;
+    for (let k = Math.max(0, i - 12); k <= i; k++) {
+      const pc = WMO_PRESET(H.weather_code[k]);
+      if (pc === 'snow' || ((pc === 'rain' || pc === 'storm') && (H.freezing_level_height[k] ?? 9000) < fc.topEle)) snowCover = 1;
+    }
+    return {
+      preset, code, text: WMO_TEXT[preset] + (code === 2 ? ' (częściowe zachmurzenie)' : ''), mm, gust, wind: Math.min(2.6, 0.5 + gust / 35),
+      windKmh: H.wind_speed_10m[i] || 0, temp: H.temperature_2m[i], freeze,
+      rain: fall === 'rain' ? amount : 0, snow: fall === 'snow' ? amount : 0, wet: fall === 'rain' ? 1 : preset === 'mist' ? 0.4 : 0,
+      cloud: code === 2 ? 0.7 : undefined, snowCover, snowLine: Math.max(1100, Math.min(2700, freeze - 200)),
+    };
+  }
+  function forecastTick() {
+    if (!fc.data) return;
+    const t = new Date(fc.start.getTime() + (TT[at(state.s).i] + fc.shift * 60) * 60000);
+    const hour = t.getHours() + t.getMinutes() / 60;
+    const key = `${t.getDate()}:${t.getHours()}:${Math.floor(t.getMinutes() / 5)}`;
+    if (key === fc.key) return;                       // every 5 minutes of trail time
+    fc.key = key;
+    const o = fxAt(t);
+    if (!o) { $('fc-info').textContent = '📡 Prognoza sięga 3 dni naprzód: poza nią pogoda ręczna.'; env.fx = null; }
+    else {
+      env.weather = o.preset; env.fx = o;
+      const day = t.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'numeric' });
+      $('fc-info').innerHTML = `📡 ${day}, ${pad2(t.getHours())}:${pad2(t.getMinutes())} · <b>${o.text}</b>${o.mm >= 0.1 ? ` ${o.mm.toFixed(1)} mm` : ''}`
+        + ` · ${Math.round(o.temp)}°C na ${Math.round(fc.topEle)} m · wiatr ${Math.round(o.windKmh)} km/h, porywy ${Math.round(o.gust)}`;
+    }
+    env.hour = hour; $('hour').value = Math.min(21.5, Math.max(4.5, hour));
+    applyEnv();
+  }
+  async function startForecast() {
+    if (!fc.start) {                                  // opened without the planner: from now
+      const d = new Date(); d.setSeconds(0, 0); fc.start = new Date(d.getTime() - TT[at(state.s).i] * 60000);
+    }
+    $('fc-info').hidden = false; $('fc-info').textContent = '📡 Pobieram prognozę…';
+    let top = 0;
+    for (let i = 0; i < N; i++) if (profile[i] > profile[top]) top = i;
+    fc.topEle = profile[top];
+    const MXg = 111320 * Math.cos(49.191 * Math.PI / 180);
+    const lon = 20.076 + trail.X[top] / MXg, lat = 49.191 - trail.Z[top] / 110574;
+    const data = await forecast(lat, lon, fc.topEle);
+    if (!env.forecast) return;
+    if (!data) { $('fc-info').textContent = '📡 Prognoza niedostępna (brak zasięgu): pogoda ręczna.'; return; }
+    fc.data = data; fc.key = '';
+    forecastTick();
+  }
+  function setWeather(name) {
+    if (name === 'forecast') {
+      env.forecast = true; fc.shift = 0; $('weather').value = 'forecast';
+      startForecast();
+      return;
+    }
+    env.forecast = false; env.fx = null; $('fc-info').hidden = true;
+    env.weather = WEATHER[name] ? name : 'clear'; $('weather').value = env.weather;
+    applyEnv();
+  }
 
   // ---------------------------------------------------------------- walking state
   const state = {
@@ -875,6 +972,9 @@ async function main() {
     return Math.atan2(b.x - a.x, b.z - a.z);
   };
   state.yaw = headingAt(0);
+  // the weather: ?pogoda=rain etc., or the forecast when the planner passed the start time
+  if (P.get('pogoda')) setWeather(P.get('pogoda'));
+  else if (fc.start) setWeather('forecast');
 
   const keys = new Set();
   addEventListener('keydown', (e) => {
@@ -885,8 +985,8 @@ async function main() {
     if (e.code === 'KeyG') toggleFree();
     if (e.code === 'KeyP') toggleFly();
     if (e.code === 'KeyR') { state.yawOff = 0; state.pitchOff = 0; }
-    if (e.code === 'KeyT') { env.hour = env.hour >= 21 ? 4.5 : env.hour + 1; $('hour').value = env.hour; applyEnv(); }
-    if (e.code === 'KeyM') { const ks = Object.keys(WEATHER); env.weather = ks[(ks.indexOf(env.weather) + 1) % ks.length]; $('weather').value = env.weather; applyEnv(); }
+    if (e.code === 'KeyT') { const h = env.hour >= 21 ? 4.5 : env.hour + 1; if (env.forecast) fc.shift += h - env.hour; env.hour = h; $('hour').value = env.hour; applyEnv(); }
+    if (e.code === 'KeyM') { const ks = Object.keys(WEATHER); setWeather(ks[(ks.indexOf(env.weather) + 1) % ks.length]); }
     if (e.code === 'Equal' || e.code === 'NumpadAdd') setSpeed(1);
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') setSpeed(-1);
     if (e.code === 'KeyH') $('help').classList.toggle('hidden');
@@ -1192,8 +1292,8 @@ async function main() {
   $('btn-fly').onclick = toggleFly;
   $('btn-faster').onclick = () => setSpeed(1);
   $('btn-slower').onclick = () => setSpeed(-1);
-  $('hour').oninput = (e) => { env.hour = +e.target.value; applyEnv(); };
-  $('weather').onchange = (e) => { env.weather = e.target.value; applyEnv(); };
+  $('hour').oninput = (e) => { if (env.forecast) fc.shift += +e.target.value - env.hour; env.hour = +e.target.value; applyEnv(); };
+  $('weather').onchange = (e) => setWeather(e.target.value);
   $('btn-help').onclick = () => $('help').classList.toggle('hidden');
   $('btn-sound').onclick = () => { sound.setEnabled(!sound.enabled); updateButtons(); };
   $('btn-labels').onclick = () => { renderLabelMenu(); $('label-menu').classList.toggle('show'); };
@@ -1456,7 +1556,11 @@ async function main() {
     chains.update(camera.position); deadwood.update(camera.position);
     labels.update(dt);
     discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
-    sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });
+    weatherFx.update(dt, camera.position);
+    if (env.forecast) forecastTick();
+    renderer.toneMappingExposure = 0.55 * (1 + 2.2 * weatherFx.flash);
+    sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3,
+      wind: light.windK.value, rain: (env.fx ? env.fx.rain : WEATHER[env.weather].rain) || 0 });
     if (LITE) {
       if (liteFrame++ % SHADOW_EVERY === 0) renderer.shadowMap.needsUpdate = true;
       renderer.render(scene, camera);
@@ -1467,7 +1571,7 @@ async function main() {
     adaptResolution();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { weather: weatherFx, fc, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 

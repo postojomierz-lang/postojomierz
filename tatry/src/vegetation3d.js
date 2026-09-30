@@ -82,14 +82,14 @@ function patch(m, shade, { wind = 0.5, upNormal = 0, depth = false, fadeR = tree
     Object.assign(sh.uniforms, shade, { fadeCam: treeFade.cam, fadeR });
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-        ${depth ? 'uniform float time;' : HEIGHTS + '\nvarying float vTerrSh;'}
+        ${depth ? 'uniform float time; uniform float windK;' : HEIGHTS + '\nvarying float vTerrSh;'}
         uniform vec3 fadeCam; varying float vFadeD;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vec3 ipos = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
         vFadeD = distance(ipos.xz, fadeCam.xz);
         {
-          float ph = time * 1.3 + ipos.x * 0.07 + ipos.z * 0.05;
-          float amt = ${wind.toFixed(2)} * position.y * position.y * 0.012;
+          float ph = time * (1.1 + 0.25 * windK) + ipos.x * 0.07 + ipos.z * 0.05;
+          float amt = ${wind.toFixed(2)} * position.y * position.y * 0.012 * windK;
           transformed.x += sin(ph) * amt; transformed.z += cos(ph * 0.8) * amt;
         }`)
       .replace('#include <project_vertex>', `#include <project_vertex>
@@ -103,7 +103,7 @@ function patch(m, shade, { wind = 0.5, upNormal = 0, depth = false, fadeR = tree
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
           normal = normalize(mix(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), ${upNormal.toFixed(2)}));`)
-        .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh;');
+        .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh * (1.0 - 0.25 * wetK);\n reflectedLight.indirectDiffuse *= 1.0 - 0.25 * wetK;');
     }
   };
   m.customProgramCacheKey = () => key + depth + upNormal + wind;
