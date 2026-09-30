@@ -232,6 +232,15 @@ ramka w panelu nawigacji (czerwona przy niebezpieczeństwie), długa wibracja i 
 (zgoda pytana przy starcie nawigacji); przy burzy: za ile i najbliższe schronisko. Bez zasięgu używana
 jest ostatnia prognoza, a po odzyskaniu sieci sprawdzenie od razu.
 
+## Kwiaty z Blendera
+
+`tools/blender/make_flowers.py` (Blender jako moduł `bpy`) buduje z płatków, liści i łodyg (bmesh, kolory per
+wierzchołek) modele: szarotka, goryczka krótkołodygowa, kropkowana i przezroczysta, krokus, sasanka, urdzik →
+`public/models/flowers/*.glb` (170–800 trójkątów). `src/nature/flowers.js` rysuje je jako instancje w miejscach
+z katalogu (reszta gatunków: proste kształty), drobne rośliny gęstszymi kępami i trochę większe niż w naturze,
+w promieniu 250 m; kępy przy samej ścieżce przesuwają się na najbliższy wolny grunt.
+Uruchomienie: `python3 tools/blender/make_flowers.py public/models/flowers`.
+
 ## Zgłoszenia z testów (🐞)
 
 Przycisk 🐞 w widoku 3D (w rzędzie przycisków) i na mapie planera (`src/report.js`) robi zrzut ekranu,

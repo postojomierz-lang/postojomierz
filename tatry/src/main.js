@@ -23,7 +23,7 @@ import { buildSpots } from './nature/spots.js';
 import { loadFound, saveFound, buildDiscovery, score } from './nature/discover.js';
 import { challenges, settleChallenges } from './nature/challenges.js';
 import { buildCards } from './nature/card.js';
-import { buildFlowers } from './nature/flowers.js';
+import { buildFlowers, loadFlowerModels } from './nature/flowers.js';
 import { buildBirds } from './nature/birds.js';
 import { GROUPS, RARITY, BY_ID } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
@@ -1170,7 +1170,8 @@ async function main() {
   const cards = await buildCards({ found, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
   // the plants of the catalogue at their spots: patches of flowers, herbs, ferns and dwarf shrubs
   const birds = buildBirds({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)) });
-  const flowers = buildFlowers({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), shade, patchShading });
+  const flowers = buildFlowers({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), shade, patchShading,
+    models: await loadFlowerModels() });
   if (grass) grass.setClearings(flowers.clearings);
   const discovery = buildDiscovery({ items: labels.items, found, placeId, onFind: (it, e) => {
     labels.refresh(); renderLabelMenu();
@@ -1555,7 +1556,7 @@ async function main() {
     wildlife.update(dt, camera);
     birds.update(dt, camera.position);
     rocks.update(camera.position, dt);
-    chains.update(camera.position); deadwood.update(camera.position);
+    chains.update(camera.position); deadwood.update(camera.position); flowers.update(camera.position);
     labels.update(dt);
     discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
     weatherFx.update(dt, camera.position);
@@ -1594,7 +1595,7 @@ async function main() {
       };
     } });
 
-  window.__rysy = { weather: weatherFx, fc, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
