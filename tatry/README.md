@@ -288,3 +288,7 @@ je w przeglądarce (`rysy-discoveries`). Etykiety nieodkrytych pokazują „?”
 - Spacer poza szlakiem (🧭, klawisz G): chodzenie tam, gdzie patrzysz, do 150 m od szlaku (tam sięga teren 1 m i pełna
   roślinność), bez wchodzenia na ściany skalne i do stawów; komunikat o zakazie schodzenia ze szlaków w TPN, przejście poza
   szlakiem nie liczy się do rekordu trasy; „↩ Na szlak” wraca w najbliższy punkt trasy.
+- Optymalizacja (poziomy szczegółowości): skały mają wersję daleką (`<nazwa>_lod1`, ~70/130 trójkątów, `make_granite.py`),
+  pełna tylko blisko kamery (25/40/60/90 m wg jakości), małe kamienie znikają dalej niż 260–1200 m; ogniwa łańcuchów i martwe
+  drzewa rysowane tylko w pobliżu (`src/lod.js`); na niskiej jakości rzadsza siatka panoramy i obszaru trasy. Niska jakość:
+  ze szczytu Rysów 5,8 → 0,9 mln trójkątów na klatkę, na szlaku 3,8 → 0,76 mln.

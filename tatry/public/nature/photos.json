@@ -184,5 +184,83 @@
   "author": "Adam Śliż",
   "license": "CC BY 4.0",
   "url": "https://www.inaturalist.org/photos/146813720"
+ },
+ "starzec": {
+  "file": "Senecio nemorensis IMG 6769.JPG",
+  "author": "Hedwig Storch",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Senecio_nemorensis_IMG_6769.JPG"
+ },
+ "tojad": {
+  "file": "inaturalist-45309068",
+  "author": "Jens-Christian Svenning",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/45309068"
+ },
+ "urdzik": {
+  "file": "inaturalist-387452190",
+  "author": "Bobo-X",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/387452190"
+ },
+ "wietlica": {
+  "file": "inaturalist-45986638",
+  "author": "Jens-Christian Svenning",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/45986638"
+ },
+ "kostrzewa": {
+  "file": "Festuca airoides 2017-05-06 9765.jpg",
+  "author": "Salicyna",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Festuca_airoides_2017-05-06_9765.jpg"
+ },
+ "krokus": {
+  "file": "inaturalist-197764858",
+  "author": "Martyna Burda (Shad)",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/197764858"
+ },
+ "lilia": {
+  "file": "inaturalist-275535364",
+  "author": "Hubert Sztyler",
+  "license": "CC0",
+  "url": "https://www.inaturalist.org/photos/275535364"
+ },
+ "ciemiezyca": {
+  "file": "inaturalist-553130357",
+  "author": "Katrin Simon",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/553130357"
+ },
+ "obuwik": {
+  "file": "inaturalist-288005512",
+  "author": "Daniel Cahen",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/288005512"
+ },
+ "zywiec": {
+  "file": "inaturalist-45620977",
+  "author": "Jens-Christian Svenning",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/45620977"
+ },
+ "czosnek": {
+  "file": "Allium victorialis 240708.jpg",
+  "author": "Bernd Haynold",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Allium_victorialis_240708.jpg"
+ },
+ "zimoziol": {
+  "file": "inaturalist-8957426",
+  "author": "Sigitas Juzėnas",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/8957426"
+ },
+ "podbialek": {
+  "file": "inaturalist-286700557",
+  "author": "Daniel Cahen",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/286700557"
  }
 }

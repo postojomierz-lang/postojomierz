@@ -4,9 +4,10 @@
 // rungs. Links are instanced tori (alternating by 90°), pins and staples instanced too.
 import * as THREE from 'three';
 import { patchShading } from './materials.js';
+import { cullByDistance } from './lod.js';
 
 // chainOK(i): whether point i of the trail may carry chains (default: the rocky part above the Bula)
-export function buildChains({ scene, terrain, trail, TH, shade, isPath, chainOK = (i) => TH[i] > 2075 }) {
+export function buildChains({ scene, terrain, trail, TH, shade, isPath, chainOK = (i) => TH[i] > 2075, maxDistance = 200 }) {
   const N = trail.X.length, step = trail.step;
   // smoothed grade per metre of trail
   const grade = new Float32Array(N);
@@ -107,15 +108,18 @@ export function buildChains({ scene, terrain, trail, TH, shade, isPath, chainOK 
   const rusty = new THREE.MeshLambertMaterial({ color: 0x6d6760 });
   patchShading(steel, shade); patchShading(rusty, shade);
   const group = new THREE.Group();
+  // only the parts near the camera are drawn (a link is below a pixel further than ~100 m)
+  const culls = [];
   const inst = (geo, mat, list) => {
     if (!list.length) return;
     const m = new THREE.InstancedMesh(geo, mat, list.length);
     list.forEach((x, i) => m.setMatrixAt(i, x));
     m.castShadow = true; m.receiveShadow = true;
     group.add(m);
+    culls.push(cullByDistance(m, list, maxDistance));
   };
-  // link: elongated torus along x
-  const linkGeo = new THREE.TorusGeometry(0.03, 0.007, 5, 10); linkGeo.scale(1.45, 1, 1);
+  // link: elongated torus along x (a few sides are enough at this size)
+  const linkGeo = new THREE.TorusGeometry(0.03, 0.007, 4, 7); linkGeo.scale(1.45, 1, 1);
   inst(linkGeo, steel, links);
   // anchor pin: a short bar out of the rock with an eye on top
   const pin = new THREE.CylinderGeometry(0.016, 0.016, 0.6, 6); pin.translate(0, -0.28, 0);
@@ -127,5 +131,5 @@ export function buildChains({ scene, terrain, trail, TH, shade, isPath, chainOK 
   inst(new THREE.TubeGeometry(u, 16, 0.012, 5), steel, staples);
   scene.add(group);
   const chainedMetres = chainRuns.reduce((a, [s, e]) => a + (e - s) * step, 0);
-  return { group, chainRuns, stapleRuns, counts: { links: links.length, anchors: anchors.length, staples: staples.length, chainedMetres } };
+  return { update: (cam) => culls.forEach((c) => c(cam)), group, chainRuns, stapleRuns, counts: { links: links.length, anchors: anchors.length, staples: staples.length, chainedMetres } };
 }

@@ -7,7 +7,8 @@ light feldspar and quartz grains and dark biotite specks, rust stains, map liche
 Rhizocarpon) and grey crusts on the tops, dark water streaks on the steep faces, darker in the cracks.
 
 Two sizes, so the grain keeps its real scale: stones (~1.2 m) and boulders (~4 m); the view picks by size.
-One GLB, every rock its own mesh (origin at the centre of its base), one shared texture atlas.
+One GLB, every rock its own mesh (origin at the centre of its base) plus its far version (<name>_lod1, ~70 / 130
+triangles), one shared texture atlas.
 Run: python3 tools/blender/make_granite.py public/models/granite.glb [atlas px, 2048] [seed]
 """
 import math
@@ -28,6 +29,7 @@ PLAN = [('block', 1.2), ('block', 1.0), ('slab', 1.4), ('slab', 1.1), ('boulder'
         ('shard', 1.3), ('block', 0.9), ('slab', 1.2), ('boulder', 1.0),
         ('block', 4.0), ('slab', 4.5), ('boulder', 3.8), ('block', 5.0), ('shard', 4.2), ('boulder', 4.5)]
 LOW_TRIS = {'stone': 700, 'boulder': 1300}
+LOD1_TRIS = {'stone': 70, 'boulder': 130}      # the far version: same atlas, a tenth of the triangles
 
 rnd = random.Random(SEED)
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -280,6 +282,13 @@ for k, (kind, size) in enumerate(PLAN):
     lo.data.transform(mathutils.Matrix.Translation((-cxm, -cym, -czm)))
     bpy.data.objects.remove(hi)
     lows.append(lo)
+    # the far version: the light mesh decimated again, same UVs into the same atlas cell
+    far = lo.copy(); far.data = lo.data.copy(); far.name = far.data.name = lo.name + '_lod1'
+    scene.collection.objects.link(far)
+    select_only(far)
+    m = far.modifiers.new('d', 'DECIMATE'); m.ratio = LOD1_TRIS[group] / max(1, sum(len(p.vertices) - 2 for p in far.data.polygons))
+    apply_all(far)
+    lows.append(far)
     print(lo.name, 'tris', sum(len(p.vertices) - 2 for p in lo.data.polygons), flush=True)
 
 # save the baked atlases as files first (packing a generated image throws the bake away)
