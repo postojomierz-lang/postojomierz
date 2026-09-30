@@ -1,10 +1,13 @@
 // The online part of the planner (Supabase, see supabase/): signing in with a link from an e-mail,
 // the profile and the journal synced between the person's devices, hiking groups joined with an invite
 // code, the group's chat and routes, and the members' positions on the map while they navigate (shared
-// only on purpose, only with the chosen group, removed at the end of the walk, expiring in any case).
+// only on purpose, only with the chosen group, removed at the end of the walk, expiring in any case), and the
+// nature discoveries with their points for the rankings (only for those who show their profile publicly).
 // Everything works without an account too: the journal stays in the browser as before.
 import L from 'leaflet';
 import { createClient } from '@supabase/supabase-js';
+import { loadFound, saveFound, score } from '../nature/discover.js';
+import { BY_ID, RARITY } from '../nature/catalog.js';
 
 const SB_URL = __SUPABASE_URL__, SB_KEY = __SUPABASE_KEY__;
 const sb = SB_URL && SB_KEY ? createClient(SB_URL, SB_KEY, {
@@ -39,7 +42,7 @@ const ago = (t) => {
 };
 
 export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfile, totals, render, msg, esc, routeTitle, hasRoute, openHash }) {
-  const noop = { onPosition() {}, onNavStop() {}, sync() {} };
+  const noop = { onPosition() {}, onNavStop() {}, sync() {}, leaderboard: async () => null, setPublic() {}, get user() { return null; } };
   if (!sb) { $('o-login').hidden = true; $('o-none').hidden = false; return noop; }
 
   let user = null, syncing = false, again = false, groups = [], gid = store.get(GROUP), members = new Map(), channel = null;
@@ -123,6 +126,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
       Object.assign(J, loadJournal());          // the 3D view may have added walks meanwhile
       await syncProfile();
       await syncJournal();
+      await syncDiscoveries();
       saveJournal(J);
       render();
       status(`zsynchronizowano ${new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}`);
@@ -180,6 +184,33 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
       .map(([name, p]) => ({ name: name.slice(0, 100), ele: p.ele || null, reached_on: p.date || undefined }));
     if (newPeaks.length) ok(await sb.from('peaks').upsert(newPeaks, { onConflict: 'user_id,name', ignoreDuplicates: true }));
     for (const p of peaks) if (!J.peaks[p.name]) J.peaks[p.name] = { ele: p.ele, date: p.reached_on };
+  }
+  // the discoveries (plants, animals, places, challenges): both ways; the points and the species count on the profile
+  let isPublic = false;
+  async function syncDiscoveries() {
+    const found = loadFound();
+    const remote = ok(await sb.from('discoveries').select('item_id,found_on,gps,points'));
+    const there = new Set(remote.map((r) => r.item_id));
+    const pts = (id, e) => (BY_ID[id] ? RARITY[BY_ID[id].rarity].points : Math.min(1000, e.pts || 5));
+    const up = Object.entries(found).filter(([id]) => !there.has(id))
+      .map(([id, e]) => ({ item_id: id.slice(0, 160), found_on: e.date || undefined, gps: !!e.gps, points: pts(id, e) }));
+    if (up.length) ok(await sb.from('discoveries').upsert(up, { onConflict: 'user_id,item_id', ignoreDuplicates: true }));
+    let changed = false;
+    for (const r of remote) if (!found[r.item_id]) { found[r.item_id] = { date: r.found_on, gps: r.gps, ...(BY_ID[r.item_id] ? {} : { pts: r.points }) }; changed = true; }
+    if (changed) saveFound(found);
+    const sc = score(found);
+    const prof = ok(await sb.from('profiles').select('points,species,public').eq('id', user.id).maybeSingle());
+    isPublic = !!(prof && prof.public);
+    if (prof && (prof.points !== sc.pts || prof.species !== sc.species)) ok(await sb.from('profiles').update({ points: sc.pts, species: sc.species }).eq('id', user.id));
+  }
+  async function setPublic(on) {
+    if (!user) return;
+    ok(await sb.from('profiles').update({ public: !!on }).eq('id', user.id));
+    isPublic = !!on;
+  }
+  async function leaderboard(period = 'week', mode = 'all') {
+    if (!user) return null;
+    return ok(await sb.rpc('leaderboard', { period, mode }));
   }
   addEventListener('online', () => sync());
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && user) { sync(); if (gid) refreshPositions(); } });
@@ -406,5 +437,5 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     if (error) lastSent = null;                                       // no signal: try with the next fix
   }
 
-  return { onPosition, onNavStop: stopSharing, sync };
+  return { onPosition, onNavStop: stopSharing, sync, leaderboard, setPublic, get isPublic() { return isPublic; }, get user() { return user; } };
 }

@@ -20,8 +20,11 @@ import { buildTrailMarks } from './trailmarks.js';
 import { buildSigns } from './signs.js';
 import { buildLabels, placeId, CATS } from './labels.js';
 import { buildSpots } from './nature/spots.js';
-import { loadFound, buildDiscovery, score } from './nature/discover.js';
+import { loadFound, saveFound, buildDiscovery, score } from './nature/discover.js';
+import { challenges, settleChallenges } from './nature/challenges.js';
 import { buildCards } from './nature/card.js';
+import { buildFlowers } from './nature/flowers.js';
+import { buildBirds } from './nature/birds.js';
 import { GROUPS, RARITY, BY_ID } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
@@ -649,7 +652,20 @@ async function main() {
     if (x > pr.x + 2 && x < pr.z - 2 && z > pr.y + 2 && z < pr.w - 2) return terrain.height(x, z);
     return inner.inside(x, z) ? meshHeight(innerGeo, x, z) : terrain.base(x, z);
   };
-  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound });
+  // the spots of the whole trail network (tools/prepare_spots.py: the same ones as for GPS navigation) near
+  // this route; worked out here only if that file is missing
+  let spots = null;
+  try {
+    const all = await (await fetch('nature/spots.json')).json();
+    const LON0 = 20.076, LAT0 = 49.191, MXl = 111320 * Math.cos(LAT0 * Math.PI / 180), MZl = 110574;
+    const G = 50, cells = new Set();
+    for (let i = 0; i < N; i += 10) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++)
+      cells.add((Math.floor(trail.X[i] / G) + dx) + ',' + (Math.floor(trail.Z[i] / G) + dz));
+    spots = all.map(([id, lon, lat, ele]) => ({ id, x: (lon - LON0) * MXl, z: -(lat - LAT0) * MZl, y: ele }))
+      .filter((p) => cells.has(Math.floor(p.x / G) + ',' + Math.floor(p.z / G)) || (BY_ID[p.id]?.far && Math.min(...trail.X.map((x, i) => Math.hypot(x - p.x, trail.Z[i] - p.z))) < BY_ID[p.id].far));
+  } catch (e) { spots = null; }
+  if (!spots) spots = buildSpots({ trail, terrain, groundClass, meta });
+  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
     masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY,
     groundClass, grass: P.get('trawa') === '0' });
@@ -975,36 +991,35 @@ async function main() {
   const top = at(LENGTH);
   // the plants and animals of the catalogue along this route (src/nature) and what has been discovered
   const found = loadFound();
-  // the spots of the whole trail network (tools/prepare_spots.py: the same ones as for GPS navigation) near
-  // this route; worked out here only if that file is missing
-  let spots = null;
-  try {
-    const all = await (await fetch('nature/spots.json')).json();
-    const LON0 = 20.076, LAT0 = 49.191, MXl = 111320 * Math.cos(LAT0 * Math.PI / 180), MZl = 110574;
-    const G = 50, cells = new Set();
-    for (let i = 0; i < N; i += 10) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++)
-      cells.add((Math.floor(trail.X[i] / G) + dx) + ',' + (Math.floor(trail.Z[i] / G) + dz));
-    spots = all.map(([id, lon, lat, ele]) => ({ id, x: (lon - LON0) * MXl, z: -(lat - LAT0) * MZl, y: ele }))
-      .filter((p) => cells.has(Math.floor(p.x / G) + ',' + Math.floor(p.z / G)) || (BY_ID[p.id]?.far && Math.min(...trail.X.map((x, i) => Math.hypot(x - p.x, trail.Z[i] - p.z))) < BY_ID[p.id].far));
-  } catch (e) { spots = null; }
-  if (!spots) spots = buildSpots({ trail, terrain, groundClass, meta });
   const labels = buildLabels({ meta, terrain, camera, container: document.body, blockers: signs.posts.map((p) => p.at),
     extra: RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }],
     nature: { spots, found }, onClick: (it) => cards.show(it) });
   const cards = await buildCards({ found, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
+  // the plants of the catalogue at their spots: patches of flowers, herbs, ferns and dwarf shrubs
+  const birds = buildBirds({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)) });
+  const flowers = buildFlowers({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), shade, patchShading });
+  if (grass) grass.setClearings(flowers.clearings);
   const discovery = buildDiscovery({ items: labels.items, found, placeId, onFind: (it, e) => {
     labels.refresh(); renderLabelMenu();
     if (it.species) {
       const sp = it.species, r = RARITY[sp.rarity];
       toast(`${GROUPS[sp.group].icon} Odkryto: <b>${sp.name}</b> <i>${sp.latin}</i><br>${r.name} · +${r.points} pkt`);
     } else toast(`✓ Odkryto: <b>${it.name}</b> · +${e.pts} pkt`);
+    checkChallenges();
   } });
+  // challenges of the day, week, month and year: done ones get their bonus and a notice (after the discovery's)
+  function checkChallenges() {
+    const got = settleChallenges(found, J, saveFound);
+    if (got.length) setTimeout(() => toast(`🏅 Wyzwanie wykonane: <b>${got[0].text}</b><br>+${got[0].bonus} pkt`), 4600);
+    renderLabelMenu();
+  }
   // the 🏷 menu: labels on/off, each category, and the discoveries so far
   function renderLabelMenu() {
     const m = $('label-menu'), sc = score(found), c = labels.cats;
     m.innerHTML = `<label class="lm-all"><input type="checkbox" data-all ${labels.enabled ? 'checked' : ''}> Etykiety (L)</label>`
       + Object.entries(CATS).map(([k, n]) => `<label><input type="checkbox" data-cat="${k}" ${c[k] ? 'checked' : ''} ${labels.enabled ? '' : 'disabled'}> ${n}</label>`).join('')
-      + `<div class="lm-score">Odkryte gatunki: <b>${sc.species}</b> / ${sc.total} · miejsca: <b>${sc.places}</b><br>Punkty: <b>${sc.pts}</b></div>`;
+      + `<div class="lm-score">Odkryte gatunki: <b>${sc.species}</b> / ${sc.total} · miejsca: <b>${sc.places}</b><br>Punkty: <b>${sc.pts}</b></div>`
+      + challenges(found, J).slice(0, 2).map((ch) => `<div class="lm-ch">${ch.name}: ${ch.text} ${ch.done ? '✓' : `(${ch.have}/${ch.n})`}</div>`).join('');
     m.querySelector('[data-all]').onchange = (e) => { labels.setEnabled(e.target.checked); updateButtons(); renderLabelMenu(); };
     m.querySelectorAll('[data-cat]').forEach((el) => { el.onchange = () => labels.setCat(el.dataset.cat, el.checked); });
   }
@@ -1071,6 +1086,7 @@ async function main() {
       saveJournal(J);
       toast(sess.fair ? `🏁 Meta! Czas ${fmtClock(sess.t)}${rec ? '<br>Nowy rekord trasy!' : best ? `<br>Rekord: ${fmtClock(best.time)}` : ''}`
         : '🏁 Meta! (przejście z przyspieszeniem lub skokami – bez rekordu)');
+      checkChallenges();
     }
     // HUD and ghost
     const gs = best && !sess.done ? ghostAt(best, sess.t) : null;
@@ -1359,6 +1375,7 @@ async function main() {
       updatePatch(fx, fz); updateNear(fx, fz); trailWin.update(fx, fz); cover.update(fx, fz);
     }
     wildlife.update(dt, camera);
+    birds.update(dt, camera.position);
     labels.update(dt);
     discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });
@@ -1372,7 +1389,7 @@ async function main() {
     adaptResolution();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { groundClass, grass, cards, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 

@@ -20,7 +20,7 @@ export function score(found) {
   let pts = 0, species = 0, places = 0;
   for (const id of Object.keys(found)) {
     const s = BY_ID[id];
-    if (s) { pts += RARITY[s.rarity].points; species++; } else { pts += found[id].pts || 5; places++; }
+    if (s) { pts += RARITY[s.rarity].points; species++; } else { pts += found[id].pts || 5; if (!id.startsWith('event:')) places++; }
   }
   return { pts, species, places, total: CATALOG.length };
 }

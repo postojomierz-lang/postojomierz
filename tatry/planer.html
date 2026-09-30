@@ -66,6 +66,14 @@
   #journal h2 { font-size: 15px; margin: 10px 0 4px; }
   #journal h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 12px 0 4px; }
   .jlist { list-style: none; margin: 0; padding: 0; }
+  .challenges { display: grid; gap: 6px; }
+  .ch { background: var(--bg); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+  .ch small { color: var(--muted); } .ch.done { outline: 2px solid #2e7d32; }
+  .ch .bar { height: 5px; background: rgba(0,0,0,.1); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .ch .bar i { display: block; height: 100%; background: #2e7d32; }
+  .lb { margin: 4px 0; padding-left: 22px; font-size: 13px; } .lb li { padding: 3px 0; } .lb li.me { font-weight: 700; }
+  .lb .av { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background-size: cover; vertical-align: middle; font-style: normal; }
+  .lb-pub { font-size: 12px; color: var(--muted); align-items: flex-start; }
   .jlist li { display: flex; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; cursor: pointer; }
   .jlist li:hover { color: var(--accent); }
   .jlist .t { margin-left: auto; color: var(--muted); white-space: nowrap; }
@@ -181,6 +189,12 @@
       <h3>Ostatnie przejścia</h3><ul id="j-walks" class="jlist"></ul>
       <h3>Zdobyte szczyty</h3><p id="j-peaks" class="peaks"></p>
       <h3>Odznaki <span id="b-count"></span></h3><div id="badges" class="badges"></div>
+      <h3>Wyzwania</h3><div id="ch-list" class="challenges"></div>
+      <h3>Ranking</h3>
+      <div class="orow"><select id="lb-period"><option value="week">Ten tydzień</option><option value="month">Ten miesiąc</option><option value="year">Ten rok</option><option value="all">Ogółem</option></select>
+        <select id="lb-mode"><option value="all">Wszystkie</option><option value="gps">Na szlaku (GPS)</option><option value="3d">W widoku 3D</option></select></div>
+      <label class="orow lb-pub"><input type="checkbox" id="lb-public"> Pokazuj mnie w rankingu (imię, awatar i punkty widoczne dla wszystkich)</label>
+      <ol id="lb-list" class="lb"></ol>
     </section>
     <section id="groups" hidden>
       <h2>Grupy</h2>
