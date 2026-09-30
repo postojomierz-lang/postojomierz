@@ -618,29 +618,21 @@ async function main() {
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
   {
-    // boulders and scree near the trail: granite rocks with lichen, scanned (Poly Haven, CC0),
-    // simplified in Blender (tools/blender/decimate_rocks.py)
-    const gltf = await new GLTFLoader().loadAsync('models/rocks.glb');
+    // boulders and scree near the trail: Tatra granite made in Blender (tools/blender/make_granite.py):
+    // jointed blocks, slabs, worn boulders and wedges with lichen; stones (~1 m) and boulders (~4 m) apart,
+    // so the granite's grain keeps its real size
+    const gltf = await new GLTFLoader().loadAsync('models/granite.glb');
     const variants = [];
     gltf.scene.traverse((o) => {
       if (!o.isMesh) return;
       o.geometry.computeBoundingBox();
       const bb = o.geometry.boundingBox, size = new THREE.Vector3(); bb.getSize(size);
-      const src = o.material;
-      const mat = new THREE.MeshLambertMaterial({ map: src.map, normalMap: src.normalMap });
+      const mat = new THREE.MeshLambertMaterial({ map: o.material.map, normalMap: o.material.normalMap });
       patchShading(mat, shade);
-      // Tatra granite is light grey (albedo ~0.3): most of the scans' brown taken out (lichen keeps a hint
-      // of colour) and brought up from their ~0.05
-      const prev = mat.onBeforeCompile;
-      mat.onBeforeCompile = (sh) => {
-        prev(sh);
-        sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-          diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))), diffuseColor.rgb, 0.3) * vec3(4.2, 4.2, 4.35);`);
-      };
-      const prevKey = mat.customProgramCacheKey;
-      mat.customProgramCacheKey = () => prevKey() + 'granite';
-      variants.push({ geo: o.geometry, mat, size: Math.max(size.x, size.y, size.z), items: [] });
+      variants.push({ geo: o.geometry, mat, size: Math.max(size.x, size.y, size.z), big: o.name.startsWith('boulder'), items: [] });
     });
+    const stones = variants.filter((v) => !v.big), boulders = variants.filter((v) => v.big);
+    const pick = (s) => { const g = s > 2.2 && boulders.length ? boulders : stones; return g[Math.floor(r() * g.length)]; };
     const count = tier(5000, 9000, 16000, 32000);
     const ip = pixels(innerBmp), IW = innerBmp.width;
     let k = 0, guard = 0;
@@ -668,7 +660,7 @@ async function main() {
       const nrm = terrain.normal(x, z, 3);
       if (nrm.y < 0.55) continue; // no boulders glued to cliffs
       const s = (0.3 + Math.pow(r(), 3) * (d < 8 ? 0.8 : 2.8) * big) * Math.min(1, (nrm.y - 0.45) * 2.5);
-      const vi = Math.floor(r() * variants.length), vr = variants[vi];
+      const vr = pick(s);
       // rest on the slope: tilt towards the ground normal, random turn, sink a little
       q.setFromUnitVectors(up, nrm.clone().lerp(up, 0.4).normalize());
       qy.setFromAxisAngle(up, r() * 6.283);
@@ -677,13 +669,38 @@ async function main() {
       dummy.scale.set(sc * (0.8 + r() * 0.4), sc * (0.7 + r() * 0.5), sc * (0.8 + r() * 0.4));
       dummy.position.set(x, ground(x, z) - s * 0.15, z);
       dummy.updateMatrix();
-      const g = 1.2 + r() * 0.35;   // light Tatra granite (the scans are dark)
-      vr.items.push([dummy.matrix.clone(), g]);
+      vr.items.push([dummy.matrix.clone(), 0.85 + r() * 0.25]);
+      k++;
+    }
+    // blocks on the rock faces beside the trail: the 1 m terrain alone is smooth there; jointed granite
+    // sticks out of it in blocks and slabs, set into the slope along its normal
+    const onWalls = tier(250, 500, 900, 1800);
+    k = 0; guard = 0;
+    while (k < onWalls && guard++ < onWalls * 40) {
+      const i = Math.floor(r() * N);
+      const d = 6 + Math.pow(r(), 1.6) * 160, a = r() * 6.28;
+      const x = trail.X[i] + Math.cos(a) * d, z = trail.Z[i] + Math.sin(a) * d;
+      const gc = groundClass(x, z);
+      if (!gc || gc.c !== 2 || !inner.inside(x, z) || terrain.maskAt(trailVisWide, x, z) > 0.02) continue;
+      const nrm = terrain.normal(x, z, 4);
+      if (nrm.y > 0.75 || nrm.y < 0.1) continue;
+      const s = 2.5 + Math.pow(r(), 2) * 7;
+      const vr = pick(s);
+      q.setFromUnitVectors(up, nrm);
+      qy.setFromAxisAngle(up, r() * 6.283);
+      dummy.quaternion.copy(q).multiply(qy);
+      const sc = s / vr.size;
+      dummy.scale.set(sc * (0.8 + r() * 0.4), sc * (0.5 + r() * 0.4), sc * (0.8 + r() * 0.4));
+      // sunk into the face by ~60 % of its height, so it reads as a ledge or a jointed block, not a pebble
+      const hgt = s * 0.45 * (0.5 + 0.4 * r());
+      dummy.position.set(x - nrm.x * hgt * 0.6, ground(x, z) - nrm.y * hgt * 0.6, z - nrm.z * hgt * 0.6);
+      dummy.updateMatrix();
+      vr.items.push([dummy.matrix.clone(), 0.8 + r() * 0.25]);
       k++;
     }
     for (const vr of variants) {
       const mesh = new THREE.InstancedMesh(vr.geo, vr.mat, Math.max(1, vr.items.length));
-      vr.items.forEach(([m, g], j) => { mesh.setMatrixAt(j, m); mesh.setColorAt(j, col.setRGB(g, g, g * 0.97)); });
+      vr.items.forEach(([m, g], j) => { mesh.setMatrixAt(j, m); mesh.setColorAt(j, col.setRGB(g, g, g)); });
       mesh.count = vr.items.length;
       mesh.castShadow = mesh.receiveShadow = true;
       scene.add(mesh);
@@ -1275,7 +1292,7 @@ async function main() {
     adaptResolution();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { composer, ssao, trees3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { groundClass, composer, ssao, trees3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
