@@ -27,7 +27,7 @@ Tempo marszu liczone jest wzorem Toblera.
 | szlak, jeziora, potoki, wodospady | OpenStreetMap przez Overture Maps | wektor (`tools/prepare_water.py` dla potoków) |
 | tekstury z bliska | Poly Haven (CC0) | 1K |
 | świerki, młode świerki, trawa, paproć | modele Poly Haven (CC0), wypieczone w Blenderze do impostorów (8 widoków, kolor + normalne) | `public/models/*.webp` |
-| głazy | skany Poly Haven `rock_moss_set_01/02` (CC0), uproszczone w Blenderze do ~1500 trójkątów | `public/models/rocks.glb` |
+| głazy | granit tatrzański generowany w Blenderze (`tools/blender/make_granite.py`): 16 brył (bloki, płyty, głazy, kliny), kamienie ~1 m i głazy ~4 m, wspólny atlas 2048 px | `public/models/granite.glb` |
 
 Przygotowanie: `python3 tools/prepare.py` (panorama, las, szlak), potem `python3 tools/prepare_gugik.py`
 (pobiera z geoportal.gov.pl, pamięć podręczna w `tools/.cache/`; słowacki DMR 5.0 czyta z `zbgis/*.tif`,
@@ -42,7 +42,12 @@ W silniku: siatka 1,25 m wokół kamery (przebudowywana w ruchu) na siatce 6 m, 
 - `python3 tools/blender/bake_impostors.py <model.gltf> <out> <nazwa> <widoki> <szer> <wys>`: widoki z boku
   (Cycles: Diffuse Color, Normal, alfa);
 - `python3 tools/pack_impostors.py <out> public/models spruce sapling grass fern`: atlasy WebP;
-- `python3 tools/blender/decimate_rocks.py public/models/rocks.glb <rock_set>.gltf ...`.
+- `python3 tools/blender/make_granite.py public/models/granite.glb [2048] [seed]`: skały tatrzańskie. Prostopadłościan
+  cięty płaszczyznami spękań (tak pęka granit), stępione krawędzie, rysy i ziarno na gęstej siatce (~100 tys. trójkątów),
+  wypiekane (Cycles) na lekką (700 / 1300 trójkątów): normalne i kolor proceduralnego granitu (skaleń, kwarc,
+  biotyt, rdzawe naloty, porost wzorzec naskalny i szare skorupy na wierzchu, zacieki na ścianach, ciemniejsze
+  szczeliny). W widoku: kamienie w piargach i blokowiskach oraz bloki osadzone w ścianach skalnych przy szlaku.
+- (dawniej) `tools/blender/decimate_rocks.py`: skany Poly Haven, `public/models/rocks.glb`.
 
 W silniku (`src/impostor.js`, `src/groundcover.js`): impostor to jedna karta obracana do kamery,
 mieszająca dwa najbliższe widoki, oświetlana normalnymi z Blendera, z cieniem i wiatrem. Trawa i paproć
