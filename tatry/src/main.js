@@ -366,7 +366,7 @@ async function main() {
   };
   const noNear = { map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: near.patch,
     trail: trailWin.map, trailRect: { value: new THREE.Vector4(0, 0, 0, 0) }, cls: { value: clsTex } };
-  const step = tier(12, 8, 6, 4.5) * Math.sqrt(AREA_K);
+  const step = tier(16, 8, 6, 4.5) * Math.sqrt(AREA_K);
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
   const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, lowerUnderPatch: true });
@@ -430,7 +430,9 @@ async function main() {
 
   status('Budowanie panoramy Tatr…'); await frame();
   const shrink = 120;
-  const outerGeo = gridGeometry(OB[0], OB[1], OB[2], OB[3], meta.outer.n[0] - 1, meta.outer.n[1] - 1, (x, z) => {
+  // the panorama: every sample on the better tiers, every second on low (far away, largely under the detailed area)
+  const oDiv = tier(2, 1, 1, 1);
+  const outerGeo = gridGeometry(OB[0], OB[1], OB[2], OB[3], Math.round((meta.outer.n[0] - 1) / oDiv), Math.round((meta.outer.n[1] - 1) / oDiv), (x, z) => {
     const h = terrain.base(x, z);
     return inner.inside(x, z, shrink) ? h - 60 : h;
   });
@@ -644,7 +646,8 @@ async function main() {
     blocked: (x, z) => houses.inside(x, z, 1) || terrain.maskAt(lakeMask, x, z) > 0.05,
     ...(RI ? { colourAt: RI.colourAt, colours: route.colours } : {}) });
   const steps = buildSteps({ scene, terrain, trail, TH, shade, sections, rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso) });
-  const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6, ...(RI ? { chainOK: RI.chainAt } : {}) });
+  const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6, ...(RI ? { chainOK: RI.chainAt } : {}),
+    maxDistance: tier(120, 160, 220, 300) });
   status('Wypuszczanie zwierząt…'); await frame();
   // height of the surface actually drawn at (x, z): the 1 m patch near the camera, the 6 m mesh elsewhere
   const drawnHeight = (x, z) => {
@@ -676,19 +679,21 @@ async function main() {
     free: (x, z) => terrain.maskAt(clearing, x, z) === 0 && terrain.maskAt(lakeMask, x, z) < 0.02 && !houses.inside(x, z, 3) });
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
+  const rocks = { update() {} };
   {
     // boulders and scree near the trail: Tatra granite made in Blender (tools/blender/make_granite.py):
     // jointed blocks, slabs, worn boulders and wedges with lichen; stones (~1 m) and boulders (~4 m) apart,
     // so the granite's grain keeps its real size
     const gltf = await new GLTFLoader().loadAsync('models/granite.glb');
-    const variants = [];
+    const variants = [], far = {};
+    gltf.scene.traverse((o) => { if (o.isMesh && o.name.endsWith('_lod1')) far[o.name.slice(0, -5)] = o.geometry; });
     gltf.scene.traverse((o) => {
-      if (!o.isMesh) return;
+      if (!o.isMesh || o.name.endsWith('_lod1')) return;
       o.geometry.computeBoundingBox();
       const bb = o.geometry.boundingBox, size = new THREE.Vector3(); bb.getSize(size);
       const mat = new THREE.MeshLambertMaterial({ map: o.material.map, normalMap: o.material.normalMap });
       patchShading(mat, shade);
-      variants.push({ geo: o.geometry, mat, size: Math.max(size.x, size.y, size.z), big: o.name.startsWith('boulder'), items: [] });
+      variants.push({ geo: o.geometry, geoFar: far[o.name] || o.geometry, mat, size: Math.max(size.x, size.y, size.z), big: o.name.startsWith('boulder'), items: [] });
     });
     const stones = variants.filter((v) => !v.big), boulders = variants.filter((v) => v.big);
     const pick = (s) => { const g = s > 2.2 && boulders.length ? boulders : stones; return g[Math.floor(r() * g.length)]; };
@@ -757,13 +762,36 @@ async function main() {
       vr.items.push([dummy.matrix.clone(), 0.8 + r() * 0.25]);
       k++;
     }
+    // levels of detail: the full rock near the camera (with its shadow), a tenth of the triangles further out, the
+    // small stones gone in the distance; re-sorted as the camera moves (a few thousand rocks, cheap)
+    const NEAR = tier(25, 40, 60, 90), FAR_S = tier(260, 400, 700, 1200), FAR_B = tier(600, 900, 1400, 2500);
     for (const vr of variants) {
-      const mesh = new THREE.InstancedMesh(vr.geo, vr.mat, Math.max(1, vr.items.length));
-      vr.items.forEach(([m, g], j) => { mesh.setMatrixAt(j, m); mesh.setColorAt(j, col.setRGB(g, g, g)); });
-      mesh.count = vr.items.length;
-      mesh.castShadow = mesh.receiveShadow = true;
-      scene.add(mesh);
+      const mk = (geo, shadow) => {
+        const m = new THREE.InstancedMesh(geo, vr.mat, Math.max(1, vr.items.length));
+        m.castShadow = shadow; m.receiveShadow = true; m.count = 0;
+        m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        m.setColorAt(0, col.setRGB(1, 1, 1));
+        scene.add(m); return m;
+      };
+      vr.near = mk(vr.geo, true); vr.farMesh = mk(vr.geoFar, false);
+      vr.pos = vr.items.map(([m]) => new THREE.Vector3().setFromMatrixPosition(m));
     }
+    let rockAt = null, rockT = 0;
+    rocks.update = (cam, dt) => {
+      if ((rockT -= dt) > 0 && rockAt && rockAt.distanceTo(cam) < 4) return;
+      rockT = 0.3; rockAt = cam.clone();
+      for (const vr of variants) {
+        let n = 0, f = 0;
+        const farMax = vr.big ? FAR_B : FAR_S;
+        vr.items.forEach(([m, g], j) => {
+          const d = vr.pos[j].distanceTo(cam);
+          if (d < NEAR) { vr.near.setMatrixAt(n, m); vr.near.setColorAt(n++, col.setRGB(g, g, g)); }
+          else if (d < farMax) { vr.farMesh.setMatrixAt(f, m); vr.farMesh.setColorAt(f++, col.setRGB(g, g, g)); }
+        });
+        vr.near.count = n; vr.farMesh.count = f;
+        for (const mm of [vr.near, vr.farMesh]) { mm.instanceMatrix.needsUpdate = true; if (mm.instanceColor) mm.instanceColor.needsUpdate = true; mm.computeBoundingSphere(); }
+      }
+    };
   }
 
   // hiker marker (visible in drone mode)
@@ -1424,6 +1452,8 @@ async function main() {
     }
     wildlife.update(dt, camera);
     birds.update(dt, camera.position);
+    rocks.update(camera.position, dt);
+    chains.update(camera.position); deadwood.update(camera.position);
     labels.update(dt);
     discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });

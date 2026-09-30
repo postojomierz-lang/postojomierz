@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { patchShading } from './materials.js';
+import { cullByDistance } from './lod.js';
 import { rng } from './noise.js';
 
 export async function buildDeadwood({ scene, terrain, trail, shade, isForest, free, quality }) {
@@ -36,12 +37,16 @@ export async function buildDeadwood({ scene, terrain, trail, shade, isForest, fr
     v.items.push(m4.clone());
     k++;
   }
+  // logs further than a few hundred metres are hidden by the forest anyway: not drawn
+  const maxD = { low: 150, mid: 220, high: 300, ultra: 400 }[quality] ?? 300;
+  const culls = [];
   for (const v of variants) {
     if (!v.items.length) continue;
     const mesh = new THREE.InstancedMesh(v.geo, v.mat, v.items.length);
     v.items.forEach((m, j) => mesh.setMatrixAt(j, m));
     mesh.castShadow = mesh.receiveShadow = true;
     scene.add(mesh);
+    culls.push(cullByDistance(mesh, v.items, maxD));
   }
-  return { count: k };
+  return { count: k, update: (cam) => culls.forEach((c) => c(cam)) };
 }
