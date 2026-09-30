@@ -29,6 +29,9 @@
   #nav .row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 4px; }
   #nav .warn { color: #fff; background: #c8201c; border-radius: 6px; padding: 3px 8px; margin-top: 6px; font-weight: 600; }
   #nav .btns { display: flex; gap: 6px; margin-top: 8px; }
+  .wx-alert { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; padding: 6px 8px; border-radius: 8px; background: #fff3d6; border: 2px solid #e0a000; font-size: 13px; line-height: 1.35; }
+  .wx-alert.danger { background: #ffe6e3; border-color: #c8201c; }
+  .wx-alert span { flex: 1; } .wx-alert button { border: 0; background: none; padding: 0 2px; }
   #nav .btns button { flex: 1; }
   #nav .btns button.on { background: #1f6fd1; border-color: #1f6fd1; color: #fff; }
   .me { width: 18px !important; height: 18px !important; margin: -9px 0 0 -9px !important; border-radius: 50%; background: #1f6fd1; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 1px 5px rgba(0,0,0,.4); }
@@ -303,6 +306,7 @@
       <div class="big" id="nav-big"></div>
       <div class="row" id="nav-row"></div>
       <div class="warn" id="nav-warn" hidden></div>
+      <div class="wx-alert" id="nav-wx" hidden><span id="nav-wx-t"></span><button id="nav-wx-x" title="Zamknij">✕</button></div>
       <div class="btns">
         <button id="nav-follow" class="on">◎ Śledź</button>
         <button id="nav-share" hidden>👥 Udostępnij pozycję</button>

@@ -17,6 +17,7 @@ import { buildGpsDiscovery } from '../nature/gps.js';
 import { setupOnline } from './online.js';
 import { setupTabs } from './tabs.js';
 import { setupWeatherMap } from './weathermap.js';
+import { setupNavWeather } from './navweather.js';
 
 const $ = (id) => document.getElementById(id);
 const TABS = setupTabs();
@@ -329,8 +330,20 @@ $('b-offline').onclick = async () => {
 offlineState();
 
 // ---------------------------------------------------------------- GPS navigation along the route
+// weather warnings on the way: the forecast for the route's highest point (or where you are, without a
+// route) over the time still to walk
+let lastFix = null;
+const NAVWX = setupNavWeather({ $, data, G, left: () => NAV.left(), top: () => {
+  if (path) {
+    let t = path[0];
+    for (const v of path) if (G.H[v] > G.H[t]) t = v;
+    return { lat: data.v[t][1], lon: data.v[t][0], ele: G.H[t], startEle: G.H[path[0]] };
+  }
+  return lastFix && lastFix.alt != null ? { lat: lastFix.lat, lon: lastFix.lon, ele: lastFix.alt, startEle: lastFix.alt } : null;
+} });
 const NAV = setupNav({ map, G, data, $, route: () => ({ path, summary }),
-  onPosition: (p) => { ONLINE.onPosition(p); GPSD.onPosition(p); }, onStop: () => ONLINE.onNavStop(), sunset: () => { const n = new Date(); const v = data.v[path ? path[0] : 0]; return sunTimes(n, v[1], v[0]).sunset; }, onFinish: (w) => {
+  onPosition: (p) => { lastFix = p; ONLINE.onPosition(p); GPSD.onPosition(p); NAVWX.onPosition(p); },
+  onStart: () => NAVWX.start(), onStop: () => { NAVWX.stop(); ONLINE.onNavStop(); }, sunset: () => { const n = new Date(); const v = data.v[path ? path[0] : 0]; return sunTimes(n, v[1], v[0]).sunset; }, onFinish: (w) => {
   const title = routeTitle() || 'Przejście GPS';
   const walk = { key: path ? routeKey(location.hash) : 'gps', title, date: new Date().toISOString().slice(0, 10), dist: Math.round(w.dist),
     up: w.up, time: Math.round(w.time), fair: w.completed, gps: true, hash: path ? location.hash : '', trace: w.trace };
