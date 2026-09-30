@@ -436,5 +436,23 @@
   "author": "Marcin Zuwała",
   "license": "CC BY 4.0",
   "url": "https://www.inaturalist.org/photos/448216166"
+ },
+ "soweczka": {
+  "file": "Eurasian pygmy owl (Glaucidium passerinum) Białowieza.jpg",
+  "author": "Charles J. Sharp",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Eurasian_pygmy_owl_(Glaucidium_passerinum)_Bia%C5%82owieza.jpg"
+ },
+ "wlochatka": {
+  "file": "Aegolius funereus funereus (Tengmalm's Owl), Lindberg, Germany 1.jpg",
+  "author": "Christoph Moning",
+  "license": "CC BY 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Aegolius_funereus_funereus_(Tengmalm%27s_Owl),_Lindberg,_Germany_1.jpg"
+ },
+ "gluszec": {
+  "file": "Tetrao urogallus, Glenfeshie, Scotland 1.jpg",
+  "author": "Simon Bailey",
+  "license": "CC BY 2.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Tetrao_urogallus,_Glenfeshie,_Scotland_1.jpg"
  }
 }
