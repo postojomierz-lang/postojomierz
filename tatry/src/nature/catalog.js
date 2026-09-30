@@ -1,4 +1,4 @@
-// The Tatra nature catalogue: 70 plants and 80 animals to discover along the trails (the owner's lists).
+// The Tatra nature catalogue: 70 plants and 82 animals to discover along the trails (the owner's lists).
 // Each entry: id, Polish name, Latin name, group, rarity (1 common, 2 uncommon, 3 rare, 4 unique), the
 // elevation range (m), the ground it lives on (the class map of tools/prepare_classes.py: 1 water, 2 rock
 // face, 3 scree, 4 meadow, 5 dwarf pine, 6 forest, 8 gravel), extras (stream: beside a stream; lake: at a
@@ -115,6 +115,8 @@ const RAW = [
   ['ryjowka', 'Ryjówka górska', 'Sorex alpinus', 'mammal', 3, 1000, 1900, [FOREST, MEADOW], { stream: true }, 'Drobny owadożerca zacienionych jarów i chłodnych potoków.'],
   ['podkowiec', 'Podkowiec mały', 'Rhinolophus hipposideros', 'mammal', 4, 900, 1300, [WALL, FOREST], { lime: true }, 'Rzadki nietoperz zimujący w jaskiniach, m.in. w Dolinie Kościeliskiej.'],
   ['mroczek', 'Mroczek pozłocisty', 'Eptesicus nilssonii', 'mammal', 3, 1000, 2000, [W, MEADOW], { lake: true }, 'Wysokogórski nietoperz polujący nad stawami i graniami.'],
+  ['lis', 'Lis rudy', 'Vulpes vulpes', 'mammal', 2, 900, 2000, [FOREST, MEADOW, PINE], {}, 'Sprytny drapieżnik reglowych polan i hal; słynie z wysokiego skoku, którym łowi norniki pod trawą.'],
+  ['zajac', 'Zając szarak', 'Lepus europaeus', 'mammal', 2, 900, 1800, [MEADOW, FOREST], {}, 'Mieszkaniec polan i łąk reglowych, ucieka zygzakiem; w Tatrach bywa zdobyczą orła przedniego i lisa.'],
   ['zolednica', 'Żołędnica europejska', 'Eliomys quercinus', 'mammal', 4, 900, 1400, [FOREST], {}, 'Skrajnie rzadki, nadrzewny gryzoń nocy reglowych lasów.'],
   ['popielica', 'Popielica szara', 'Glis glis', 'mammal', 3, 900, 1250, [FOREST], {}, 'Zwinny mieszkaniec dziuplastych buczyn regla dolnego.'],
   ['orzesznica', 'Orzesznica leszczynowa', 'Muscardinus avellanarius', 'mammal', 3, 900, 1300, [FOREST], {}, 'Najmniejszy krajowy pilchowaty, żyje w gęstym podszycie leśnym.'],

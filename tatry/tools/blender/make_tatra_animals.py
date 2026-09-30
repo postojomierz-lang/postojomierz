@@ -5,7 +5,11 @@ make_animals.py):
   black hooked horns, parented to the head bone;
 - marmot (świstak) from the Wolf: very short legs, a round heavy body, short muzzle, tiny ears, a short
   bushy tail, grey-brown;
-- wolf (wilk): the Wolf in grey.
+- wolf (wilk): the Wolf in grey;
+- fox (lis) from the Wolf: slimmer and lower, big pointed ears, a long bushy tail, red with a white chest;
+- wild boar (dzik) from the Wolf: a deep, wedge-shaped body on short legs, a big low head with a long snout,
+  small ears, a thin short tail, dark bristly brown;
+- brown hare (zając) from the Wolf: small and compact, long upright ears, a tiny tail, grey-brown.
 Exported as GLB with the clips the scene uses, size normalised (metres, feet at y = 0).
 Run: python3 make_tatra_animals.py <quaternius_glTF_dir> <out_dir>
 """
@@ -20,7 +24,7 @@ from mathutils import Matrix, Vector
 
 src, out = sys.argv[1], sys.argv[2]
 os.makedirs(out, exist_ok=True)
-KEEP = {'Walk', 'Idle', 'Eating', 'Gallop', 'Idle_Headlow', 'Idle_2_HeadLow'}
+KEEP = {'Walk', 'Idle', 'Eating', 'Gallop', 'Idle_Headlow', 'Idle_2_HeadLow', 'Death', 'Attack', 'Attack_Headbutt'}
 
 
 def load(name):
@@ -183,3 +187,100 @@ export(arm, meshes, 'marmot', 0.6)
 arm, meshes = load('Wolf')
 colour(meshes, {'Main': (0.30, 0.28, 0.25), 'Main_Light': (0.56, 0.53, 0.48), 'Nose': (0.02, 0.02, 0.02), 'Eyes_Black': (0.01, 0.01, 0.01)})
 export(arm, meshes, 'wolf', 1.3)
+
+# ---------------------------------------------------------------- fox from the wolf
+arm, meshes = load('Wolf')
+wolf = next(o for o in meshes if o.name.startswith('Wolf'))
+
+
+def fox(co, w, t, u, g):
+    body, head, ear, tail = w(['Body', 'Back', 'Torso']), w(['Head']), w(['Ear']), w(['Tail'])
+    co.x = g['cx'] + (co.x - g['cx']) * (1 - 0.18 * body)                 # slimmer
+    belly = g['z0'] + 0.4 * g['H']
+    if co.z < belly:                                                       # a little shorter in the leg
+        co.z = belly - (belly - co.z) * 0.82
+    if ear > 0.3:                                                          # big pointed ears
+        base = g['z1'] - 0.14 * g['H']
+        if co.z > base:
+            co.z = base + (co.z - base) * 1.7
+    if head > 0.3 and t > 0.86:                                            # a finer, pointed muzzle
+        co.y += g['hd'] * (t - 0.86) * g['L'] * 0.25 * head
+        co.x = g['cx'] + (co.x - g['cx']) * (1 - 0.3 * head * (t - 0.86) / 0.14)
+    if tail > 0.2:                                                         # the brush
+        root = g['y0'] + 0.12 * g['L'] if g['hd'] > 0 else g['y1'] - 0.12 * g['L']
+        k = min(1, abs(co.y - root) / (0.15 * g['L']))
+        co.x = g['cx'] + (co.x - g['cx']) * (1 + 1.1 * tail * k)
+        mz = g['z0'] + 0.55 * g['H']
+        co.z = mz + (co.z - mz) * (1 + 0.9 * tail * k)
+
+
+reshape(wolf, fox)
+colour(meshes, {'Main': (0.42, 0.11, 0.02), 'Main_Light': (0.78, 0.72, 0.62), 'Nose': (0.01, 0.01, 0.01), 'Eyes_Black': (0.01, 0.01, 0.01)})
+export(arm, meshes, 'fox', 1.0)
+
+# ---------------------------------------------------------------- wild boar from the wolf
+arm, meshes = load('Wolf')
+wolf = next(o for o in meshes if o.name.startswith('Wolf'))
+
+
+def boar(co, w, t, u, g):
+    body, neck, head, ear, tail = w(['Body', 'Back', 'Torso']), w(['Neck']), w(['Head']), w(['Ear']), w(['Tail'])
+    belly = g['z0'] + 0.45 * g['H']
+    if co.z < belly:                                                       # short legs
+        co.z = belly - (belly - co.z) * 0.5
+    co.x = g['cx'] + (co.x - g['cx']) * (1 + 0.55 * body + 0.6 * neck + 0.35 * head)   # wide and heavy
+    if body + neck > 0.3:                                                  # deep body, high shoulders
+        co.z -= (0.5 - u) * g['H'] * 0.25 * (body + neck) if u < 0.5 else 0
+        if t > 0.55:
+            co.z += (t - 0.55) * g['H'] * 0.35 * (body + neck)
+    if head + neck > 0.3 and t > 0.7:                                      # the head big and carried low
+        k = (t - 0.7) / 0.3
+        co.z -= k * g['H'] * 0.22 * (head + neck)
+        co.y -= g['hd'] * g['L'] * 0.06 * (head + neck)
+    if head > 0.3 and t > 0.85:                                            # a long snout
+        co.y += g['hd'] * (t - 0.85) * g['L'] * 0.5 * head
+    if ear > 0.3:
+        base = g['z1'] - 0.14 * g['H']
+        if co.z > base:
+            co.z = base + (co.z - base) * 0.45
+    if tail > 0.2:
+        root = g['y0'] + 0.1 * g['L'] if g['hd'] > 0 else g['y1'] - 0.1 * g['L']
+        co.y = root + (co.y - root) * (1 - 0.55 * tail)
+        co.x = g['cx'] + (co.x - g['cx']) * (1 - 0.5 * tail)
+
+
+reshape(wolf, boar)
+colour(meshes, {'Main': (0.055, 0.042, 0.032), 'Main_Light': (0.11, 0.085, 0.06), 'Nose': (0.12, 0.08, 0.07), 'Eyes_Black': (0.01, 0.01, 0.01)})
+export(arm, meshes, 'boar', 1.4)
+
+# ---------------------------------------------------------------- brown hare from the wolf
+arm, meshes = load('Wolf')
+wolf = next(o for o in meshes if o.name.startswith('Wolf'))
+
+
+def hare(co, w, t, u, g):
+    body, head, ear, tail = w(['Body', 'Back', 'Torso']), w(['Head']), w(['Ear']), w(['Tail'])
+    belly = g['z0'] + 0.45 * g['H']
+    if co.z < belly:                                                       # crouched: short legs under a round body
+        co.z = belly - (belly - co.z) * 0.6
+    co.x = g['cx'] + (co.x - g['cx']) * (1 + 0.5 * body)
+    if body > 0.3 and u > 0.5:
+        co.z += (u - 0.5) * g['H'] * 0.3 * body                            # a rounded back
+    if head > 0.3 and t > 0.82:                                            # a short, rounded muzzle
+        co.y -= g['hd'] * (t - 0.82) * g['L'] * 0.55 * head
+    if ear > 0.3:                                                          # long upright ears
+        base = g['z1'] - 0.16 * g['H']
+        if co.z > base:
+            co.z = base + (co.z - base) * 3.2
+            co.x = g['cx'] + (co.x - g['cx']) * 0.8
+    if tail > 0.2:                                                         # a tiny scut
+        root = g['y0'] + 0.1 * g['L'] if g['hd'] > 0 else g['y1'] - 0.1 * g['L']
+        co.y = root + (co.y - root) * (1 - 0.85 * tail)
+        mz = g['z0'] + 0.6 * g['H']
+        co.z = mz + (co.z - mz) * (1 - 0.5 * tail)
+
+
+reshape(wolf, hare)
+colour(meshes, {'Main': (0.2, 0.14, 0.08), 'Main_Light': (0.62, 0.56, 0.46), 'Nose': (0.05, 0.03, 0.03), 'Eyes_Black': (0.01, 0.01, 0.01)})
+export(arm, meshes, 'hare', 0.6)
+

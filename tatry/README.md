@@ -252,6 +252,11 @@ Uruchomienie: `python3 tools/blender/make_flowers.py public/models/flowers`.
 - **rykowisko** (10 września – 20 października, data wędrówki): drugi byk w stadzie jeleni, ryk (syntetyzowany w
   `sound.js`, z opóźnieniem na odległość, byk unosi łeb) i walka byków na poroża;
 - **niedźwiedzica z młodymi**: młode trzymają się matki i biegną za nią.
+- **lis** (model z wilka w `make_tatra_animals.py`): poluje na nornika: nasłuchuje, wyskakuje wysoko i nurkuje w trawę;
+  czasem goni zająca (zwykle zając ucieka);
+- **zając** (model z wilka): ucieka zygzakiem; orzeł przedni poluje też na zające;
+- **dziki** (model z wilka): stado buchtuje, zostawiając płaty zrytej ziemi;
+- zwierzę dopadnięte w pościgu pada z animacją „Death”, drapieżnik atakuje („Attack”), potem je.
 Każda scena ma krótki komunikat na ekranie. Orzeł przedni nie łowi ryb (w Tatrach nie ma bielika ani rybołowa), stąd świstaki.
 
 ## Zgłoszenia z testów (🐞)
