@@ -262,5 +262,41 @@
   "author": "Daniel Cahen",
   "license": "CC BY 4.0",
   "url": "https://www.inaturalist.org/photos/286700557"
+ },
+ "paprotnica": {
+  "file": "Cystopteris montana (Berg-Blasenfarn) IMG 1428.jpg",
+  "author": "HermannSchachner",
+  "license": "CC0",
+  "url": "https://commons.wikimedia.org/wiki/File:Cystopteris_montana_(Berg-Blasenfarn)_IMG_1428.jpg"
+ },
+ "pieciornik": {
+  "file": "inaturalist-695695488",
+  "author": "Grzegorz Grzejszczak",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/695695488"
+ },
+ "naparstnica": {
+  "file": "inaturalist-528500905",
+  "author": "Johannes",
+  "license": "CC0",
+  "url": "https://www.inaturalist.org/photos/528500905"
+ },
+ "parnazja": {
+  "file": "inaturalist-45605741",
+  "author": "Jens-Christian Svenning",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/45605741"
+ },
+ "turzyca-mocna": {
+  "file": "inaturalist-87565509",
+  "author": "Grzegorz Grzejszczak",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/87565509"
+ },
+ "bniec": {
+  "file": "inaturalist-290915269",
+  "author": "Tim",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/290915269"
  }
 }
