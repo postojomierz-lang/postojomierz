@@ -14,6 +14,7 @@
 <style>
   :root { --bg: #f6f5f1; --panel: #ffffff; --ink: #1d2327; --muted: #6a7178; --line: #e2e0da; --accent: #c8201c; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--ink); background: var(--bg); }
   #app { display: flex; height: 100%; }
   #side { width: 360px; flex: none; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); overflow: auto; z-index: 2; }
@@ -39,18 +40,44 @@
   #day .tight { color: #9a4b00; font-weight: 600; }
   #day ul { margin: 4px 0 0; padding-left: 18px; } #day li { margin: 2px 0; }
   #day .src { color: var(--muted); font-size: 11px; margin-top: 4px; }
-  #offline-state { margin: 0 16px 8px; font-size: 12px; color: var(--muted); }
-  header { padding: 14px 16px 8px; }
-  h1 { font-size: 18px; margin: 0; }
-  h1 small { color: var(--muted); font-weight: 400; }
-  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
-  .tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px; }
+  #offline-state { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
+  header { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px 14px; }
+  .brand { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+  .brand img { width: 34px; height: 34px; border-radius: 9px; flex: none; }
+  .brand small { color: var(--muted); font-size: 12px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+  .chip { border-radius: 999px; padding: 5px 11px 5px 6px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .chip.in { background: #e4efe0; border-color: #cfe0c8; }
+  #b-account-av { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #fff center / cover no-repeat; }
+  #tabs { position: sticky; top: 0; z-index: 3; display: flex; background: var(--panel); border-bottom: 1px solid var(--line); padding: 0 6px; }
+  #tabs button { flex: 1; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 7px 2px 5px; font-size: 18px; line-height: 1;
+                 display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--muted); }
+  #tabs button span { font-size: 11px; font-weight: 600; }
+  #tabs button:hover { background: #f7f6f2; }
+  #tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
+  .tab { display: none; padding: 10px 14px 14px; }
+  .tab.on { display: block; }
+  .tab h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 5px; }
+  .tab h3:first-child { margin-top: 2px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+  .hint summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+  .main-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .main-btns button { padding: 10px 8px; font-size: 14px; border-radius: 10px; }
+  button.primary.alt { background: #1d2327; border-color: #1d2327; }
+  button.primary.alt:disabled { background: #b9bcbf; border-color: #b9bcbf; }
+  .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 0 4px; }
+  .tools button, .tools label.btn { padding: 6px 4px; font-size: 12px; text-align: center; white-space: nowrap; }
+  .card { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .card > div > b { display: block; font-size: 15px; margin-bottom: 2px; }
+  .needlogin { display: none; text-align: center; padding: 18px 8px; color: var(--muted); }
+  #groups[hidden] + .needlogin { display: block; }
+  #grab { display: none; }
   button, label.btn { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fbfaf8; color: var(--ink); cursor: pointer; }
   button:hover, label.btn:hover { background: #f0eee9; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   button.primary:disabled { background: #d9a8a6; border-color: #d9a8a6; cursor: default; }
   button:disabled { opacity: .5; cursor: default; }
-  #summary { padding: 4px 16px 10px; }
+  #summary { padding: 2px 0 4px; }
   .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 6px 0; }
   .stat { background: var(--bg); border-radius: 8px; padding: 6px 8px; }
   .stat b { display: block; font-size: 16px; }
@@ -60,13 +87,9 @@
   #sections li { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
   .blaze { width: 22px; height: 14px; flex: none; border-radius: 2px; background: linear-gradient(#fff 0 30%, var(--c) 30% 70%, #fff 70%); border: 1px solid #bbb; }
   #sections .km { margin-left: auto; color: var(--muted); white-space: nowrap; }
-  #go { margin: 4px 16px 12px; padding: 10px; font-size: 15px; }
-  #go-note { margin: -4px 16px 12px; color: var(--muted); font-size: 12px; }
-  #msg { margin: 0 16px 8px; color: #9a4b00; font-size: 13px; min-height: 1em; }
-  .fav { margin: -4px 16px 12px; }
-  #journal { padding: 4px 16px 12px; border-top: 1px solid var(--line); }
-  #journal h2 { font-size: 15px; margin: 10px 0 4px; }
-  #journal h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 12px 0 4px; }
+  #go-note { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+  #msg { margin: 0 0 6px; color: #9a4b00; font-size: 13px; min-height: 1em; }
+  .fav { width: 100%; margin: 0 0 6px; }
   .jlist { list-style: none; margin: 0; padding: 0; }
   .challenges { display: grid; gap: 6px; }
   .ch { background: var(--bg); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
@@ -75,12 +98,14 @@
   .ch .bar i { display: block; height: 100%; background: #2e7d32; }
   .lb { margin: 4px 0; padding-left: 22px; font-size: 13px; } .lb li { padding: 3px 0; } .lb li.me { font-weight: 700; }
   .lb .av { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background-size: cover; vertical-align: middle; font-style: normal; }
-  .lb-pub { font-size: 12px; color: var(--muted); align-items: flex-start; }
+  .lb-pub { font-size: 12px; color: var(--muted); align-items: flex-start; flex-wrap: nowrap; }
+  .lb-pub input { flex: none; margin: 2px 0 0; }
+  .lb .empty { list-style: none; margin-left: -22px; color: var(--muted); }
   .jlist li { display: flex; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; cursor: pointer; }
   .jlist li:hover { color: var(--accent); }
   .jlist .t { margin-left: auto; color: var(--muted); white-space: nowrap; }
   .jlist .empty { color: var(--muted); cursor: default; }
-  #me { display: flex; align-items: center; gap: 10px; margin: 10px 0 2px; }
+  #me { display: flex; align-items: center; gap: 10px; margin: 2px 0 10px; }
   #me .avatar { width: 48px; height: 48px; border-radius: 50%; padding: 0; font-size: 26px; background: var(--bg) center / cover no-repeat; }
   #me .who { flex: 1; display: flex; flex-direction: column; } #me .who b { font-size: 16px; } #me .who small { color: var(--muted); }
   .pick { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; } .pick button { font-size: 20px; padding: 4px 6px; }
@@ -90,15 +115,12 @@
   .badge.off { opacity: .38; filter: grayscale(1); }
   .peaks { font-size: 13px; line-height: 1.7; margin: 0; }
   .peaks span { display: inline-block; background: var(--bg); border-radius: 6px; padding: 0 6px; margin: 0 4px 4px 0; }
-  #account { margin: 6px 0 4px; font-size: 13px; }
+  #account { margin: 0 0 4px; font-size: 13px; }
   #account small { color: var(--muted); display: block; }
   .orow { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
   .orow input, .row select { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
   .orow small { flex: 1; }
   button.link { border: 0; background: none; color: var(--muted); text-decoration: underline; padding: 2px 0; }
-  #groups { padding: 4px 16px 12px; border-top: 1px solid var(--line); }
-  #groups h2 { font-size: 15px; margin: 10px 0 4px; }
-  #groups h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 12px 0 4px; }
   #groups .empty, #chat-log .empty { color: var(--muted); font-size: 13px; }
   #g-members { display: flex; flex-wrap: wrap; gap: 4px; }
   .mem { display: inline-flex; align-items: center; gap: 4px; background: var(--bg); border-radius: 12px; padding: 2px 8px 2px 2px; font-size: 12px; }
@@ -111,7 +133,7 @@
   .mate i.av { width: 30px; height: 30px; font-size: 18px; border: 3px solid #e07b00; box-shadow: 0 1px 5px rgba(0,0,0,.4); }
   .mate.stale { opacity: .55; }
   #nav .btns button#nav-share.on { background: #e07b00; border-color: #e07b00; }
-  footer { margin-top: auto; padding: 10px 16px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
+  footer { margin-top: 16px; padding-top: 10px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
   .wp { background: var(--accent); color: #fff; border: 2px solid #fff; border-radius: 50%; width: 22px !important; height: 22px !important; margin: -11px 0 0 -11px !important;
         display: flex; align-items: center; justify-content: center; font: 700 11px system-ui; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
   .wp.start { background: #1f9a3a; } .wp.end { background: #222; }
@@ -120,51 +142,113 @@
   #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(246,245,241,.9); z-index: 1000; font-size: 15px; }
   @media (max-width: 760px) {
     #app { flex-direction: column-reverse; }
-    #side { width: 100%; height: 48%; border-right: 0; border-top: 1px solid var(--line); }
+    #side { width: 100%; height: 50%; border-right: 0; border-top: 1px solid var(--line); border-radius: 14px 14px 0 0;
+            box-shadow: 0 -3px 14px rgba(0,0,0,.14); transition: height .2s; }
+    #side.tall { height: 88%; }
+    #grab { display: flex; justify-content: center; padding: 6px 0 0; cursor: pointer; }
+    #grab i { width: 38px; height: 4px; border-radius: 2px; background: #cfccc4; }
+    header { padding-top: 4px; }
+    .brand small { display: none; }
   }
 </style>
 </head>
 <body>
 <div id="app">
   <aside id="side">
+    <div id="grab" title="Rozwiń / zwiń panel"><i></i></div>
     <header>
-      <h1>Szlakownik <small>· planer tras · polskie Tatry Wysokie</small></h1>
-      <p class="hint">Kliknij na mapie start, potem cel i ewentualnie punkty pośrednie. Trasa prowadzi tylko znakowanymi szlakami. Punkty można przeciągać, kliknięcie punktu go usuwa.</p>
+      <div class="brand"><img src="icons/icon-192.png" alt=""><div><h1>Szlakownik</h1><small>planer tras · Tatry Wysokie</small></div></div>
+      <button id="b-account" class="chip" data-tab="account" title="Konto i logowanie"><span id="b-account-av">👤</span> <span id="b-account-t">Zaloguj</span></button>
     </header>
-    <div class="tools">
-      <button id="b-loc" title="Start w miejscu, w którym jesteś (GPS telefonu)">📍 Moja lokalizacja</button>
-      <button id="b-rev">⇄ Odwróć</button>
-      <button id="b-undo">↶ Cofnij</button>
-      <button id="b-clear">✕ Wyczyść</button>
-      <label class="btn" title="Wczytaj ślad GPX, np. z mapy turystycznej">⤓ Import GPX<input id="f-gpx" type="file" accept=".gpx,application/gpx+xml" hidden></label>
-      <button id="b-gpx">⤒ Eksport GPX</button>
-      <button id="b-nav" class="primary" title="Pokazuje Twoją pozycję, ile zostało do celu i zapisuje ślad przejścia">🧭 Nawigacja GPS</button>
-      <button id="b-offline" title="Mapa i szlaki działają potem bez zasięgu">⤓ Pobierz na offline</button>
-    </div>
-    <div id="offline-state"></div>
-    <div id="msg"></div>
-    <section id="summary" hidden>
-      <div class="stats">
-        <div class="stat"><b id="s-dist">–</b><span>długość</span></div>
-        <div class="stat"><b id="s-time">–</b><span>czas (normy PTTK)</span></div>
-        <div class="stat"><b id="s-up">–</b><span>podejścia</span></div>
-        <div class="stat"><b id="s-down">–</b><span>zejścia</span></div>
+    <nav id="tabs" role="tablist">
+      <button data-tab="route" role="tab">🗺<span>Trasa</span></button>
+      <button data-tab="journal" role="tab">📔<span>Dziennik</span></button>
+      <button data-tab="play" role="tab">🏆<span>Wyzwania</span></button>
+      <button data-tab="groups" role="tab">👥<span>Grupy</span></button>
+      <button data-tab="account" role="tab">👤<span>Konto</span></button>
+    </nav>
+
+    <div class="tab" id="tab-route">
+      <details id="how" class="hint"><summary>Jak zaplanować trasę?</summary>
+        Kliknij na mapie start, potem cel i ewentualnie punkty pośrednie. Trasa prowadzi tylko znakowanymi szlakami.
+        Punkty można przeciągać, kliknięcie punktu go usuwa.</details>
+      <div class="main-btns">
+        <button id="b-nav" class="primary" title="Pokazuje Twoją pozycję, ile zostało do celu i zapisuje ślad przejścia">🧭 Nawigacja GPS</button>
+        <button id="go" class="primary alt" disabled>▶ Idź w 3D</button>
       </div>
-      <div id="day">
-        <div class="when">Wyjście
-          <select id="d-day"><option value="0">dziś</option><option value="1">jutro</option><option value="2">pojutrze</option></select>
-          o <input id="d-time" type="time" step="900" value="07:00">
+      <p id="go-note" hidden></p>
+      <div class="tools">
+        <button id="b-loc" title="Start w miejscu, w którym jesteś (GPS telefonu)">📍 Tu jestem</button>
+        <button id="b-rev" title="Odwróć kierunek trasy">⇄ Odwróć</button>
+        <button id="b-undo" title="Cofnij ostatni punkt">↶ Cofnij</button>
+        <button id="b-clear" title="Wyczyść trasę">✕ Wyczyść</button>
+        <label class="btn" title="Wczytaj ślad GPX, np. z mapy turystycznej">⤓ GPX<input id="f-gpx" type="file" accept=".gpx,application/gpx+xml" hidden></label>
+        <button id="b-gpx" title="Zapisz trasę jako GPX">⤒ GPX</button>
+        <button id="b-offline" title="Mapa i szlaki działają potem bez zasięgu">⤓ Offline</button>
+      </div>
+      <div id="offline-state"></div>
+      <div id="msg"></div>
+      <section id="summary" hidden>
+        <div class="stats">
+          <div class="stat"><b id="s-dist">–</b><span>długość</span></div>
+          <div class="stat"><b id="s-time">–</b><span>czas (normy PTTK)</span></div>
+          <div class="stat"><b id="s-up">–</b><span>podejścia</span></div>
+          <div class="stat"><b id="s-down">–</b><span>zejścia</span></div>
         </div>
-        <div class="line" id="d-sun"></div>
-        <div class="line" id="d-weather"></div>
+        <button id="b-fav" class="fav" hidden>☆ Dodaj do ulubionych</button>
+        <div id="day">
+          <div class="when">Wyjście
+            <select id="d-day"><option value="0">dziś</option><option value="1">jutro</option><option value="2">pojutrze</option></select>
+            o <input id="d-time" type="time" step="900" value="07:00">
+          </div>
+          <div class="line" id="d-sun"></div>
+          <div class="line" id="d-weather"></div>
+        </div>
+        <canvas id="profile"></canvas>
+        <ul id="sections"></ul>
+      </section>
+    </div>
+
+    <div class="tab" id="tab-journal">
+      <div class="stats" id="j-stats"></div>
+      <h3>Ulubione trasy</h3><ul id="j-favs" class="jlist"></ul>
+      <h3>Ostatnie przejścia</h3><ul id="j-walks" class="jlist"></ul>
+      <h3>Zdobyte szczyty</h3><p id="j-peaks" class="peaks"></p>
+      <h3>Odznaki <span id="b-count"></span></h3><div id="badges" class="badges"></div>
+    </div>
+
+    <div class="tab" id="tab-play">
+      <h3>Wyzwania</h3><div id="ch-list" class="challenges"></div>
+      <h3>Ranking</h3>
+      <div class="orow"><select id="lb-period"><option value="week">Ten tydzień</option><option value="month">Ten miesiąc</option><option value="year">Ten rok</option><option value="all">Ogółem</option></select>
+        <select id="lb-mode"><option value="all">Wszystkie</option><option value="gps">Na szlaku (GPS)</option><option value="3d">W widoku 3D</option></select></div>
+      <label class="orow lb-pub"><input type="checkbox" id="lb-public"> Pokazuj mnie w rankingu (imię, awatar i punkty widoczne dla wszystkich)</label>
+      <ol id="lb-list" class="lb"></ol>
+    </div>
+
+    <div class="tab" id="tab-groups">
+      <section id="groups" hidden>
+        <div class="orow"><select id="g-sel" hidden></select><button id="g-new">＋ Nowa</button><button id="g-join">Dołącz kodem</button></div>
+        <p id="g-empty" class="empty">Załóż grupę i wyślij znajomym zaproszenie albo dołącz kodem od nich. W grupie macie wspólny czat, trasy i pozycje na mapie podczas nawigacji.</p>
+        <div id="g-box" hidden>
+          <div class="orow"><small>Kod zaproszenia: <b id="g-code"></b></small><button id="g-invite">🔗 Zaproś</button></div>
+          <div id="g-members"></div>
+          <div class="orow"><small id="g-live"></small><button id="g-show" title="Pokaż na mapie osoby z grupy, które udostępniają pozycję">👥 Pokaż na mapie</button></div>
+          <h3>Trasy grupy</h3><ul id="g-routes" class="jlist"></ul>
+          <button id="g-add-route">📌 Dodaj bieżącą trasę</button>
+          <h3>Czat</h3>
+          <div id="chat-log"></div>
+          <form id="chat-form" class="orow"><input id="chat-in" maxlength="2000" placeholder="Wiadomość do grupy" autocomplete="off"><button>Wyślij</button></form>
+          <button id="g-leave" class="link"></button>
+        </div>
+      </section>
+      <div class="needlogin">
+        <p>👥 Grupy to wspólny czat, trasy i pozycje znajomych na mapie podczas nawigacji.</p>
+        <button class="primary" data-tab="account">Zaloguj się, żeby korzystać z grup</button>
       </div>
-      <canvas id="profile"></canvas>
-      <ul id="sections"></ul>
-    </section>
-    <button id="go" class="primary" disabled>▶ Idź w 3D</button>
-    <p id="go-note" hidden></p>
-    <button id="b-fav" class="fav" hidden>☆ Dodaj do ulubionych</button>
-    <section id="journal">
+    </div>
+
+    <div class="tab" id="tab-account">
       <div id="me">
         <button id="p-avatar" class="avatar" title="Zmień awatar">🥾</button>
         <div class="who"><b id="p-name">Turysta</b><small id="p-rank"></small></div>
@@ -172,11 +256,12 @@
       </div>
       <div id="p-pick" class="pick" hidden></div>
       <input id="p-photo" type="file" accept="image/*" hidden>
-      <div id="account">
+      <div id="account" class="card">
         <div id="o-login">
-          <small>Zaloguj się, żeby mieć dziennik na wszystkich urządzeniach i chodzić w grupach:</small>
-          <div class="orow"><input id="o-mail" type="email" placeholder="Twój e-mail" autocomplete="email"><button id="o-send">✉ Wyślij link</button></div>
-          <div class="orow" id="o-code-row" hidden><input id="o-code" inputmode="numeric" placeholder="kod z e-maila" autocomplete="one-time-code"><button id="o-verify">Zaloguj kodem</button></div>
+          <b>Zaloguj się</b>
+          <small>Dziennik, odkrycia i odznaki na wszystkich urządzeniach, ranking i grupy. Bez hasła: wyślemy link do logowania na Twój e-mail.</small>
+          <div class="orow"><input id="o-mail" type="email" placeholder="Twój e-mail" autocomplete="email"><button id="o-send" class="primary">✉ Wyślij link</button></div>
+          <div class="orow" id="o-code-row" hidden><input id="o-code" inputmode="numeric" placeholder="kod z e-maila" autocomplete="one-time-code"><button id="o-verify" class="primary">Zaloguj kodem</button></div>
           <small id="o-note"></small>
         </div>
         <div id="o-account" hidden>
@@ -185,36 +270,8 @@
         </div>
         <small id="o-none" hidden>Tryb online niedostępny w tej wersji.</small>
       </div>
-      <h2>Mój dziennik</h2>
-      <div class="stats" id="j-stats"></div>
-      <h3>Ulubione trasy</h3><ul id="j-favs" class="jlist"></ul>
-      <h3>Ostatnie przejścia</h3><ul id="j-walks" class="jlist"></ul>
-      <h3>Zdobyte szczyty</h3><p id="j-peaks" class="peaks"></p>
-      <h3>Odznaki <span id="b-count"></span></h3><div id="badges" class="badges"></div>
-      <h3>Wyzwania</h3><div id="ch-list" class="challenges"></div>
-      <h3>Ranking</h3>
-      <div class="orow"><select id="lb-period"><option value="week">Ten tydzień</option><option value="month">Ten miesiąc</option><option value="year">Ten rok</option><option value="all">Ogółem</option></select>
-        <select id="lb-mode"><option value="all">Wszystkie</option><option value="gps">Na szlaku (GPS)</option><option value="3d">W widoku 3D</option></select></div>
-      <label class="orow lb-pub"><input type="checkbox" id="lb-public"> Pokazuj mnie w rankingu (imię, awatar i punkty widoczne dla wszystkich)</label>
-      <ol id="lb-list" class="lb"></ol>
-    </section>
-    <section id="groups" hidden>
-      <h2>Grupy</h2>
-      <div class="orow"><select id="g-sel" hidden></select><button id="g-new">＋ Nowa</button><button id="g-join">Dołącz kodem</button></div>
-      <p id="g-empty" class="empty">Załóż grupę i wyślij znajomym zaproszenie albo dołącz kodem od nich. W grupie macie wspólny czat, trasy i pozycje na mapie podczas nawigacji.</p>
-      <div id="g-box" hidden>
-        <div class="orow"><small>Kod zaproszenia: <b id="g-code"></b></small><button id="g-invite">🔗 Zaproś</button></div>
-        <div id="g-members"></div>
-        <div class="orow"><small id="g-live"></small><button id="g-show" title="Pokaż na mapie osoby z grupy, które udostępniają pozycję">👥 Pokaż na mapie</button></div>
-        <h3>Trasy grupy</h3><ul id="g-routes" class="jlist"></ul>
-        <button id="g-add-route">📌 Dodaj bieżącą trasę</button>
-        <h3>Czat</h3>
-        <div id="chat-log"></div>
-        <form id="chat-form" class="orow"><input id="chat-in" maxlength="2000" placeholder="Wiadomość do grupy" autocomplete="off"><button>Wyślij</button></form>
-        <button id="g-leave" class="link"></button>
-      </div>
-    </section>
-    <footer>Szlaki i punkty: © autorzy OpenStreetMap (ODbL). Wysokości: GUGiK NMT, Copernicus DEM. Podkład: OpenTopoMap (CC-BY-SA). Czasy liczone normami w stylu PTTK, orientacyjne.</footer>
+      <footer>Szlaki i punkty: © autorzy OpenStreetMap (ODbL). Wysokości: GUGiK NMT, Copernicus DEM. Podkład: OpenTopoMap (CC-BY-SA). Zdjęcia gatunków: iNaturalist i Wikimedia Commons (autorzy przy zdjęciach). Czasy liczone normami w stylu PTTK, orientacyjne.</footer>
+    </div>
   </aside>
   <div id="mapwrap">
     <div id="map"></div>
