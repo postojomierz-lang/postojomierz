@@ -90,6 +90,9 @@
   #card .credit { font-size: 11px; color: #6b7378; margin-top: 8px; } #card .credit a { color: inherit; }
   #card .x { position: absolute; top: 8px; right: 8px; border: 0; background: transparent; font-size: 18px; cursor: pointer; }
   #card .unk { font-size: 64px; text-align: center; opacity: .5; }
+  #tpn { display: none; position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 25; max-width: min(92vw, 520px);
+    background: rgba(160, 60, 0, .9); color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 13.5px; text-align: center; }
+  #tpn.show { display: block; }
   #label-menu { display: none; top: 132px; right: 12px; padding: 10px 12px; flex-direction: column; gap: 6px; font-size: 14px; z-index: 30; min-width: 220px; }
   #label-menu.show { display: flex; }
   #label-menu label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
@@ -137,6 +140,7 @@
 <div id="app"></div>
 
 <div id="toast"></div>
+<div id="tpn">⚠ Jesteś poza szlakiem. W Tatrzańskim Parku Narodowym obowiązuje zakaz schodzenia ze szlaków – to tylko wirtualny spacer.</div>
 <div id="fps">…</div>
 <div id="hud" class="panel">
   <h1><span id="route-title">Morskie Oko → Rysy</span> <span>prototyp</span></h1>
@@ -166,6 +170,7 @@
     <button id="btn-faster" title="Szybciej (+)">+</button>
     <button id="btn-mode" class="grow">🚁 Dron</button>
     <button id="btn-fly" class="grow" title="Przelot nad całą trasą (P)">✈ Przelot</button>
+    <button id="btn-free" class="grow" title="Spacer poza szlakiem, do 150 m od niego (G)">🧭 Poza szlak</button>
     <button class="phone-only" title="Pora dnia i pogoda" onclick="document.getElementById('controls').classList.toggle('more')">⚙</button>
   </div>
   <label>Pora dnia <span id="hour-label">10:30</span></label>
@@ -205,6 +210,7 @@
     <tr><td><kbd>A</kbd> <kbd>D</kbd> <kbd>←</kbd> <kbd>→</kbd>, mysz</td><td>rozglądanie się (<kbd>R</kbd> patrz przed siebie)</td></tr>
     <tr><td><kbd>P</kbd></td><td>przelot nad całą trasą</td></tr>
     <tr><td><kbd>F</kbd></td><td>widok z drona (mysz: obrót, kółko: zoom)</td></tr>
+    <tr><td><kbd>G</kbd></td><td>spacer poza szlakiem (do 150 m; w TPN w rzeczywistości zabroniony)</td></tr>
     <tr><td><kbd>T</kbd> / <kbd>M</kbd></td><td>pora dnia / pogoda</td></tr>
     <tr><td><kbd>N</kbd></td><td>dźwięk włącz / wyłącz</td></tr>
     <tr><td><kbd>L</kbd></td><td>nazwy szczytów, przełęczy, jezior i schronisk</td></tr>

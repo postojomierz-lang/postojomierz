@@ -854,6 +854,7 @@ async function main() {
     keys.add(e.code);
     if (e.code === 'Space') { state.auto = !state.auto; e.preventDefault(); updateButtons(); }
     if (e.code === 'KeyF') toggleMode();
+    if (e.code === 'KeyG') toggleFree();
     if (e.code === 'KeyP') toggleFly();
     if (e.code === 'KeyR') { state.yawOff = 0; state.pitchOff = 0; }
     if (e.code === 'KeyT') { env.hour = env.hour >= 21 ? 4.5 : env.hour + 1; $('hour').value = env.hour; applyEnv(); }
@@ -868,6 +869,48 @@ async function main() {
   });
   addEventListener('keyup', (e) => keys.delete(e.code));
   addEventListener('blur', () => keys.clear());
+
+  // ---------------------------------------------------------------- off the trail (virtual only)
+  // Walking where one looks, within 150 m of the trail (the detailed terrain and plants reach that far), not up
+  // rock faces or into lakes. A notice reminds that leaving the trails is forbidden in the national park.
+  const FREE_MAX = 150;
+  let nearI = 0;
+  const nearestTrail = (x, z) => {
+    let best = nearI, bd = Infinity;
+    const lo = Math.max(0, nearI - 600), hi = Math.min(N - 1, nearI + 600);
+    for (let i = lo; i <= hi; i += 2) { const dd = (trail.X[i] - x) ** 2 + (trail.Z[i] - z) ** 2; if (dd < bd) { bd = dd; best = i; } }
+    if (Math.sqrt(bd) > 400) for (let i = 0; i < N; i += 4) { const dd = (trail.X[i] - x) ** 2 + (trail.Z[i] - z) ** 2; if (dd < bd) { bd = dd; best = i; } }
+    nearI = best;
+    return { i: best, d: Math.sqrt(bd) };
+  };
+  function toggleFree() {
+    if (state.mode !== 'walk') return;
+    if (state.free) {
+      const n = nearestTrail(state.free.x, state.free.z);
+      state.s = n.i * trail.step; state.free = null; state.yawOff = 0;
+      $('tpn').classList.remove('show');
+    } else {
+      const p0 = at(state.s);
+      state.free = { x: p0.x, z: p0.z };
+      state.yaw = state.yaw + state.yawOff; state.yawOff = 0;
+      nearI = Math.round(state.s / trail.step);
+    }
+    updateButtons();
+  }
+  function freeStep(ds) {
+    const yaw = state.yaw + state.yawOff;
+    const nx = state.free.x + Math.sin(yaw) * ds, nz = state.free.z + Math.cos(yaw) * ds;
+    const n = nearestTrail(nx, nz);
+    if (n.d > FREE_MAX) return;                                           // the edge of the detailed area
+    if (terrain.normal(nx, nz, 1.5).y < 0.57) return;                     // a rock face: no climbing
+    const gc = groundClass(nx, nz);
+    if ((gc ? gc.c === 1 : terrain.maskAt(lakeMask, nx, nz) > 0.5)) return;   // water
+    state.free.x = nx; state.free.z = nz;
+    state.s = n.i * trail.step;                                           // for the profile, places and the HUD
+    const off = n.d > 6;
+    $('tpn').classList.toggle('show', off);
+    if (off) sess.fair = false;                                           // no route record when leaving the trail
+  }
 
   const SPEEDS = [1, 3, 10, 30];
   function setSpeed(d) {
@@ -1110,6 +1153,8 @@ async function main() {
     $('btn-auto').textContent = state.auto ? '⏸ Stop' : '▶ Idź sam';
     $('btn-auto').classList.toggle('on', state.auto);
     $('btn-mode').textContent = state.mode === 'drone' ? '🥾 Spacer' : '🚁 Dron';
+    $('btn-free').classList.toggle('on', !!state.free);
+    $('btn-free').textContent = state.free ? '↩ Na szlak' : '🧭 Poza szlak';
     $('btn-fly').classList.toggle('on', state.mode === 'fly');
     $('btn-fly').textContent = state.mode === 'fly' ? '⏹ Stop' : '✈ Przelot';
     $('speed').textContent = `×${state.speedMul}`;
@@ -1124,6 +1169,7 @@ async function main() {
   $('btn-help').onclick = () => $('help').classList.toggle('hidden');
   $('btn-sound').onclick = () => { sound.setEnabled(!sound.enabled); updateButtons(); };
   $('btn-labels').onclick = () => { renderLabelMenu(); $('label-menu').classList.toggle('show'); };
+  $('btn-free').onclick = () => toggleFree();
   renderLabelMenu();
   $('sources').textContent = meta.sources + '; textures: Poly Haven (CC0)';
   // sound credits (CC BY / CC BY-SA need the authors shown)
@@ -1293,7 +1339,9 @@ async function main() {
     if (state.auto && dir === 0) dir = 1;
     const run = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 2.5 : 1;
     const v = tobler / 3.6 * state.speedMul * run * dir;
-    if (dir !== 0) {
+    if (state.free && state.mode === 'walk') {
+      if (dir !== 0) freeStep(v * dt);
+    } else if (dir !== 0) {
       state.s = Math.max(0, Math.min(LENGTH, state.s + v * dt));
       if (state.s < LENGTH) state.walkedTime += Math.abs(v * dt) / (tobler / 3.6);
       if (state.s >= LENGTH && state.auto) { state.auto = false; updateButtons(); }
@@ -1305,8 +1353,8 @@ async function main() {
     if (keys.has('KeyQ')) state.pitchOff = Math.min(1.2, state.pitchOff + dt);
     if (keys.has('KeyE')) state.pitchOff = Math.max(-1.2, state.pitchOff - dt);
 
-    const p = at(state.s);
-    const target = headingAt(state.s);
+    const p = state.free && state.mode === 'walk' ? { x: state.free.x, y: drawnHeight(state.free.x, state.free.z), z: state.free.z } : at(state.s);
+    const target = state.free ? state.yaw : headingAt(state.s);
     let d = target - state.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     state.yaw += d * Math.min(1, dt * 0.7);
     hiker.position.set(p.x, p.y, p.z);
