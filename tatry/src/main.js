@@ -673,7 +673,7 @@ async function main() {
       .filter((p) => cells.has(Math.floor(p.x / G) + ',' + Math.floor(p.z / G)) || (BY_ID[p.id]?.far && Math.min(...trail.X.map((x, i) => Math.hypot(x - p.x, trail.Z[i] - p.z))) < BY_ID[p.id].far));
   } catch (e) { spots = null; }
   if (!spots) spots = buildSpots({ trail, terrain, groundClass, meta });
-  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots });
+  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots, groundClass });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
     masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY,
     groundClass, grass: P.get('trawa') === '0' });
