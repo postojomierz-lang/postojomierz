@@ -57,6 +57,13 @@ W silniku: siatka 1,25 m wokół kamery (przebudowywana w ruchu) na siatce 6 m, 
   srebrnoszara kora. **Limba** (Pinus cembra): pień, okółki wzniesionych gałęzi i gęste kępy igieł z sosenek,
   ciemna niebieskawa zieleń. W widoku drzewa z lidaru dostają gatunek: suchy świerk tam, gdzie zdjęcie nad koroną
   jest szarobrązowe (plus ~4 %), limba z prawdopodobieństwem rosnącym od 1450 m (do ~55 %, więcej wśród kosodrzewiny).
+- `python3 tools/blender/make_rowan.py <out>`: **jarzębina** z samej geometrii (pnie, pierzaste liście po 11–15 listków,
+  czerwone kiście), 3 odmiany (jedna jesienna), potem `bake_impostors.py … rowan 8 256 512`. W widoku niskie drzewa z lidaru
+  (< 10 m) na 1250–1700 m, częściej na skraju lasu i wśród kosodrzewiny.
+- **Trawa ze źdźbeł** (`src/grass.js`, `?trawa=0` wyłącza): dziesiątki tysięcy kępek po 5 źdźbeł wokół kamery w jednym
+  wywołaniu GPU (pole zawija się wokół kamery, źdźbło nigdy nie przeskakuje), gęste pole blisko i rzadsze dalej, wiatr.
+  Gdzie i jaka rośnie, mówi okno danych 1 m liczone przy ruchu kamery: wysokość terenu, cień grani, gęstość (mapa klas
+  i zdjęcie; nie na ścieżce, wodzie i ścianach), wysokość źdźbeł (niższe wysoko) i kolor gruntu ze zdjęcia.
 - (dawniej) `tools/blender/decimate_rocks.py`: skany Poly Haven, `public/models/rocks.glb`.
 
 W silniku (`src/impostor.js`, `src/groundcover.js`): impostor to jedna karta obracana do kamery,

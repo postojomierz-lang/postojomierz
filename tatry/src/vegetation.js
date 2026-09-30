@@ -8,23 +8,23 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
 
   // spruces (and young spruces near the upper tree line): baked impostors of the Poly Haven models
   // x, y, z, 1 if the ground height includes the canopy, the measured height (lidar) or 0, the species
-  // (0 spruce, 1 dead spruce, 2 stone pine)
+  // (0 spruce, 1 dead spruce, 2 stone pine, 3 rowan)
   const n = spruce.length / 6;
-  const trees = [], young = [], dead = [], limba = [];
+  const trees = [], young = [], dead = [], limba = [], rowan = [];
   const sv = kinds.spruce.meta.variants, yv = kinds.sapling.meta.variants;
   for (let k = 0; k < n; k++) {
     const x = spruce[k * 6], y = spruce[k * 6 + 1], z = spruce[k * 6 + 2], canopy = spruce[k * 6 + 3], real = spruce[k * 6 + 4];
-    const sp = kinds.deadspruce && kinds.limba ? spruce[k * 6 + 5] : 0;
+    const sp = kinds.deadspruce && kinds.limba && kinds.rowan ? spruce[k * 6 + 5] : 0;
     // towards the tree line (≈1550 m) the forest thins into smaller, younger trees
     const high = Math.min(1, Math.max(0, (y - 1430) / 120));
     if (sp) {
-      // dead spruces and stone pines: impostors only (no 3D version near the camera yet)
-      const kind = sp === 1 ? kinds.deadspruce : kinds.limba, vars = kind.meta.variants;
+      // dead spruces, stone pines and rowans: impostors only (no 3D version near the camera yet)
+      const kind = [null, kinds.deadspruce, kinds.limba, kinds.rowan][sp], vars = kind.meta.variants;
       const row = Math.floor(r() * vars.length), v = vars[row];
       // stone pines stay lower and broader than spruces of the same lidar height
-      const target = real || (sp === 1 ? 14 + r() * 12 : 8 + r() * 6);
+      const target = Math.min(sp === 3 ? 9 : 40, real || [0, 14 + r() * 12, 8 + r() * 6, 4 + r() * 4][sp]);
       const s = target / v.height;
-      (sp === 1 ? dead : limba).push({ x, y: y - (canopy ? target * 0.4 : 0.3) - v.base * s, z, w: v.width * s * (0.9 + r() * 0.2),
+      [null, dead, limba, rowan][sp].push({ x, y: y - (canopy ? target * 0.4 : 0.3) - v.base * s, z, w: v.width * s * (0.9 + r() * 0.2),
         h: v.height * s, row, rot: r() * 6.283, tint: r(), wind: 0.6 });
       continue;
     }
@@ -41,6 +41,7 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
   const treeMesh = impostorMesh(kinds.spruce, trees);
   if (dead.length) scene.add(impostorMesh(kinds.deadspruce, dead));
   if (limba.length) scene.add(impostorMesh(kinds.limba, limba));
+  if (rowan.length) scene.add(impostorMesh(kinds.rowan, rowan));
   const youngMesh = impostorMesh(kinds.sapling, young);
   scene.add(treeMesh, youngMesh);
 
@@ -69,5 +70,5 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
   scene.add(mugoMesh);
 
   function update() {}
-  return { update, counts: { spruce: trees.length, young: young.length, dead: dead.length, limba: limba.length, mugo: mugo.length }, mugoMesh, trees, young, mugo, dead, limba };
+  return { update, counts: { spruce: trees.length, young: young.length, dead: dead.length, limba: limba.length, rowan: rowan.length, mugo: mugo.length }, mugoMesh, trees, young, mugo, dead, limba, rowan };
 }

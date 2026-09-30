@@ -10,7 +10,7 @@ const hash = (i, j, k) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, masks, blocked = () => false, nearHut = () => false, quality, groundClass = () => null }) {
+export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, masks, blocked = () => false, nearHut = () => false, quality, groundClass = () => null, grass = true }) {
   const t = (low, mid, high, ultra) => ({ low, mid, high, ultra })[quality] ?? high;
   const R = t(26, 34, 42, 60), CELL = t(0.95, 0.8, 0.7, 0.6);
   const R2 = t(70, 80, 95, 160), CELL2 = t(2.6, 2.3, 2.0, 1.8);   // outer ring
@@ -95,6 +95,7 @@ export function buildGroundCover({ scene, terrain, kinds, photo, land, bounds, m
         }
       }
     }
+    if (!grass) out.grass.length = 0;              // the blade grass (grass.js) takes over
     for (const k of Object.keys(meshes)) setImpostors(meshes[k], out[k]);
   }
   return { update, meshes };
