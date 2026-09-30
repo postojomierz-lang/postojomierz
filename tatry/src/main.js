@@ -602,7 +602,7 @@ async function main() {
   const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
-    deadspruce: { wind: 0.3, brightness: 1.2, upNormal: 0.2 }, limba: { wind: 0.5, brightness: 1.3, upNormal: 0.3 },
+    deadspruce: { wind: 0.3, brightness: 1.2, upNormal: 0.2 }, limba: { wind: 0.5, brightness: 0.85, upNormal: 0.3 },
     mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55, fade: 'mugo' }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
   });
   const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds,
