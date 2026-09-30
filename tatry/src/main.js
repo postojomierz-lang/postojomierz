@@ -502,8 +502,8 @@ async function main() {
     }
   }
   // real trees along the trails: every spruce where the lidar sees it, as tall as it is
-  // (tools/prepare_trees.py: tree tops of the canopy height, surface model minus terrain). Added after
-  // the thinning below: that keeps the forest further out from being thinned away to make room for them
+  // (tools/prepare_trees.py: tree tops of the canopy height, surface model minus terrain). Thinned on
+  // their own (long region routes bring hundreds of thousands): the land-cover forest further out keeps its share
   const realTrees = [];
   for (const [key, a] of tileTrees) {
     const [i, j] = key.split(',').map(Number), x0 = TO[0] + i * TS, z0 = TO[1] + j * TS;
@@ -542,31 +542,38 @@ async function main() {
       }
     }
   }
-  // keep the plant count in hand on big areas: everything within ~300 m of the trail stays (full
-  // density where you walk), the rest is thinned to fit the cap
-  const nearMask = drawMask(1024, IB, (g) => {
-    g.strokeStyle = 'rgb(255,0,0)'; g.lineWidth = 600;
+  // keep the plant count in hand on big areas: the cap is filled by distance from the trail, ~80 m either
+  // side first (full density where you walk), then ~300 m, then the rest; only the band that no longer fits
+  // whole is thinned at random
+  const band = (w) => drawMask(1024, IB, (g) => {
+    g.strokeStyle = 'rgb(255,0,0)'; g.lineWidth = w;
     g.beginPath(); trailPts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
   });
+  const bands = [band(160), band(600)];
   const thin = (arr, stride, cap) => {
     const n = arr.length / stride;
     if (n <= cap) return arr;
-    let nNear = 0;
-    const isNear = new Uint8Array(n);
-    for (let k = 0; k < n; k++) if (terrain.maskAt(nearMask, arr[k * stride], arr[k * stride + 2]) > 0) { isNear[k] = 1; nNear++; }
-    const keepFar = Math.max(0, cap - nNear) / Math.max(1, n - nNear);
+    const lvl = new Uint8Array(n), cnt = [0, 0, 0];
+    for (let k = 0; k < n; k++) {
+      const x = arr[k * stride], z = arr[k * stride + 2];
+      lvl[k] = terrain.maskAt(bands[0], x, z) > 0 ? 0 : terrain.maskAt(bands[1], x, z) > 0 ? 1 : 2;
+      cnt[lvl[k]]++;
+    }
+    let left = cap;
+    const keep = cnt.map((c) => { const p = c ? Math.min(1, left / c) : 0; left = Math.max(0, left - c); return p; });
     const out = [];
-    for (let k = 0; k < n; k++) if (isNear[k] || r() < keepFar) for (let q = 0; q < stride; q++) out.push(arr[k * stride + q]);
+    for (let k = 0; k < n; k++) if (keep[lvl[k]] >= 1 || r() < keep[lvl[k]]) for (let q = 0; q < stride; q++) out.push(arr[k * stride + q]);
     return out;
   };
-  const CAP = tier({ spruce: 14000, pine: 7000 }, { spruce: 20000, pine: 10000 }, { spruce: 26000, pine: 14000 }, { spruce: 60000, pine: 36000 });
+  const CAP = tier({ spruce: 14000, pine: 7000, real: 10000 }, { spruce: 20000, pine: 10000, real: 16000 },
+    { spruce: 26000, pine: 14000, real: 26000 }, { spruce: 60000, pine: 36000, real: 70000 });
   for (const [arr, stride, cap] of [[spruce, 5, CAP.spruce], [pine, 3, CAP.pine]]) {
     const kept = thin(arr, stride, cap);
     if (kept === arr) continue;
     arr.length = 0;
     for (const v of kept) arr.push(v);
   }
-  for (const v of realTrees) spruce.push(v);
+  for (const v of thin(realTrees, 5, CAP.real)) spruce.push(v);
   const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
