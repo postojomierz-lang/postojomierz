@@ -48,12 +48,12 @@ export const WMO = {
 };
 export const ICON = (c) => c >= 95 ? '⛈' : c >= 71 && c <= 86 && c !== 80 && c !== 81 && c !== 82 ? '🌨' : c >= 51 ? '🌧' : c >= 45 ? '🌫' : c === 3 ? '☁️' : c === 2 ? '⛅' : '☀️';
 
-// hourly forecast at (lat, lon, ele); cached per place for 3 h, the last one kept for offline use
-export async function forecast(lat, lon, ele) {
+// hourly forecast at (lat, lon, ele); cached per place for 3 h (maxAge), the last one kept for offline use
+export async function forecast(lat, lon, ele, maxAge = 3 * 3600e3) {
   const id = `${lat.toFixed(2)},${lon.toFixed(2)},${Math.round(ele / 50) * 50}`;
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (err) { /* private mode */ }
-  if (cached && cached.id === id && Date.now() - cached.at < 3 * 3600e3) return cached;
+  if (cached && cached.id === id && Date.now() - cached.at < maxAge) return cached;
   const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({
     latitude: lat.toFixed(4), longitude: lon.toFixed(4), elevation: Math.round(ele),
     hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,freezing_level_height',

@@ -6,7 +6,7 @@
 import L from 'leaflet';
 import { fmtTime } from './graph.js';
 
-export function setupNav({ map, G, data, route, $, onFinish, sunset = () => null, onPosition = () => {}, onStop = () => {} }) {
+export function setupNav({ map, G, data, route, $, onFinish, sunset = () => null, onPosition = () => {}, onStart = () => {}, onStop = () => {} }) {
   const hm = (d) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
   const V = data.v;
   const me = L.marker([0, 0], { interactive: false, zIndexOffset: 1000, icon: L.divIcon({ className: 'me', iconSize: null }) });
@@ -63,6 +63,7 @@ export function setupNav({ map, G, data, route, $, onFinish, sunset = () => null
     $('nav').hidden = false;
     $('nav-follow').classList.add('on');
     show('Szukam sygnału GPS… Nie wygaszaj ekranu: w tle przeglądarka wstrzymuje GPS.');
+    onStart();
   }
 
   function show(extra) {
@@ -150,7 +151,9 @@ export function setupNav({ map, G, data, route, $, onFinish, sunset = () => null
   map.on('dragstart', () => { if (nav) { nav.follow = false; $('nav-follow').classList.remove('on'); } });
   $('nav-follow').onclick = () => { if (!nav) return; nav.follow = !nav.follow; $('nav-follow').classList.toggle('on', nav.follow); };
   $('nav-stop').onclick = () => { if (confirm('Zakończyć nawigację i zapisać przejście w dzienniku?')) stop(); };
-  return { start, stop, active: () => !!nav, clearTrack: () => trackLine.remove() };
+  // minutes still to walk (by the norms and your pace), null before the first fix or without a route
+  const left = () => (nav && nav.left ? nav.left.tMin : null);
+  return { start, stop, left, active: () => !!nav, clearTrack: () => trackLine.remove() };
 }
 
 // the recorded track as GPX

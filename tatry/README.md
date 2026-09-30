@@ -225,6 +225,13 @@ Open-Meteo jednym zapytaniem dla kilkunastu głównych szczytów i schronisk (na
 strzałka i prędkość wiatru; suwak godzin i wybór dnia (3 dni); burza albo porywy ≥ 70 km/h: plakietka na
 czerwono i ostrzeżenie w pasku. Stuknięcie plakietki: szczegóły. Zapamiętana na 3 h, bez zasięgu ostatnia pobrana.
 
+**Ostrzeżenia w nawigacji GPS** (`src/planner/navweather.js`): w trakcie nawigacji prognoza dla najwyższego
+punktu trasy (bez trasy: dla miejsca, w którym jesteś) jest pobierana co 20 minut i sprawdzana na czas,
+który został do przejścia. Nowe zagrożenie (burza, porywy ≥ 50/70 km/h, oblodzenie, deszcz) pojawia się raz:
+ramka w panelu nawigacji (czerwona przy niebezpieczeństwie), długa wibracja i powiadomienie systemowe
+(zgoda pytana przy starcie nawigacji); przy burzy: za ile i najbliższe schronisko. Bez zasięgu używana
+jest ostatnia prognoza, a po odzyskaniu sieci sprawdzenie od razu.
+
 ## Dziennik (rekordy, duch, szczyty)
 `src/journal.js`, zapisywany w pamięci przeglądarki (`localStorage`, klucz `rysy-journal`):
 - przejście trasy do mety w widoku 3D trafia do dziennika (data, długość, podejścia, czas);
