@@ -32,7 +32,7 @@ def material(name, rgb, rough=0.6):
     return m
 
 
-BARK = material('rowan_bark', (0.28, 0.26, 0.22), 0.8)          # smooth grey bark
+BARK = material('rowan_bark', (0.16, 0.15, 0.13), 0.8)          # smooth grey bark
 BERRY = material('rowan_berry', (0.62, 0.05, 0.02), 0.35)
 LEAF = [material('rowan_leaf', (0.13, 0.26, 0.05)), material('rowan_leaf2', (0.17, 0.30, 0.06)),
         material('rowan_leaf_autumn', (0.55, 0.18, 0.03)), material('rowan_leaf_autumn2', (0.62, 0.34, 0.05))]
@@ -90,15 +90,15 @@ for v in range(3):
         top = p0 + lean * H * rnd.uniform(0.75, 1.0)
         cylinder(wood, p0, top, 0.12 / math.sqrt(stems), 0.03)
         # branches: ascending, along the upper two thirds, with twigs that carry the leaves
-        for b in range(rnd.randint(7, 11)):
+        for b in range(rnd.randint(13, 18)):
             t = rnd.uniform(0.3, 0.95)
             a = p0.lerp(top, t)
             az = rnd.uniform(0, 6.283)
             L = H * 0.35 * (1.1 - t * 0.6) * rnd.uniform(0.7, 1.1)
             e = a + Vector((math.cos(az), math.sin(az), rnd.uniform(0.5, 1.1))).normalized() * L
             cylinder(wood, a, e, 0.035, 0.01, 5)
-            for tw in range(rnd.randint(3, 5)):
-                u = rnd.uniform(0.4, 1.0)
+            for tw in range(rnd.randint(6, 9)):
+                u = rnd.uniform(0.25, 1.0)
                 q = a.lerp(e, u)
                 d = Vector((math.cos(az + rnd.uniform(-1, 1)), math.sin(az + rnd.uniform(-1, 1)), rnd.uniform(0.2, 0.8))).normalized()
                 q2 = q + d * rnd.uniform(0.4, 0.8)
@@ -106,12 +106,12 @@ for v in range(3):
                 tips.append((q2, d))
     # leaves: rosettes at the twig tips, drooping a little; berry clusters on some tips
     for (q, d) in tips:
-        for k in range(rnd.randint(5, 8)):
+        for k in range(rnd.randint(8, 11)):
             az = rnd.uniform(0, 6.283)
             ld = (d * 0.4 + Vector((math.cos(az), math.sin(az), rnd.uniform(-0.35, 0.25)))).normalized()
             mi = (2 + rnd.randint(0, 1)) if autumn and rnd.random() < 0.8 else rnd.randint(0, 1)
-            leaf(leaves, q, ld, rnd.uniform(0.18, 0.26), mi)
-        if rnd.random() < 0.45:
+            leaf(leaves, q, ld, rnd.uniform(0.22, 0.32), mi)
+        if rnd.random() < 0.3:
             c = q + Vector((0, 0, -0.08))
             for k in range(rnd.randint(18, 35)):
                 p = c + Vector((rnd.gauss(0, 0.05), rnd.gauss(0, 0.05), rnd.gauss(0, 0.03) - 0.03))

@@ -108,8 +108,8 @@ function grassMaterial(uniforms, shade) {
 export function buildGrass({ scene, terrain, shade, quality, photo, bounds, groundClass, masks, blocked = () => false }) {
   const t = (low, mid, high, ultra) => ({ low, mid, high, ultra })[quality] ?? high;
   // [field size (m), blades per m², blade width, blade height, segments, hole]
-  const INNER = { size: t(16, 22, 30, 38), per: t(14, 26, 44, 64), w: 0.05, h: 0.42, seg: t(3, 4, 4, 5) };
-  const OUTER = quality === 'low' ? null : { size: t(0, 56, 90, 120), per: t(0, 3.5, 5.5, 8), w: 0.13, h: 0.5, seg: 2 };
+  const INNER = { size: t(16, 22, 30, 38), per: t(18, 34, 60, 80), w: 0.045, h: 0.34, seg: t(3, 4, 4, 5) };
+  const OUTER = quality === 'low' ? null : { size: t(0, 56, 90, 120), per: t(0, 4, 7, 10), w: 0.08, h: 0.4, seg: 2 };
   const WIN = Math.ceil((OUTER ? OUTER.size : INNER.size) + 32);      // the data window (1 m texels)
 
   // half floats filter linearly everywhere (full floats not on every phone); heights relative to the camera's
@@ -128,10 +128,16 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
     if (!F) continue;
     const n = Math.round(F.size * F.size * F.per);
     const g = bladeGeometry(F.seg);
+    // a proper generator (mulberry32): a hash of consecutive indices lines the blades up in rows
     const a = new Float32Array(n * 4);
-    for (let i = 0; i < n; i++) {
-      a[i * 4] = hash(i, k, 1); a[i * 4 + 1] = hash(i, k, 2); a[i * 4 + 2] = hash(i, k, 3); a[i * 4 + 3] = hash(i, k, 4);
-    }
+    let seed = 0x9e3779b9 ^ (k * 0x85ebca6b);
+    const rand = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    for (let i = 0; i < n * 4; i++) a[i] = rand();
     g.setAttribute('aBlade', new THREE.InstancedBufferAttribute(a, 4));
     g.instanceCount = n;
     const u = {
@@ -185,10 +191,12 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
         if (gc.c !== 1 && gc.c !== 2 && gc.c !== 7) dens = Math.max(dens, fromPhoto * (gc.c === 3 ? 0.6 : 0.9));
       } else dens = fromPhoto;
       if (dens > 0) {
-        if (terrain.maskAt(masks.lake, x, z) > 0.02 || blocked(x, z)) dens = 0;
+        // water: the class map knows it to the metre; the lake mask (drawn with a 30 m stroke on a 5 m grid,
+        // it reaches ~20 m onto the shores) only where there is no map
+        if ((!gc && terrain.maskAt(masks.lake, x, z) > 0.5) || blocked(x, z)) dens = 0;
         else {
-          const path = terrain.maskAt(masks.path, x, z);
-          if (path > 0.02) dens = 0;
+          const path = terrain.maskAt(masks.path, x, z);           // the sharp path mask (1.3 m texels)
+          if (path > 0.3) dens = 0;
           else if (terrain.maskAt(masks.pathSide, x, z) > 0) dens *= 0.45;        // trodden fringe
           const n = terrain.normal(x, z, 1.5);
           // Tatra grass holds on steep slopes too (bare rock is the class map's job); only very steep ground thins
@@ -208,5 +216,6 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
     if (Math.hypot(cam.x - last.x, cam.z - last.z) > 12 || sun.dot(lastSun) < 0.99995) rebuild(cam.x, cam.z);
   }
   const debug = () => { const c = ((WIN / 2) * WIN + WIN / 2) * 4; return { yRef: common.gYRef.value, cam: common.gCam.value.toArray(), win: common.gWin.value.toArray(), h: data[c], half: half[c], back: THREE.DataUtils.fromHalfFloat(half[c]), dens: cols[c + 3], sh: data[c + 1], share: (() => { let k = 0, m = 0; for (let i = 3; i < cols.length; i += 4) { if (cols[i] > 0) k++; m += cols[i]; } return [k / (WIN * WIN), m / (WIN * WIN) / 255]; })(), hs: [data[0], data[(WIN * 10 + 70) * 4], data[(WIN * 90 + 30) * 4]].map((v) => v - common.gYRef.value) }; };
-  return { update, debug, blades: fields.reduce((s, f) => s + f.n, 0), fields };
+  const at = (x, z) => { const w = common.gWin.value, i = Math.floor(x - w.x), j = Math.floor(z - w.y); if (i < 0 || j < 0 || i >= WIN || j >= WIN) return null; const o = (j * WIN + i) * 4; return { dens: cols[o + 3], h: data[o], sh: data[o + 1], gc: groundClass(x, z), n: terrain.normal(x, z, 1.5).y, path: terrain.maskAt(masks.path, x, z), side: terrain.maskAt(masks.pathSide, x, z), lake: terrain.maskAt(masks.lake, x, z), blocked: blocked(x, z) }; };
+  return { update, debug, at, blades: fields.reduce((s, f) => s + f.n, 0), fields };
 }

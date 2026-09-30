@@ -487,11 +487,16 @@ async function main() {
   const r = rng(7);
   const spruce = [], pine = [];
   // which tree: 0 spruce, 1 dead spruce (bark beetle; grey-brown crown in the photo), 2 stone pine (limba:
-  // the upper tree line, more likely higher up and for lone trees among the dwarf pine)
+  // the upper tree line, more likely higher up and for lone trees among the dwarf pine), 3 rowan (small trees
+  // at the forest edge and among the dwarf pine, 1250-1700 m)
   const photoRGBA = pixels(innerBmp), PHW = innerBmp.width, PHH = innerBmp.height;   // decoded once, used below too
   const hash = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };
   const species = (x, z, h, real) => {
     const q = hash(x, z);
+    if ((!real || real < 10) && h > 1250 && h < 1700) {
+      const c = groundClass(x, z)?.c;
+      if (hash(x * 1.7, z * 1.3) < (c === 4 || c === 5 ? 0.3 : 0.1)) return 3;
+    }
     const pl = Math.min(0.55, Math.max(0, (h - 1450) / 200) * 0.55) + (groundClass(x, z)?.c === 5 ? 0.2 : 0);
     if (q < pl) return 2;
     if (real) {
@@ -539,7 +544,7 @@ async function main() {
       if (terrain.maskAt(pathSide, x, z) > 0 || terrain.maskAt(lakeMask, x, z) > 0.05 || houses.inside(x, z, 2)) continue;
       if (terrain.normal(x, z, 3).y < 0.6) continue;
       const h = terrain.height(x, z);
-      realTrees.push(x, h, z, 0, th, species(x, z, h, true));
+      realTrees.push(x, h, z, 0, th, species(x, z, h, th));
     }
   }
   {
@@ -600,10 +605,10 @@ async function main() {
     for (const v of kept) arr.push(v);
   }
   for (const v of thin(realTrees, 6, CAP.real)) spruce.push(v);
-  const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba'], shade, {
+  const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba', 'rowan'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
-    deadspruce: { wind: 0.3, brightness: 1.2, upNormal: 0.2 }, limba: { wind: 0.5, brightness: 0.85, upNormal: 0.3 },
+    deadspruce: { wind: 0.3, brightness: 1.2, upNormal: 0.2 }, limba: { wind: 0.5, brightness: 0.85, upNormal: 0.3 }, rowan: { wind: 0.9, brightness: 1.0, upNormal: 0.35 },
     mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55, fade: 'mugo' }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
   });
   const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds,
@@ -646,7 +651,7 @@ async function main() {
     groundClass, grass: P.get('trawa') === '0' });
   // blade grass (?trawa=0: the old grass clumps instead)
   const grass = P.get('trawa') !== '0' ? buildGrass({ scene, terrain, shade, quality: QUALITY, photo: photoPx, bounds: IB, groundClass,
-    masks: { path: trailVisWide, pathSide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.5) }) : null;
+    masks: { path: trailVis, pathSide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.5) }) : null;
   const deadwood = await buildDeadwood({ scene, terrain, trail, shade, quality: QUALITY, isForest: sound.isForest,
     free: (x, z) => terrain.maskAt(clearing, x, z) === 0 && terrain.maskAt(lakeMask, x, z) < 0.02 && !houses.inside(x, z, 3) });
   const dummy = new THREE.Object3D();
