@@ -140,7 +140,7 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
           vTerrSh = ${perVertexShadow ? 'terrainShadow(wpS.xyz)' : '1.0'} * cloudShadow(wpS.xyz);
         }`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vTerrSh;')
+      .replace('#include <common>', '#include <common>\nvarying float vTerrSh; uniform float wetK;')
       .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh * (1.0 - 0.3 * wetK);\n reflectedLight.indirectDiffuse *= 1.0 - 0.3 * wetK;');
   };
   material.customProgramCacheKey = () => 'patched' + wind + perVertexShadow;
