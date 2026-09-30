@@ -1,7 +1,7 @@
 {
-  "name": "Tatry – planer i nawigacja",
-  "short_name": "Tatry",
-  "description": "Planer tras po znakowanych szlakach Tatr, nawigacja GPS i mapa offline.",
+  "name": "Szlakownik – planer tras i nawigacja w górach",
+  "short_name": "Szlakownik",
+  "description": "Szlakownik: planer tras po znakowanych szlakach górskich (na początek Tatry), nawigacja GPS, mapa offline i odkrywanie przyrody.",
   "lang": "pl",
   "start_url": "planer.html",
   "scope": "./",
