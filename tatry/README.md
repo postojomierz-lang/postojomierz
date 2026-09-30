@@ -261,3 +261,11 @@ Wzdłuż szlaków (kafle 256 m z lidarem 1 m i ortofotomapą 0,5 m) widok 3D wie
   powyżej 4 m → `tiles/t_i_j.bin` (u16: x, z w kaflu, wysokość w cm). Każdy świerk stoi tam, gdzie
   naprawdę rośnie, i ma swoją wysokość (poniżej 9 m młody świerk). Poza kaflami i po słowackiej stronie
   las rozmieszcza nadal mapa pokrycia.
+
+## Odkrywanie przyrody (etykiety fauny i flory)
+`src/nature/catalog.js`: 50 roślin i 50 zwierząt Tatr (lista właściciela) z grupą, rzadkością (pospolity 10 pkt,
+nierzadki 20, rzadki 40, unikat 80), zakresem wysokości, podłożem z mapy klas (łąka, piarg, ściana, kosodrzewina, las,
+woda, żwir) i dodatkami (przy potoku, przy stawie lub konkretnym stawie, tylko wapień, przy najwyższych szczytach).
+`spots.js` wybiera dla trasy miejsca występowania zgodne z siedliskiem (stałe dla gatunku), `discover.js` zalicza odkrycie
+po zbliżeniu (rośliny 15 m, zwierzęta 40 m, ptaki 70 m; szczyty, przełęcze, stawy, schroniska i wodospady też) i zapisuje
+je w przeglądarce (`rysy-discoveries`). Etykiety nieodkrytych pokazują „?” i grupę; menu 🏷 włącza kategorie osobno.
