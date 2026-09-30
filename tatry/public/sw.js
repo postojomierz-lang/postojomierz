@@ -1,12 +1,13 @@
 // Service worker of the planner app: works without signal in the mountains.
 // - the page itself (planer.html): the newest from the network when there is a connection (4 s at most),
-//   the cached copy without signal; the trail network and icons: cached, refreshed in the background
+//   the cached copy without signal; the trail network, the nature spots (discoveries on the trail work
+//   without signal) and icons: cached, refreshed in the background
 // - our offline map (offline/…webp): cache first; the "download for offline" button fills it
 // - OpenTopoMap / OpenStreetMap tiles: the ones you have looked at stay in the cache (no bulk download,
 //   their rules do not allow it), at most ~3000
-const APP = 'tatry-app-v2', MAP = 'tatry-offline-map-v1', TILES = 'tatry-tiles-v1';
+const APP = 'tatry-app-v3', MAP = 'tatry-offline-map-v1', TILES = 'tatry-tiles-v1';
 const APP_FILES = ['planer.html', 'manifest.webmanifest', 'data/region/trails.json', 'offline/index.json',
-  'icons/icon-192.png', 'icons/icon-512.png'];
+  'nature/spots.json', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(APP).then((c) => c.addAll(APP_FILES)).then(() => self.skipWaiting()));
