@@ -493,6 +493,7 @@ export function waterMaterial() {
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       skyCol: { value: new THREE.Color(0.5, 0.65, 0.85) },
       reflMap: { value: null }, reflMat: { value: new THREE.Matrix4() }, reflLevel: { value: -1e4 }, reflOn: { value: 0 },
+      skyEnv: { value: null }, skyEnvOn: { value: 0 },
     }]),
     fog: true,
     vertexShader: /* glsl */`
@@ -514,6 +515,7 @@ export function waterMaterial() {
       uniform vec3 sunDir; uniform vec3 sunCol; uniform vec3 ambCol; uniform vec3 skyCol; uniform float time;
       uniform sampler2D reflMap; uniform mat4 reflMat; uniform float reflLevel; uniform float reflOn;
       uniform float windK; uniform float rainK;
+      uniform samplerCube skyEnv; uniform float skyEnvOn;
       varying vec3 vWorld;
       ${NOISE}
       // rain: rings spreading from where the drops fall, one drop per cell every second or so
@@ -550,7 +552,8 @@ export function waterMaterial() {
         vec3 deep = vec3(0.004, 0.03, 0.035) * (ambCol + sunCol * 0.4);
         vec3 R = reflect(-V, N);
         float spec = pow(max(dot(R, sunDir), 0.0), 220.0) * 6.0;
-        vec3 refl = skyCol;
+        // the sky as it is now (the environment cube taken from the live sky), else a flat sky colour
+        vec3 refl = skyEnvOn > 0.5 ? textureCube(skyEnv, vec3(R.x, max(R.y, 0.02), R.z)).rgb * 0.85 : skyCol;
         if (reflOn > 0.5 && abs(vWorld.y - reflLevel) < 0.6) {
           vec4 pc = reflMat * vec4(vWorld, 1.0);
           float dist = length(cameraPosition - vWorld);
@@ -559,7 +562,7 @@ export function waterMaterial() {
           vec3 m = texture2D(reflMap, clamp(ruv, 0.001, 0.999)).rgb;
           // soften the edge of the reflection texture
           float edge = smoothstep(0.0, 0.03, min(min(ruv.x, 1.0 - ruv.x), min(ruv.y, 1.0 - ruv.y)));
-          refl = mix(skyCol, m, edge);
+          refl = mix(refl, m, edge);
           // a calm mountain lake: reflection stays visible even looking down
           fres = max(fres, 0.32);
         }

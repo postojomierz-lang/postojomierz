@@ -274,6 +274,15 @@ Bez zasięgu zgłoszenie czeka w telefonie. Odczyt: `python3 tools/bug_reports.p
 - **Stawy:** fale rosną i płyną szybciej z wiatrem (`light.windK`), podmuchy przyciemniają płaty wody, przy
   wichurze białe grzywy; w deszczu kręgi od kropel (`light.rainK`); przy niskim słońcu migocząca ścieżka blasku.
 
+## Światło z nieba (sześcian otoczenia)
+
+Żywe niebo (Preetham + chmury) jest co kilka sekund i przy każdej zmianie godziny lub pogody fotografowane
+do małego sześcianu (`CubeCamera`, 64 px, HalfFloat). Stawy odbijają z niego prawdziwe niebo (także tam, gdzie
+nie sięga lustro odbicia, i na jakości niskiej/średniej), a światło nieba i ziemi (`HemisphereLight`) bierze
+z niego odcień (średnia z zenitu i horyzontu, 4 px, odczyt tylko przy zmianie godziny/pogody) przy zachowanej
+jasności: pomarańczowe przy zachodzie, szare w burzy, niebieskie o zmierzchu. Zamiast gotowego skyboxa (stała
+pora dnia i pogoda, niezgodne cienie chmur) używamy zdjęcia własnego nieba.
+
 ## Skały z bliska i upływ czasu
 
 - **Granit z bliska** (`rockDetail` w `materials.js`, jakość średnia i wyżej): na wypalonej teksturze głazów ziarna

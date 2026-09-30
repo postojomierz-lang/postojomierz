@@ -489,6 +489,55 @@ async function main() {
 
   // ---------- lakes
   const water = waterMaterial();
+  // the live sky photographed into a small cube now and then (on a change of hour or weather, and every
+  // few seconds as the clouds drift): the lakes reflect it, and the light from the sky and the ground
+  // (the hemisphere light) takes its colours: orange at sunset, grey in a storm, blue at dusk
+  const skyEnv = (() => {
+    const envScene = new THREE.Scene();
+    const envSky = new THREE.Mesh(sky.geometry, sky.material); envSky.scale.copy(sky.scale); envScene.add(envSky);
+    const rt = new THREE.WebGLCubeRenderTarget(64, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+    const cam = new THREE.CubeCamera(1, 300000, rt);
+    const small = new THREE.WebGLCubeRenderTarget(4, { type: THREE.UnsignedByteType });
+    const camS = new THREE.CubeCamera(1, 300000, small);
+    const px = new Uint8Array(4 * 4 * 4);
+    const up = new THREE.Color(0.5, 0.6, 0.8), side = new THREE.Color(0.5, 0.55, 0.6);
+    const st = { dirty: true, t: 0, ok: false };
+    const lum = (c) => 0.3 * c.r + 0.59 * c.g + 0.11 * c.b;
+    // keep the tuned brightness of the sky and ground light, take the hue from the sky
+    function tint() {
+      if (!st.ok) return;
+      const hue = (c, target, k) => { const l = lum(c); if (l < 1e-4) return; const L = lum(target); target.lerp(c.clone().multiplyScalar(L / l), k); };
+      hue(up, hemi.color, 0.6);
+      hue(side.clone().lerp(new THREE.Color(0.35, 0.33, 0.28), 0.5), hemi.groundColor, 0.4);
+    }
+    function update(dt) {
+      st.t += dt;
+      if (!st.dirty && st.t < 4) return;
+      const read = st.dirty || !st.ok;          // reading pixels back stalls the GPU: only on a change of hour or weather
+      st.dirty = false; st.t = 0;
+      const prevTarget = renderer.getRenderTarget();
+      try {
+        cam.position.copy(camera.position); camS.position.copy(camera.position);
+        cam.update(renderer, envScene);
+        water.uniforms.skyEnv.value = rt.texture; water.uniforms.skyEnvOn.value = 1;
+        if (!read) { renderer.setRenderTarget(prevTarget); return; }
+        camS.update(renderer, envScene);
+        // the average colours: straight up (+Y face) and all around at the horizon (the four sides)
+        renderer.readRenderTargetPixels(small, 0, 0, 4, 4, px, 2);
+        let r = 0, g = 0, b = 0; for (let i = 0; i < 64; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
+        up.setRGB(r / 16 / 255, g / 16 / 255, b / 16 / 255);
+        r = g = b = 0;
+        for (const f of [0, 1, 4, 5]) { renderer.readRenderTargetPixels(small, 0, 1, 4, 2, px, f); for (let i = 0; i < 32; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; } }
+        side.setRGB(r / 32 / 255, g / 32 / 255, b / 32 / 255);
+        st.ok = true;
+        water.uniforms.skyEnv.value = rt.texture; water.uniforms.skyEnvOn.value = 1;
+        hemi.color.copy(light.ambCol.value).multiplyScalar(1.95); hemi.groundColor.copy(light.ambCol.value);
+        tint();
+      } catch (e) { st.ok = false; }
+      renderer.setRenderTarget(prevTarget);
+    }
+    return { update, tint, get dirty() { return st.dirty; }, set dirty(v) { st.dirty = v; } };
+  })();
   const lakeMeshes = [], lakeInfo = [];
   for (const l of meta.lakes) {
     const shape = new THREE.Shape(l.ring.map(([x, z]) => new THREE.Vector2(x, -z)));
@@ -902,6 +951,8 @@ async function main() {
     sunLight.color.copy(light.sunCol.value); sunLight.intensity = 1.15 * Math.PI;
     hemi.color.copy(light.ambCol.value).multiplyScalar(1.95);   // sky light fills the shaded slopes
     hemi.groundColor.copy(light.ambCol.value).multiplyScalar(1.0);
+    skyEnv.tint();                                                // ... in the colours of the sky as it is
+    skyEnv.dirty = true;
     hemi.intensity = Math.PI;
     // aerial perspective: distant ridges fade into a cool blue haze (warm towards evening)
     const fogDay = new THREE.Color(0.56, 0.67, 0.83).lerp(new THREE.Color(0.86, 0.66, 0.52), low * 0.75);
@@ -1625,6 +1676,7 @@ async function main() {
     labels.update(dt);
     discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
     weatherFx.update(dt, camera.position);
+    skyEnv.update(dt);
     if (env.forecast) forecastTick(); else flowTick();
     renderer.toneMappingExposure = 0.55 * (1 + 2.2 * weatherFx.flash);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3,
