@@ -298,5 +298,53 @@
   "author": "Tim",
   "license": "CC BY 4.0",
   "url": "https://www.inaturalist.org/photos/290915269"
+ },
+ "gnidosz": {
+  "file": "inaturalist-676056847",
+  "author": "Алла Козурак",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/676056847"
+ },
+ "swistak": {
+  "file": "inaturalist-115745649",
+  "author": "Jan Ebr &amp; Ivana Ebrová",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/115745649"
+ },
+ "niedzwiedz": {
+  "file": "inaturalist-260736394",
+  "author": "Victoria Lazareva",
+  "license": "CC0",
+  "url": "https://www.inaturalist.org/photos/260736394"
+ },
+ "wilk": {
+  "file": "MC Timberwolf.jpg",
+  "author": "Christian Mehlführer, User:Chmehl",
+  "license": "CC BY 2.5",
+  "url": "https://commons.wikimedia.org/wiki/File:MC_Timberwolf.jpg"
+ },
+ "rys": {
+  "file": "Lynx kitten.jpg",
+  "author": "taken by Bernard Landgraf",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Lynx_kitten.jpg"
+ },
+ "polnik": {
+  "file": "Schneemaus.JPG",
+  "author": "Svíčková",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Schneemaus.JPG"
+ },
+ "jelen": {
+  "file": "inaturalist-305074217",
+  "author": "Tim",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/305074217"
+ },
+ "sarna": {
+  "file": "inaturalist-490646872",
+  "author": "Steven Lamonde",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/490646872"
  }
 }
