@@ -285,3 +285,6 @@ je w przeglądarce (`rysy-discoveries`). Etykiety nieodkrytych pokazują „?”
 - Wyzwania (`src/nature/challenges.js`): dzienne, tygodniowe, miesięczne i roczne, wspólne dla wszystkich (z daty), premia
   30/100/250/1000 pkt. Online (`supabase/schema.sql`): tabela `discoveries`, funkcja `leaderboard(okres, tryb)` (tydzień,
   miesiąc, rok, ogółem; GPS, 3D, wszystkie), w rankingu tylko osoby z włączonym „Pokazuj mnie w rankingu”.
+- Spacer poza szlakiem (🧭, klawisz G): chodzenie tam, gdzie patrzysz, do 150 m od szlaku (tam sięga teren 1 m i pełna
+  roślinność), bez wchodzenia na ściany skalne i do stawów; komunikat o zakazie schodzenia ze szlaków w TPN, przejście poza
+  szlakiem nie liczy się do rekordu trasy; „↩ Na szlak” wraca w najbliższy punkt trasy.
