@@ -8,6 +8,7 @@ import L from 'leaflet';
 import { createClient } from '@supabase/supabase-js';
 import { loadFound, saveFound, score } from '../nature/discover.js';
 import { BY_ID, RARITY } from '../nature/catalog.js';
+import { clearLocalData } from './localdata.js';
 
 const SB_URL = __SUPABASE_URL__, SB_KEY = __SUPABASE_KEY__;
 const sb = SB_URL && SB_KEY ? createClient(SB_URL, SB_KEY, {
@@ -80,6 +81,16 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     if (!token) return;
     const { error } = await sb.auth.verifyOtp({ email: $('o-mail').value.trim(), token, type: 'email' });
     if (error) $('o-note').textContent = `Kod nie pasuje: ${error.message}`;
+  };
+  $('o-delete').onclick = async () => {
+    if (!confirm('Usunąć konto i wszystkie dane na serwerze: profil, dziennik, odkrycia, miejsce w rankingu, grupy, które założyłeś (z czatem i trasami), wiadomości? Tego nie da się cofnąć.')) return;
+    const t = prompt('Żeby potwierdzić, wpisz: USUŃ');
+    if ((t || '').trim().toUpperCase() !== 'USUŃ') return;
+    const { error } = await sb.rpc('delete_my_account');
+    if (error) { alert(`Nie udało się usunąć konta: ${error.message}`); return; }
+    await sb.auth.signOut({ scope: 'local' }).catch(() => {});
+    if (confirm('Konto i dane na serwerze zostały usunięte. Usunąć też dziennik i odkrycia zapisane w tym urządzeniu?')) clearLocalData();
+    location.reload();
   };
   $('o-logout').onclick = async () => {
     if (!confirm('Wylogować? Dziennik zostaje w tej przeglądarce.')) return;
