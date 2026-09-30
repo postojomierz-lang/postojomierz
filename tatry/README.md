@@ -232,6 +232,17 @@ ramka w panelu nawigacji (czerwona przy niebezpieczeństwie), długa wibracja i 
 (zgoda pytana przy starcie nawigacji); przy burzy: za ile i najbliższe schronisko. Bez zasięgu używana
 jest ostatnia prognoza, a po odzyskaniu sieci sprawdzenie od razu.
 
+## Zgłoszenia z testów (🐞)
+
+Przycisk 🐞 w widoku 3D (w rzędzie przycisków) i na mapie planera (`src/report.js`) robi zrzut ekranu,
+pyta, co jest nie tak, i wysyła do tabeli `bug_reports` w Supabase razem z kontekstem:
+- 3D: trasa, pozycja na niej (m), współrzędne, wysokość, kamera, tryb, jakość, kl/s, trójkąty, pogoda, godzina;
+- planer: trasa, środek mapy i zoom, zakładka, nawigacja, ostatnia pozycja GPS;
+- zawsze: urządzenie, wersja i ostatnie błędy z konsoli.
+
+Bez zasięgu zgłoszenie czeka w telefonie. Odczyt: `python3 tools/bug_reports.py [--since N]` (zrzuty do
+`bug_reports/`).
+
 ## Bezpieczeństwo, prywatność, pierwsze uruchomienie
 
 - **SOS** (czerwony przycisk na mapie planera, `src/planner/sos.js`): pozycja GPS (współrzędne, dokładność,

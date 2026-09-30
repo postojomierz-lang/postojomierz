@@ -175,6 +175,24 @@ create or replace function public.leaderboard(period text default 'all', mode te
   order by 3 desc
   limit 50 $$;
 
+-- test reports from the 🐞 button: a description, a screenshot (JPEG data URL) and where it happened
+-- (route, position, device, recent errors). Anyone using the app may add one; they are readable for 60
+-- days (tools/bug_reports.py). No e-mail or account id is stored.
+create table if not exists public.bug_reports (
+  id          bigint generated always as identity primary key,
+  created_at  timestamptz not null default now(),
+  app         text not null check (app in ('3d', 'planer')),
+  description text not null check (char_length(description) between 1 and 4000),
+  context     jsonb not null default '{}'::jsonb check (pg_column_size(context) < 60000),
+  screenshot  text check (char_length(screenshot) < 1200000)
+);
+alter table public.bug_reports enable row level security;
+drop policy if exists bug_reports_add on public.bug_reports;
+create policy bug_reports_add on public.bug_reports for insert to anon, authenticated with check (true);
+drop policy if exists bug_reports_read on public.bug_reports;
+create policy bug_reports_read on public.bug_reports for select to anon, authenticated using (created_at > now() - interval '60 days');
+grant select, insert on public.bug_reports to anon, authenticated;
+
 -- deleting one's own account (the "Usuń konto i dane" button): the user and, through the cascades,
 -- everything of theirs: profile, walks, peaks, discoveries, the groups they own (with their routes and
 -- chat), memberships, messages, shared positions. No service key needed in the app.
