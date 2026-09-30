@@ -730,5 +730,59 @@
   "author": "Phil James",
   "license": "CC BY 4.0",
   "url": "https://www.inaturalist.org/photos/241406686"
+ },
+ "nocek-brandta": {
+  "file": "Brandt's bat (Myotis brandtii).jpg",
+  "author": "Rauno Kalda",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Brandt%27s_bat_(Myotis_brandtii).jpg"
+ },
+ "dzieciol-czarny": {
+  "file": "BlackWoods.jpg",
+  "author": "Alastair Rae from London, United Kingdom",
+  "license": "CC BY-SA 2.0",
+  "url": "https://commons.wikimedia.org/wiki/File:BlackWoods.jpg"
+ },
+ "krogulec": {
+  "file": "inaturalist-349527062",
+  "author": "Jan Ebr &amp; Ivana Ebrová",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/349527062"
+ },
+ "paszkot": {
+  "file": "inaturalist-305071186",
+  "author": "Tim",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/305071186"
+ },
+ "czyz": {
+  "file": "inaturalist-299778769",
+  "author": "Tim",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/299778769"
+ },
+ "kapturka": {
+  "file": "inaturalist-300080545",
+  "author": "Tim",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/300080545"
+ },
+ "strzyzyk": {
+  "file": "inaturalist-490646691",
+  "author": "Steven Lamonde",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/490646691"
+ },
+ "jaszczurka-zwinka": {
+  "file": "Jaszczurka.jpg",
+  "author": "Krzysztof Mizera",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Jaszczurka.jpg"
+ },
+ "ropucha": {
+  "file": "inaturalist-499185936",
+  "author": "Viktor",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/499185936"
  }
 }

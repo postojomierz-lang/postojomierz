@@ -11,7 +11,8 @@ import { cullByDistance } from '../lod.js';
 
 // the best-known plants modelled in Blender (tools/blender/make_flowers.py): drawn as instances of the
 // model instead of the simple shapes
-const MODELS = ['szarotka', 'goryczka-krotkolodygowa', 'goryczka-kropkowana', 'goryczka-przezroczysta', 'krokus', 'sasanka', 'urdzik'];
+const MODELS = ['szarotka', 'goryczka-krotkolodygowa', 'goryczka-kropkowana', 'goryczka-przezroczysta', 'krokus', 'sasanka', 'urdzik',
+  'gozdzik-lsniacy', 'gozdzik-wczesny', 'skalnica-gronkowa', 'tojad', 'tojad-moldawski', 'lilia'];
 export async function loadFlowerModels() {
   const loader = new GLTFLoader(), out = {};
   await Promise.all(MODELS.map(async (id) => {

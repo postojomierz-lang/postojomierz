@@ -277,6 +277,109 @@ def urdzik():
     pl.save('urdzik')
 
 
-for f in (szarotka, goryczka_clusii, goryczka_punctata, goryczka_frigida, krokus, sasanka, urdzik):
+def gozdzik(name, pink, deep, seed):
+    """a pink with five fringed petals on a slim, grey-green stem with narrow paired leaves"""
+    pl = Plant(seed)
+    grey = srgb(0x7a9a7a)
+    for k in range(8):                                            # a tuft of narrow leaves
+        a = k / 8 * 2 * math.pi
+        pl.leaf(Vector((0, 0, 0.004)), Vector((math.cos(a), math.sin(a), 0)), 0.04, 0.003, 0.03, grey, droop=0.15)
+    for st in range(2):
+        a = st * 2.8
+        top, d = pl.stem(Vector((math.cos(a) * 0.006, math.sin(a) * 0.006, 0)), Vector((math.cos(a) * 0.02, math.sin(a) * 0.02, 0.13 + 0.03 * st)), Vector((0.006, 0, 0)), 0.0018, grey)
+        pl.stem(top - d * 0.012, top + d * 0.004, Vector((0, 0, 0)), 0.0035, srgb(0x6a4a5a), n=2)      # the calyx
+        for k in range(5):
+            b = k / 5 * 2 * math.pi
+            out_d = Vector((math.cos(b), math.sin(b), 0))
+            pl.petal(top + d * 0.004, d, out_d, 0.016, 0.009, 0.12, deep, pink, curl=-0.05, pointed=False, rows=3, cols=3)
+            # the fringe: tiny teeth at the petal's edge
+            for t in (-0.6, 0, 0.6):
+                e = top + d * 0.004 + (out_d * math.cos(0.19) + d * math.sin(0.19)) * 0.016
+                side = d.cross(out_d).normalized()
+                pl.petal(e + side * t * 0.006, d, out_d, 0.004, 0.0015, 0.1, pink, pink, rows=1, cols=1)
+        pl.disc(top + d * 0.005, d, 0.002, srgb(0xf0e0f0), n=5, dome=1.0)
+    pl.save(name)
+
+
+def skalnica_gronkowa():
+    """a silver-edged rosette on the rock and a leaning panicle of small white flowers"""
+    pl = Plant(21)
+    leaf, rim = srgb(0x6a8a5a), srgb(0xc8d0c0)
+    for k in range(14):
+        a = k / 14 * 2 * math.pi + (k % 2) * 0.2
+        pl.leaf(Vector((0, 0, 0.003)), Vector((math.cos(a), math.sin(a), 0)), 0.022 + 0.006 * (k % 2), 0.005, 0.008, leaf, rim, fold=0.1, droop=0.1)
+    top, d = pl.stem(Vector((0, 0, 0)), Vector((0.02, 0, 0.12)), Vector((0.015, 0, 0)), 0.002, srgb(0x8a6a5a), n=7)
+    for k in range(9):                                            # the panicle: short side stalks, each a little star
+        t = 0.45 + k * 0.06
+        base = Vector((0.02 * t + 0.015 * math.sin(t * math.pi) * 0.5, 0, 0.12 * t))
+        a = k * 2.4
+        tip = base + Vector((math.cos(a) * 0.012, math.sin(a) * 0.012, 0.006))
+        pl.stem(base, tip, Vector((0, 0, 0)), 0.0008, srgb(0x8a6a5a), n=2)
+        for q in range(5):
+            b = q / 5 * 2 * math.pi
+            pl.petal(tip, Z, Vector((math.cos(b), math.sin(b), 0)), 0.0065, 0.0035, 0.25, srgb(0xf6f4ea), srgb(0xfffef6), pointed=False, rows=1, cols=1)
+    pl.save('skalnica-gronkowa')
+
+
+def tojad(name, blue, pale, seed, height=1.0):
+    """a tall spike of hooded, helmet-like flowers above deeply cut, palmate leaves"""
+    pl = Plant(seed)
+    top, d = pl.stem(Vector((0, 0, 0)), Vector((0.01, 0, height)), Vector((0.02, 0.01, 0)), 0.006, green, n=10)
+    for w in range(5):                                            # palmate leaves up the lower stem
+        z = 0.12 + w * 0.1
+        for k in range(5):
+            a = w * 1.3 + (k - 2) * 0.35
+            pl.leaf(Vector((0.001, 0, z * height)), Vector((math.cos(a), math.sin(a), 0)), 0.1 - w * 0.01, 0.02, 0.03, green, srgb(0x5a8a3a), droop=0.3)
+    for k in range(16):                                           # the helmets, facing out round the spike
+        t = 0.55 + k * 0.028
+        c = Vector((0.01 * t, 0, height * t))
+        a = k * 2.4
+        o = Vector((math.cos(a), math.sin(a), 0))
+        hc = c + o * 0.012
+        pl.bell(hc + Vector((0, 0, 0.018)), Vector((o.x * 0.3, o.y * 0.3, -1)), 0.024, 0.009, blue, pale, lobes=3, flare=0.5, rows=4)
+        pl.petal(hc - Vector((0, 0, 0.004)), Z, o, 0.012, 0.006, 0.1, blue, pale, rows=2, cols=1)   # the lower lips
+    pl.save(name)
+
+
+def lilia():
+    """martagon lily: nodding turban flowers, pink with dark spots, the petals curled back, whorled leaves"""
+    pl = Plant(31)
+    top, d = pl.stem(Vector((0, 0, 0)), Vector((0.02, 0, 0.95)), Vector((0.02, 0, 0)), 0.005, srgb(0x5a6a3a), n=10)
+    for w in (0.25, 0.4):                                         # whorls of broad leaves
+        for k in range(7):
+            a = k / 7 * 2 * math.pi + w * 5
+            pl.leaf(Vector((0.02 * w, 0, 0.95 * w)), Vector((math.cos(a), math.sin(a), 0)), 0.13, 0.03, 0.02, green, srgb(0x6a9a40), droop=0.25)
+    pink, deep = srgb(0xd97aa8), srgb(0x9a3a6a)
+    for k in range(5):                                            # nodding flowers on arching stalks
+        t = 0.62 + k * 0.07
+        base = Vector((0.02 * t, 0, 0.95 * t))
+        a = k * 2.3
+        o = Vector((math.cos(a), math.sin(a), 0))
+        f, fd = pl.stem(base, base + o * 0.06 + Vector((0, 0, 0.02)), Vector((0, 0, 0.02)), 0.0018, srgb(0x5a6a3a), n=3)
+        c = f - Vector((0, 0, 0.012))
+        for q in range(6):                                        # petals curled back up over the stalk
+            b = q / 6 * 2 * math.pi
+            pl.petal(c, Vector((0, 0, -1)), Vector((math.cos(b), math.sin(b), 0)), 0.045, 0.014, -0.5, deep, pink, curl=0.7, rows=4)
+        for q in range(6):                                        # the stamens hanging out
+            b = q / 6 * 2 * math.pi
+            pl.stem(c, c + Vector((math.cos(b) * 0.008, math.sin(b) * 0.008, -0.03)), Vector((0, 0, 0)), 0.0007, srgb(0xd0a060), n=2)
+    pl.save('lilia')
+
+
+def flowers_more():
+    gozdzik('gozdzik-lsniacy', srgb(0xe060a0), srgb(0xa02a6a), 11)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    gozdzik('gozdzik-wczesny', srgb(0xf0a0c8), srgb(0xc06a9a), 12)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    skalnica_gronkowa()
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    tojad('tojad', srgb(0x3a2f8f), srgb(0x5a4ac0), 13, 1.1)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    tojad('tojad-moldawski', srgb(0x6a4ab0), srgb(0x9a7ae0), 14, 0.9)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    lilia()
+
+
+for f in (szarotka, goryczka_clusii, goryczka_punctata, goryczka_frigida, krokus, sasanka, urdzik, flowers_more):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     f()

@@ -765,7 +765,8 @@ async function main() {
       .filter((p) => cells.has(Math.floor(p.x / G) + ',' + Math.floor(p.z / G)) || (BY_ID[p.id]?.far && Math.min(...trail.X.map((x, i) => Math.hypot(x - p.x, trail.Z[i] - p.z))) < BY_ID[p.id].far));
   } catch (e) { spots = null; }
   if (!spots) spots = buildSpots({ trail, terrain, groundClass, meta });
-  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots, groundClass });
+  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots, groundClass,
+    rut: (SUN_DAY.getMonth() === 8 && SUN_DAY.getDate() >= 10) || (SUN_DAY.getMonth() === 9 && SUN_DAY.getDate() <= 20), onEvent: (t) => toast(t) });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
     masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY,
     groundClass, grass: P.get('trawa') === '0' });
@@ -1283,7 +1284,8 @@ async function main() {
     nature: { spots, found }, onClick: (it) => cards.show(it) });
   const cards = await buildCards({ found, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
   // the plants of the catalogue at their spots: patches of flowers, herbs, ferns and dwarf shrubs
-  const birds = buildBirds({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)) });
+  const birds = buildBirds({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), onEvent: (t) => toast(t) });
+  wildlife.setBirds(birds);
   const flowers = buildFlowers({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), shade, patchShading,
     models: await loadFlowerModels() });
   if (grass) grass.setClearings(flowers.clearings);
