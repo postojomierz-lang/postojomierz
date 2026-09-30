@@ -264,6 +264,16 @@ Bez zasięgu zgłoszenie czeka w telefonie. Odczyt: `python3 tools/bug_reports.p
 - **Usuń konto i dane**: funkcja `delete_my_account()` w `supabase/schema.sql` (security definer, usuwa
   użytkownika, a kaskady wszystko jego); **Wyczyść dane z tego urządzenia** (`src/planner/localdata.js`).
 
+## Słońce, niebo i woda
+
+- **Słońce na dzień wędrówki:** pozycja liczona dla daty startu z planera (albo dziś): deklinacja pory roku,
+  równanie czasu i polski czas letni / zimowy (`SUN_K` w `main.js`). Wcześniej zawsze był czerwiec (zachód ~21:15).
+- **Zmierzch:** ciepła łuna nad horyzontem pod słońcem, różowe spody chmur tuż przed i po zachodzie, poświata,
+  pas Wenus po przeciwnej stronie nieba, gradient zmierzchu (niebo Preethama gaśnie za wcześnie), niebieskie
+  światło zmierzchu na stokach, w nocy ciemne chmury i gwiazdy.
+- **Stawy:** fale rosną i płyną szybciej z wiatrem (`light.windK`), podmuchy przyciemniają płaty wody, przy
+  wichurze białe grzywy; w deszczu kręgi od kropel (`light.rainK`); przy niskim słońcu migocząca ścieżka blasku.
+
 ## Dziennik (rekordy, duch, szczyty)
 `src/journal.js`, zapisywany w pamięci przeglądarki (`localStorage`, klucz `rysy-journal`):
 - przejście trasy do mety w widoku 3D trafia do dziennika (data, długość, podejścia, czas);
