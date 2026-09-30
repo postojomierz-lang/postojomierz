@@ -45,12 +45,14 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
       const row = Math.floor(r() * mv.length), v = mv[row];
       const target = (1.3 + r() * 1.2) * (1 - 0.35 * high);
       const sc = target / v.height;
-      mugo.push({ x, y: y - v.base * sc - 0.15, z, w: v.width * sc * (0.85 + r() * 0.3), h: v.height * sc, row, rot: r() * 6.283, tint: r(), wind: 0.5 });
+      const w = v.width * sc * (0.85 + r() * 0.3);
+      // ty, th, cw: foot, height and width of the 3D clump that replaces it near the camera
+      mugo.push({ x, y: y - v.base * sc - 0.15, z, w, h: v.height * sc, row, rot: r() * 6.283, tint: r(), wind: 0.5, ty: y - 0.15, th: target, cw: w });
     }
   }
   const mugoMesh = impostorMesh(kinds.mugo, mugo);
   scene.add(mugoMesh);
 
   function update() {}
-  return { update, counts: { spruce: trees.length, young: young.length, mugo: mugo.length }, mugoMesh, trees, young };
+  return { update, counts: { spruce: trees.length, young: young.length, mugo: mugo.length }, mugoMesh, trees, young, mugo };
 }

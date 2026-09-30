@@ -27,7 +27,7 @@ import { loadJournal, saveJournal, routeKey, addWalk, addPeak, ghostAt, fmtClock
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 import { SSAOPass } from './ssao.js';
-import { buildTrees3D } from './vegetation3d.js';
+import { buildTrees3D, buildMugo3D } from './vegetation3d.js';
 
 // data and textures are served next to index.html (tatry/public -> rysy/)
 const DATA = 'data/';
@@ -235,6 +235,12 @@ async function main() {
   // keeps boulders off the footpath itself
   const trailVisWide = drawMask(2048, IB, (g) => {
     g.strokeStyle = 'rgb(255,0,0)'; g.lineWidth = 3.5;
+    g.beginPath(); trailPts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
+  });
+  // trunks keep off the path: ±3.5 m (the flattened corridor, trailWide, reaches ~18 m once blurred on its
+  // 5 m grid: far too wide for plants, the dwarf pine grows right up to the path)
+  const pathSide = drawMask(2048, IB, (g) => {
+    g.strokeStyle = 'rgb(255,0,0)'; g.lineWidth = 7;
     g.beginPath(); trailPts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
   });
   // vegetation keeps its branches off the footpath
@@ -488,7 +494,7 @@ async function main() {
     for (let t = 0; t < tries; t++) {
       if (r() > (c === 30 ? density * 0.3 : density)) continue;
       const x = IB[0] + (i + r()) * px, z = IB[1] + (j + r()) * pz;
-      if (terrain.maskAt(trailWide, x, z) > 0.05 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
+      if (terrain.maskAt(c === 10 ? pathSide : trailVisWide, x, z) > 0.02 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
       if (houses.inside(x, z, c === 10 ? 6 : 2)) continue;
       if (c === 10 && terrain.maskAt(clearing, x, z) > 0) continue;
       if (c === 10 && tileTrees.has(Math.floor((x - TO[0]) / TS) + ',' + Math.floor((z - TO[1]) / TS))) continue;
@@ -511,7 +517,7 @@ async function main() {
       const x = x0 + a[k] / 65535 * TS, z = z0 + a[k + 1] / 65535 * TS, th = a[k + 2] / 100;
       const gc = groundClass(x, z);
       if (gc && (gc.c === 1 || gc.c === 2 || gc.c === 7)) continue;          // water, rock faces, snow: not a tree
-      if (terrain.maskAt(trailWide, x, z) > 0.3 || terrain.maskAt(lakeMask, x, z) > 0.05 || houses.inside(x, z, 2)) continue;
+      if (terrain.maskAt(pathSide, x, z) > 0 || terrain.maskAt(lakeMask, x, z) > 0.05 || houses.inside(x, z, 2)) continue;
       if (terrain.normal(x, z, 3).y < 0.6) continue;
       realTrees.push(x, terrain.height(x, z), z, 0, th);
     }
@@ -536,7 +542,7 @@ async function main() {
         const gc = groundClass(x, z);
         if (gc ? gc.c !== 5 : !(Gc > R + 4 && Gc > B + 6 && R + Gc + B < 260)) continue;
         const h = terrain.height(x, z);
-        if ((!gc && h < 1500) || h > (gc ? 2150 : 1950) || terrain.maskAt(trailWide, x, z) > 0.3 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
+        if ((!gc && h < 1500) || h > (gc ? 2150 : 1950) || terrain.maskAt(trailVisWide, x, z) > 0.02 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
         if (terrain.normal(x, z, 4).y < 0.75) continue;
         pine.push(x, h, z);
       }
@@ -577,7 +583,7 @@ async function main() {
   const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
-    mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55 }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
+    mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55, fade: 'mugo' }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
   });
   const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds,
     ground: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.02 || terrain.maskAt(lakeMask, x, z) > 0.02 || houses.inside(x, z, 2)
@@ -585,6 +591,10 @@ async function main() {
   // 3D spruces near the camera (vegetation3d.js) in place of the impostors; ?drzewa3d=0 turns them off
   const trees3d = QUALITY !== 'low' && P.get('drzewa3d') !== '0' ? await buildTrees3D({ scene, shade, items: [forest.trees, forest.young],
     radius: tier(0, 45, 70, 110),
+    loadTexture: async (url, srgb) => { const t = texture(await bitmap(url), aniso); if (!srgb) t.colorSpace = THREE.NoColorSpace; return t; } }) : null;
+  // 3D dwarf pine near the camera in place of its impostors (same switch as the 3D trees)
+  const mugo3d = QUALITY !== 'low' && P.get('drzewa3d') !== '0' ? await buildMugo3D({ scene, shade, items: forest.mugo,
+    radius: tier(0, 18, 28, 40),
     loadTexture: async (url, srgb) => { const t = texture(await bitmap(url), aniso); if (!srgb) t.colorSpace = THREE.NoColorSpace; return t; } }) : null;
   const landPx = { d: pixels(landBmp), w: landBmp.width, h: landBmp.height };
   const photoPx = { d: pixels(innerBmp), w: innerBmp.width, h: innerBmp.height };
@@ -1274,6 +1284,7 @@ async function main() {
     forest.update(camera);
     treeFade.cam.value.copy(camera.position);
     if (trees3d) trees3d.update(camera.position);
+    if (mugo3d) mugo3d.update(camera.position);
     {
       const fx = state.mode === 'walk' || state.freeCam ? camera.position.x : hiker.position.x;
       const fz = state.mode === 'walk' || state.freeCam ? camera.position.z : hiker.position.z;
@@ -1292,7 +1303,7 @@ async function main() {
     adaptResolution();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { groundClass, composer, ssao, trees3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { groundClass, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 

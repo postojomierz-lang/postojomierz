@@ -47,6 +47,10 @@ W silniku: siatka 1,25 m wokół kamery (przebudowywana w ruchu) na siatce 6 m, 
   wypiekane (Cycles) na lekką (700 / 1300 trójkątów): normalne i kolor proceduralnego granitu (skaleń, kwarc,
   biotyt, rdzawe naloty, porost wzorzec naskalny i szare skorupy na wierzchu, zacieki na ścianach, ciemniejsze
   szczeliny). W widoku: kamienie w piargach i blokowiskach oraz bloki osadzone w ścianach skalnych przy szlaku.
+- `python3 tools/blender/bake_mugo_cards.py <pine_sapling_small_1k.gltf> public/models`: karty igieł kosodrzewiny
+  (wierzchołki sosenek z boku i rozeta z góry). W widoku (`buildMugo3D` w `src/vegetation3d.js`) kosodrzewina bliżej
+  niż 18 / 28 / 40 m (średnia / wysoka / ultra) jest trójwymiarowa: 14–18 pędów z jednego korzenia, pokładających się
+  na boki i podgiętych ku górze, z krzyżowymi kartami igieł; dalej zostają impostory (przenikanie ditheringiem).
 - (dawniej) `tools/blender/decimate_rocks.py`: skany Poly Haven, `public/models/rocks.glb`.
 
 W silniku (`src/impostor.js`, `src/groundcover.js`): impostor to jedna karta obracana do kamery,
