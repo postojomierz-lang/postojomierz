@@ -814,5 +814,77 @@
   "author": "Lucas Benaiche",
   "license": "CC BY-SA 4.0",
   "url": "https://www.inaturalist.org/photos/602232824"
+ },
+ "przelot-alpejski": {
+  "file": "Anthyllis alpestris01.jpg",
+  "author": "Meneerke bloem",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Anthyllis_alpestris01.jpg"
+ },
+ "lis": {
+  "file": "inaturalist-318186289",
+  "author": "kyselinasirova",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/318186289"
+ },
+ "zajac": {
+  "file": "European Brown Hare (50341079472).jpg",
+  "author": "caroline legg",
+  "license": "CC BY 2.0",
+  "url": "https://commons.wikimedia.org/wiki/File:European_Brown_Hare_(50341079472).jpg"
+ },
+ "slimak-tatrzanski": {
+  "file": "Naturalis Biodiversity Center - ZMA.MOLL.402934 - Faustina rossmaessleri (Pfeiffer, 1842) - Helicidae - Mollusc shell.jpeg",
+  "author": "Pfeiffer, 1842",
+  "license": "CC0",
+  "url": "https://commons.wikimedia.org/wiki/File:Naturalis_Biodiversity_Center_-_ZMA.MOLL.402934_-_Faustina_rossmaessleri_(Pfeiffer,_1842)_-_Helicidae_-_Mollusc_shell.jpeg"
+ },
+ "lipien": {
+  "file": "Grayling Thymallus thymallus.JPG",
+  "author": "High Plains Grifter",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Grayling_Thymallus_thymallus.JPG"
+ },
+ "strzebla": {
+  "file": "inaturalist-435278491",
+  "author": "Nick Tobler (Cowturtle)",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/435278491"
+ },
+ "pstrag-zrodlany": {
+  "file": "inaturalist-583377996",
+  "author": "Hubert Sztyler",
+  "license": "CC0",
+  "url": "https://www.inaturalist.org/photos/583377996"
+ },
+ "golec": {
+  "file": "Röding, Iduns kokbok.jpg",
+  "author": "",
+  "license": "Public domain",
+  "url": "https://commons.wikimedia.org/wiki/File:R%C3%B6ding,_Iduns_kokbok.jpg"
+ },
+ "sliz": {
+  "file": "inaturalist-259094770",
+  "author": "Kurt Miller",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/259094770"
+ },
+ "jelec": {
+  "file": "inaturalist-401121774",
+  "author": "Oliver Hlasný",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/401121774"
+ },
+ "certa": {
+  "file": "Vimba vimba.jpg",
+  "author": "No machine-readable author provided. Tokic assumed (based on copyright claims).",
+  "license": "CC BY-SA 2.5",
+  "url": "https://commons.wikimedia.org/wiki/File:Vimba_vimba.jpg"
+ },
+ "troc-jeziorowa": {
+  "file": "Nové Štrbské pleso 25 Slovakia 4.jpg",
+  "author": "Jozef Kotulič",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Nov%C3%A9_%C5%A0trbsk%C3%A9_pleso_25_Slovakia_4.jpg"
  }
 }
