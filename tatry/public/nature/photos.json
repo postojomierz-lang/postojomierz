@@ -664,5 +664,41 @@
   "author": "Bobo-X",
   "license": "CC BY 4.0",
   "url": "https://www.inaturalist.org/photos/569221509"
+ },
+ "tojad-moldawski": {
+  "file": "inaturalist-45616881",
+  "author": "Conrad Altmann",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/45616881"
+ },
+ "wroniec": {
+  "file": "inaturalist-695695187",
+  "author": "Grzegorz Grzejszczak",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/695695187"
+ },
+ "widlak": {
+  "file": "inaturalist-91246957",
+  "author": "Grzegorz Grzejszczak",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/91246957"
+ },
+ "paprotnik": {
+  "file": "inaturalist-87584885",
+  "author": "Grzegorz Grzejszczak",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/87584885"
+ },
+ "bielistka": {
+  "file": "Leucobryum glaucum kz04.jpg",
+  "author": "Krzysztof Ziarnek, Kenraiz",
+  "license": "CC BY-SA 4.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Leucobryum_glaucum_kz04.jpg"
+ },
+ "wielosil": {
+  "file": "inaturalist-288106653",
+  "author": "Daniel Cahen",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/288106653"
  }
 }

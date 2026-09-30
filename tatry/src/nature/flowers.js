@@ -4,8 +4,29 @@
 // are for flowers, herbs, ferns, grasses and dwarf shrubs. One mesh for all patches of a route (vertex
 // colours), a few hundred triangles each.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BY_ID } from './catalog.js';
 import { rng } from '../noise.js';
+import { cullByDistance } from '../lod.js';
+
+// the best-known plants modelled in Blender (tools/blender/make_flowers.py): drawn as instances of the
+// model instead of the simple shapes
+const MODELS = ['szarotka', 'goryczka-krotkolodygowa', 'goryczka-kropkowana', 'goryczka-przezroczysta', 'krokus', 'sasanka', 'urdzik'];
+export async function loadFlowerModels() {
+  const loader = new GLTFLoader(), out = {};
+  await Promise.all(MODELS.map(async (id) => {
+    try {
+      const g = await loader.loadAsync(`models/flowers/${id}.glb`);
+      g.scene.updateMatrixWorld(true);
+      let geo = null;
+      g.scene.traverse((o) => { if (o.isMesh && !geo) geo = o.geometry.clone().applyMatrix4(o.matrixWorld); });
+      if (!geo) return;
+      geo.computeBoundingBox();
+      out[id] = { geo, height: Math.max(0.01, geo.boundingBox.max.y) };
+    } catch (e) { /* missing model: the simple shapes */ }
+  }));
+  return out;
+}
 
 // shape, flower colour, height (m), plants in the patch, [leaf colour]
 const LOOK = {
@@ -39,7 +60,7 @@ const LOOK = {
   wielosil: ['umbel', 0x6a7ae0, 0.9, 5],
 };
 
-export function buildFlowers({ scene, spots, groundAt, shade, patchShading }) {
+export function buildFlowers({ scene, spots, groundAt, shade, patchShading, models = {} }) {
   const pos = [], nor = [], col = [];
   const c = new THREE.Color(), leafDefault = new THREE.Color(0x4f7f32);
   const tri = (a, b, d, n, cc) => { pos.push(...a, ...b, ...d); for (let k = 0; k < 3; k++) { nor.push(...n); col.push(cc.r, cc.g, cc.b); } };
@@ -67,17 +88,50 @@ export function buildFlowers({ scene, spots, groundAt, shade, patchShading }) {
   };
   let n = 0;
   const clearings = [];
+  const inst = {};                                   // model id -> instance matrices
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), E = new THREE.Euler();
   for (const sp of spots) {
     const s = BY_ID[sp.id];
     const look = s && s.kind === 'flora' ? LOOK[sp.id] : null;
     if (!look) continue;
     const [shape, fc, H, count, lc] = look;
     const r = rng([...sp.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, Math.round(sp.x * 7 + sp.z * 13)));
+    // spots right beside the path: the patch moves off it, onto the nearest ground where plants may grow
+    // (the path and its verges are kept free); the label stays at the spot
+    let cx = sp.x, cz = sp.z;
+    const freeAround = (x, z) => { let ok = 0; for (let q = 0; q < 6; q++) if (groundAt(x + Math.cos(q) * 1.2, z + Math.sin(q) * 1.2) !== null) ok++; return ok; };
+    if (freeAround(cx, cz) < 5) {
+      let best = null;
+      for (const d of [2, 3.5, 5, 7, 9]) {
+        for (let q = 0; q < 12; q++) {
+          const x = sp.x + Math.cos(q / 12 * 6.2832) * d, z = sp.z + Math.sin(q / 12 * 6.2832) * d;
+          if (freeAround(x, z) >= 5) { best = { x, z }; break; }
+        }
+        if (best) break;
+      }
+      if (best) { cx = best.x; cz = best.z; }
+    }
     const flower = new THREE.Color(fc), leafC = lc ? new THREE.Color(lc) : leafDefault;
-    if (H < 0.6) clearings.push({ x: sp.x, z: sp.z, r: 1.8 });
+    if (H < 0.6) clearings.push({ x: cx, z: cz, r: 1.8 });
+    const model = models[sp.id];
+    if (model) {
+      const list = inst[sp.id] || (inst[sp.id] = []);
+      // small plants come as denser carpets and a little larger than life, so a patch reads from the trail
+      const small = H < 0.2, boost = small ? 1.5 : 1.15;
+      for (let k = 0; k < Math.ceil(count * (small ? 3 : 1.5)); k++) {
+        const a = r() * 6.2832, d = Math.sqrt(r()) * (H > 0.6 ? 2.2 : small ? 2.2 : 1.6);
+        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, y = groundAt(x, z);
+        if (y === null) continue;
+        const sc = H * boost * (0.7 + r() * 0.6) / model.height;
+        E.set((r() - 0.5) * 0.15, r() * 6.2832, (r() - 0.5) * 0.15);
+        list.push(new THREE.Matrix4().compose(P.set(x, y - 0.01, z), Q.setFromEuler(E), S.set(sc, sc, sc)));
+      }
+      n++;
+      continue;
+    }
     for (let k = 0; k < count * 2; k++) {
       const a = r() * 6.2832, d = Math.sqrt(r()) * (H > 0.6 ? 2.2 : 1.3);
-      const x = sp.x + Math.cos(a) * d, z = sp.z + Math.sin(a) * d, y = groundAt(x, z);
+      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, y = groundAt(x, z);
       if (y === null) continue;
       const h = H * (0.7 + r() * 0.6), v = 0.85 + r() * 0.3;
       c.copy(flower).multiplyScalar(v);
@@ -129,5 +183,20 @@ export function buildFlowers({ scene, spots, groundAt, shade, patchShading }) {
   const mesh = new THREE.Mesh(g, m);
   mesh.receiveShadow = true;
   scene.add(mesh);
-  return { mesh, patches: n, tris: pos.length / 9, clearings };
+  // the modelled plants: one instanced mesh per species, drawn within 250 m
+  const culls = [];
+  let modelTris = 0;
+  const mm = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  patchShading(mm, shade, { perVertexShadow: false });
+  for (const [id, list] of Object.entries(inst)) {
+    if (!list.length) continue;
+    const im = new THREE.InstancedMesh(models[id].geo, mm, list.length);
+    list.forEach((mx, i) => im.setMatrixAt(i, mx));
+    im.receiveShadow = true;
+    scene.add(im);
+    culls.push(cullByDistance(im, list, 250));
+    modelTris += models[id].geo.index ? list.length * models[id].geo.index.count / 3 : 0;
+  }
+  void M;
+  return { mesh, patches: n, tris: pos.length / 9 + modelTris, clearings, update: (cam) => culls.forEach((c) => c(cam)) };
 }
