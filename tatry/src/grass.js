@@ -16,25 +16,35 @@ const hash = (i, j, k) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-// one blade: x across (-0.5..0.5), y up (0..1); `seg` segments and a pointed tip
-function bladeGeometry(seg) {
-  const pos = [], idx = [];
-  for (let s = 0; s < seg; s++) {
-    const y = s / seg;
-    pos.push(-0.5, y, 0, 0.5, y, 0);
+// one instance = a tuft of `blades` blades, each with `seg` segments and a pointed tip: x across
+// (-0.5..0.5), y up (0..1); aSub per vertex: the blade's offset in the tuft (m), its own turn, its height
+function bladeGeometry(seg, blades) {
+  const pos = [], sub = [], idx = [];
+  let rs = 12345;
+  const rand = () => { rs = (rs * 1103515245 + 12345) & 0x7fffffff; return rs / 0x7fffffff; };
+  for (let b = 0; b < blades; b++) {
+    const a = rand() * 6.2832, r = Math.sqrt(rand()) * 0.12;
+    const sb = [Math.cos(a) * r, Math.sin(a) * r, rand() * 6.2832, 0.6 + rand() * 0.6];
+    const v0 = pos.length / 3;
+    for (let s = 0; s < seg; s++) {
+      const y = s / seg;
+      pos.push(-0.5, y, 0, 0.5, y, 0); sub.push(...sb, ...sb);
+    }
+    pos.push(0, 1, 0); sub.push(...sb);
+    for (let s = 0; s < seg - 1; s++) { const q = v0 + s * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
+    const q = v0 + (seg - 1) * 2; idx.push(q, q + 1, v0 + seg * 2);
   }
-  pos.push(0, 1, 0);
-  for (let s = 0; s < seg - 1; s++) { const a = s * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-  const a = (seg - 1) * 2; idx.push(a, a + 1, seg * 2);
   const g = new THREE.InstancedBufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length).fill(0).map((_, i) => (i % 3 === 2 ? 1 : 0)), 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 2 ? 1 : 0)), 3));
+  g.setAttribute('aSub', new THREE.Float32BufferAttribute(sub, 4));
   g.setIndex(idx);
   return g;
 }
 
 const VERT_HEAD = /* glsl */`
   attribute vec4 aBlade;                 // x, z in the field (0..1), two random numbers
+  attribute vec4 aSub;                   // the blade in its tuft: offset x, z (m), turn, height
   uniform vec2 gCam; uniform float gSize; uniform float gHole; uniform float gFade;
   uniform vec4 gWin; uniform float gYRef; uniform sampler2D gData; uniform sampler2D gCol;
   uniform float gW; uniform float gH; uniform float gTime; uniform float gDensity;
@@ -55,16 +65,18 @@ const VERT_HEAD = /* glsl */`
     bool inside = uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0;
     if (!inside || aBlade.z >= keep) { gPos = vec3(0.0, -1e5, 0.0); gNor = vec3(0.0, 1.0, 0.0); return; }
     float r = aBlade.w;
-    float H = gH * dat.b * (0.55 + 0.9 * fract(r * 7.13)) * (0.6 + 0.4 * edge);
+    float H = gH * dat.b * (0.6 + 0.7 * fract(r * 7.13)) * aSub.w * (0.6 + 0.4 * edge);
     float W = gW * (0.7 + 0.6 * fract(r * 3.71));
-    float yaw = r * 6.2832;
+    float yaw = r * 6.2832 + aSub.z;
+    float cy = cos(r * 6.2832), sy = sin(r * 6.2832);
+    w += vec2(aSub.x * cy - aSub.y * sy, aSub.x * sy + aSub.y * cy);
     vec2 face = vec2(cos(yaw), sin(yaw)), across = vec2(-face.y, face.x);
     // bend: a resting curve along the blade's facing, plus the wind (a slow swell and gusts)
     float y = position.y;
     float gust = sin(gTime * 1.7 + w.x * 0.21 + w.y * 0.17) * 0.5 + 0.5;
     gust = gust * (0.6 + 0.4 * sin(gTime * 0.53 + w.x * 0.05));
     vec2 windDir = normalize(vec2(0.8, 0.6));
-    float lean = 0.25 + 0.45 * fract(r * 11.3);
+    float lean = 0.2 + 0.5 * fract((r + aSub.z) * 11.3);
     vec2 bendXZ = (face * lean + windDir * gust * 0.55) * H * y * y;
     float drop = (lean * lean * 0.3 + gust * 0.12) * H * y * y;
     gPos = vec3(w.x, dat.r + gYRef, w.y)
@@ -78,7 +90,7 @@ const VERT_HEAD = /* glsl */`
     vec3 lush = vec3(0.10, 0.22, 0.035);
     vec3 base = mix(ground, lush, 0.4);
     float v = 0.85 + 0.3 * fract(r * 5.9);
-    vGCol = mix(base * 0.35, base * 1.35 + vec3(0.03, 0.04, 0.0), y) * v;
+    vGCol = mix(base * 0.4, base * 1.15 + vec3(0.02, 0.03, 0.0), y) * v;
     vGSh = dat.g;
     vGY = y;
   }
@@ -95,6 +107,8 @@ function grassMaterial(uniforms, shade) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vGCol; varying float vGSh; varying float vGY;')
       .replace('#include <color_fragment>', 'diffuseColor.rgb = vGCol;')
+      // both faces of a blade take the same normal (the flipped back face would go black against the sun)
+      .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n normal = normalize(vNormal);')
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         reflectedLight.directDiffuse *= vGSh;
         // light through the blades when the sun is behind them
@@ -108,8 +122,8 @@ function grassMaterial(uniforms, shade) {
 export function buildGrass({ scene, terrain, shade, quality, photo, bounds, groundClass, masks, blocked = () => false }) {
   const t = (low, mid, high, ultra) => ({ low, mid, high, ultra })[quality] ?? high;
   // [field size (m), blades per m², blade width, blade height, segments, hole]
-  const INNER = { size: t(16, 22, 30, 38), per: t(18, 34, 60, 80), w: 0.045, h: 0.34, seg: t(3, 4, 4, 5) };
-  const OUTER = quality === 'low' ? null : { size: t(0, 56, 90, 120), per: t(0, 4, 7, 10), w: 0.08, h: 0.4, seg: 2 };
+  const INNER = { size: t(16, 22, 30, 38), per: t(6, 12, 30, 42), w: 0.04, h: 0.32, seg: t(3, 3, 4, 4), blades: 5 };   // tufts per m²
+  const OUTER = quality === 'low' ? null : { size: t(0, 56, 90, 120), per: t(0, 1.5, 2.5, 3.5), w: 0.06, h: 0.38, seg: 2, blades: 4 };
   const WIN = Math.ceil((OUTER ? OUTER.size : INNER.size) + 32);      // the data window (1 m texels)
 
   // half floats filter linearly everywhere (full floats not on every phone); heights relative to the camera's
@@ -127,7 +141,7 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
   for (const [k, F] of [INNER, OUTER].entries()) {
     if (!F) continue;
     const n = Math.round(F.size * F.size * F.per);
-    const g = bladeGeometry(F.seg);
+    const g = bladeGeometry(F.seg, F.blades);
     // a proper generator (mulberry32): a hash of consecutive indices lines the blades up in rows
     const a = new Float32Array(n * 4);
     let seed = 0x9e3779b9 ^ (k * 0x85ebca6b);
@@ -147,7 +161,7 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
     const mesh = new THREE.Mesh(g, grassMaterial(u, shade));
     mesh.frustumCulled = false; mesh.receiveShadow = true; mesh.castShadow = false;
     scene.add(mesh);
-    fields.push({ mesh, n, u });
+    fields.push({ mesh, n, u, blades: F.blades });
   }
 
   // the terrain's own shadow at (x, y, z) for the current sun, as in the terrain shader
@@ -217,5 +231,5 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
   }
   const debug = () => { const c = ((WIN / 2) * WIN + WIN / 2) * 4; return { yRef: common.gYRef.value, cam: common.gCam.value.toArray(), win: common.gWin.value.toArray(), h: data[c], half: half[c], back: THREE.DataUtils.fromHalfFloat(half[c]), dens: cols[c + 3], sh: data[c + 1], share: (() => { let k = 0, m = 0; for (let i = 3; i < cols.length; i += 4) { if (cols[i] > 0) k++; m += cols[i]; } return [k / (WIN * WIN), m / (WIN * WIN) / 255]; })(), hs: [data[0], data[(WIN * 10 + 70) * 4], data[(WIN * 90 + 30) * 4]].map((v) => v - common.gYRef.value) }; };
   const at = (x, z) => { const w = common.gWin.value, i = Math.floor(x - w.x), j = Math.floor(z - w.y); if (i < 0 || j < 0 || i >= WIN || j >= WIN) return null; const o = (j * WIN + i) * 4; return { dens: cols[o + 3], h: data[o], sh: data[o + 1], gc: groundClass(x, z), n: terrain.normal(x, z, 1.5).y, path: terrain.maskAt(masks.path, x, z), side: terrain.maskAt(masks.pathSide, x, z), lake: terrain.maskAt(masks.lake, x, z), blocked: blocked(x, z) }; };
-  return { update, debug, at, blades: fields.reduce((s, f) => s + f.n, 0), fields };
+  return { update, debug, at, blades: fields.reduce((s, f) => s + f.n * f.blades, 0), fields };
 }
