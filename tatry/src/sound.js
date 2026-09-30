@@ -63,6 +63,46 @@ export class Sound {
     this.fall = (() => { const s = loop(this.buf.waterfall); const p = panner(12, 800); s.g.connect(p); return { ...s, p }; })();
     this.stepFilter = ctx.createBiquadFilter(); this.stepFilter.type = 'lowpass'; this.stepFilter.frequency.value = 9000;
     this.stepFilter.connect(this.master);
+    // rain: a bed of filtered noise (made here, no file), louder with the rain's strength
+    this.noise = this._noise(3);
+    const rain = loop(this.noise);
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 500;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 7000;
+    rain.g.connect(hp).connect(lp).connect(this.master);
+    this.rain = rain;
+  }
+
+  // white noise, brownish (a little low-passed) so it does not hiss
+  _noise(seconds) {
+    const ctx = this.ctx, n = Math.floor(ctx.sampleRate * seconds);
+    const b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < n; i++) { last = last * 0.55 + (Math.random() * 2 - 1) * 0.45; d[i] = last * 1.6; }
+    return b;
+  }
+
+  // thunder from a lightning strike `dist` metres away: a crack when close, then a long low rumble,
+  // arriving at the speed of sound
+  thunder(dist) {
+    if (!this.ctx || this.ctx.state !== 'running' || !this.noise) return;
+    const ctx = this.ctx, t0 = ctx.currentTime + dist / 343;
+    const near = Math.max(0, 1 - dist / 3000), len = 4 + 5 * (1 - near);
+    const src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.7;
+    lp.frequency.setValueAtTime(near > 0.4 ? 2500 : 600, t0);
+    lp.frequency.exponentialRampToValueAtTime(110, t0 + 1.2);
+    const g = ctx.createGain(), peak = 0.25 + 1.1 * near;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(peak, t0 + (near > 0.4 ? 0.03 : 0.6));
+    // rolling: a few swells while it dies away
+    let t = t0 + 0.8;
+    for (let k = 0; k < 4 && t < t0 + len - 1; k++) {
+      g.gain.exponentialRampToValueAtTime(peak * (0.35 + Math.random() * 0.4) / (1 + k * 0.5), t);
+      t += 0.6 + Math.random() * 1.2;
+    }
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    src.connect(lp).connect(g).connect(this.master);
+    src.start(t0, Math.random() * 2); src.stop(t0 + len + 0.1);
   }
 
   // a call of a large animal at a position (deer barking when startled, bear growling)
@@ -96,7 +136,7 @@ export class Sound {
   }
 
   // called every frame: camera, time step, walking speed (m/s along the trail), weather
-  update(camera, dt, { walking, speed, weather, fast }) {
+  update(camera, dt, { walking, speed, weather, fast, wind = 1, rain = 0 }) {
     if (!this.ctx || !this.windF || this.ctx.state !== 'running') return;
     const ctx = this.ctx, now = ctx.currentTime, L = ctx.listener;
     const c = camera.position;
@@ -113,10 +153,11 @@ export class Sound {
     const ground = this.terrain.height(c.x, c.z);
     const alt = Math.min(1, Math.max(0, (ground - 1400) / 1000));
     const forest = this.isForest(c.x, c.z) ? 1 : 0;
-    const wx = { clear: 0.7, haze: 0.8, cloudy: 1.1, mist: 0.9 }[weather] || 0.8;
+    const wx = Math.min(2.2, 0.7 * wind);
     const gust = 0.7 + 0.3 * Math.sin(this.t * 0.23) * Math.sin(this.t * 0.61 + 1.3);
     this.windF.g.gain.setTargetAtTime(0.1 * forest * wx * gust, now, 0.5);
     this.windO.g.gain.setTargetAtTime((0.05 + 0.35 * alt) * (1 - 0.7 * forest) * wx * gust, now, 0.5);
+    if (this.rain) this.rain.g.gain.setTargetAtTime(0.32 * rain * (1 - 0.3 * forest), now, 1.5);
 
     // water: nearest stream spots (a few times a second)
     this.scanT -= dt;
@@ -164,7 +205,7 @@ export class Sound {
     if (this.nextBird <= 0) {
       const zone = forest || ground < 1520 ? this.pools.forest : ground < 1750 ? this.pools.edge : this.pools.rock;
       const pool = zone.length ? zone[Math.floor(Math.random() * zone.length)] : null;
-      if (pool && !(weather === 'mist' && Math.random() < 0.6)) {
+      if (pool && !((weather === 'mist' || rain > 0.2) && Math.random() < 0.6)) {
         this.play(pool[Math.floor(Math.random() * pool.length)], { pos: around(12, 45), gain: 0.5, rate: 0.95 + Math.random() * 0.1, ref: 15 });
       }
       this.nextBird = (forest ? 5 : 14) + Math.random() * (forest ? 12 : 25);

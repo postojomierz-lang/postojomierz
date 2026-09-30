@@ -127,13 +127,15 @@
     #hud .stats dt:nth-of-type(n+3), #hud .stats dd:nth-of-type(n+3) { display: none; }
     #hud .stats dt:nth-of-type(6), #hud .stats dd:nth-of-type(6) { display: block; }
     #controls { top: auto; bottom: 86px; left: 8px; right: 8px; width: auto; padding: 8px; gap: 6px; }
-    #controls > label, #controls > #hour, #controls > #weather { display: none; }
+    #controls > label, #controls > #hour, #controls > #weather, #controls > #fc-info { display: none; }
     #controls.more > label, #controls.more > #hour, #controls.more > #weather { display: block; }
+    #controls.more > #fc-info:not([hidden]) { display: block; }
     #controls .phone-only { display: inline-block; }
     #bottom { left: 8px; right: 8px; bottom: 8px; }
     #place { top: 14%; font-size: 19px; }
     #fps { top: 78px; }
   }
+  #fc-info { font-size: 12px; line-height: 1.35; margin-top: 6px; max-width: 300px; opacity: .92; }
 </style>
 </head>
 <body>
@@ -180,7 +182,12 @@
     <option value="haze">🌤 Lekka mgiełka</option>
     <option value="cloudy">☁️ Pochmurno</option>
     <option value="mist">🌫 Mgła</option>
+    <option value="rain">🌧 Deszcz</option>
+    <option value="snow">🌨 Śnieg</option>
+    <option value="storm">⛈ Burza</option>
+    <option value="forecast">📡 Z prognozy</option>
   </select>
+  <div id="fc-info" hidden></div>
 </div>
 
 <div id="place"></div>

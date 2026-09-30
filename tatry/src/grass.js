@@ -47,7 +47,7 @@ const VERT_HEAD = /* glsl */`
   attribute vec4 aSub;                   // the blade in its tuft: offset x, z (m), turn, height
   uniform vec2 gCam; uniform float gSize; uniform float gHole; uniform float gFade;
   uniform vec4 gWin; uniform float gYRef; uniform sampler2D gData; uniform sampler2D gCol;
-  uniform float gW; uniform float gH; uniform float gTime; uniform float gDensity;
+  uniform float gW; uniform float gH; uniform float gTime; uniform float gDensity; uniform float gWind;
   varying vec3 vGCol; varying float vGSh; varying float vGY;
   vec3 gPos; vec3 gNor;
   float gHash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -73,8 +73,8 @@ const VERT_HEAD = /* glsl */`
     vec2 face = vec2(cos(yaw), sin(yaw)), across = vec2(-face.y, face.x);
     // bend: a resting curve along the blade's facing, plus the wind (a slow swell and gusts)
     float y = position.y;
-    float gust = sin(gTime * 1.7 + w.x * 0.21 + w.y * 0.17) * 0.5 + 0.5;
-    gust = gust * (0.6 + 0.4 * sin(gTime * 0.53 + w.x * 0.05));
+    float gust = sin(gTime * (1.2 + 0.5 * gWind) + w.x * 0.21 + w.y * 0.17) * 0.5 + 0.5;
+    gust = min(gust * (0.6 + 0.4 * sin(gTime * 0.53 + w.x * 0.05)) * gWind, 1.7);
     vec2 windDir = normalize(vec2(0.8, 0.6));
     float lean = 0.2 + 0.5 * fract((r + aSub.z) * 11.3);
     vec2 bendXZ = (face * lean + windDir * gust * 0.55) * H * y * y;
@@ -134,7 +134,7 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
   colTex.magFilter = colTex.minFilter = THREE.LinearFilter;
   const common = {
     gCam: { value: new THREE.Vector2() }, gWin: { value: new THREE.Vector4(0, 0, 1, 1) }, gYRef: { value: 0 },
-    gData: { value: dataTex }, gCol: { value: colTex }, gTime: shade.time,
+    gData: { value: dataTex }, gCol: { value: colTex }, gTime: shade.time, gWind: shade.windK,
   };
 
   const fields = [];

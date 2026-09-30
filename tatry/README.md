@@ -203,6 +203,23 @@ gęstość rysuje chmury w shaderze nieba (ciemniejsza podstawa, jaśniejszy brz
 cienie na teren, drzewa, kosówkę i budynki, więc cienie są dokładnie pod chmurami. Zachmurzenie zależy
 od pogody: słonecznie 45 %, mgiełka 20 %, pochmurno 88 %, mgła 95 %.
 
+## Pogoda (ręczna i z prognozy)
+
+W panelu: słonecznie, mgiełka, pochmurno, mgła, **deszcz**, **śnieg**, **burza** (klawisz M) albo
+**📡 Z prognozy**. Opady to cząstki w pudełku wokół kamery, liczone na GPU (`src/weather.js`): deszcz
+jako smugi pochylone z wiatrem, śnieg jako płatki. Przy deszczu grunt i skały ciemnieją (mokre), przy
+śniegu świeży śnieg leży powyżej granicy śniegu na łagodniejszych stokach. Siła wiatru (`light.windK`)
+kołysze trawą i drzewami i wzmacnia szum wiatru; deszcz ma własny szum (`sound.js`, szum generowany, bez
+pliku). Burza: błyskawica w losowym kierunku 0,7–5,7 km, rozbłysk nieba i grzmot opóźniony o czas biegu
+dźwięku (343 m/s).
+
+„Z prognozy”: planer przekazuje godzinę wyjścia (`?start=YYYY-MM-DDTHH:MM`, przycisk „Idź w 3D”); zegar
+w 3D idzie za piechurem (start + czas przejścia do danego miejsca według norm PTTK), a pogoda to
+prognoza Open-Meteo dla najwyższego punktu trasy w tej godzinie (kod pogody → rodzaj, opad w mm → ilość,
+porywy → wiatr, granica zamarzania → granica śniegu). Bez planera prognoza liczy się od teraz. Pod
+wyborem pogody jest opis: data, godzina, pogoda, temperatura na górze i wiatr. Ręczna pogoda do testów:
+`?pogoda=rain|snow|storm|…`.
+
 ## Dziennik (rekordy, duch, szczyty)
 `src/journal.js`, zapisywany w pamięci przeglądarki (`localStorage`, klucz `rysy-journal`):
 - przejście trasy do mety w widoku 3D trafia do dziennika (data, długość, podejścia, czas);

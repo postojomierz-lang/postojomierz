@@ -7,12 +7,16 @@ export const light = {
   ambCol: { value: new THREE.Color(0.35, 0.4, 0.5) },
   time: { value: 0 },
   cloudCover: { value: 0.35 },       // 0 clear .. 1 overcast (set by the weather)
+  windK: { value: 1 },               // wind strength for grass and trees: 0.5 calm .. 2.5 gale
+  wetK: { value: 0 },                // 0 dry .. 1 soaked: darker ground and rock
+  snowK: { value: 0 },               // fresh snow over the ground above snowLine
+  snowLine: { value: 9000 },
 };
 
 // Cumulus layer at ~3.4 km, drifting with the wind. The same density drives the clouds in the sky
 // (objects/Sky shader patch in main.js) and their shadows on the ground, so the shadows sit under them.
 export const CLOUDS = /* glsl */`
-uniform float cloudCover;
+uniform float cloudCover; uniform float windK; uniform float wetK; uniform float snowK; uniform float snowLine;
 float cl_h(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
 float cl_n(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(cl_h(i),cl_h(i+vec2(1,0)),u.x), mix(cl_h(i+vec2(0,1)),cl_h(i+vec2(1,1)),u.x), u.y); }
@@ -61,6 +65,7 @@ export function makeEnv({ inner, outer, quality }) {
     nInner: { value: new THREE.Vector2(inner.w, inner.h) },
     nOuter: { value: new THREE.Vector2(outer.w, outer.h) },
     sunDir: light.sunDir, time: light.time, cloudCover: light.cloudCover,
+    windK: light.windK, wetK: light.wetK, snowK: light.snowK, snowLine: light.snowLine,
     shSteps: { value: { low: 8, mid: 18, high: 28, ultra: 40 }[quality] ?? 28 },
   };
 }
@@ -120,7 +125,8 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
             ip = instanceMatrix * ip;
           #endif
           float phase = time * 1.3 + ip.x * 0.05 + ip.z * 0.07;
-          float amt = ${wind.toFixed(3)} * position.y * position.y * 0.02;
+          float amt = ${wind.toFixed(3)} * position.y * position.y * 0.02 * windK;
+          phase *= 0.8 + 0.2 * windK;
           transformed.x += sin(phase) * amt + sin(phase * 2.7) * amt * 0.3;
           transformed.z += cos(phase * 0.8) * amt;
         }`)
@@ -135,7 +141,7 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
         }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vTerrSh;')
-      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh;');
+      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh * (1.0 - 0.3 * wetK);\n reflectedLight.indirectDiffuse *= 1.0 - 0.3 * wetK;');
   };
   material.customProgramCacheKey = () => 'patched' + wind + perVertexShadow;
 }
@@ -450,6 +456,14 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         col *= clamp(1.0 + fl * 1.1, 0.45, 1.5);
         // soft shoulder for very light ground (granite scree, limestone): keeps texture instead of white
         { float cl = dot(col, vec3(0.3, 0.55, 0.15)); col *= 1.0 / (1.0 + max(cl - 0.42, 0.0) * 1.6); }
+        // weather: wet ground is darker; fresh snow settles above the snow line on the gentler slopes
+        col *= 1.0 - 0.3 * wetK;
+        if (snowK > 0.0) {
+          float sy = vWorld.y + (vnoise(vWorld.xz / 60.0) - 0.5) * 120.0;
+          float flatN = smoothstep(0.5, 0.78, normalize(vWN).y);
+          float sn = snowK * smoothstep(snowLine - 80.0, snowLine + 120.0, sy) * flatN;
+          col = mix(col, vec3(0.78, 0.8, 0.84), clamp(sn, 0.0, 0.92));
+        }
         diffuseColor.rgb = col;
         if (detW <= 0.0) { detN = Nr; detW = 1.0; }
         else { detN = normalize(mix(Nr, detN, detW)); detW = 1.0; }
