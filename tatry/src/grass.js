@@ -122,7 +122,7 @@ function grassMaterial(uniforms, shade) {
 export function buildGrass({ scene, terrain, shade, quality, photo, bounds, groundClass, masks, blocked = () => false }) {
   const t = (low, mid, high, ultra) => ({ low, mid, high, ultra })[quality] ?? high;
   // [field size (m), blades per m², blade width, blade height, segments, hole]
-  const INNER = { size: t(16, 22, 30, 38), per: t(6, 12, 30, 42), w: 0.04, h: 0.32, seg: t(3, 3, 4, 4), blades: 5 };   // tufts per m²
+  const INNER = { size: t(16, 22, 30, 38), per: t(10, 22, 55, 75), w: 0.05, h: 0.32, seg: t(3, 3, 4, 4), blades: 5 };   // tufts per m²
   const OUTER = quality === 'low' ? null : { size: t(0, 56, 90, 120), per: t(0, 1.5, 2.5, 3.5), w: 0.06, h: 0.38, seg: 2, blades: 4 };
   const WIN = Math.ceil((OUTER ? OUTER.size : INNER.size) + 32);      // the data window (1 m texels)
 
@@ -211,7 +211,7 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
         else {
           const path = terrain.maskAt(masks.path, x, z);           // the sharp path mask (1.3 m texels)
           if (path > 0.3) dens = 0;
-          else if (terrain.maskAt(masks.pathSide, x, z) > 0) dens *= 0.45;        // trodden fringe
+          else if (terrain.maskAt(masks.pathSide, x, z) > 0) dens *= 0.7;        // trodden fringe
           const n = terrain.normal(x, z, 1.5);
           // Tatra grass holds on steep slopes too (bare rock is the class map's job); only very steep ground thins
           if (n.y < 0.5) dens *= Math.max(0, (n.y - 0.3) / 0.2);
