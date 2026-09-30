@@ -161,9 +161,23 @@ function drawMask(size, bounds, draw) {
 
 // ---------------------------------------------------------------- sun
 // Sun position for 2 July at the Rysy latitude, local summer time (CEST).
+// the sun for the day of the walk (the planner's start date, else today): its height and direction at a
+// clock hour, with the season's declination, the equation of time and the time zone (summer / winter time)
+const SUN_DAY = (() => { const st = new URLSearchParams(location.search).get('start'); const d = st ? new Date(st) : new Date(); return isNaN(d) ? new Date() : d; })();
+const SUN_K = (() => {
+  const d0 = new Date(SUN_DAY.getFullYear(), 0, 0), doy = Math.floor((SUN_DAY - d0) / 864e5);
+  const decl = 23.44 * Math.sin(2 * Math.PI * (284 + doy) / 365);
+  const B = 2 * Math.PI * (doy - 81) / 364, eot = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+  // the clock of the slider is Polish time (summer / winter), whatever the device's time zone
+  const at12 = new Date(Date.UTC(SUN_DAY.getFullYear(), SUN_DAY.getMonth(), SUN_DAY.getDate(), 12));
+  const wl = (tzn) => new Date(at12.toLocaleString('en-US', { timeZone: tzn }));
+  let tz = 2;
+  try { tz = Math.round((wl('Europe/Warsaw') - wl('UTC')) / 36e5); } catch (e) { /* old browser: summer time */ }
+  return { decl, noon: 12 + tz - 20.08 / 15 - eot / 60 };
+})();
 function sunAt(hour) {
-  const lat = THREE.MathUtils.degToRad(49.19), decl = THREE.MathUtils.degToRad(23.0);
-  const ha = THREE.MathUtils.degToRad((hour - 13.15) * 15);
+  const lat = THREE.MathUtils.degToRad(49.19), decl = THREE.MathUtils.degToRad(SUN_K.decl);
+  const ha = THREE.MathUtils.degToRad((hour - SUN_K.noon) * 15);
   const el = Math.asin(Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(ha));
   let az = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(lat) - Math.tan(decl) * Math.cos(lat)) + Math.PI;
   // x = east, z = south, y = up
@@ -310,6 +324,32 @@ async function main() {
     .replace('uniform vec3 up;', 'uniform vec3 up;\nuniform float skyGain;')
     .replace('gl_FragColor = vec4( retColor, 1.0 );', `
       vec3 outC = retColor * skyGain;
+      // sunrise and sunset: a warm glow along the horizon under the sun, after sunset the afterglow and,
+      // opposite the sun, the pink Belt of Venus over the blue shadow of the Earth; stars at night
+      {
+        float sy = vSunDirection.y;
+        vec2 dxz = normalize(direction.xz + 1e-5), sxz = normalize(vSunDirection.xz + 1e-5);
+        float toward = max(dot(dxz, sxz), 0.0), away = max(-dot(dxz, sxz), 0.0);
+        float low = smoothstep(0.3, 0.02, sy) * smoothstep(-0.16, -0.02, sy);
+        // the Preetham sky goes dark as soon as the sun touches the horizon; the real one keeps its
+        // light for a good half hour: a twilight gradient (warm low down, deep blue up) as the floor
+        float tw = smoothstep(-0.2, 0.0, sy) * smoothstep(0.25, 0.04, sy);
+        vec3 twC = mix(vec3(0.62, 0.42, 0.34), vec3(0.16, 0.24, 0.46), pow(clamp(direction.y, 0.0, 1.0), 0.45));
+        twC *= smoothstep(-0.2, 0.03, sy) * (0.55 + 0.45 * toward);
+        outC = max(outC, twC * tw * 0.8);
+        float band = exp(-max(direction.y, 0.0) * 9.0);
+        outC += vec3(1.0, 0.45, 0.16) * band * pow(toward, 2.5) * low * 0.55;
+        float dusk = smoothstep(0.02, -0.04, sy) * smoothstep(-0.2, -0.06, sy);
+        outC += vec3(0.95, 0.5, 0.62) * exp(-abs(direction.y - 0.06) * 18.0) * pow(away, 1.5) * dusk * 0.35;
+        outC = mix(outC, outC * vec3(0.55, 0.62, 0.95), smoothstep(-0.02, -0.14, sy) * 0.6);
+        float night = smoothstep(-0.1, -0.22, sy);
+        if (night > 0.0 && direction.y > 0.0) {
+          vec3 sd = direction * 420.0; vec3 c = floor(sd);
+          float h = fract(sin(dot(c, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          float star = step(0.9975, h) * smoothstep(0.5, 0.1, length(fract(sd) - 0.5)) * (0.6 + 0.4 * sin(time * 3.0 + h * 50.0));
+          outC += vec3(star) * night * smoothstep(0.0, 0.2, direction.y);
+        }
+      }
       // cumulus layer (the same density casts the shadows on the ground, materials.js CLOUDS)
       if (direction.y > 0.015) {
         float tc = (CLOUD_Y - cameraPosition.y) / direction.y;
@@ -318,9 +358,12 @@ async function main() {
         float dl = cloudDensity(cp + vSunDirection.xz * 380.0, time);      // thicker towards the sun: darker underside
         float fade = smoothstep(0.015, 0.12, direction.y) * exp(-tc / 60000.0);
         float lit = clamp(1.0 - (dl - d) * 1.4 - d * 0.35, 0.35, 1.0);
-        float day = clamp(vSunfade, 0.0, 1.0);
+        float day = smoothstep(-0.12, 0.12, vSunDirection.y);             // (vSunfade stays ~1: our sunPosition is a unit vector)
+        day = max(day, 0.55 * smoothstep(-0.12, -0.01, vSunDirection.y) * smoothstep(0.1, 0.0, vSunDirection.y));   // afterglow
         vec3 sunTint = mix(vec3(1.0, 0.62, 0.38), vec3(1.0, 0.98, 0.95), smoothstep(0.02, 0.35, vSunDirection.y));
-        vec3 cloudC = mix(vec3(0.5, 0.53, 0.58), sunTint * 1.35, lit) * (0.15 + 0.85 * day);
+        // just before and after sunset the undersides of the clouds glow pink and orange
+        sunTint = mix(sunTint, vec3(1.0, 0.45, 0.55), smoothstep(0.06, -0.02, vSunDirection.y) * smoothstep(-0.14, -0.03, vSunDirection.y));
+        vec3 cloudC = mix(vec3(0.5, 0.53, 0.58), sunTint * 1.35, lit) * (0.02 + 0.98 * day);
         // silver lining towards the sun
         cloudC += sunTint * pow(max(dot(direction, vSunDirection), 0.0), 12.0) * (1.0 - d) * 0.5;
         outC = mix(outC, cloudC, pow(d, 0.7) * fade);
@@ -835,6 +878,7 @@ async function main() {
     light.wetK.value = o.wet ?? (w.wet || 0);
     light.snowK.value = o.snowCover ?? (w.snowCover || 0);
     light.snowLine.value = o.snowLine ?? (w.snowLine || 9000);
+    light.rainK.value = o.rain ?? (w.rain || 0);
     weatherFx.set({ rain: o.rain ?? (w.rain || 0), snow: o.snow ?? (w.snow || 0), storm: w.storm || 0, wind: light.windK.value });
     const e = Math.max(el, -0.2);
     const day = THREE.MathUtils.smoothstep(e, -0.1, 0.25);
@@ -849,7 +893,10 @@ async function main() {
     const sc = new THREE.Color(1, 0.96, 0.88).lerp(new THREE.Color(1, 0.62, 0.3), low).lerp(new THREE.Color(1, 0.4, 0.15), low * low * 0.6);
     light.sunCol.value.copy(sc).multiplyScalar(w.sun * THREE.MathUtils.smoothstep(e, -0.03, 0.1));
     const amb = new THREE.Color(0.32, 0.38, 0.5).lerp(new THREE.Color(0.3, 0.3, 0.42), low * 0.7);
-    light.ambCol.value.copy(amb).multiplyScalar(w.amb * (0.08 + 0.92 * day));
+    // twilight: after the sun has set the sky still lights the slopes, blue, fading into the night
+    const twi = THREE.MathUtils.smoothstep(e, -0.2, 0.02) * (1 - day);
+    amb.lerp(new THREE.Color(0.22, 0.28, 0.5), twi);
+    light.ambCol.value.copy(amb).multiplyScalar(w.amb * (0.1 + 0.9 * day + 0.45 * twi));
     // scene lights reproduce the tuned sun/ambient colours (Lambert divides by PI)
     sunLight.color.copy(light.sunCol.value); sunLight.intensity = 1.15 * Math.PI;
     hemi.color.copy(light.ambCol.value).multiplyScalar(1.95);   // sky light fills the shaded slopes

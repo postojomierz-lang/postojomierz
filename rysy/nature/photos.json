@@ -700,5 +700,35 @@
   "author": "Daniel Cahen",
   "license": "CC BY 4.0",
   "url": "https://www.inaturalist.org/photos/288106653"
+ },
+ "zolednica": {
+  "file": "Eliomys quercinus01.jpg",
+  "author": "Arno Laurent",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Eliomys_quercinus01.jpg"
+ },
+ "popielica": {
+  "file": "Tatra mountains view from glodowka.JPG",
+  "author": "Mariusz G",
+  "license": "Public domain",
+  "url": "https://commons.wikimedia.org/wiki/File:Tatra_mountains_view_from_glodowka.JPG"
+ },
+ "orzesznica": {
+  "file": "Haselmaus.jpg",
+  "author": "Danielle Schwarz",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Haselmaus.jpg"
+ },
+ "smuzka": {
+  "file": "Sicista betulina 03.JPG",
+  "author": "AfroBrazilian",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Sicista_betulina_03.JPG"
+ },
+ "rzesorek": {
+  "file": "inaturalist-241406686",
+  "author": "Phil James",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/241406686"
  }
 }

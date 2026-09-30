@@ -11,6 +11,7 @@ export const light = {
   wetK: { value: 0 },                // 0 dry .. 1 soaked: darker ground and rock
   snowK: { value: 0 },               // fresh snow over the ground above snowLine
   snowLine: { value: 9000 },
+  rainK: { value: 0 },               // how hard it rains: rings on the lakes
 };
 
 // Cumulus layer at ~3.4 km, drifting with the wind. The same density drives the clouds in the sky
@@ -512,16 +513,38 @@ export function waterMaterial() {
       #include <logdepthbuf_pars_fragment>
       uniform vec3 sunDir; uniform vec3 sunCol; uniform vec3 ambCol; uniform vec3 skyCol; uniform float time;
       uniform sampler2D reflMap; uniform mat4 reflMat; uniform float reflLevel; uniform float reflOn;
+      uniform float windK; uniform float rainK;
       varying vec3 vWorld;
       ${NOISE}
+      // rain: rings spreading from where the drops fall, one drop per cell every second or so
+      vec2 rainRings(vec2 p, float t) {
+        vec2 g = vec2(0.0);
+        for (int k = 0; k < 2; k++) {
+          vec2 q = p * (k == 0 ? 1.7 : 2.9) + float(k) * 7.3;
+          vec2 c = floor(q), f = fract(q) - 0.5;
+          float h = fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453);
+          float ph = fract(t * (0.8 + 0.5 * h) + h * 7.0);
+          vec2 o = vec2(fract(h * 17.0), fract(h * 31.0)) - 0.5;
+          vec2 d = f - o * 0.6; float r = length(d);
+          float ring = sin((r - ph * 0.55) * 48.0) * smoothstep(0.08, 0.0, abs(r - ph * 0.55)) * (1.0 - ph);
+          g += d / max(r, 1e-3) * ring;
+        }
+        return g;
+      }
       void main(){
         #include <logdepthbuf_fragment>
         vec2 p = vWorld.xz;
         float e = 0.6;
-        float h0 = fbm2(p*0.35 + time*vec2(0.05,0.03)) + 0.5*fbm2(p*1.3 - time*vec2(0.04,-0.06));
-        float hx = fbm2((p+vec2(e,0))*0.35 + time*vec2(0.05,0.03)) + 0.5*fbm2((p+vec2(e,0))*1.3 - time*vec2(0.04,-0.06));
-        float hz = fbm2((p+vec2(0,e))*0.35 + time*vec2(0.05,0.03)) + 0.5*fbm2((p+vec2(0,e))*1.3 - time*vec2(0.04,-0.06));
-        vec3 N = normalize(vec3(-(hx-h0)*0.35, 1.0, -(hz-h0)*0.35));
+        // the wind: stronger waves moving faster downwind, gusts darkening patches of the surface
+        float w = clamp(windK, 0.3, 2.6);
+        vec2 drift = vec2(0.8, 0.6) * (0.3 + 0.7 * w);
+        float amp = 0.12 + 0.35 * w;
+        float h0 = fbm2(p*0.35 + time*vec2(0.05,0.03)*drift) + 0.5*fbm2(p*1.3 - time*vec2(0.04,-0.06)*drift);
+        float hx = fbm2((p+vec2(e,0))*0.35 + time*vec2(0.05,0.03)*drift) + 0.5*fbm2((p+vec2(e,0))*1.3 - time*vec2(0.04,-0.06)*drift);
+        float hz = fbm2((p+vec2(0,e))*0.35 + time*vec2(0.05,0.03)*drift) + 0.5*fbm2((p+vec2(0,e))*1.3 - time*vec2(0.04,-0.06)*drift);
+        float gust = smoothstep(0.45, 0.75, fbm2(p * 0.02 - time * 0.08 * drift));
+        vec3 N = normalize(vec3(-(hx-h0)*amp*(1.0 + gust*w*0.8), 1.0, -(hz-h0)*amp*(1.0 + gust*w*0.8)));
+        if (rainK > 0.01) { vec2 rr = rainRings(p, time); N = normalize(N + vec3(rr.x, 0.0, rr.y) * 0.25 * rainK); }
         vec3 V = normalize(cameraPosition - vWorld);
         float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
         vec3 deep = vec3(0.004, 0.03, 0.035) * (ambCol + sunCol * 0.4);
@@ -540,13 +563,17 @@ export function waterMaterial() {
           // a calm mountain lake: reflection stays visible even looking down
           fres = max(fres, 0.32);
         }
-        vec3 col = mix(deep, refl, fres) + sunCol * spec * step(0.0, sunDir.y);
+        // a glittering path towards a low sun
+        float glit = pow(max(dot(R, sunDir), 0.0), 40.0) * smoothstep(0.35, 0.0, sunDir.y) * step(0.93, fbm2(p * 6.0 + time * 0.7));
+        vec3 col = mix(deep, refl, fres) + sunCol * (spec + glit * 3.0) * step(0.0, sunDir.y);
+        // whitecaps in a gale
+        if (w > 1.7) col = mix(col, vec3(0.85) * (ambCol + sunCol * 0.5), smoothstep(0.62, 0.72, h0 + gust * 0.15) * (w - 1.7) * 0.6);
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
       }`,
   });
-  Object.assign(m.uniforms, { sunDir: light.sunDir, sunCol: light.sunCol, ambCol: light.ambCol, time: light.time });
+  Object.assign(m.uniforms, { sunDir: light.sunDir, sunCol: light.sunCol, ambCol: light.ambCol, time: light.time, windK: light.windK, rainK: light.rainK });
   return m;
 }
