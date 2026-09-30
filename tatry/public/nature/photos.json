@@ -454,5 +454,65 @@
   "author": "Simon Bailey",
   "license": "CC BY 2.0",
   "url": "https://commons.wikimedia.org/wiki/File:Tetrao_urogallus,_Glenfeshie,_Scotland_1.jpg"
+ },
+ "cietrzew": {
+  "file": "inaturalist-7137220",
+  "author": "Nigel Voaden",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/7137220"
+ },
+ "jarzabek": {
+  "file": "Haselhuhn-01.jpg",
+  "author": "Wilfried Berns",
+  "license": "CC BY-SA 2.0 de",
+  "url": "https://commons.wikimedia.org/wiki/File:Haselhuhn-01.jpg"
+ },
+ "dzieciol": {
+  "file": "inaturalist-413126346",
+  "author": "Ewan Shilland",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/413126346"
+ },
+ "orzechowka": {
+  "file": "inaturalist-304663055",
+  "author": "Tim",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/304663055"
+ },
+ "pluszcz": {
+  "file": "inaturalist-204724771",
+  "author": "Piotr Lukasik",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/204724771"
+ },
+ "pliszka": {
+  "file": "inaturalist-60635147",
+  "author": "SK53",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/60635147"
+ },
+ "drozd": {
+  "file": "inaturalist-204975828",
+  "author": "Piotr Lukasik",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/204975828"
+ },
+ "krzyzodziob": {
+  "file": "inaturalist-349527213",
+  "author": "Jan Ebr &amp; Ivana Ebrová",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/349527213"
+ },
+ "kruk": {
+  "file": "inaturalist-341690378",
+  "author": "柯鈺涵",
+  "license": "CC0",
+  "url": "https://www.inaturalist.org/photos/341690378"
+ },
+ "salamandra": {
+  "file": "inaturalist-321610",
+  "author": "Juan Cruzado Cortés",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/321610"
  }
 }

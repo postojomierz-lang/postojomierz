@@ -15,8 +15,10 @@ import { loadFound, saveFound } from '../nature/discover.js';
 import { challenges, settleChallenges } from '../nature/challenges.js';
 import { buildGpsDiscovery } from '../nature/gps.js';
 import { setupOnline } from './online.js';
+import { setupTabs } from './tabs.js';
 
 const $ = (id) => document.getElementById(id);
+const TABS = setupTabs();
 const COLOUR_PL = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny', none: 'bez znaków' };
 
 const data = await (await fetch('data/region/trails.json')).json();
@@ -138,6 +140,7 @@ function update() {
 function showSummary() {
   const S = summary;
   $('summary').hidden = false;
+  TABS.show('route');
   $('s-dist').textContent = (S.dist / 1000).toFixed(1) + ' km';
   $('s-time').textContent = fmtTime(S.time);
   $('s-up').textContent = '↗ ' + Math.round(S.up) + ' m';
@@ -432,7 +435,7 @@ async function renderRanking() {
   const box = $('lb-list');
   $('lb-public').checked = !!ONLINE.isPublic;
   $('lb-public').disabled = !ONLINE.user;
-  if (!ONLINE.user) { box.innerHTML = '<li class="empty">Zaloguj się (wyżej), żeby zobaczyć ranking i w nim wystartować.</li>'; return; }
+  if (!ONLINE.user) { box.innerHTML = '<li class="empty">Zaloguj się w zakładce <button class="link" data-tab="account">Konto</button>, żeby zobaczyć ranking i w nim wystartować.</li>'; return; }
   try {
     const rows = await ONLINE.leaderboard($('lb-period').value, $('lb-mode').value);
     box.innerHTML = rows && rows.length ? rows.map((r) => `<li class="${r.me ? 'me' : ''}">`
