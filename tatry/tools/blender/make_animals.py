@@ -11,7 +11,7 @@ import bpy, sys, os, mathutils
 
 src, out = sys.argv[1], sys.argv[2]
 os.makedirs(out, exist_ok=True)
-KEEP = {'Walk', 'Idle', 'Eating', 'Gallop', 'Idle_Headlow', 'Idle_2_HeadLow'}
+KEEP = {'Walk', 'Idle', 'Eating', 'Gallop', 'Idle_Headlow', 'Idle_2_HeadLow', 'Death', 'Attack', 'Attack_Headbutt'}
 
 def load(name):
     bpy.ops.wm.read_factory_settings(use_empty=True)

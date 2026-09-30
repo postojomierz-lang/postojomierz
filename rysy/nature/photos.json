@@ -784,5 +784,29 @@
   "author": "Viktor",
   "license": "CC BY 4.0",
   "url": "https://www.inaturalist.org/photos/499185936"
+ },
+ "mnemozyna": {
+  "file": "inaturalist-505235616",
+  "author": "Mykola Borysenko",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/505235616"
+ },
+ "gorowka-meduza": {
+  "file": "inaturalist-304428930",
+  "author": "Tim",
+  "license": "CC BY 4.0",
+  "url": "https://www.inaturalist.org/photos/304428930"
+ },
+ "gorowka-pandrose": {
+  "file": "Erebia pandrose.jpg",
+  "author": "Dumi",
+  "license": "CC BY-SA 3.0",
+  "url": "https://commons.wikimedia.org/wiki/File:Erebia_pandrose.jpg"
+ },
+ "biegacz-zielonozloty": {
+  "file": "inaturalist-310961202",
+  "author": "dravenaddams",
+  "license": "CC BY-SA 4.0",
+  "url": "https://www.inaturalist.org/photos/310961202"
  }
 }
