@@ -173,7 +173,7 @@ export async function buildTrees3D({ scene, shade, items, radius, base = 'models
 }
 
 // ---------------------------------------------------------------- dwarf pine
-// Kosodrzewina near the camera: 9-13 stems rise from one root, lean outwards (the outer ones almost lie on
+// Kosodrzewina near the camera: 14-18 stems rise from one root, lean outwards (the outer ones almost lie on
 // the slope) and turn up at the ends; the upper part of each carries crossed cards of upturned needle
 // shoots (the tops of pine saplings baked from the side, tools/blender/bake_mugo_cards.py), the tip a
 // longer one and a rosette seen from above. Unit clump: 1 wide, 1 high; scaled per instance.
@@ -197,9 +197,9 @@ function mugoGeometry(seed, cards) {
   };
   const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
   const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  const stems = 9 + Math.floor(r() * 5);
+  const stems = 14 + Math.floor(r() * 5);
   for (let k = 0; k < stems; k++) {
-    const az = (k + r() * 0.7) / stems * 6.2832, inner = k < 2;
+    const az = (k + r() * 0.7) / stems * 6.2832, inner = k < 3;
     const tilt = inner ? 0.25 + r() * 0.35 : 0.95 + r() * 0.45;          // from vertical, radians
     const L = inner ? 0.45 + r() * 0.2 : 0.5 + r() * 0.25;
     const h = [Math.cos(az), 0, Math.sin(az)];
@@ -214,7 +214,7 @@ function mugoGeometry(seed, cards) {
     for (let j = 0; j <= SEG; j++) {
       const t = j / SEG, c = P(t), d = norm(P(Math.min(1, t + 0.05)).map((v, q) => v - P(Math.max(0, t - 0.05))[q]));
       const a = norm(cross(d, [0, 1, 0]).map((v, q) => v || (q === 0 ? 1 : 0))), b = cross(a, d);
-      const rad = 0.018 * (1 - t * 0.7);
+      const rad = 0.011 * (1 - t * 0.7);
       for (let q = 0; q <= SIDES; q++) {
         const an = q / SIDES * 6.2832, ca = Math.cos(an), sa = Math.sin(an);
         const nn = [a[0] * ca + b[0] * sa, a[1] * ca + b[1] * sa, a[2] * ca + b[2] * sa];
@@ -225,19 +225,21 @@ function mugoGeometry(seed, cards) {
       const a = t0 + j * (SIDES + 1) + q, b = a + SIDES + 1;
       T.idx.push(a, b, a + 1, a + 1, b, b + 1);
     }
-    // needle shoots along the upper stem, pointing mostly up; two crossed cards each
-    for (let t = 0.3 + r() * 0.1; t <= 1.001; t += 0.13 + r() * 0.06) {
+    // needle shoots along the stem, pointing mostly up, dense enough to close into a thicket; two crossed
+    // cards each, every other one with a rosette on top (seen from above the clump reads as a mass of needles)
+    let nth = 0;
+    for (let t = 0.15 + r() * 0.08; t <= 1.001; t += 0.08 + r() * 0.04) {
       const p = P(Math.min(1, t)), tip = t > 0.93;
       const sd = norm(P(Math.min(1, t + 0.05)).map((v, q) => v - P(Math.max(0, t - 0.05))[q]));
       const out = [h[0] * (r() - 0.3), 0, h[2] * (r() - 0.3)];
       const dir = norm([sd[0] * 0.35 + out[0] * 0.3, 0.75 + sd[1] * 0.3, sd[2] * 0.35 + out[2] * 0.3]);
       const c = side[Math.floor(r() * side.length)];
-      const Ls = (tip ? 0.36 : 0.24 + r() * 0.1) * (inner ? 0.9 : 1);
+      const Ls = (tip ? 0.5 : 0.32 + r() * 0.14) * (inner ? 0.9 : 1);
       const a0 = norm(cross(dir, [Math.cos(az + r()), 0, Math.sin(az + r())]));
       const a1 = norm(cross(dir, a0));
       quad(p, dir, a0, Ls, Ls, c.i);
       quad(p, dir, a1, Ls, Ls, c.i);
-      if (tip && top >= 0) {
+      if ((tip || nth++ % 2 === 1) && top >= 0) {
         // a rosette of needles on top of the shoot
         const q = [p[0] + dir[0] * Ls * 0.55, p[1] + dir[1] * Ls * 0.55, p[2] + dir[2] * Ls * 0.55];
         const ra = r() * 6.28, fx = [Math.cos(ra), 0, Math.sin(ra)];
@@ -267,7 +269,7 @@ export async function buildMugo3D({ scene, shade, items, radius, base = 'models/
   bark.wrapS = bark.wrapT = THREE.RepeatWrapping;
   const o = { fadeR: mugoFade.R, key: 'mugo3d' };
   const needleMat = patch(new THREE.MeshLambertMaterial({ map: albedo, normalMap: normal, normalScale: new THREE.Vector2(1, -1),
-    alphaTest: 0.5, side: THREE.DoubleSide }), shade, { ...o, upNormal: 0.35, wind: 0.8 });
+    alphaTest: 0.5, side: THREE.DoubleSide }), shade, { ...o, upNormal: 0.5, wind: 0.8 });
   const barkMat = patch(new THREE.MeshLambertMaterial({ map: bark, color: 0x6a5a4a }), shade, { ...o, wind: 0.4 });
   const needleDepth = patch(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: albedo, alphaTest: 0.5, side: THREE.DoubleSide }), shade, { ...o, depth: true, wind: 0.8 });
   const VARIANTS = 4, CAP = 500;
@@ -304,8 +306,9 @@ export async function buildMugo3D({ scene, shade, items, radius, base = 'models/
       S.set(t.cw, t.th, t.cw); Pv.set(t.x, t.ty, t.z);
       M.compose(Pv, Q, S);
       V.branches.setMatrixAt(i, M); V.trunk.setMatrixAt(i, M);
-      const k = 0.85 + t.tint * 0.3;
-      V.branches.setColorAt(i, col.setRGB(k, k, k));
+      // the baked needles are dark (as the impostors, which get brightness 2.1)
+      const k = (0.85 + t.tint * 0.3) * 1.6;
+      V.branches.setColorAt(i, col.setRGB(k * 0.8, k, k * 0.72));      // and a deeper green than the saplings
       counts[v]++;
     }
     variants.forEach((V, v) => {
