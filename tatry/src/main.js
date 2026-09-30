@@ -18,7 +18,10 @@ import { buildBuildings, buildingFlats } from './buildings.js';
 import { buildChains } from './chains.js';
 import { buildTrailMarks } from './trailmarks.js';
 import { buildSigns } from './signs.js';
-import { buildLabels } from './labels.js';
+import { buildLabels, placeId, CATS } from './labels.js';
+import { buildSpots } from './nature/spots.js';
+import { loadFound, buildDiscovery, score } from './nature/discover.js';
+import { GROUPS, RARITY } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
 import { routeFromHash, routePath, loadRegionArea, REGION_BASE } from './region.js';
@@ -842,7 +845,7 @@ async function main() {
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') setSpeed(-1);
     if (e.code === 'KeyH') $('help').classList.toggle('hidden');
     if (e.code === 'KeyN') { sound.setEnabled(!sound.enabled); updateButtons(); }
-    if (e.code === 'KeyL') { labels.setEnabled(!labels.enabled); updateButtons(); }
+    if (e.code === 'KeyL') { labels.setEnabled(!labels.enabled); updateButtons(); renderLabelMenu(); }
     if (e.code === 'Home') { state.s = 0; resetSession(); }
     if (e.code === 'End') { state.s = LENGTH; sess.fair = false; }
   });
@@ -969,8 +972,28 @@ async function main() {
   ] });
   // map labels (peaks, passes, lakes, huts, waterfalls) plus the Polish summit of Rysy
   const top = at(LENGTH);
+  // the plants and animals of the catalogue along this route (src/nature) and what has been discovered
+  const found = loadFound();
+  const spots = buildSpots({ trail, terrain, groundClass, meta });
   const labels = buildLabels({ meta, terrain, camera, container: document.body, blockers: signs.posts.map((p) => p.at),
-    extra: RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }] });
+    extra: RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }],
+    nature: { spots, found } });
+  const discovery = buildDiscovery({ items: labels.items, found, placeId, onFind: (it, e) => {
+    labels.refresh(); renderLabelMenu();
+    if (it.species) {
+      const sp = it.species, r = RARITY[sp.rarity];
+      toast(`${GROUPS[sp.group].icon} Odkryto: <b>${sp.name}</b> <i>${sp.latin}</i><br>${r.name} · +${r.points} pkt`);
+    } else toast(`✓ Odkryto: <b>${it.name}</b> · +${e.pts} pkt`);
+  } });
+  // the 🏷 menu: labels on/off, each category, and the discoveries so far
+  function renderLabelMenu() {
+    const m = $('label-menu'), sc = score(found), c = labels.cats;
+    m.innerHTML = `<label class="lm-all"><input type="checkbox" data-all ${labels.enabled ? 'checked' : ''}> Etykiety (L)</label>`
+      + Object.entries(CATS).map(([k, n]) => `<label><input type="checkbox" data-cat="${k}" ${c[k] ? 'checked' : ''} ${labels.enabled ? '' : 'disabled'}> ${n}</label>`).join('')
+      + `<div class="lm-score">Odkryte gatunki: <b>${sc.species}</b> / ${sc.total} · miejsca: <b>${sc.places}</b><br>Punkty: <b>${sc.pts}</b></div>`;
+    m.querySelector('[data-all]').onchange = (e) => { labels.setEnabled(e.target.checked); updateButtons(); renderLabelMenu(); };
+    m.querySelectorAll('[data-cat]').forEach((el) => { el.onchange = () => labels.setCat(el.dataset.cat, el.checked); });
+  }
 
   const chainNote = chains.chainRuns.length ? [{ s: chains.chainRuns[0][0] * trail.step, name: 'Łańcuchy — trzymaj się mocno' }] : [];
   const PLACES = RI ? [...RI.places, ...chainNote] : [
@@ -1070,7 +1093,8 @@ async function main() {
   $('weather').onchange = (e) => { env.weather = e.target.value; applyEnv(); };
   $('btn-help').onclick = () => $('help').classList.toggle('hidden');
   $('btn-sound').onclick = () => { sound.setEnabled(!sound.enabled); updateButtons(); };
-  $('btn-labels').onclick = () => { labels.setEnabled(!labels.enabled); updateButtons(); };
+  $('btn-labels').onclick = () => { renderLabelMenu(); $('label-menu').classList.toggle('show'); };
+  renderLabelMenu();
   $('sources').textContent = meta.sources + '; textures: Poly Haven (CC0)';
   // sound credits (CC BY / CC BY-SA need the authors shown)
   fetch('sounds/credits.json').then((r) => r.json()).then((cr) => {
@@ -1322,6 +1346,7 @@ async function main() {
     }
     wildlife.update(dt, camera);
     labels.update(dt);
+    discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3 });
     if (LITE) {
       if (liteFrame++ % SHADOW_EVERY === 0) renderer.shadowMap.needsUpdate = true;

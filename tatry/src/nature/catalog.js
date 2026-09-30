@@ -1,0 +1,137 @@
+// The Tatra nature catalogue: 50 plants and 50 animals to discover along the trails (the owner's list).
+// Each entry: id, Polish name, Latin name, group, rarity (1 common, 2 uncommon, 3 rare, 4 unique), the
+// elevation range (m), the ground it lives on (the class map of tools/prepare_classes.py: 1 water, 2 rock
+// face, 3 scree, 4 meadow, 5 dwarf pine, 6 forest, 8 gravel), extras (stream: beside a stream; lake: at a
+// lake, or at the named lake; lime: limestone only, i.e. not in the granite High Tatras; peak: near
+// summits) and a short description. Spots along a route are chosen from these rules (spots.js).
+// Photos (Wikimedia Commons, with author and licence) come with the cards.
+
+export const GROUPS = {
+  tree: { name: 'Drzewa i krzewy', kind: 'flora', icon: '🌲' },
+  alpine: { name: 'Rośliny hal i turni', kind: 'flora', icon: '🌼' },
+  forest: { name: 'Rośliny regli i polan', kind: 'flora', icon: '🌿' },
+  mammal: { name: 'Ssaki', kind: 'fauna', icon: '🐾' },
+  bird: { name: 'Ptaki', kind: 'fauna', icon: '🐦' },
+  herp: { name: 'Płazy i gady', kind: 'fauna', icon: '🦎' },
+  water: { name: 'Ryby i bezkręgowce', kind: 'fauna', icon: '🐟' },
+};
+
+export const RARITY = [null, { name: 'pospolity', points: 10 }, { name: 'nierzadki', points: 20 }, { name: 'rzadki', points: 40 }, { name: 'unikat', points: 80 }];
+
+const W = 1, WALL = 2, SCREE = 3, MEADOW = 4, PINE = 5, FOREST = 6, GRAVEL = 8;
+
+// [id, name, latin, group, rarity, ele min, ele max, ground, extras, description]
+const RAW = [
+  // --- trees and shrubs
+  ['kosodrzewina', 'Kosodrzewina', 'Pinus mugo', 'tree', 1, 1450, 1950, [PINE], {}, 'Tworzy całe piętro subalpejskie (1550–1800 m). Jej płożące się pędy stabilizują stoki i chronią przed lawinami.'],
+  ['limba', 'Limba', 'Pinus cembra', 'tree', 2, 1400, 1800, [PINE, FOREST], {}, 'Drzewo górnej granicy lasu, relikt polodowcowy. Jej nasiona rozsiewa orzechówka.'],
+  ['swierk', 'Świerk pospolity', 'Picea abies', 'tree', 1, 900, 1550, [FOREST], {}, 'Dominujące drzewo regla górnego i dolnego. Po gradacjach kornika stoją szare, suche świerki.'],
+  ['buk', 'Buk zwyczajny', 'Fagus sylvatica', 'tree', 2, 900, 1250, [FOREST], {}, 'Podstawa naturalnej buczyny karpackiej w reglu dolnym.'],
+  ['jodla', 'Jodła pospolita', 'Abies alba', 'tree', 2, 900, 1250, [FOREST], {}, 'Rośnie w reglu dolnym na głębszych, żyznych glebach.'],
+  ['jawor', 'Jawor', 'Acer pseudoplatanus', 'tree', 2, 950, 1450, [FOREST], { stream: true }, 'Charakterystyczny dla stromych, wilgotnych wąwozów reglowych.'],
+  ['modrzew', 'Modrzew europejski', 'Larix decidua', 'tree', 3, 950, 1500, [FOREST, WALL], {}, 'Rośnie na suchych, skalistych zboczach i urwiskach reglowych.'],
+  ['jarzab', 'Jarząb pospolity', 'Sorbus aucuparia', 'tree', 1, 1000, 1700, [FOREST, PINE], {}, 'Jarzębina: w lasach i w karłowatej formie wśród kosodrzewiny. Jesienią czerwone owoce.'],
+  ['wierzba-zielna', 'Wierzba zielna', 'Salix herbacea', 'tree', 3, 1900, 2500, [SCREE, MEADOW], {}, 'Arktyczno-alpejskie drzewo karłowate, 2–5 cm wysokości. Sięga turni.'],
+  ['wierzba-zylkowana', 'Wierzba żyłkowana', 'Salix reticulata', 'tree', 3, 1500, 2200, [WALL, MEADOW], { lime: true }, 'Płożący krzew naskalny o siatkowato unerwionych liściach, typowy dla wapieni.'],
+  ['wierzba-wykrojona', 'Wierzba wykrojona', 'Salix retusa', 'tree', 3, 1700, 2300, [WALL, SCREE], {}, 'Płożąca krzewinka naskalna piętra halnego i turniowego.'],
+  ['wawrzynek', 'Wawrzynek wilczełyko', 'Daphne mezereum', 'tree', 2, 900, 1500, [FOREST], {}, 'Krzew regla dolnego o silnie trujących, jaskrawoczerwonych owocach.'],
+  ['porzeczka-skalna', 'Porzeczka skalna', 'Ribes petraeum', 'tree', 3, 1200, 1700, [FOREST, PINE], { stream: true }, 'Krzew regla górnego i ziołorośli nadrzecznych.'],
+  ['rokitnik', 'Rokitnik zwyczajny', 'Hippophae rhamnoides', 'tree', 4, 850, 1000, [GRAVEL], { stream: true }, 'Rzadki krzew żwirowisk nadrzecznych na przedpolu Tatr.'],
+  ['borowka', 'Borówka czarna', 'Vaccinium myrtillus', 'tree', 1, 900, 1900, [FOREST, PINE], {}, 'Masowo buduje runo borów świerkowych i zarośli kosodrzewiny.'],
+  // --- plants of the alpine meadows and crags
+  ['szarotka', 'Szarotka alpejska', 'Leontopodium nivale', 'alpine', 4, 1600, 2100, [WALL], { lime: true }, 'Ikona Tatr. Rośnie na wapiennych skałach, pokryta gęstym kutnerem chroniącym przed zimnem.'],
+  ['goryczka-krotkolodygowa', 'Goryczka krótkołodygowa', 'Gentiana clusii', 'alpine', 3, 1500, 2200, [MEADOW, WALL], { lime: true }, 'Szafirowoniebieskie, kielichowate kwiaty na murawach naskalnych.'],
+  ['goryczka-przezroczysta', 'Goryczka przezroczysta', 'Gentiana frigida', 'alpine', 4, 1900, 2500, [MEADOW, SCREE], {}, 'Unikat Tatr granitowych, kwitnie późnym latem, m.in. pod wierzchołkiem Rysów.'],
+  ['goryczka-kropkowana', 'Goryczka kropkowana', 'Gentiana punctata', 'alpine', 1, 1500, 2100, [MEADOW], {}, 'Żółte, nakrapiane kwiaty, pospolita na halach granitowych.'],
+  ['debik', 'Dębik ośmiopłatkowy', 'Dryas octopetala', 'alpine', 3, 1500, 2200, [WALL, MEADOW], { lime: true }, 'Relikt epoki lodowcowej tworzący zwarte kobierce na wapieniach.'],
+  ['lepnica', 'Lepnica bezłodygowa', 'Silene acaulis', 'alpine', 2, 1900, 2500, [WALL, SCREE], {}, 'Poduszkowata roślina turniowa, pionier szczelin skalnych w rejonie Rysów.'],
+  ['sasanka', 'Sasanka alpejska', 'Pulsatilla alpina', 'alpine', 2, 1400, 2100, [MEADOW], {}, 'Bylina o białych lub żółtych kwiatach i puszystych owocostanach.'],
+  ['rojnik', 'Rojnik górski', 'Sempervivum montanum', 'alpine', 2, 1500, 2400, [WALL], {}, 'Sukulent naskalny gromadzący wodę w rozetach liści.'],
+  ['pierwiosnek', 'Pierwiosnek maleńki', 'Primula minima', 'alpine', 2, 1700, 2400, [MEADOW, SCREE], {}, 'Filigranowa bylina turniowa kwitnąca na różowo tuż przy płatach śniegu.'],
+  ['jaskier-lodnikowy', 'Jaskier lodnikowy', 'Ranunculus glacialis', 'alpine', 3, 2100, 2500, [SCREE, WALL], {}, 'Tatrzański rekordzista wysokościowy, sięga najwyższych szczytów i grani.'],
+  ['jaskier-alpejski', 'Jaskier alpejski', 'Ranunculus alpestris', 'alpine', 3, 1700, 2300, [MEADOW, SCREE], { lime: true }, 'Biało kwitnący jaskier chłodnych wyleżysk śnieżnych.'],
+  ['rdest-wezownik', 'Rdest wężownik', 'Bistorta officinalis', 'alpine', 1, 1000, 1900, [MEADOW], {}, 'Masowo pokrywa łąki różowymi kłosami kwiatostanów.'],
+  ['roseniec', 'Różeniec górski', 'Rhodiola rosea', 'alpine', 3, 1500, 2300, [WALL, SCREE], { stream: true }, 'Bylina o gruboszowatych liściach i kłączu pachnącym różą.'],
+  ['omieg', 'Omieg górski', 'Doronicum austriacum', 'alpine', 2, 1100, 1800, [MEADOW, FOREST], { stream: true }, 'Wysoka roślina o żółtych koszyczkach, dominuje w ziołoroślach.'],
+  ['milosna', 'Miłosna górska', 'Adenostyles alliariae', 'alpine', 2, 1100, 1800, [MEADOW, PINE], { stream: true }, 'Tworzy rozległe zarośla wzdłuż bystrych potoków.'],
+  ['starzec', 'Starzec gajowy', 'Senecio nemorensis', 'alpine', 1, 900, 1700, [MEADOW, FOREST], { stream: true }, 'Żółto kwitnąca roślina ziołorośli i wilgotnych zboczy.'],
+  ['tojad', 'Tojad mocny', 'Aconitum firmum', 'alpine', 2, 1100, 1900, [MEADOW, PINE], { stream: true }, 'Granatowe, hełmiaste kwiaty. Jedna z najbardziej trujących roślin w Polsce.'],
+  ['urdzik', 'Urdzik karpacki', 'Soldanella carpatica', 'alpine', 2, 1100, 2100, [MEADOW, FOREST], {}, 'Endemit zachodniokarpacki o dzwonkowatych, postrzępionych kwiatach.'],
+  ['wietlica', 'Wietlica alpejska', 'Athyrium distentifolium', 'alpine', 1, 1300, 1900, [PINE, MEADOW], {}, 'Paproć tworząca łany w wilgotnych żlebach i na halach.'],
+  ['kostrzewa', 'Kostrzewa niska', 'Festuca airoides', 'alpine', 1, 1700, 2400, [MEADOW], {}, 'Trawa zwartych muraw halnych, które jesienią barwią stoki na rudo.'],
+  // --- plants of the forests and glades
+  ['krokus', 'Krokus spiski', 'Crocus scepusiensis', 'forest', 1, 900, 1700, [MEADOW], {}, 'Masowo zakwita wczesną wiosną na tatrzańskich polanach.'],
+  ['lilia', 'Lilia złotogłów', 'Lilium martagon', 'forest', 2, 900, 1600, [FOREST, MEADOW], {}, 'Leśna lilia o turbanowatych, różowych, nakrapianych kwiatach.'],
+  ['ciemiezyca', 'Ciemiężyca zielona', 'Veratrum lobelianum', 'forest', 1, 1000, 1800, [MEADOW], {}, 'Okazała, trująca bylina o szerokich, fałdowanych liściach.'],
+  ['obuwik', 'Obuwik pospolity', 'Cypripedium calceolus', 'forest', 4, 900, 1300, [FOREST], { lime: true }, 'Rzadki, ściśle chroniony storczyk o warżce w kształcie trzewika.'],
+  ['zywiec', 'Żywiec gruczołowaty', 'Cardamine glanduligera', 'forest', 2, 900, 1250, [FOREST], {}, 'Wczesnowiosenny element runa buczyn karpackich.'],
+  ['czosnek', 'Czosnek siatkowaty', 'Allium victorialis', 'forest', 3, 1100, 1800, [MEADOW, PINE], {}, 'Reliktowy czosnek ziołorośli i polan.'],
+  ['zimoziol', 'Zimoziół północny', 'Linnaea borealis', 'forest', 3, 1000, 1500, [FOREST], {}, 'Relikt borealny, drobna krzewinka borów świerkowych.'],
+  ['podbialek', 'Podbiałek alpejski', 'Homogyne alpina', 'forest', 1, 1000, 1900, [FOREST, PINE], {}, 'Niska roślina runa borów świerkowych i strefy kosówki.'],
+  ['paprotnica', 'Paprotnica górska', 'Cystopteris montana', 'forest', 3, 1100, 1800, [WALL, FOREST], { lime: true }, 'Reliktowa paproć zacienionych, wilgotnych skał wapiennych.'],
+  ['pieciornik', 'Pięciornik złoty', 'Potentilla aurea', 'forest', 1, 1200, 2200, [MEADOW], {}, 'Jaskrawożółta roślina muraw naskalnych i wypasowych.'],
+  ['naparstnica', 'Naparstnica zwyczajna', 'Digitalis grandiflora', 'forest', 2, 900, 1400, [FOREST, MEADOW], {}, 'Okazała bylina poręb leśnych o dużych, siarkowożółtych dzwonkach.'],
+  ['parnazja', 'Parnazja błotna', 'Parnassia palustris', 'forest', 2, 900, 1900, [MEADOW], { stream: true }, 'Delikatna roślina wilgotnych młak i torfowisk źródliskowych.'],
+  ['turzyca-mocna', 'Turzyca mocna', 'Carex firma', 'forest', 2, 1600, 2300, [WALL, MEADOW], { lime: true }, 'Tworzy zwarte poduszki na wapiennych półkach i graniach.'],
+  ['bniec', 'Bniec czerwony', 'Silene dioica', 'forest', 1, 900, 1500, [MEADOW, FOREST], {}, 'Roślina obrzeży lasów i łąk reglowych o różowych kwiatach.'],
+  ['gnidosz', 'Gnidosz Hacqueta', 'Pedicularis hacquetii', 'forest', 3, 1000, 1600, [MEADOW, FOREST], { stream: true }, 'Wysoki endemit karpacki wilgotnych zboczy reglowych.'],
+  // --- mammals
+  ['kozica', 'Kozica tatrzańska', 'Rupicapra rupicapra tatrica', 'mammal', 2, 1500, 2500, [MEADOW, SCREE, WALL], {}, 'Endemiczny podgatunek. Bytuje na halach i turniach, m.in. w rejonie Rysów.'],
+  ['swistak', 'Świstak tatrzański', 'Marmota marmota latirostris', 'mammal', 2, 1500, 2200, [MEADOW, SCREE], {}, 'Endemiczny gryzoń wysokogórski kopiący nory w rumowiskach. Ostrzega gwizdem.'],
+  ['niedzwiedz', 'Niedźwiedź brunatny', 'Ursus arctos', 'mammal', 3, 900, 1800, [FOREST, PINE], {}, 'Największy drapieżnik Tatr. Bytuje głównie w lasach reglowych i kosodrzewinie.'],
+  ['wilk', 'Wilk szary', 'Canis lupus', 'mammal', 4, 900, 1500, [FOREST], {}, 'Drapieżnik polujący watahą w lasach reglowych.'],
+  ['rys', 'Ryś euroazjatycki', 'Lynx lynx', 'mammal', 4, 900, 1500, [FOREST], {}, 'Skryty kot leśny, poluje głównie na sarny.'],
+  ['polnik', 'Nornik śnieżny', 'Chionomys nivalis', 'mammal', 3, 1800, 2500, [SCREE], {}, 'Relikt lodowcowy. Dociera do najwyższych partii Tatr, także na Rysy.'],
+  ['darniowka', 'Darniówka tatrzańska', 'Microtus tatricus', 'mammal', 3, 1000, 1800, [FOREST, MEADOW], { stream: true }, 'Gryzoń endemiczny dla Karpat, lubi wilgotne lasy i ziołorośla.'],
+  ['jelen', 'Jeleń szlachetny', 'Cervus elaphus', 'mammal', 2, 900, 1600, [FOREST, MEADOW], {}, 'Główny roślinożerca lasów reglowych i polan. Jesienią rykowisko.'],
+  ['sarna', 'Sarna europejska', 'Capreolus capreolus', 'mammal', 1, 900, 1400, [FOREST, MEADOW], {}, 'Powszechna w reglu dolnym i na obrzeżach dolin.'],
+  ['dzik', 'Dzik', 'Sus scrofa', 'mammal', 2, 900, 1300, [FOREST], {}, 'Żeruje w buczynach i na łąkach regla dolnego.'],
+  ['gronostaj', 'Gronostaj', 'Mustela erminea', 'mammal', 3, 1000, 2300, [SCREE, MEADOW], {}, 'Mały łasicowaty polujący w rumowiskach aż po turnie. Zimą biały.'],
+  ['lasica', 'Łasica pospolita', 'Mustela nivalis', 'mammal', 3, 900, 1800, [MEADOW, FOREST], {}, 'Najmniejszy drapieżnik, kontroluje populacje gryzoni.'],
+  ['borsuk', 'Borsuk europejski', 'Meles meles', 'mammal', 3, 900, 1300, [FOREST], {}, 'Kopie głębokie nory na cieplejszych zboczach regla dolnego.'],
+  ['kuna', 'Kuna leśna', 'Martes martes', 'mammal', 3, 900, 1500, [FOREST], {}, 'Zwinny drapieżnik nadrzewny lasów świerkowych i mieszanych.'],
+  ['wydra', 'Wydra europejska', 'Lutra lutra', 'mammal', 4, 900, 1700, [W], { stream: true, lake: true }, 'Poluje w bystrych potokach i stawach, m.in. w Morskim Oku.'],
+  ['ryjowka', 'Ryjówka górska', 'Sorex alpinus', 'mammal', 3, 1000, 1900, [FOREST, MEADOW], { stream: true }, 'Drobny owadożerca zacienionych jarów i chłodnych potoków.'],
+  ['podkowiec', 'Podkowiec mały', 'Rhinolophus hipposideros', 'mammal', 4, 900, 1300, [WALL, FOREST], { lime: true }, 'Rzadki nietoperz zimujący w jaskiniach, m.in. w Dolinie Kościeliskiej.'],
+  ['mroczek', 'Mroczek pozłocisty', 'Eptesicus nilssonii', 'mammal', 3, 1000, 2000, [W, MEADOW], { lake: true }, 'Wysokogórski nietoperz polujący nad stawami i graniami.'],
+  // --- birds
+  ['pomurnik', 'Pomurnik', 'Tichodroma muraria', 'bird', 3, 1200, 2500, [WALL], {}, 'Ptak pionowych ścian skalnych; w locie widać karminowe skrzydła.'],
+  ['plochacz', 'Płochacz halny', 'Prunella collaris', 'bird', 2, 1900, 2500, [WALL, SCREE], {}, 'Gniazduje na najwyższych szczytach, także na Rysach.'],
+  ['siwerniak', 'Siwerniak', 'Anthus spinoletta', 'bird', 1, 1500, 2200, [MEADOW, PINE], {}, 'Ptak hal i kosodrzewiny, gniazduje na ziemi.'],
+  ['orzel', 'Orzeł przedni', 'Aquila chrysaetos', 'bird', 4, 1400, 2500, [WALL, MEADOW], {}, 'Rzadki ptak szponiasty, poluje na świstaki i zające.'],
+  ['sokol', 'Sokół wędrowny', 'Falco peregrinus', 'bird', 4, 1000, 2200, [WALL], {}, 'Gniazduje w niedostępnych niszach skalnych, poluje w locie.'],
+  ['puchacz', 'Puchacz', 'Bubo bubo', 'bird', 4, 900, 1500, [WALL, FOREST], {}, 'Największa europejska sowa, zasiedla urwiste skały w strefie lasu.'],
+  ['soweczka', 'Sóweczka', 'Glaucidium passerinum', 'bird', 3, 1100, 1550, [FOREST], {}, 'Najmniejsza sowa Europy, poluje w starodrzewach regla górnego.'],
+  ['wlochatka', 'Włochatka', 'Aegolius funereus', 'bird', 3, 1000, 1550, [FOREST], {}, 'Sowa gniazdująca w starych dziuplach dzięciołów.'],
+  ['gluszec', 'Głuszec', 'Tetrao urogallus', 'bird', 4, 1100, 1550, [FOREST], {}, 'Skrajnie zagrożony, reliktowy kurak borów świerkowych.'],
+  ['cietrzew', 'Cietrzew', 'Lyrurus tetrix', 'bird', 3, 1300, 1800, [PINE, MEADOW], {}, 'Zasiedla górną granicę lasu, polany i strefę kosówki.'],
+  ['jarzabek', 'Jarząbek', 'Tetrastes bonasia', 'bird', 3, 900, 1400, [FOREST], {}, 'Kurak gęstych lasów mieszanych regla dolnego.'],
+  ['dzieciol', 'Dzięcioł trójpalczasty', 'Picoides tridactylus', 'bird', 3, 1000, 1550, [FOREST], {}, 'Wskaźnik starych borów świerkowych bogatych w martwe drewno.'],
+  ['orzechowka', 'Orzechówka', 'Nucifraga caryocatactes', 'bird', 2, 1100, 1750, [FOREST, PINE], {}, 'Rozsiewa nasiona limby, przyczyniając się do jej odnowienia.'],
+  ['pluszcz', 'Pluszcz zwyczajny', 'Cinclus cinclus', 'bird', 2, 900, 1700, [W, FOREST, MEADOW], { stream: true }, 'Nurkuje pod prąd w rwących potokach w poszukiwaniu larw.'],
+  ['pliszka', 'Pliszka górska', 'Motacilla cinerea', 'bird', 1, 900, 1500, [W, FOREST, MEADOW, GRAVEL], { stream: true }, 'Smukły ptak o żółtym spodzie, bywalec potoków reglowych.'],
+  ['drozd', 'Drozd obrożny', 'Turdus torquatus', 'bird', 2, 1200, 1800, [FOREST, PINE], {}, 'Górski krewniak kosa z białą obrożą, gniazduje w reglu górnym i kosówce.'],
+  ['krzyzodziob', 'Krzyżodziób świerkowy', 'Loxia curvirostra', 'bird', 2, 900, 1550, [FOREST], {}, 'Skrzyżowanym dziobem wyłuskuje nasiona z szyszek świerkowych.'],
+  ['kruk', 'Kruk', 'Corvus corax', 'bird', 1, 900, 2500, [WALL, MEADOW, SCREE, PINE], {}, 'Duży padlinożerca patrolujący wszystkie piętra Tatr aż po Rysy.'],
+  // --- amphibians and reptiles
+  ['salamandra', 'Salamandra plamista', 'Salamandra salamandra', 'herp', 2, 900, 1200, [FOREST], { stream: true }, 'Symbol regla dolnego, wychodzi po deszczu w wilgotnych buczynach.'],
+  ['traszka-karpacka', 'Traszka karpacka', 'Lissotriton montandoni', 'herp', 3, 900, 1400, [FOREST, MEADOW], { stream: true }, 'Płaz endemiczny dla Karpat, rozmnaża się w leśnych kałużach.'],
+  ['traszka-gorska', 'Traszka górska', 'Ichthyosaura alpestris', 'herp', 2, 900, 1800, [W, MEADOW, PINE], { lake: true }, 'Pospolita w chłodnych zbiornikach aż po strefę kosodrzewiny.'],
+  ['kumak', 'Kumak górski', 'Bombina variegata', 'herp', 2, 900, 1200, [MEADOW, GRAVEL], { stream: true }, 'Płaz o żółto-czarnym brzuchu, zasiedla nasłonecznione kałuże.'],
+  ['zaba-trawna', 'Żaba trawna', 'Rana temporaria', 'herp', 1, 900, 2000, [W, MEADOW], { lake: true }, 'Dociera najwyżej ze wszystkich polskich płazów, do stawów piętra halnego.'],
+  ['zmija', 'Żmija zygzakowata', 'Vipera berus', 'herp', 2, 900, 1900, [SCREE, MEADOW, PINE], {}, 'Jedyny jadowity wąż w Tatrach; wygrzewa się na kamieniach przy szlakach.'],
+  ['jaszczurka', 'Jaszczurka żyworodna', 'Zootoca vivipara', 'herp', 1, 900, 2100, [MEADOW, SCREE, PINE], {}, 'Świetnie znosi chłód, dociera wysoko w piętro hal.'],
+  ['padalec', 'Padalec zwyczajny', 'Anguis fragilis', 'herp', 2, 900, 1500, [FOREST, MEADOW], {}, 'Beznoga jaszczurka strefy reglowej, czasem w odmianie turkusowej.'],
+  // --- fish and invertebrates
+  ['pstrag', 'Pstrąg potokowy', 'Salmo trutta m. fario', 'water', 2, 900, 1700, [W], { stream: true, lake: true }, 'Rdzenna ryba zimnych, natlenionych potoków i Morskiego Oka.'],
+  ['glowacz', 'Głowacz pręgopłetwy', 'Cottus poecilopus', 'water', 3, 900, 1500, [W], { stream: true }, 'Ryba denna bez pęcherza pławnego, żyje w czystych potokach.'],
+  ['apollo', 'Niepylak apollo', 'Parnassius apollo', 'water', 4, 900, 1500, [MEADOW, WALL], { lime: true }, 'Zagrożony motyl naskalny dolin wapiennych, np. Kościeliskiej.'],
+  ['skrzelopływka', 'Skrzelopływka bagienna', 'Branchinecta paludosa', 'water', 4, 1600, 1700, [W], { lake: 'Dwoisty Staw Gąsienicowy' }, 'Arktyczny relikt polodowcowy żyjący w Dwoistym Stawie Gąsienicowym.'],
+  ['biegacz', 'Biegacz Fabriciego', 'Carabus fabricii', 'water', 3, 1600, 2400, [SCREE, MEADOW], {}, 'Reliktowy, drapieżny chrząszcz pięter wysokogórskich.'],
+  ['polonozercon', 'Polonozercon tatrensis', 'Polonozercon tatrensis', 'water', 4, 2300, 2500, [SCREE, WALL], { peak: true }, 'Mikroskopijny roztocz opisany z najwyższych partii Tatr.'],
+];
+
+export const CATALOG = RAW.map(([id, name, latin, group, rarity, e0, e1, on, ex, desc]) => ({
+  id, name, latin, group, kind: GROUPS[group].kind, rarity, ele: [e0, e1], on, ...ex, desc,
+}));
+export const BY_ID = Object.fromEntries(CATALOG.map((s) => [s.id, s]));
