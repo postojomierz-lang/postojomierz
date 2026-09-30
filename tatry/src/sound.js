@@ -81,6 +81,38 @@ export class Sound {
     return b;
   }
 
+  // a red deer stag roaring in the rut: a deep, rough, falling bellow (a sawtooth through two formants,
+  // with breath noise), from where the stag stands, arriving as late as the distance makes it
+  roar(pos, dist = 0) {
+    if (!this.ctx || this.ctx.state !== 'running' || !this.noise) return;
+    const ctx = this.ctx, t0 = ctx.currentTime + dist / 343, len = 2.2 + Math.random() * 1.2;
+    const p = ctx.createPanner();
+    Object.assign(p, { panningModel: 'equalpower', distanceModel: 'inverse', refDistance: 40, maxDistance: 3000, rolloffFactor: 0.8 });
+    p.positionX.value = pos[0]; p.positionY.value = pos[1]; p.positionZ.value = pos[2];
+    p.connect(this.master);
+    const out = ctx.createGain(); out.connect(p);
+    out.gain.setValueAtTime(0.0001, t0);
+    out.gain.exponentialRampToValueAtTime(0.9, t0 + 0.25);
+    out.gain.setValueAtTime(0.9, t0 + len * 0.6);
+    out.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150, t0);
+    osc.frequency.linearRampToValueAtTime(190, t0 + 0.3);
+    osc.frequency.exponentialRampToValueAtTime(85, t0 + len);
+    const vib = ctx.createOscillator(); vib.frequency.value = 7; const vg = ctx.createGain(); vg.gain.value = 6;
+    vib.connect(vg).connect(osc.frequency);
+    for (const [f, q, g] of [[480, 4, 0.9], [1150, 6, 0.4], [2400, 8, 0.12]]) {
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+      const gg = ctx.createGain(); gg.gain.value = g;
+      osc.connect(bp).connect(gg).connect(out);
+    }
+    const n = ctx.createBufferSource(); n.buffer = this.noise; n.loop = true;
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 700; nf.Q.value = 1;
+    const ng = ctx.createGain(); ng.gain.value = 0.25;
+    n.connect(nf).connect(ng).connect(out);
+    for (const src of [osc, vib, n]) { src.start(t0); src.stop(t0 + len + 0.1); }
+  }
+
   // thunder from a lightning strike `dist` metres away: a crack when close, then a long low rumble,
   // arriving at the speed of sound
   thunder(dist) {

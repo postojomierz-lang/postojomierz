@@ -241,6 +241,19 @@ z katalogu (reszta gatunków: proste kształty), drobne rośliny gęstszymi kęp
 w promieniu 250 m; kępy przy samej ścieżce przesuwają się na najbliższy wolny grunt.
 Uruchomienie: `python3 tools/blender/make_flowers.py public/models/flowers`.
 
+## Sceny z życia zwierząt
+
+`src/animals.js` (reżyser scen) co 1–2,5 min, w promieniu ~400 m od piechura:
+- **pościg**: wilki (3) albo niedźwiedź rzucają się na jelenie lub sarny; stado ucieka galopem od drapieżników, najwolniej
+  ścigane zwierzę; zwykle ucieka (wilki łapią w ok. 35 %, niedźwiedź w 15 %), a gdy nie, zwierzę leży, drapieżniki jedzą
+  przy nim. Drapieżniki, których nie ma na trasie, przychodzą na scenę zza pola widzenia;
+- **orzeł przedni poluje na świstaki** (`birds.js`): zostawia krąg, nurkuje ze złożonymi skrzydłami, kolonia gwiżdże
+  i ucieka do nory; w ok. 30 % odlatuje ze świstakiem w szponach, potem krąży nad miejscem;
+- **rykowisko** (10 września – 20 października, data wędrówki): drugi byk w stadzie jeleni, ryk (syntetyzowany w
+  `sound.js`, z opóźnieniem na odległość, byk unosi łeb) i walka byków na poroża;
+- **niedźwiedzica z młodymi**: młode trzymają się matki i biegną za nią.
+Każda scena ma krótki komunikat na ekranie. Orzeł przedni nie łowi ryb (w Tatrach nie ma bielika ani rybołowa), stąd świstaki.
+
 ## Zgłoszenia z testów (🐞)
 
 Przycisk 🐞 w widoku 3D (w rzędzie przycisków) i na mapie planera (`src/report.js`) robi zrzut ekranu,

@@ -21,6 +21,8 @@ const SPECIES = {
   // into the burrow and come out again after a while
   marmot: { file: 'marmot', size: 1.3, walk: 0.5, run: 3.2, flee: 0, sentinel: 40, hide: 10, clipRate: 1.4, sound: 'marmot' },
   wolf: { file: 'wolf', walk: 1.2, run: 8, flee: 60, clipRate: 1, sound: null },
+  // bear cubs: the bear model, small, keeping close to the mother
+  cub: { file: 'bear', size: 0.42, walk: 0.9, run: 2.6, flee: 50, clipRate: 1.3, sound: null, slowFlee: true, follows: 'bear' },
 };
 // coats set here over the models' (linear colours by material name): the chamois in its light summer coat
 // with the dark back stripe and the pale face, easier to see on grey scree
@@ -33,16 +35,17 @@ const FROM_CATALOGUE = {
   kozica: [['chamois', 'chamois', 'chamois'], ['chamois', 'chamois', 'chamois', 'chamois', 'chamois']],
   swistak: [['marmot', 'marmot'], ['marmot', 'marmot', 'marmot']],
   wilk: [['wolf', 'wolf']],
-  niedzwiedz: [['bear']],
+  niedzwiedz: [['bear', 'cub', 'cub'], ['bear'], ['bear', 'cub']],
   jelen: [['stag', 'hind', 'hind', 'hind']],
   sarna: [['roe'], ['roe', 'roe']],
 };
 
-export async function buildAnimals({ scene, terrain, groundAt, trail, land, bounds, masks, sound, natureSpots = [], groundClass = null }) {
+export async function buildAnimals({ scene, terrain, groundAt, trail, land, bounds, masks, sound, natureSpots = [], groundClass = null, rut = false, onEvent = () => {} }) {
   const loader = new GLTFLoader();
   const proto = {};
+  const files = {};
   await Promise.all(Object.entries(SPECIES).map(async ([k, s]) => {
-    const g = await loader.loadAsync(`models/animals/${s.file}.glb`);
+    const g = await (files[s.file] || (files[s.file] = loader.loadAsync(`models/animals/${s.file}.glb`)));
     g.scene.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = true; o.receiveShadow = true;
@@ -134,7 +137,9 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     addGroup(['roe'], spot(edge, 50, 200, 0, 0.35), edge);
     addGroup(['roe', 'roe'], spot(edge, 70, 260, 0.1, 0.5), edge);
   }
-  if (!placed.has('niedzwiedz')) addGroup(['bear'], spot(woods, 110, 300, 0.15, 0.55), woods);
+  if (!placed.has('niedzwiedz')) addGroup(r() < 0.5 ? ['bear', 'cub', 'cub'] : ['bear'], spot(woods, 110, 300, 0.15, 0.55), woods);
+  // the rut (mid September to mid October): a second stag with every herd of red deer, roaring and sparring
+  if (rut) for (const g of groups) if (g.kinds.includes('stag')) { g.kinds.push('stag'); g.rut = true; }
   // chamois and marmots are what one hopes to see up high: if the catalogue has none on this route, a
   // herd and a colony go on open scree or meadow above 1600 m, 20-80 m off the trail, where there is any
   const open = (lo, hi) => (x, z) => {
@@ -174,7 +179,9 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
   }
 
   const animals = [];
-  for (const g of groups) for (const kind of g.kinds) {
+  const spawn = (g) => { for (const kind of g.kinds) spawnOne(g, kind); };
+  for (const g of groups) spawn(g);
+  function spawnOne(g, kind) {
     const p = proto[kind], sp = SPECIES[kind];
     const obj = SkeletonUtils.clone(p.scene);
     const mixer = new THREE.AnimationMixer(obj);
@@ -193,6 +200,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     scene.add(obj);
     play(an, 'Eating');
     animals.push(an);
+    return an;
   }
 
   function play(an, name, fade = 0.4) {
@@ -225,6 +233,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       if (!active) continue;
       const sp = an.sp;
       if (an.kind === 'marmot' && marmot(an, dist, dt, cx, cz)) continue;
+      if (special(an, dt)) { place(an, dist, dt); continue; }
       // chamois: close but not too close: walk off a little, heads up, then graze again
       if (sp.panic && dist < sp.flee && dist >= sp.panic && an.state !== 'flee' && an.calmT <= 0) {
         const away = Math.atan2(an.x - cx, an.z - cz) + (r() - 0.5) * 1.2;
@@ -272,6 +281,13 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
           else { an.x = nx; an.z = nz; }
         }
       }
+      place(an, dist, dt);
+    }
+    eco(dt, cam);
+  }
+
+  function place(an, dist, dt) {
+    {
       // place on the ground, body tilted with the slope along the heading
       const y = groundAt(an.x, an.z);
       const fwd = 0.8 * an.scale;
@@ -281,6 +297,8 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       an.obj.rotation.set(0, 0, 0);
       an.obj.rotateOnWorldAxis(up, an.yaw - proto[an.kind].face);
       an.obj.rotateX(-pitch * 0.7);
+      if (an.lift) an.obj.rotateX(-an.lift);                    // a roaring stag raises its chest and head
+      if (an.state === 'dead') { an.obj.rotateZ(1.45); an.obj.position.y += 0.25 * an.scale; }   // lying on its side
       // a marmot on watch: up on its hind legs (the body pivots about the hips)
       an.up += (an.upWant - an.up) * Math.min(1, dt * 5);
       if (an.up > 0.01) {
@@ -288,8 +306,159 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
         an.obj.rotateX(-1.15 * an.up);
         an.obj.position.y += Math.sin(1.15 * an.up) * L;
       }
-      an.mixer.update(dt * (dist < 250 ? 1 : 0.5));
+      if (an.state !== 'dead') an.mixer.update(dt * (dist < 250 ? 1 : 0.5));
     }
+  }
+
+  // ------------------------------------------------------------------ behaviour beyond grazing
+  const move = (an, tx, tz, speed, dt, turn = 3) => {
+    const dx = tx - an.x, dz = tz - an.z, dd = Math.hypot(dx, dz);
+    if (dd < 0.05) return dd;
+    const want = Math.atan2(dx, dz);
+    let dy = want - an.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    an.yaw += dy * Math.min(1, dt * turn);
+    const v = speed * (Math.abs(dy) > 1.2 ? 0.4 : 1), nx = an.x + Math.sin(an.yaw) * v * dt, nz = an.z + Math.cos(an.yaw) * v * dt;
+    if (terrain.maskAt(masks.lake, nx, nz) > 0 || terrain.normal(nx, nz, 2).y < 0.55) { an.yaw += 0.8; return dd; }
+    an.x = nx; an.z = nz;
+    return dd;
+  };
+  // returns true when the animal is driven by one of these states this frame
+  function special(an, dt) {
+    const sp = an.sp;
+    // cubs keep close to the mother (and run after her when she runs)
+    if (sp.follows && an.state !== 'flee') {
+      const mum = animals.find((m) => m.group === an.group && m.kind === sp.follows && m.state !== 'dead');
+      if (mum) {
+        an.off = an.off || { a: r() * 6.28, d: 1.5 + r() * 1.5 };
+        const tx = mum.x + Math.sin(mum.yaw + an.off.a) * an.off.d, tz = mum.z + Math.cos(mum.yaw + an.off.a) * an.off.d;
+        const dd = Math.hypot(tx - an.x, tz - an.z);
+        if (dd > 1.2) { play(an, dd > 8 || mum.state === 'flee' || mum.state === 'chase' ? 'Gallop' : 'Walk', 0.3); move(an, tx, tz, dd > 8 ? sp.run : sp.walk * 1.3, dt); }
+        else { play(an, mum.state === 'graze' ? 'Eating' : 'Idle'); an.yaw += (mum.yaw - an.yaw) * Math.min(1, dt); }
+        return true;
+      }
+    }
+    if (an.state === 'dead') return true;
+    if (an.state === 'chase') {                                 // a predator after its prey
+      const prey = an.prey;
+      if (!prey || prey.state === 'dead' || an.timer <= 0) { endChase(an); return true; }
+      an.timer -= dt;
+      play(an, 'Gallop', 0.2);
+      const dd = move(an, prey.x, prey.z, sp.run * 1.05, dt, 5);
+      if (dd < 1.6 && an.canCatch) { kill(prey, an); }
+      return true;
+    }
+    if (an.state === 'hunted') {                                // prey running from the nearest hunter
+      const h = an.hunters.filter((p) => p.state === 'chase');
+      if (!h.length) { an.state = 'idle'; an.timer = 4; play(an, 'Idle'); an.group.home = { x: an.x, z: an.z }; return true; }
+      let hx = 0, hz = 0; for (const p of h) { hx += p.x; hz += p.z; } hx /= h.length; hz /= h.length;
+      const away = Math.atan2(an.x - hx, an.z - hz) + Math.sin(performance.now() / 900 + an.scale * 9) * 0.5;
+      play(an, 'Gallop', 0.2);
+      move(an, an.x + Math.sin(away) * 20, an.z + Math.cos(away) * 20, sp.run * (an.tired ? 0.85 : 1), dt, 4);
+      return true;
+    }
+    if (an.state === 'eat') {                                   // predators at the kill
+      an.timer -= dt;
+      play(an, 'Eating');
+      if (an.timer <= 0) { an.state = 'idle'; an.timer = 5; play(an, 'Idle'); an.group.home = { x: an.x, z: an.z }; }
+      return true;
+    }
+    if (an.state === 'roar') {                                  // a stag roaring in the rut
+      an.timer -= dt;
+      an.lift = Math.min(0.35, (an.lift || 0) + dt * 0.8);
+      play(an, 'Idle', 0.3);
+      if (an.timer <= 0) { an.state = 'graze'; an.timer = 8 + r() * 10; play(an, 'Eating'); }
+      return true;
+    }
+    an.lift = Math.max(0, (an.lift || 0) - dt * 0.8);
+    if (an.state === 'spar') {                                  // two stags pushing, antlers locked
+      const o = an.rival;
+      an.timer -= dt;
+      if (!o || o.state !== 'spar' || an.timer <= 0) { an.state = 'graze'; an.timer = 6; play(an, 'Eating'); an.rival = null; return true; }
+      const mx = (an.x + o.x) / 2, mz = (an.z + o.z) / 2, a = Math.atan2(an.x - mx, an.z - mz);
+      const push = Math.sin(performance.now() / 700 + (an === o.first ? 0 : Math.PI)) * 0.35;
+      const dist = 1.2 + push;
+      move(an, mx + Math.sin(a) * dist, mz + Math.cos(a) * dist, 1.5, dt, 0);
+      an.yaw = Math.atan2(o.x - an.x, o.z - an.z);
+      play(an, 'Walk', 0.3);
+      return true;
+    }
+    return false;
+  }
+  function endChase(p) { p.state = 'idle'; p.timer = 3 + r() * 3; play(p, 'Idle'); p.prey = null; p.group.home = { x: p.x, z: p.z }; }
+  function kill(prey, by) {
+    prey.state = 'dead'; prey.hunters = [];
+    for (const p of animals) if (p.state === 'chase' && p.prey === prey) { p.state = 'eat'; p.timer = 40 + r() * 30; p.prey = null; }
+    onEvent(by.kind === 'bear' ? 'Niedźwiedź dopadł zwierzynę.' : 'Wilki dopadły zdobycz.');
+    setTimeout(() => { prey.obj.visible = false; prey.gone = true; }, 120000);
+  }
+
+  // ------------------------------------------------------------------ the director: now and then, near the
+  // hiker, a scene of wild life: wolves or a bear after the deer, a stag roaring in the rut, two stags
+  // sparring. Predators that are not on this route come in from out of sight for the scene.
+  let ecoT = 25 + r() * 20, birds = null;
+  const near = (an, cam, d) => !an.gone && an.state !== 'dead' && Math.hypot(an.x - cam.position.x, an.z - cam.position.z) < d;
+  function hiddenSpot(from, cam, dMin, dMax) {
+    // a place dMin..dMax from `from`, on the far side from the hiker, walkable
+    const away = Math.atan2(from.x - cam.position.x, from.z - cam.position.z);
+    for (let k = 0; k < 40; k++) {
+      const a = away + (r() - 0.5) * 1.6, d = dMin + r() * (dMax - dMin);
+      const x = from.x + Math.sin(a) * d, z = from.z + Math.cos(a) * d;
+      if (x < x0 + 60 || z < z0 + 60 || x > x1 - 60 || z > z1 - 60) continue;
+      if (terrain.maskAt(masks.lake, x, z) > 0 || terrain.normal(x, z, 3).y < 0.7) continue;
+      return { x, z };
+    }
+    return null;
+  }
+  function eco(dt, cam) {
+    ecoT -= dt;
+    // rut: roaring now and then, answered by the other stag
+    for (const an of animals) {
+      if (an.kind !== 'stag' || !an.group.rut || an.state !== 'graze' || !near(an, cam, 700)) continue;
+      if (r() < dt / 25) {
+        an.state = 'roar'; an.timer = 3 + r() * 2;
+        if (sound && sound.roar) sound.roar([an.x, terrain.height(an.x, an.z) + 1.5, an.z], Math.hypot(an.x - cam.position.x, an.z - cam.position.z));
+        if (!an.group.roared) { an.group.roared = true; onEvent('🦌 Rykowisko: jeleń ryczy, słychać go daleko.'); }
+      }
+    }
+    if (ecoT > 0) return;
+    ecoT = 70 + r() * 80;
+    const deer = animals.filter((a) => (a.kind === 'hind' || a.kind === 'roe' || a.kind === 'stag') && near(a, cam, 420) && a.state !== 'hunted' && a.state !== 'flee');
+    const roll = r();
+    // two stags sparring in the rut
+    const stags = animals.filter((a) => a.kind === 'stag' && a.group.rut && near(a, cam, 400) && a.state === 'graze');
+    if (stags.length >= 2 && roll < 0.35) {
+      const [a, b] = stags;
+      a.state = b.state = 'spar'; a.rival = b; b.rival = a; a.first = b.first = a; a.timer = b.timer = 9 + r() * 6;
+      onEvent('🦌 Dwa byki walczą na poroża: rykowisko.');
+      return;
+    }
+    if (!deer.length || roll > 0.75) { if (birds && birds.hunt) birds.hunt(cam, marmotsNear(cam), marmotAlarm); return; }
+    // predators on the route close enough, or new ones from out of sight
+    const target = deer[Math.floor(r() * deer.length)];
+    let hunters = animals.filter((a) => (a.kind === 'wolf' || a.kind === 'bear') && near(a, cam, 900) && a.state !== 'eat' && Math.hypot(a.x - target.x, a.z - target.z) < 400);
+    if (!hunters.length) {
+      const at = hiddenSpot(target, cam, 90, 160);
+      if (!at) return;
+      const pack = roll < 0.7 ? ['wolf', 'wolf', 'wolf'] : ['bear'];
+      const g = { kinds: pack, home: at, habitat: dry };
+      groups.push(g);
+      hunters = pack.map((k) => { const an = spawnOne(g, k); an.x = at.x + (r() - 0.5) * 6; an.z = at.z + (r() - 0.5) * 6; return an; });
+    }
+    const herd = animals.filter((a) => a.group === target.group && !a.gone && a.state !== 'dead');
+    const wolves = hunters[0].kind === 'wolf';
+    for (const p of hunters) {
+      p.state = 'chase'; p.prey = target; p.timer = wolves ? 30 : 12; p.canCatch = r() < (wolves ? 0.35 : 0.15);
+    }
+    for (const d of herd) { d.state = 'hunted'; d.hunters = hunters; d.tired = d === target; }
+    if (sound) sound.animal(target.sp.sound, [target.x, terrain.height(target.x, target.z) + 1, target.z]);
+    onEvent(wolves ? '🐺 Wilki gonią ' + (target.kind === 'roe' ? 'sarny' : 'jelenie') + '!' : '🐻 Niedźwiedź rzuca się na ' + (target.kind === 'roe' ? 'sarny' : 'jelenie') + '!');
+  }
+  function marmotsNear(cam) { return animals.filter((a) => a.kind === 'marmot' && near(a, cam, 450)); }
+  // the eagle's dive: the colony runs into the burrow; one may not make it
+  function marmotAlarm(list, caught) {
+    for (const m of list) if (m.state !== 'hidden') { m.state = 'home'; m.target = m.group.burrow || m.group.home; m.upWant = 0; play(m, 'Gallop', 0.15); }
+    if (sound && list[0]) sound.animal('marmot', [list[0].x, terrain.height(list[0].x, list[0].z) + 0.5, list[0].z]);
+    if (caught) { caught.state = 'hidden'; caught.timer = 400; caught.obj.visible = false; }
   }
 
   // the marmots' own life: on watch, whistling, into the burrow and out again. Returns true when the
@@ -328,5 +497,6 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     }
     return false;
   }
-  return { update, animals };
+  // trigger(): the director's next scene now (tests)
+  return { update, animals, setBirds: (b) => { birds = b; }, marmotAlarm, trigger: () => { ecoT = 0; } };
 }
