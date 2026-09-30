@@ -9,6 +9,7 @@
 --   group_routes    routes planned together in a group (the planner's #r=... address)
 --   messages        the group chat
 --   live_positions  where the members are right now: only during a walk, only for their group, and they expire
+--   discoveries     the plants, animals, places and challenges found (points), for the rankings
 --
 -- Privacy by default: nothing is public. A profile is seen by the people in your groups (and by everyone
 -- only if you set profiles.public). Positions are seen only by your group and only until expires_at.
@@ -100,6 +101,18 @@ create table if not exists public.live_positions (
   primary key (user_id, group_id)
 );
 
+create table if not exists public.discoveries (
+  user_id     uuid not null references auth.users (id) on delete cascade default auth.uid(),
+  item_id     text not null check (char_length(item_id) <= 160),   -- species id, 'peak:Rysy', 'event:week:2026-W40'
+  found_on    date not null default current_date,
+  gps         boolean not null default false,                        -- on the real trail (GPS) or in the 3D view
+  points      integer not null default 0 check (points between 0 and 1000),
+  primary key (user_id, item_id)
+);
+create index if not exists discoveries_date on public.discoveries (found_on);
+alter table public.profiles add column if not exists points integer not null default 0;
+alter table public.profiles add column if not exists species integer not null default 0;
+
 -- ---------------------------------------------------------------- helpers (security definer: no recursive policies)
 create or replace function public.is_member(g uuid) returns boolean
   language sql stable security definer set search_path = public as
@@ -143,6 +156,25 @@ end $$;
 drop trigger if exists user_created on auth.users;
 create trigger user_created after insert on auth.users for each row execute function public.on_user_created();
 
+-- rankings: the people who show their profile publicly (and yourself), by points over a period
+-- (all, year, month, week, day) and mode (all, gps: on the real trail, 3d: in the 3D view)
+create or replace function public.leaderboard(period text default 'all', mode text default 'all')
+  returns table (name text, avatar text, points bigint, species bigint, me boolean)
+  language sql stable security definer set search_path = public as $$
+  select p.name, p.avatar, sum(d.points)::bigint, count(*) filter (where d.item_id not like '%:%')::bigint, p.id = auth.uid()
+  from discoveries d join profiles p on p.id = d.user_id
+  where (p.public or p.id = auth.uid())
+    and d.found_on >= case period
+      when 'day' then current_date
+      when 'week' then date_trunc('week', current_date)::date
+      when 'month' then date_trunc('month', current_date)::date
+      when 'year' then date_trunc('year', current_date)::date
+      else '1900-01-01'::date end
+    and (mode = 'all' or (mode = 'gps') = d.gps)
+  group by p.id, p.name, p.avatar
+  order by 3 desc
+  limit 50 $$;
+
 -- ---------------------------------------------------------------- row level security
 alter table public.profiles       enable row level security;
 alter table public.walks          enable row level security;
@@ -152,6 +184,7 @@ alter table public.group_members  enable row level security;
 alter table public.group_routes   enable row level security;
 alter table public.messages       enable row level security;
 alter table public.live_positions enable row level security;
+alter table public.discoveries    enable row level security;
 
 drop policy if exists profiles_read on public.profiles;
 create policy profiles_read on public.profiles for select
@@ -193,6 +226,9 @@ create policy messages_send on public.messages for insert with check (public.is_
 drop policy if exists messages_delete on public.messages;
 create policy messages_delete on public.messages for delete using (user_id = auth.uid());
 
+drop policy if exists discoveries_own on public.discoveries;
+create policy discoveries_own on public.discoveries for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
 drop policy if exists positions_read on public.live_positions;
 create policy positions_read on public.live_positions for select
   using (public.is_member(group_id) and expires_at > now());
@@ -204,4 +240,5 @@ create policy positions_write on public.live_positions for all
 do $$ begin
   begin alter publication supabase_realtime add table public.messages; exception when duplicate_object then null; end;
   begin alter publication supabase_realtime add table public.live_positions; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.group_routes; exception when duplicate_object then null; end;
 end $$;

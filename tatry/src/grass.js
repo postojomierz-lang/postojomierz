@@ -179,6 +179,9 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
   };
   const [bx0, bz0, bx1, bz1] = bounds;
   let last = { x: Infinity, z: Infinity }, lastSun = new THREE.Vector3();
+  // thinner grass where the catalogue's small plants grow, so the flowers are not lost in it
+  let clearings = [];
+  function setClearings(list) { clearings = list; last = { x: Infinity, z: Infinity }; }
   function rebuild(cx, cz) {
     const x0 = Math.round(cx) - WIN / 2, z0 = Math.round(cz) - WIN / 2, yRef = terrain.height(cx, cz);
     for (let j = 0; j < WIN; j++) for (let i = 0; i < WIN; i++) {
@@ -217,6 +220,7 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
           if (n.y < 0.5) dens *= Math.max(0, (n.y - 0.3) / 0.2);
         }
       }
+      for (const c of clearings) if ((x - c.x) * (x - c.x) + (z - c.z) * (z - c.z) < c.r * c.r) { dens *= 0.3; break; }
       cols[o + 3] = Math.round(Math.max(0, Math.min(1, dens)) * 255);
     }
     for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat((i & 3) === 0 ? data[i] - yRef : data[i]);
@@ -231,5 +235,5 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
   }
   const debug = () => { const c = ((WIN / 2) * WIN + WIN / 2) * 4; return { yRef: common.gYRef.value, cam: common.gCam.value.toArray(), win: common.gWin.value.toArray(), h: data[c], half: half[c], back: THREE.DataUtils.fromHalfFloat(half[c]), dens: cols[c + 3], sh: data[c + 1], share: (() => { let k = 0, m = 0; for (let i = 3; i < cols.length; i += 4) { if (cols[i] > 0) k++; m += cols[i]; } return [k / (WIN * WIN), m / (WIN * WIN) / 255]; })(), hs: [data[0], data[(WIN * 10 + 70) * 4], data[(WIN * 90 + 30) * 4]].map((v) => v - common.gYRef.value) }; };
   const at = (x, z) => { const w = common.gWin.value, i = Math.floor(x - w.x), j = Math.floor(z - w.y); if (i < 0 || j < 0 || i >= WIN || j >= WIN) return null; const o = (j * WIN + i) * 4; return { dens: cols[o + 3], h: data[o], sh: data[o + 1], gc: groundClass(x, z), n: terrain.normal(x, z, 1.5).y, path: terrain.maskAt(masks.path, x, z), side: terrain.maskAt(masks.pathSide, x, z), lake: terrain.maskAt(masks.lake, x, z), blocked: blocked(x, z) }; };
-  return { update, debug, at, blades: fields.reduce((s, f) => s + f.n * f.blades, 0), fields };
+  return { update, setClearings, debug, at, blades: fields.reduce((s, f) => s + f.n * f.blades, 0), fields };
 }

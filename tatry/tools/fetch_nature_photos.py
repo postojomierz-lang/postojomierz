@@ -1,5 +1,6 @@
-"""Photos for the nature cards: one real photo per species of src/nature/catalog.js, from Wikimedia Commons,
-with its author and licence (shown on the card, as the licences require).
+"""Photos for the nature cards: one real photo per species of src/nature/catalog.js, from iNaturalist
+(research-grade observations, the Tatras first) or Wikimedia Commons, with its author and licence (shown on
+the card, as the licences require).
 
 For every species it searches Commons for photos of it (from the Tatras first, then anywhere), skips maps,
 old plates and drawings, reads the file's author and licence and downloads a 640 px thumbnail. Only freely licensed files (CC0, public domain, CC BY, CC BY-SA) are kept.
@@ -68,6 +69,26 @@ def search(query):
     return out
 
 
+INAT_LIC = {'cc0': 'CC0', 'cc-by': 'CC BY 4.0', 'cc-by-sa': 'CC BY-SA 4.0'}
+TATRAS = '&swlat=49.1&swlng=19.7&nelat=49.35&nelng=20.45'
+
+
+def inat(latin, box=''):
+    # the most-voted freely licensed research-grade photo of the species on iNaturalist
+    q = urllib.parse.quote(latin)
+    r = get(f'https://api.inaturalist.org/v1/observations?taxon_name={q}&photo_license=cc0,cc-by,cc-by-sa'
+            f'&quality_grade=research&per_page=10&order_by=votes{box}')
+    for o in (r or {}).get('results', []):
+        for ph in o.get('photos', []):
+            lic = INAT_LIC.get(ph.get('license_code'))
+            if lic and ph.get('url'):
+                u = o.get('user') or {}
+                author = u.get('name') or u.get('login') or 'iNaturalist'
+                return {'file': f"inaturalist-{ph['id']}", 'thumb': ph['url'].replace('/square.', '/medium.'),
+                        'license': lic, 'author': author[:120], 'url': f"https://www.inaturalist.org/photos/{ph['id']}"}
+    return None
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     idx_path = os.path.join(OUT, 'photos.json')
@@ -79,8 +100,10 @@ def main():
         print(sid, latin, flush=True)
         # a photo from the Tatras if there is one, else any photo of the species
         latin_q = latin.replace(' m. fario', '')
-        found = search(f'{latin_q} Tatry') or search(f'"{latin_q}"')
-        info = found[0] if found else None
+        info = inat(latin_q, TATRAS)
+        if not info:
+            found = search(f'{latin_q} Tatry') or search(f'"{latin_q}"')
+            info = found[0] if found else inat(latin_q)
         if not info:
             print('  no free photo', flush=True)
             continue

@@ -276,3 +276,12 @@ je w przeglądarce (`rysy-discoveries`). Etykiety nieodkrytych pokazują „?”
   (widok 3D i nawigacja GPS w planerze, `src/nature/gps.js`, odkrywają te same okazy; odkrycia wspólne w przeglądarce).
 - Odznaki przyrodnicze w profilu planera: odkrycia (1/10/25/50), botanik, ornitolog, tropiciel, herpetolog, łowca rzadkości,
   unikat, tatrzańska piątka, stawy, schroniska.
+- Rośliny w miejscach występowania (`src/nature/flowers.js`): kępy budowane z kształtów (dzwonki, gwiazdki, kielichy, kłosy,
+  rozety, paprocie, kępki traw, krzewinki z owocami) w barwach i rozmiarach gatunku; trawa wokół drobnych kwiatów jest rzadsza.
+- Zwierzęta (`tools/blender/make_tatra_animals.py`): kozica (z łani Quaternius: krępiejsza, ciemna sierść, jasny pysk,
+  haczykowate rogi wtopione w siatkę na kości głowy), świstak (z wilka: krótkie łapy, pękaty, mały pysk), wilk. Stada kozic,
+  świstaki, wilki, niedźwiedź, jelenie i sarny żyją w miejscach katalogu. Ptaki (`src/nature/birds.js`): kruk, orzeł przedni
+  i sokół krążą wysoko; małe ptaki siedzą, podskakują i odlatują, gdy podejść.
+- Wyzwania (`src/nature/challenges.js`): dzienne, tygodniowe, miesięczne i roczne, wspólne dla wszystkich (z daty), premia
+  30/100/250/1000 pkt. Online (`supabase/schema.sql`): tabela `discoveries`, funkcja `leaderboard(okres, tryb)` (tydzień,
+  miesiąc, rok, ogółem; GPS, 3D, wszystkie), w rankingu tylko osoby z włączonym „Pokazuj mnie w rankingu”.

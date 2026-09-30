@@ -3,6 +3,7 @@
 // comes close to are added to the same discoveries as in the 3D view, with a notice on the screen.
 import { BY_ID, GROUPS, RARITY } from './catalog.js';
 import { loadFound, saveFound, placePoints } from './discover.js';
+import { settleChallenges } from './challenges.js';
 
 const R = { flora: 15, fauna: 40, bird: 70, peak: 60, pass: 50, hut: 60 };
 const MZ = 110574;
@@ -48,7 +49,12 @@ export async function buildGpsDiscovery({ poi = [] }) {
       changed = true;
       show(`✓ Odkryto: <b>${p.n}</b> · +${pts} pkt`);
     }
-    if (changed) saveFound(found);
+    if (changed) {
+      saveFound(found);
+      const got = settleChallenges(found, loadJournalSafe(), saveFound);
+      if (got.length) setTimeout(() => show(`🏅 Wyzwanie wykonane: <b>${got[0].text}</b><br>+${got[0].bonus} pkt`), 6200);
+    }
   }
+  function loadJournalSafe() { try { return JSON.parse(localStorage.getItem('rysy-journal') || '{}') || {}; } catch (e) { return {}; } }
   return { onPosition };
 }

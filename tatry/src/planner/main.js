@@ -11,7 +11,8 @@ import { loadJournal, saveJournal, routeKey, toggleFav, totals, fmtClock, addWal
 import { setupNav, trackGpx } from './nav.js';
 import { sunTimes, forecast, walkWeather, hhmm, hm } from './daylight.js';
 import { loadProfile, saveProfile, AVATARS, BADGES, rank, photoAvatar } from './profile.js';
-import { loadFound } from '../nature/discover.js';
+import { loadFound, saveFound } from '../nature/discover.js';
+import { challenges, settleChallenges } from '../nature/challenges.js';
 import { buildGpsDiscovery } from '../nature/gps.js';
 import { setupOnline } from './online.js';
 
@@ -376,6 +377,7 @@ function renderJournal() {
   const pk = Object.entries(J.peaks).sort((a, b) => (b[1].ele || 0) - (a[1].ele || 0));
   $('j-peaks').innerHTML = pk.length ? pk.map(([n, p]) => `<span>▲ ${esc(n)}${p.ele ? ' ' + p.ele : ''}</span>`).join('') : '<span class="empty">Jeszcze żadnego – ruszaj!</span>';
   renderProfile(t);
+  renderRanking();
   // favourite button for the current route
   const key = routeKey(location.hash);
   $('b-fav').hidden = !path;
@@ -390,6 +392,10 @@ function renderProfile(t) {
   $('p-name').textContent = PR.name || 'Turysta (kliknij ✎)';
   $('p-rank').textContent = `${rank(t.km)} · ${t.km.toFixed(0)} km · ↗ ${Math.round(t.up)} m`;
   const D = loadFound();
+  // challenges of the day, week, month and year (the same for everybody), bonus points when done
+  settleChallenges(D, J, saveFound);
+  $('ch-list').innerHTML = challenges(D, J).map((c) => `<div class="ch${c.done ? ' done' : ''}"><small>${c.name} · +${c.bonus} pkt</small><br>`
+    + `${esc(c.text)} ${c.done ? '✓' : `<small>(${c.have}/${c.n})</small>`}<div class="bar"><i style="width:${Math.round(100 * c.have / c.n)}%"></i></div></div>`).join('');
   const got = BADGES.filter((b) => b.ok(t, J, D)).length;
   $('b-count').textContent = `${got} / ${BADGES.length}`;
   $('badges').innerHTML = BADGES.map((b) => `<div class="badge${b.ok(t, J, D) ? '' : ' off'}" title="${esc(b.desc)}"><span class="i">${b.icon}</span><b>${esc(b.name)}</b>${esc(b.desc)}</div>`).join('');
@@ -420,6 +426,22 @@ $('p-photo').onchange = async (ev) => {
 // ---------------------------------------------------------------- online: account, sync, groups, chat, positions
 const ONLINE = setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfile, totals, render: () => renderJournal(), msg, esc,
   routeTitle, hasRoute: () => !!path, openHash });
+// the ranking (signed-in people who show their profile publicly): by period and by mode
+async function renderRanking() {
+  try { void ONLINE; } catch (e) { return; }            // the journal is drawn once before the online part exists
+  const box = $('lb-list');
+  $('lb-public').checked = !!ONLINE.isPublic;
+  $('lb-public').disabled = !ONLINE.user;
+  if (!ONLINE.user) { box.innerHTML = '<li class="empty">Zaloguj się (wyżej), żeby zobaczyć ranking i w nim wystartować.</li>'; return; }
+  try {
+    const rows = await ONLINE.leaderboard($('lb-period').value, $('lb-mode').value);
+    box.innerHTML = rows && rows.length ? rows.map((r) => `<li class="${r.me ? 'me' : ''}">`
+      + `${r.avatar && r.avatar.startsWith('data:') ? `<i class="av" style="background-image:url(${r.avatar})"></i>` : `<i class="av">${esc(r.avatar || '🥾')}</i>`} `
+      + `${esc(r.name)} · <b>${r.points}</b> pkt · ${r.species} gat.</li>`).join('') : '<li class="empty">Jeszcze nikogo w tym okresie.</li>';
+  } catch (e) { box.innerHTML = `<li class="empty">Ranking niedostępny (${esc(e.message || e)}).</li>`; }
+}
+$('lb-period').onchange = renderRanking; $('lb-mode').onchange = renderRanking;
+$('lb-public').onchange = async (e) => { await ONLINE.setPublic(e.target.checked); renderRanking(); };
 
 $('b-fav').onclick = () => { toggleFav(J, routeKey(location.hash), routeTitle(), location.hash); saveJournal(J); renderJournal(); };
 

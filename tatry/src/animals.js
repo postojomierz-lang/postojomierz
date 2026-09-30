@@ -1,4 +1,6 @@
-// Wildlife: red deer (a stag with hinds), roe deer and a brown bear (models: tools/blender/make_animals.py).
+// Wildlife: red deer (a stag with hinds), roe deer and a brown bear (models: tools/blender/make_animals.py), chamois,
+// marmots and wolves (tools/blender/make_tatra_animals.py). Where the nature catalogue has a spot for the species on this
+// route (src/nature), the animals live there, so the '?' label has its animal nearby.
 // Groups live at fixed, seeded spots along the trail chosen from the land cover (deer on meadows and
 // forest edges, roe deer at the forest edge low down, the bear in the forest and dwarf pine). They
 // graze, look around and wander; when the hiker comes close deer bark and gallop away, the bear
@@ -13,9 +15,21 @@ const SPECIES = {
   hind: { file: 'hind', walk: 1.1, run: 9, flee: 60, clipRate: 1, sound: 'deerBark' },
   roe: { file: 'roe', walk: 0.9, run: 8, flee: 45, clipRate: 1.2, sound: 'roeBark' },
   bear: { file: 'bear', walk: 0.8, run: 2.2, flee: 50, clipRate: 0.8, sound: 'bear', slowFlee: true },
+  chamois: { file: 'chamois', walk: 1.0, run: 8, flee: 50, clipRate: 1.1, sound: null },
+  marmot: { file: 'marmot', walk: 0.5, run: 3.2, flee: 30, clipRate: 1.4, sound: 'marmot' },
+  wolf: { file: 'wolf', walk: 1.2, run: 8, flee: 60, clipRate: 1, sound: null },
+};
+// the catalogue's animals as groups of these models
+const FROM_CATALOGUE = {
+  kozica: [['chamois', 'chamois', 'chamois'], ['chamois', 'chamois', 'chamois', 'chamois', 'chamois']],
+  swistak: [['marmot', 'marmot'], ['marmot', 'marmot', 'marmot']],
+  wilk: [['wolf', 'wolf']],
+  niedzwiedz: [['bear']],
+  jelen: [['stag', 'hind', 'hind', 'hind']],
+  sarna: [['roe'], ['roe', 'roe']],
 };
 
-export async function buildAnimals({ scene, terrain, groundAt, trail, land, bounds, masks, sound }) {
+export async function buildAnimals({ scene, terrain, groundAt, trail, land, bounds, masks, sound, natureSpots = [] }) {
   const loader = new GLTFLoader();
   const proto = {};
   await Promise.all(Object.entries(SPECIES).map(async ([k, s]) => {
@@ -61,12 +75,29 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
 
   const groups = [];
   const addGroup = (kinds, at, habitat) => { if (at) groups.push({ kinds, home: at, habitat }); };
-  // red deer herds on the meadows around the lakes, roe deer near the forest edge, one bear
-  addGroup(['stag', 'hind', 'hind', 'hind'], spot(meadow, 90, 320, 0.05, 0.6), meadow);
-  addGroup(['hind', 'hind'], spot(meadow, 120, 380, 0.3, 0.8), meadow);
-  addGroup(['roe'], spot(edge, 50, 200, 0, 0.35), edge);
-  addGroup(['roe', 'roe'], spot(edge, 70, 260, 0.1, 0.5), edge);
-  addGroup(['bear'], spot(woods, 110, 300, 0.15, 0.55), woods);
+  // at the catalogue's spots first: chamois on the crags and meadows up high, marmots in the scree, wolves,
+  // the bear, deer and roe where the catalogue puts them
+  // (the land-cover map is coarse; the catalogue's spot already matches the 1 m class map, so around it
+  // the animals only keep off the water)
+  const dry = (c) => c !== 80;
+  const placed = new Set();
+  for (const sp of natureSpots) {
+    const kinds = FROM_CATALOGUE[sp.id];
+    if (!kinds) continue;
+    const k = Math.floor(r() * kinds.length);
+    addGroup(kinds[k], { x: sp.x, z: sp.z }, dry);
+    placed.add(sp.id);
+  }
+  // otherwise, as before: red deer herds on the meadows around the lakes, roe deer near the forest edge, one bear
+  if (!placed.has('jelen')) {
+    addGroup(['stag', 'hind', 'hind', 'hind'], spot(meadow, 90, 320, 0.05, 0.6), meadow);
+    addGroup(['hind', 'hind'], spot(meadow, 120, 380, 0.3, 0.8), meadow);
+  }
+  if (!placed.has('sarna')) {
+    addGroup(['roe'], spot(edge, 50, 200, 0, 0.35), edge);
+    addGroup(['roe', 'roe'], spot(edge, 70, 260, 0.1, 0.5), edge);
+  }
+  if (!placed.has('niedzwiedz')) addGroup(['bear'], spot(woods, 110, 300, 0.15, 0.55), woods);
 
   const animals = [];
   for (const g of groups) for (const kind of g.kinds) {
