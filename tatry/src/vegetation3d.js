@@ -96,7 +96,7 @@ function patch(m, shade, { wind = 0.5, upNormal = 0, depth = false, fadeR = tree
         ${depth ? '' : 'vTerrSh = terrainShadow((modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz) * cloudShadow(ipos);'}`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform float fadeR; varying float vFadeD; ${depth ? '' : 'varying float vTerrSh;'}`)
+        uniform float fadeR; varying float vFadeD; ${depth ? '' : 'varying float vTerrSh; uniform float wetK;'}`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
         if (${IGN} >= clamp((fadeR - vFadeD) / ${FADE.toFixed(1)}, 0.0, 1.0)) discard;`);
     if (!depth) {
