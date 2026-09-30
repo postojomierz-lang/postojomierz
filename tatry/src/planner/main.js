@@ -18,6 +18,9 @@ import { setupOnline } from './online.js';
 import { setupTabs } from './tabs.js';
 import { setupWeatherMap } from './weathermap.js';
 import { setupNavWeather } from './navweather.js';
+import { setupSos } from './sos.js';
+import { setupIntro } from './intro.js';
+import { clearLocalData } from './localdata.js';
 
 const $ = (id) => document.getElementById(id);
 const TABS = setupTabs();
@@ -342,7 +345,7 @@ const NAVWX = setupNavWeather({ $, data, G, left: () => NAV.left(), top: () => {
   return lastFix && lastFix.alt != null ? { lat: lastFix.lat, lon: lastFix.lon, ele: lastFix.alt, startEle: lastFix.alt } : null;
 } });
 const NAV = setupNav({ map, G, data, $, route: () => ({ path, summary }),
-  onPosition: (p) => { lastFix = p; ONLINE.onPosition(p); GPSD.onPosition(p); NAVWX.onPosition(p); },
+  onPosition: (p) => { lastFix = { ...p, t: Date.now() }; ONLINE.onPosition(p); GPSD.onPosition(p); NAVWX.onPosition(p); },
   onStart: () => NAVWX.start(), onStop: () => { NAVWX.stop(); ONLINE.onNavStop(); }, sunset: () => { const n = new Date(); const v = data.v[path ? path[0] : 0]; return sunTimes(n, v[1], v[0]).sunset; }, onFinish: (w) => {
   const title = routeTitle() || 'Przejście GPS';
   const walk = { key: path ? routeKey(location.hash) : 'gps', title, date: new Date().toISOString().slice(0, 10), dist: Math.round(w.dist),
@@ -441,6 +444,14 @@ $('p-photo').onchange = async (ev) => {
 };
 
 // ---------------------------------------------------------------- online: account, sync, groups, chat, positions
+// safety: the SOS button on the map; the first-start guide; wiping this device's data
+setupSos({ map, data, G, lastFix: () => lastFix });
+const INTRO = setupIntro();
+$('b-intro').onclick = () => INTRO.open();
+$('b-clear-local').onclick = () => {
+  if (!confirm('Usunąć z tego urządzenia dziennik, odkrycia, profil, grupy, sesję logowania i zapisane prognozy? Dane na koncie (jeśli je masz) zostają.')) return;
+  clearLocalData(); location.reload();
+};
 // weather on the map: forecast badges over the main peaks and huts, with an hour slider
 setupWeatherMap({ map, data, G, startDate, hasRoute: () => !!path, esc });
 const ONLINE = setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfile, totals, render: () => renderJournal(), msg, esc,
@@ -487,3 +498,4 @@ if (h) {
 renderJournal();
 document.querySelector('footer').append(` Wersja ${__BUILD__}.`);
 $('loading').remove();
+

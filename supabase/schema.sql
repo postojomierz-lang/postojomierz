@@ -175,6 +175,19 @@ create or replace function public.leaderboard(period text default 'all', mode te
   order by 3 desc
   limit 50 $$;
 
+-- deleting one's own account (the "Usuń konto i dane" button): the user and, through the cascades,
+-- everything of theirs: profile, walks, peaks, discoveries, the groups they own (with their routes and
+-- chat), memberships, messages, shared positions. No service key needed in the app.
+create or replace function public.delete_my_account() returns void
+  language plpgsql security definer set search_path = public, auth as $$
+begin
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  delete from auth.users where id = auth.uid();
+end $$;
+revoke all on function public.delete_my_account() from public;
+do $$ begin revoke all on function public.delete_my_account() from anon; exception when undefined_object then null; end $$;
+grant execute on function public.delete_my_account() to authenticated;
+
 -- ---------------------------------------------------------------- row level security
 alter table public.profiles       enable row level security;
 alter table public.walks          enable row level security;

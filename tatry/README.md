@@ -232,6 +232,18 @@ ramka w panelu nawigacji (czerwona przy niebezpieczeństwie), długa wibracja i 
 (zgoda pytana przy starcie nawigacji); przy burzy: za ile i najbliższe schronisko. Bez zasięgu używana
 jest ostatnia prognoza, a po odzyskaniu sieci sprawdzenie od razu.
 
+## Bezpieczeństwo, prywatność, pierwsze uruchomienie
+
+- **SOS** (czerwony przycisk na mapie planera, `src/planner/sos.js`): pozycja GPS (współrzędne, dokładność,
+  wysokość, najbliższe nazwane miejsce), połączenia jednym stuknięciem: TOPR 985 i +48 601 100 300, 112,
+  HZS 18300; SMS z pozycją i linkiem do mapy do wybranej osoby (numer zapamiętany w przeglądarce);
+  udostępnienie lub skopiowanie pozycji; co powiedzieć ratownikowi, przypomnienie o aplikacji Ratunek.
+- **Przewodnik** przy pierwszym uruchomieniu (4 ekrany, `src/planner/intro.js`), ponownie z zakładki Konto.
+- **Polityka prywatności i regulamin**: `public/prywatnosc.html`, `public/regulamin.html` (dane administratora
+  do uzupełnienia w miejscach oznaczonych na żółto), linki przy logowaniu, w zakładce Konto i w pomocy 3D.
+- **Usuń konto i dane**: funkcja `delete_my_account()` w `supabase/schema.sql` (security definer, usuwa
+  użytkownika, a kaskady wszystko jego); **Wyczyść dane z tego urządzenia** (`src/planner/localdata.js`).
+
 ## Dziennik (rekordy, duch, szczyty)
 `src/journal.js`, zapisywany w pamięci przeglądarki (`localStorage`, klucz `rysy-journal`):
 - przejście trasy do mety w widoku 3D trafia do dziennika (data, długość, podejścia, czas);
