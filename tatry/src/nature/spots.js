@@ -35,7 +35,7 @@ export function buildSpots({ trail, terrain, groundClass, meta }) {
   const streams = (meta.streams || []).filter((s) => near(s.pts.map((p) => p[0]), s.pts.map((p) => p[1])));
   const peaks = (meta.labels || []).filter((l) => l.kind === 'peak' && l.ele > 2300);
   const byStream = (x, z, r) => streams.some((s) => s.pts.some((p, i) => i && segDist(x, z, s.pts[i - 1][0], s.pts[i - 1][1], p[0], p[1]) < r));
-  const lakeAt = (x, z, r, name) => lakes.some((l) => (!name || l.name === name) && (inRing(x, z, l.ring)
+  const lakeAt = (x, z, r, name) => lakes.some((l) => (!name || (l.name || '').includes(name)) && (inRing(x, z, l.ring)
     || l.ring.some((p, i) => i && segDist(x, z, l.ring[i - 1][0], l.ring[i - 1][1], p[0], p[1]) < r)));
 
   const spots = [];
@@ -44,8 +44,17 @@ export function buildSpots({ trail, terrain, groundClass, meta }) {
   for (const sp of CATALOG) {
     const r = rng([...sp.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
     const fauna = sp.kind === 'fauna', bird = sp.group === 'bird', aquatic = sp.on.length === 1 && sp.on[0] === 1;
-    const [d0, d1] = aquatic ? [2, 60] : bird ? [20, 150] : fauna ? [12, 90] : [3, 28];
+    const [d0, d1] = typeof sp.lake === 'string' ? [2, 200] : aquatic ? [2, 60] : bird ? [20, 150] : fauna ? [12, 90] : [3, 28];
     const cand = [];
+    if (sp.far && typeof sp.lake === 'string') {
+      // seen from the trail: in the middle of the named lake
+      const l = (meta.lakes || []).find((q) => (q.name || '').includes(sp.lake));
+      if (l) {
+        const cx = l.ring.reduce((a, p) => a + p[0], 0) / l.ring.length, cz = l.ring.reduce((a, p) => a + p[1], 0) / l.ring.length;
+        if (Math.min(...trail.X.map((x, i) => Math.hypot(x - cx, trail.Z[i] - cz))) < sp.far) spots.push({ id: sp.id, x: cx, z: cz, y: l.level });
+      }
+      continue;
+    }
     for (let i = Math.floor(r() * every); i < N && cand.length < 60; i += every) {
       for (let k = 0; k < 2; k++) {
         const d = d0 + r() * (d1 - d0), a = r() * 6.2832;

@@ -35,7 +35,7 @@ export function buildDiscovery({ items, found, placeId, onFind }) {
     for (const it of items) {
       const id = it.species ? it.id : placeId(it);
       if (found[id]) continue;
-      const r = it.species ? (it.species.group === 'bird' ? RADIUS.bird : RADIUS[it.kind]) : RADIUS[it.kind] || 50;
+      const r = it.species ? (it.species.far || (it.species.group === 'bird' ? RADIUS.bird : RADIUS[it.kind])) : RADIUS[it.kind] || 50;
       const dx = it.pos.x - p.x, dz = it.pos.z - p.z;
       if (dx * dx + dz * dz > r * r || Math.abs(it.pos.y - p.y) > Math.max(40, r)) continue;
       const entry = { date: new Date().toISOString().slice(0, 10) };

@@ -21,7 +21,8 @@ import { buildSigns } from './signs.js';
 import { buildLabels, placeId, CATS } from './labels.js';
 import { buildSpots } from './nature/spots.js';
 import { loadFound, buildDiscovery, score } from './nature/discover.js';
-import { GROUPS, RARITY } from './nature/catalog.js';
+import { buildCards } from './nature/card.js';
+import { GROUPS, RARITY, BY_ID } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
 import { routeFromHash, routePath, loadRegionArea, REGION_BASE } from './region.js';
@@ -974,10 +975,23 @@ async function main() {
   const top = at(LENGTH);
   // the plants and animals of the catalogue along this route (src/nature) and what has been discovered
   const found = loadFound();
-  const spots = buildSpots({ trail, terrain, groundClass, meta });
+  // the spots of the whole trail network (tools/prepare_spots.py: the same ones as for GPS navigation) near
+  // this route; worked out here only if that file is missing
+  let spots = null;
+  try {
+    const all = await (await fetch('nature/spots.json')).json();
+    const LON0 = 20.076, LAT0 = 49.191, MXl = 111320 * Math.cos(LAT0 * Math.PI / 180), MZl = 110574;
+    const G = 50, cells = new Set();
+    for (let i = 0; i < N; i += 10) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++)
+      cells.add((Math.floor(trail.X[i] / G) + dx) + ',' + (Math.floor(trail.Z[i] / G) + dz));
+    spots = all.map(([id, lon, lat, ele]) => ({ id, x: (lon - LON0) * MXl, z: -(lat - LAT0) * MZl, y: ele }))
+      .filter((p) => cells.has(Math.floor(p.x / G) + ',' + Math.floor(p.z / G)) || (BY_ID[p.id]?.far && Math.min(...trail.X.map((x, i) => Math.hypot(x - p.x, trail.Z[i] - p.z))) < BY_ID[p.id].far));
+  } catch (e) { spots = null; }
+  if (!spots) spots = buildSpots({ trail, terrain, groundClass, meta });
   const labels = buildLabels({ meta, terrain, camera, container: document.body, blockers: signs.posts.map((p) => p.at),
     extra: RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }],
-    nature: { spots, found } });
+    nature: { spots, found }, onClick: (it) => cards.show(it) });
+  const cards = await buildCards({ found, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
   const discovery = buildDiscovery({ items: labels.items, found, placeId, onFind: (it, e) => {
     labels.refresh(); renderLabelMenu();
     if (it.species) {
@@ -1358,7 +1372,7 @@ async function main() {
     adaptResolution();
     requestAnimationFrame(tick);
   }
-  window.__rysy = { groundClass, grass, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { groundClass, grass, cards, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 

@@ -77,6 +77,19 @@
   .flag-fauna .flag-box { border-left-color: #a0522d; } .flag-fauna .ico { color: #a0522d; }
   .flag.unknown .nm { color: #6b7378; font-style: italic; } .flag.unknown .flag-box { background: rgba(252,250,244,.72); }
   .flag-box .ok { color: #2e7d32; font-weight: 700; }
+  #labels .flag.on .flag-box { pointer-events: auto; cursor: pointer; }
+  #card { display: none; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92vw, 380px); max-height: 86vh; overflow: auto;
+    padding: 14px 16px 12px; z-index: 40; font-size: 14px; line-height: 1.45; }
+  #card.show { display: block; }
+  #card img { width: 100%; max-height: 260px; object-fit: cover; border-radius: 8px; display: block; margin-bottom: 10px; }
+  #card h3 { margin: 0 24px 2px 0; font-size: 18px; } #card .lat { font-style: italic; color: #5b6368; margin-bottom: 8px; }
+  #card .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  #card .tags span { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: rgba(0,0,0,.07); }
+  #card .tags .r3 { background: #e6d3f5; } #card .tags .r4 { background: #ffd98a; font-weight: 700; }
+  #card p { margin: 6px 0; } #card .when { font-size: 12.5px; color: #2e7d32; }
+  #card .credit { font-size: 11px; color: #6b7378; margin-top: 8px; } #card .credit a { color: inherit; }
+  #card .x { position: absolute; top: 8px; right: 8px; border: 0; background: transparent; font-size: 18px; cursor: pointer; }
+  #card .unk { font-size: 64px; text-align: center; opacity: .5; }
   #label-menu { display: none; top: 132px; right: 12px; padding: 10px 12px; flex-direction: column; gap: 6px; font-size: 14px; z-index: 30; min-width: 220px; }
   #label-menu.show { display: flex; }
   #label-menu label { display: flex; gap: 8px; align-items: center; cursor: pointer; }

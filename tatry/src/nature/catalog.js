@@ -126,7 +126,7 @@ const RAW = [
   ['pstrag', 'Pstrąg potokowy', 'Salmo trutta m. fario', 'water', 2, 900, 1700, [W], { stream: true, lake: true }, 'Rdzenna ryba zimnych, natlenionych potoków i Morskiego Oka.'],
   ['glowacz', 'Głowacz pręgopłetwy', 'Cottus poecilopus', 'water', 3, 900, 1500, [W], { stream: true }, 'Ryba denna bez pęcherza pławnego, żyje w czystych potokach.'],
   ['apollo', 'Niepylak apollo', 'Parnassius apollo', 'water', 4, 900, 1500, [MEADOW, WALL], { lime: true }, 'Zagrożony motyl naskalny dolin wapiennych, np. Kościeliskiej.'],
-  ['skrzelopływka', 'Skrzelopływka bagienna', 'Branchinecta paludosa', 'water', 4, 1600, 1700, [W], { lake: 'Dwoisty Staw Gąsienicowy' }, 'Arktyczny relikt polodowcowy żyjący w Dwoistym Stawie Gąsienicowym.'],
+  ['skrzelopływka', 'Skrzelopływka bagienna', 'Branchinecta paludosa', 'water', 4, 1600, 1700, [W], { lake: 'Dwoisty Staw', far: 500 }, 'Arktyczny relikt polodowcowy żyjący w Dwoistym Stawie Gąsienicowym.'],
   ['biegacz', 'Biegacz Fabriciego', 'Carabus fabricii', 'water', 3, 1600, 2400, [SCREE, MEADOW], {}, 'Reliktowy, drapieżny chrząszcz pięter wysokogórskich.'],
   ['polonozercon', 'Polonozercon tatrensis', 'Polonozercon tatrensis', 'water', 4, 2300, 2500, [SCREE, WALL], { peak: true }, 'Mikroskopijny roztocz opisany z najwyższych partii Tatr.'],
 ];
