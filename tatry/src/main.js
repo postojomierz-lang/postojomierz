@@ -39,6 +39,8 @@ import { buildGrass } from './grass.js';
 import { buildWeather } from './weather.js';
 import { forecast } from './planner/daylight.js';
 import { stepMinutes } from './planner/graph.js';
+import { captureConsole, setupReport, deviceContext } from './report.js';
+captureConsole();
 
 // data and textures are served next to index.html (tatry/public -> rysy/)
 const DATA = 'data/';
@@ -1571,6 +1573,27 @@ async function main() {
     adaptResolution();
     requestAnimationFrame(tick);
   }
+  // test reports (🐞): a screenshot of the 3D view and where exactly it was taken
+  setupReport({ app: '3d', button: $('btn-bug'),
+    screenshot: () => {
+      if (LITE) renderer.render(scene, camera); else composer.render();
+      return renderer.domElement.toDataURL('image/jpeg', 0.85);         // read in the same task as the render
+    },
+    context: () => {
+      const c = camera.position, MXg = 111320 * Math.cos(49.191 * Math.PI / 180);
+      const lat = 49.191 - c.z / 110574, lon = 20.076 + c.x / MXg, g = ground(c.x, c.z);
+      const ri = renderer.info.render;
+      return {
+        where: `${TITLE} · ${(state.s / 1000).toFixed(2)} / ${(LENGTH / 1000).toFixed(2)} km · ${lat.toFixed(5)}, ${lon.toFixed(5)} · ${Math.round(g)} m`,
+        route: TITLE, hash: location.hash, s: Math.round(state.s), length: Math.round(LENGTH),
+        lat: +lat.toFixed(6), lon: +lon.toFixed(6), ground: Math.round(g), cam: [c.x, c.y, c.z].map((v) => +v.toFixed(1)),
+        yaw: +(state.yaw + state.yawOff).toFixed(3), pitch: +state.pitchOff.toFixed(3), mode: state.mode, free: !!state.free,
+        quality: QUALITY, pixelRatio: renderer.getPixelRatio(), fps: ($('fps') || {}).textContent, triangles: ri.triangles, calls: ri.calls,
+        programs: renderer.info.programs ? renderer.info.programs.length : null,
+        weather: env.weather, forecast: env.forecast, hour: +env.hour.toFixed(2), ...deviceContext(),
+      };
+    } });
+
   window.__rysy = { weather: weatherFx, fc, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }

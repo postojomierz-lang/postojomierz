@@ -21,6 +21,8 @@ import { setupNavWeather } from './navweather.js';
 import { setupSos } from './sos.js';
 import { setupIntro } from './intro.js';
 import { clearLocalData } from './localdata.js';
+import { captureConsole, setupReport, deviceContext } from '../report.js';
+captureConsole();
 
 const $ = (id) => document.getElementById(id);
 const TABS = setupTabs();
@@ -452,6 +454,30 @@ $('b-clear-local').onclick = () => {
   if (!confirm('Usunąć z tego urządzenia dziennik, odkrycia, profil, grupy, sesję logowania i zapisane prognozy? Dane na koncie (jeśli je masz) zostają.')) return;
   clearLocalData(); location.reload();
 };
+// test reports (🐞 on the map): a screenshot of the page and the state of the planner
+{
+  const Bug = L.Control.extend({ onAdd() {
+    const b = L.DomUtil.create('button', 'wx-btn leaflet-bar'); b.innerHTML = '🐞'; b.title = 'Zgłoś problem (zrzut ekranu + opis)';
+    L.DomEvent.disableClickPropagation(b); this.b = b; return b;
+  } });
+  const bug = new Bug({ position: 'topright' }).addTo(map);
+  setupReport({ app: 'planer', button: bug.b,
+    screenshot: async () => {
+      const { default: html2canvas } = await import('html2canvas');
+      const c = await html2canvas(document.body, { useCORS: true, logging: false, scale: Math.min(2, devicePixelRatio), backgroundColor: '#f6f5f1' });
+      return c.toDataURL('image/jpeg', 0.85);
+    },
+    context: () => {
+      const c = map.getCenter();
+      const tab = (document.querySelector('#tabs .on') || {}).dataset;
+      return {
+        where: `planer · ${routeTitle() || 'bez trasy'} · mapa ${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}, zoom ${map.getZoom()}`,
+        route: routeTitle() || null, hash: location.hash, center: [+c.lat.toFixed(5), +c.lng.toFixed(5)], zoom: map.getZoom(),
+        tab: tab && tab.tab, summary: summary ? { dist: Math.round(summary.dist), time: Math.round(summary.time) } : null,
+        nav: NAV.active(), fix: lastFix, signedIn: !!(ONLINE && ONLINE.user), ...deviceContext(),
+      };
+    } });
+}
 // weather on the map: forecast badges over the main peaks and huts, with an hour slider
 setupWeatherMap({ map, data, G, startDate, hasRoute: () => !!path, esc });
 const ONLINE = setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfile, totals, render: () => renderJournal(), msg, esc,
