@@ -51,6 +51,12 @@ W silniku: siatka 1,25 m wokół kamery (przebudowywana w ruchu) na siatce 6 m, 
   (wierzchołki sosenek z boku i rozeta z góry). W widoku (`buildMugo3D` w `src/vegetation3d.js`) kosodrzewina bliżej
   niż 18 / 28 / 40 m (średnia / wysoka / ultra) jest trójwymiarowa: 14–18 pędów z jednego korzenia, pokładających się
   na boki i podgiętych ku górze, z krzyżowymi kartami igieł; dalej zostają impostory (przenikanie ditheringiem).
+- `python3 tools/blender/make_species.py <fir_tree_01_1k.gltf> <pine_sapling_small_1k.gltf> <out>`: dwa nowe gatunki
+  jako sceny Blendera, potem `bake_impostors.py <out>/limba.blend … limba 8 256 512` (to samo dla `deadspruce`) i
+  `pack_impostors.py`. **Suchy świerk** (po kornikach): jodła Poly Haven bez większości igieł (zostają rdzawe kępki),
+  srebrnoszara kora. **Limba** (Pinus cembra): pień, okółki wzniesionych gałęzi i gęste kępy igieł z sosenek,
+  ciemna niebieskawa zieleń. W widoku drzewa z lidaru dostają gatunek: suchy świerk tam, gdzie zdjęcie nad koroną
+  jest szarobrązowe (plus ~4 %), limba z prawdopodobieństwem rosnącym od 1450 m (do ~55 %, więcej wśród kosodrzewiny).
 - (dawniej) `tools/blender/decimate_rocks.py`: skany Poly Haven, `public/models/rocks.glb`.
 
 W silniku (`src/impostor.js`, `src/groundcover.js`): impostor to jedna karta obracana do kamery,

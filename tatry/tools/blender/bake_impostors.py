@@ -5,7 +5,7 @@ albedo (Cycles DiffCol) and normals (camera space), transparent background.
 Output: <out>/<name>_albedo.png (RGBA) and <name>_normal.png, views side by side,
 plus <name>.json with the variant size.
 
-Run: python3 bake_impostors.py <model.gltf> <out_dir> <name> <views> <px_w> <px_h> [samples]
+Run: python3 bake_impostors.py <model.gltf | scene.blend> <out_dir> <name> <views> <px_w> <px_h> [samples]
 """
 import bpy, sys, os, json, math
 import numpy as np
@@ -14,8 +14,11 @@ gltf, out, name, views, pw, ph = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.
 samples = int(sys.argv[7]) if len(sys.argv) > 7 else 24
 os.makedirs(out, exist_ok=True)
 
-bpy.ops.wm.read_factory_settings(use_empty=True)
-bpy.ops.import_scene.gltf(filepath=gltf)
+if gltf.endswith('.blend'):
+    bpy.ops.wm.open_mainfile(filepath=gltf)           # a scene built in Blender (make_species.py)
+else:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=gltf)
 sc = bpy.context.scene
 sc.render.engine = 'CYCLES'
 sc.cycles.device = 'CPU'

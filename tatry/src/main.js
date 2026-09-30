@@ -485,6 +485,24 @@ async function main() {
   const land = pixels(landBmp), LW = landBmp.width, LH = landBmp.height;
   const r = rng(7);
   const spruce = [], pine = [];
+  // which tree: 0 spruce, 1 dead spruce (bark beetle; grey-brown crown in the photo), 2 stone pine (limba:
+  // the upper tree line, more likely higher up and for lone trees among the dwarf pine)
+  const photoRGBA = pixels(innerBmp), PHW = innerBmp.width, PHH = innerBmp.height;   // decoded once, used below too
+  const hash = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };
+  const species = (x, z, h, real) => {
+    const q = hash(x, z);
+    const pl = Math.min(0.55, Math.max(0, (h - 1450) / 200) * 0.55) + (groundClass(x, z)?.c === 5 ? 0.2 : 0);
+    if (q < pl) return 2;
+    if (real) {
+      const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * PHW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * PHH);
+      if (u >= 0 && v >= 0 && u < PHW && v < PHH) {
+        const o = (v * PHW + u) * 4, R = photoRGBA[o], G = photoRGBA[o + 1], B = photoRGBA[o + 2];
+        const exg = (2 * G - R - B) / Math.max(1, R + G + B), lum = (0.3 * R + 0.59 * G + 0.11 * B) / 255;
+        if (exg < 0.02 && lum > 0.22 && h < 1600) return 1;
+      }
+    }
+    return hash(z, x) < 0.04 ? 1 : 0;
+  };
   const px = (IB[2] - IB[0]) / LW, pz = (IB[3] - IB[1]) / LH;
   const density = tier(0.35, 0.6, 0.9, 1);              // big areas are thinned afterwards, away from the trail
   for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) {
@@ -502,7 +520,7 @@ async function main() {
       if (gc && gc.c !== (c === 10 ? 6 : 5) && !(c === 10 && gc.c === 5)) continue;   // the 1 m map knows better
       const h = terrain.height(x, z);
       // Copernicus is a surface model (includes the canopy), GUGiK is bare ground
-      if (c === 10 && h < 1560) spruce.push(x, h, z, terrain.hasDTM(x, z) ? 0 : 1, 0);
+      if (c === 10 && h < 1560) spruce.push(x, h, z, terrain.hasDTM(x, z) ? 0 : 1, 0, species(x, z, h, false));
       else if (c === 30 && (h < 1530 || h > 1820)) continue;
       else if (h < 1950 && terrain.normal(x, z, 4).y > 0.8) pine.push(x, h, z);
     }
@@ -519,13 +537,14 @@ async function main() {
       if (gc && (gc.c === 1 || gc.c === 2 || gc.c === 7)) continue;          // water, rock faces, snow: not a tree
       if (terrain.maskAt(pathSide, x, z) > 0 || terrain.maskAt(lakeMask, x, z) > 0.05 || houses.inside(x, z, 2)) continue;
       if (terrain.normal(x, z, 3).y < 0.6) continue;
-      realTrees.push(x, terrain.height(x, z), z, 0, th);
+      const h = terrain.height(x, z);
+      realTrees.push(x, h, z, 0, th, species(x, z, h, true));
     }
   }
   {
     // dwarf pine where the orthophoto shows it: dark, saturated green between 1500 and 1950 m,
     // near the trail (the 10 m land-cover map misses most of the thickets beside the path)
-    const ph = pixels(innerBmp), PW = innerBmp.width, PH = innerBmp.height;
+    const ph = photoRGBA, PW = innerBmp.width, PH = innerBmp.height;
     const G = tier(7, 6, 5, 4);
     const seen = new Set();
     for (let i = 0; i < N; i += 6) {
@@ -573,16 +592,17 @@ async function main() {
   };
   const CAP = tier({ spruce: 14000, pine: 7000, real: 10000 }, { spruce: 20000, pine: 10000, real: 16000 },
     { spruce: 26000, pine: 14000, real: 26000 }, { spruce: 60000, pine: 36000, real: 70000 });
-  for (const [arr, stride, cap] of [[spruce, 5, CAP.spruce], [pine, 3, CAP.pine]]) {
+  for (const [arr, stride, cap] of [[spruce, 6, CAP.spruce], [pine, 3, CAP.pine]]) {
     const kept = thin(arr, stride, cap);
     if (kept === arr) continue;
     arr.length = 0;
     for (const v of kept) arr.push(v);
   }
-  for (const v of thin(realTrees, 5, CAP.real)) spruce.push(v);
-  const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb'], shade, {
+  for (const v of thin(realTrees, 6, CAP.real)) spruce.push(v);
+  const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
+    deadspruce: { wind: 0.3, brightness: 1.2, upNormal: 0.2 }, limba: { wind: 0.5, brightness: 1.3, upNormal: 0.3 },
     mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55, fade: 'mugo' }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
   });
   const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds,
@@ -597,7 +617,7 @@ async function main() {
     radius: tier(0, 18, 28, 40),
     loadTexture: async (url, srgb) => { const t = texture(await bitmap(url), aniso); if (!srgb) t.colorSpace = THREE.NoColorSpace; return t; } }) : null;
   const landPx = { d: pixels(landBmp), w: landBmp.width, h: landBmp.height };
-  const photoPx = { d: pixels(innerBmp), w: innerBmp.width, h: innerBmp.height };
+  const photoPx = { d: photoRGBA, w: innerBmp.width, h: innerBmp.height };
   const sound = new Sound({
     base: 'sounds/', streams, terrain,
     isForest: (x, z) => {
@@ -644,7 +664,7 @@ async function main() {
     const stones = variants.filter((v) => !v.big), boulders = variants.filter((v) => v.big);
     const pick = (s) => { const g = s > 2.2 && boulders.length ? boulders : stones; return g[Math.floor(r() * g.length)]; };
     const count = tier(5000, 9000, 16000, 32000);
-    const ip = pixels(innerBmp), IW = innerBmp.width;
+    const ip = photoRGBA, IW = innerBmp.width;
     let k = 0, guard = 0;
     const up = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion(), qy = new THREE.Quaternion();
     while (k < count && guard++ < count * 20) {
