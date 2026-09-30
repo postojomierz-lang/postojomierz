@@ -39,14 +39,14 @@ export const hm = (min) => { const m = Math.round(Math.abs(min)); return `${Math
 
 // ---------------------------------------------------------------- forecast
 const KEY = 'tatry-forecast';
-const WMO = {
+export const WMO = {
   0: 'bezchmurnie', 1: 'prawie bezchmurnie', 2: 'częściowe zachmurzenie', 3: 'pochmurno', 45: 'mgła', 48: 'mgła szadziowa',
   51: 'mżawka', 53: 'mżawka', 55: 'silna mżawka', 56: 'marznąca mżawka', 57: 'marznąca mżawka', 61: 'słaby deszcz', 63: 'deszcz',
   65: 'ulewa', 66: 'marznący deszcz', 67: 'marznący deszcz', 71: 'słaby śnieg', 73: 'śnieg', 75: 'intensywny śnieg', 77: 'krupa',
   80: 'przelotny deszcz', 81: 'przelotne opady', 82: 'gwałtowne ulewy', 85: 'przelotny śnieg', 86: 'intensywny śnieg',
   95: 'burza', 96: 'burza z gradem', 99: 'burza z gradem',
 };
-const ICON = (c) => c >= 95 ? '⛈' : c >= 71 && c <= 86 && c !== 80 && c !== 81 && c !== 82 ? '🌨' : c >= 51 ? '🌧' : c >= 45 ? '🌫' : c === 3 ? '☁️' : c === 2 ? '⛅' : '☀️';
+export const ICON = (c) => c >= 95 ? '⛈' : c >= 71 && c <= 86 && c !== 80 && c !== 81 && c !== 82 ? '🌨' : c >= 51 ? '🌧' : c >= 45 ? '🌫' : c === 3 ? '☁️' : c === 2 ? '⛅' : '☀️';
 
 // hourly forecast at (lat, lon, ele); cached per place for 3 h, the last one kept for offline use
 export async function forecast(lat, lon, ele) {

@@ -16,6 +16,7 @@ import { challenges, settleChallenges } from '../nature/challenges.js';
 import { buildGpsDiscovery } from '../nature/gps.js';
 import { setupOnline } from './online.js';
 import { setupTabs } from './tabs.js';
+import { setupWeatherMap } from './weathermap.js';
 
 const $ = (id) => document.getElementById(id);
 const TABS = setupTabs();
@@ -427,6 +428,8 @@ $('p-photo').onchange = async (ev) => {
 };
 
 // ---------------------------------------------------------------- online: account, sync, groups, chat, positions
+// weather on the map: forecast badges over the main peaks and huts, with an hour slider
+setupWeatherMap({ map, data, G, startDate, hasRoute: () => !!path, esc });
 const ONLINE = setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfile, totals, render: () => renderJournal(), msg, esc,
   routeTitle, hasRoute: () => !!path, openHash });
 // the ranking (signed-in people who show their profile publicly): by period and by mode
