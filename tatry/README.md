@@ -220,6 +220,11 @@ porywy → wiatr, granica zamarzania → granica śniegu). Bez planera prognoza 
 wyborem pogody jest opis: data, godzina, pogoda, temperatura na górze i wiatr. Ręczna pogoda do testów:
 `?pogoda=rain|snow|storm|…`.
 
+**Pogoda na mapie planera** (przycisk 🌦 pod przełącznikiem warstw, `src/planner/weathermap.js`): prognoza
+Open-Meteo jednym zapytaniem dla kilkunastu głównych szczytów i schronisk (na ich wysokości): ikona, temperatura,
+strzałka i prędkość wiatru; suwak godzin i wybór dnia (3 dni); burza albo porywy ≥ 70 km/h: plakietka na
+czerwono i ostrzeżenie w pasku. Stuknięcie plakietki: szczegóły. Zapamiętana na 3 h, bez zasięgu ostatnia pobrana.
+
 ## Dziennik (rekordy, duch, szczyty)
 `src/journal.js`, zapisywany w pamięci przeglądarki (`localStorage`, klucz `rysy-journal`):
 - przejście trasy do mety w widoku 3D trafia do dziennika (data, długość, podejścia, czas);
