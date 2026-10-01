@@ -116,7 +116,7 @@ export function setupReport({ app, button, screenshot, context }) {
     try {
       const id = await post(row);
       $r('.rp-msg').innerHTML = `<span class="rp-ok">✓ Wysłano zgłoszenie nr ${id}. Dziękuję!</span>`;
-      setTimeout(close, 1800);
+      setTimeout(close, 6000);                                        // time to note the number
     } catch (e) {
       setQueue([...queued(), row]);
       $r('.rp-msg').innerHTML = `<span class="rp-err">Nie wysłano (${String(e.message || e).slice(0, 120)}). Zapisane w telefonie, pójdzie samo, gdy wróci zasięg.</span>`;

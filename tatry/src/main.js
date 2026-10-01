@@ -939,7 +939,10 @@ async function main() {
     snow: { fog: 3.2e-4, turb: 16, ray: 0.6, sun: 0.3, amb: 1.45, fogMix: 0.88, cloud: 0.98, wind: 1.2, snow: 0.8, snowCover: 1, snowLine: 1500, flat: true },
     storm: { fog: 1.3e-4, turb: 20, ray: 0.3, sun: 0.1, amb: 0.75, fogMix: 0.82, cloud: 1, wind: 2.2, rain: 1, wet: 1, storm: 1, flat: true, dark: 0.48 },
   };
-  const weatherFx = buildWeather({ scene, quality: QUALITY, groundAt: drawnHeight, onThunder: (d) => sound.thunder(d) });
+  // on a phone the rain of 'high' is too much overdraw (a storm took a Galaxy S25 Ultra from 20-25 to 8-17 fps)
+  const PHONE = matchMedia('(pointer: coarse)').matches && Math.max(screen.width, screen.height) < 1400;
+  const fwdTmp = new THREE.Vector3();
+  const weatherFx = buildWeather({ scene, quality: PHONE && !LITE ? 'mid' : QUALITY, groundAt: drawnHeight, onThunder: (d) => sound.thunder(d) });
   function applyEnv() {
     const w = WEATHER[env.weather];
     const o = env.fx || {};                           // what the forecast says for this hour, over the preset
@@ -1210,7 +1213,10 @@ async function main() {
   // flyover: the camera glides above and behind the hiker along the whole route, looking ahead, at a
   // pace that shows a route in one to three minutes (the time speed-up makes it faster)
   function toggleFly() {
-    if (state.mode === 'fly') { state.mode = 'walk'; state.fly = null; hiker.visible = false; updateButtons(); return; }
+    if (state.mode === 'fly') {
+      // stopped over the route: what is around here is found on foot, after the first few steps
+      state.mode = 'walk'; state.fly = null; hiker.visible = false; state.flyStopS = state.s; updateButtons(); return;
+    }
     state.mode = 'fly'; orbit.enabled = false; state.auto = false;
     if (state.s > LENGTH - 50) state.s = 0;
     state.fly = { v: LENGTH / Math.min(180, Math.max(50, LENGTH / 60)), pos: null, look: null };
@@ -1741,8 +1747,9 @@ async function main() {
     chains.update(camera.position); deadwood.update(camera.position); flowers.update(camera.position);
     labels.update(dt);
     // a flyover only shows the route: nothing is discovered from 170 m up
-    if (state.mode !== 'fly') discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
-    weatherFx.update(wdt, camera.position);
+    if (state.flyStopS != null && Math.abs(state.s - state.flyStopS) > 30) state.flyStopS = null;
+    if (state.mode !== 'fly' && state.flyStopS == null) discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
+    weatherFx.update(wdt, camera.position, camera.getWorldDirection(fwdTmp));
     skyEnv.update(dt);
     if (env.forecast) forecastTick(); else flowTick();
     renderer.toneMappingExposure = 0.55 * (1 + 2.2 * weatherFx.flash);
