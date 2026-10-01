@@ -179,5 +179,11 @@ export function buildBirds({ scene, spots, groundAt, onEvent = () => {} }) {
     onEvent(`🦅 Orzeł przedni poluje na ${what}!`);
     return true;
   }
-  return { update, hunt, get count() { return birds.length; } };
+  // the bird of species `id` nearest to pos (for the discovery's camera)
+  function find(id, pos) {
+    let best = null, bd = 250;
+    for (const b of birds) { if (b.id !== id) continue; const d = b.obj.position.distanceTo(pos); if (d < bd) { bd = d; best = b.obj; } }
+    return best;
+  }
+  return { update, hunt, find, get count() { return birds.length; } };
 }
