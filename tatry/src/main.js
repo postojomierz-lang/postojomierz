@@ -1250,6 +1250,7 @@ async function main() {
   function toggleMode() {
     if (state.mode === 'fly') { state.mode = 'walk'; state.fly = null; }
     state.mode = state.mode === 'walk' ? 'drone' : 'walk';
+    state.focusMate = null;
     const p = at(state.s);
     if (state.mode === 'drone') {
       orbit.target.set(p.x, p.y, p.z);
@@ -1335,7 +1336,16 @@ async function main() {
     if (focus && BINOC && state.mode === 'walk' && !state.freeCam && !reveal.active && (binoc.active || binoc.ready())) binoc.start(text, focus);
   }
   // the group on the trail: the members sharing their GPS position, as their figures (?grupa=demo: made-up ones)
-  const mates = buildMates({ scene, camera, ground: drawnHeight, terrain, demo: P.get('grupa') === 'demo', trail: { at, length: LENGTH } });
+  const mates = buildMates({ scene, camera, ground: drawnHeight, terrain, demo: P.get('grupa') === 'demo', trail: { at, length: LENGTH },
+    // the drone view around that member of the group (🥾 Spacer comes back to the hiker)
+    onFocus: (id) => {
+      if (state.mode !== 'drone') toggleMode();
+      state.focusMate = id;
+      const q = mates.pos(id); if (!q) return;
+      const yaw = state.yaw + state.yawOff;
+      orbit.target.set(q.x, q.y, q.z); camera.position.set(q.x - Math.sin(yaw) * 60, q.y + 45, q.z - Math.cos(yaw) * 60); orbit.update();
+      toast('🎯 Widok na członka grupy. 🥾 Spacer wraca do Ciebie.');
+    } });
   // trout jumping on the lakes near the trail (not on the frozen ones in winter)
   const fishFx = WINTER ? null : buildFish({ scene, lakes: meta.lakes, groundAt: drawnHeight });
   let fishT = 35 + Math.random() * 40;
@@ -1713,7 +1723,9 @@ async function main() {
       const pitch = state.pitchOff + state.gazeP - 0.03;
       camera.lookAt(p.x + Math.sin(yaw) * Math.cos(pitch), state.camY + 1.7 + Math.sin(pitch), p.z + Math.cos(yaw) * Math.cos(pitch));
     } else {
-      const delta = new THREE.Vector3(p.x, p.y, p.z).sub(orbit.target);
+      const fq = state.focusMate ? mates.pos(state.focusMate) : null;   // following a member of the group
+      if (state.focusMate && !fq) state.focusMate = null;
+      const delta = (fq ? fq.clone() : new THREE.Vector3(p.x, p.y, p.z)).sub(orbit.target);
       orbit.target.add(delta); camera.position.add(delta);
       orbit.update();
       const gy = ground(camera.position.x, camera.position.z) + 15;
