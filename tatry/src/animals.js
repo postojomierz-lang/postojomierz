@@ -496,9 +496,12 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
   const inView = (an, cam, d) => {
     if (!near(an, cam, d)) return false;
     const c = cam.position, ty = terrain.height(an.x, an.z) + 0.8;
+    const seg = Math.hypot(an.x - c.x, an.z - c.z) / 16;
+    let woodsM = 0;                                  // metres of the sightline through the forest
     for (let k = 1; k < 16; k++) {
       const f = k / 16, px = c.x + (an.x - c.x) * f, pz = c.z + (an.z - c.z) * f;
       if (terrain.height(px, pz) > c.y + (ty - c.y) * f - 0.25) return false;
+      if (cover(px, pz) === 10 && (woodsM += seg) > 35) return false;
     }
     return true;
   };
@@ -522,7 +525,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       if (r() < dt / 25) {
         an.state = 'roar'; an.timer = 3 + r() * 2;
         if (sound && sound.roar) sound.roar([an.x, terrain.height(an.x, an.z) + 1.5, an.z], Math.hypot(an.x - cam.position.x, an.z - cam.position.z));
-        if (!an.group.roared) { an.group.roared = true; onEvent('🦌 Rykowisko: jeleń ryczy, słychać go daleko.'); }
+        if (!an.group.roared && inView(an, cam, 500)) { an.group.roared = true; onEvent('🦌 Rykowisko: jeleń ryczy, słychać go daleko.'); }
       }
     }
     if (ecoT > 0) return;
