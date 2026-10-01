@@ -212,7 +212,7 @@ async function updateDay() {
   const fc = await forecast(data.v[top][1], data.v[top][0], G.H[top]);
   if (req !== dayReq) return;
   const w = fc && walkWeather(fc, t0, t1, G.H[path[0]]);
-  if (!w) { winterCard(t0, G.H[top], null); $('d-weather').textContent = fc ? 'Prognoza sięga 3 dni naprzód.' : 'Prognoza niedostępna (brak zasięgu).'; return; }
+  if (!w) { winterCard(t0, G.H[top], null); $('d-weather').textContent = fc ? 'Prognoza sięga 3 dni naprzód.' : 'Prognoza niedostępna: brak połączenia z serwisem pogody (Open-Meteo).'; return; }
   winterCard(t0, G.H[top], w.freeze);
   const top_n = Math.round(G.H[top]);
   $('d-weather').innerHTML = `${w.icon} ${w.text} · na górze (${top_n} m) ${Math.round(w.tTop)}°C, odczuwalnie ${Math.round(w.feelsTop)}°C · na starcie ok. ${Math.round(w.tStart)}°C`

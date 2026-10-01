@@ -2,7 +2,7 @@
 // and huts, as small badges (weather icon, temperature, wind arrow and speed), with an hour slider over
 // the three days of the forecast. A thunderstorm or a gale shows the badge in red. Tapping a badge gives
 // the details. Kept in the browser for 3 hours and, without signal, the last one is shown.
-import { WMO, ICON } from './daylight.js';
+import { WMO, ICON, fetchTimeout } from './daylight.js';
 
 const PEAKS = ['Rysy', 'Gerlach', 'Łomnica', 'Krywań', 'Lodowy Szczyt', 'Świnica', 'Kasprowy Wierch', 'Kozi Wierch', 'Kopa Kondracka',
   'Kościelec', 'Szpiglasowy Wierch', 'Sławkowski Szczyt', 'Jagnięcy Szczyt'];
@@ -61,7 +61,7 @@ export function setupWeatherMap({ map, data, G, startDate, hasRoute, esc }) {
       timezone: 'Europe/Warsaw', forecast_days: 3, wind_speed_unit: 'kmh',
     });
     try {
-      let j = await (await fetch('https://api.open-meteo.com/v1/forecast?' + q)).json();
+      let j = await (await fetchTimeout('https://api.open-meteo.com/v1/forecast?' + q)).json();
       if (!Array.isArray(j)) j = [j];
       if (!j[0] || !j[0].hourly) throw new Error('no data');
       const out = { at: Date.now(), n: places.length, hourly: j.map((r) => r.hourly) };
@@ -126,7 +126,7 @@ export function setupWeatherMap({ map, data, G, startDate, hasRoute, esc }) {
     if (!fc || Date.now() - fc.at > 3 * 3600e3) {
       $b('.wx-note').textContent = 'Pobieram prognozę…';
       fc = await load();
-      if (!fc) { $b('.wx-note').textContent = 'Prognoza niedostępna (brak zasięgu).'; return; }
+      if (!fc) { $b('.wx-note').textContent = 'Prognoza niedostępna: brak połączenia z serwisem pogody (Open-Meteo). Spróbuj później.'; return; }
       render();
     }
   }
