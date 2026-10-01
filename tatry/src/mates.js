@@ -15,13 +15,19 @@ const COLORS = ['#e8573a', '#2a8fd6', '#3fae49', '#c84fd8', '#e0a91f', '#16a39a'
 
 const CSS = `
 #mates{position:fixed;inset:0;pointer-events:none;z-index:1}
-.mate{position:absolute;left:0;top:0;transform:translate(-50%,-100%);display:flex;align-items:center;gap:6px;padding:3px 9px 3px 3px;
+.mate{position:absolute;left:0;top:0;pointer-events:auto;cursor:pointer;transform:translate(-50%,-100%);display:flex;align-items:center;gap:6px;padding:3px 9px 3px 3px;
   border-radius:20px;background:rgba(20,24,28,.78);color:#fff;font:12px/1.2 system-ui,sans-serif;white-space:nowrap;will-change:transform}
 .mate::after{content:'';position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:rgba(20,24,28,.78);border-bottom:0}
 .mate .av{width:30px;height:30px;border-radius:50%;border:2px solid var(--c);background:#ddd center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
 .mate b{display:block;font-size:13px}.mate small{opacity:.8}
 .mate.far{padding:2px;background:none}.mate.far::after,.mate.far div{display:none}.mate.far .av{width:24px;height:24px;box-shadow:0 1px 4px rgba(0,0,0,.6)}
 body.revealing #mates,body.binoc #mates{display:none}
+#mate-menu{position:fixed;z-index:20;background:rgba(20,24,28,.92);color:#fff;border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:4px;
+  font:13px system-ui,sans-serif;transform:translate(-50%,8px);box-shadow:0 6px 20px rgba(0,0,0,.4)}
+#mate-menu[hidden]{display:none}
+#mate-menu b{padding:2px 6px}
+#mate-menu button{background:rgba(255,255,255,.1);color:#fff;border:0;border-radius:8px;padding:7px 10px;text-align:left;font:inherit;cursor:pointer}
+#mate-menu button:hover{background:rgba(255,255,255,.2)}
 `;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -29,12 +35,35 @@ const colorOf = (id) => { let h = 0; for (const c of id) h = (h * 31 + c.charCod
 const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'teraz' : m < 60 ? `${m} min temu` : `${Math.floor(m / 60)} h temu`; };
 const read = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 
-export function buildMates({ scene, camera, ground, terrain, demo = false, trail = null }) {
+export function buildMates({ scene, camera, ground, terrain, demo = false, trail = null, onFocus = () => {} }) {
   const style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style);
   const layer = document.createElement('div'); layer.id = 'mates'; document.body.appendChild(layer);
   const mates = new Map();              // user_id -> { fig, el, target, pos, name, avatar, t }
   // trail: { at(s), length } for the made-up hikers
   const v = new THREE.Vector3();
+  // a tap on a label: show that hiker (the drone view around them) or open the group's chat in the planner
+  const menu = document.createElement('div'); menu.id = 'mate-menu'; menu.hidden = true; document.body.appendChild(menu);
+  let menuFor = null;
+  layer.addEventListener('click', (e) => {
+    const el = e.target.closest('.mate'); if (!el) return;
+    e.stopPropagation();
+    const id = el.dataset.id, m = mates.get(id); if (!m) return;
+    menuFor = id;
+    const r = el.getBoundingClientRect();
+    menu.style.left = Math.max(90, Math.min(innerWidth - 90, r.left + r.width / 2)) + 'px'; menu.style.top = r.bottom + 'px';
+    menu.innerHTML = `<b>${esc(m.name)}</b><button data-a="focus">🎯 Pokaż z drona</button><button data-a="trail">${m.trailOn ? '〰 Ukryj ślad' : '〰 Pokaż ślad przejścia'}</button><button data-a="chat">💬 Czat grupy (planer)</button>`;
+    menu.hidden = false;
+  });
+  menu.addEventListener('click', (e) => {
+    const a = e.target.closest('button') && e.target.closest('button').dataset.a; if (!a) return;
+    const m = mates.get(menuFor);
+    menu.hidden = true;
+    if (!m) return;
+    if (a === 'focus') onFocus(menuFor);
+    if (a === 'trail') { m.trailOn = !m.trailOn; m.line.visible = m.trailOn; }
+    if (a === 'chat') { try { localStorage.setItem('planner-tab', 'groups'); } catch (err) { /* private mode */ } window.open('planer.html', '_blank'); }
+  });
+  addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && !e.target.closest('.mate')) menu.hidden = true; });
 
   // ------------------------------------------------ the sign-in shared with the planner
   let session = null;
@@ -82,10 +111,13 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
     if (!m) {
       const fig = buildFigure(cleanLook(p.look) || null);
       scene.add(fig.object);
-      const el = document.createElement('div'); el.className = 'mate';
+      const el = document.createElement('div'); el.className = 'mate'; el.dataset.id = id;
       el.style.setProperty('--c', colorOf(id));
       layer.appendChild(el);
-      m = { fig, el, pos: new THREE.Vector3(x, ground(x, z), z), target: new THREE.Vector3(x, 0, z), t, yaw: 0, html: '' };
+      // the way walked since this view was opened: a line a little above the ground in the hiker's colour
+      const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: colorOf(id), transparent: true, opacity: 0.85, depthTest: false }));
+      line.renderOrder = 4; line.frustumCulled = false; line.visible = true; scene.add(line);
+      m = { fig, el, line, trailOn: true, path: [], pos: new THREE.Vector3(x, ground(x, z), z), target: new THREE.Vector3(x, 0, z), t, yaw: 0, html: '' };
       mates.set(id, m);
     }
     m.target.set(x, 0, z); m.t = t; m.name = p.name || 'Turysta';
@@ -93,7 +125,7 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
   }
   function drop(id) {
     const m = mates.get(id); if (!m) return;
-    scene.remove(m.fig.object); m.el.remove(); mates.delete(id);
+    scene.remove(m.fig.object, m.line); m.line.geometry.dispose(); m.el.remove(); mates.delete(id);
   }
 
   // ------------------------------------------------ made-up hikers along the route, a little ahead (?grupa=demo)
@@ -122,6 +154,13 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
       o.position.copy(m.pos);
       o.rotation.y += Math.atan2(Math.sin(m.yaw - o.rotation.y), Math.cos(m.yaw - o.rotation.y)) * Math.min(1, dt * 4);
       m.fig.animate(dt, speed);
+      // a point of the trail every 4 m walked (up to 600)
+      const last = m.path[m.path.length - 1];
+      if (!last || Math.hypot(last.x - m.pos.x, last.z - m.pos.z) > 4) {
+        m.path.push(new THREE.Vector3(m.pos.x, m.pos.y + 0.25, m.pos.z));
+        if (m.path.length > 600) m.path.shift();
+        if (m.path.length > 1) { m.line.geometry.dispose(); m.line.geometry = new THREE.BufferGeometry().setFromPoints([...m.path, new THREE.Vector3(m.pos.x, m.pos.y + 0.25, m.pos.z)]); }
+      }
       // the label over the head
       const dist = from.distanceTo(m.pos);
       o.visible = dist < 1500;
@@ -137,5 +176,5 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
       m.el.title = m.name;
     }
   }
-  return { update, get count() { return mates.size; }, list: () => [...mates.entries()].map(([id, m]) => ({ id, name: m.name, x: m.pos.x, z: m.pos.z })) };
+  return { update, pos: (id) => mates.get(id)?.pos || null, get count() { return mates.size; }, list: () => [...mates.entries()].map(([id, m]) => ({ id, name: m.name, x: m.pos.x, z: m.pos.z })) };
 }
