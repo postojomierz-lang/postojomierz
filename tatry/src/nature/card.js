@@ -26,7 +26,7 @@ export async function buildCards({ base = 'nature/', found, distanceTo }) {
           + `<h3>${g.icon} ${esc(s.name)}</h3><div class="lat">${esc(s.latin)}</div>`
           + `<div class="tags"><span>${g.name}</span><span class="r${s.rarity}">${r.name}</span><span>+${r.points} pkt</span></div>`
           + `<p>${esc(s.desc)}</p><div class="when">Odkryto: ${f.date}</div>`
-          + (p ? `<div class="credit">Fot. ${esc(p.author || 'autor nieznany')}, ${esc(p.license)} · <a href="${p.url}" target="_blank" rel="noopener">Wikimedia Commons</a></div>` : '');
+          + (p ? `<div class="credit">${credit(p)}</div>` : '');
       } else {
         const d = Math.round(distanceTo(it.pos));
         h = `<div class="unk">${g.icon}</div><h3>? ${g.name.toLowerCase()}</h3>`
@@ -43,4 +43,12 @@ export async function buildCards({ base = 'nature/', found, distanceTo }) {
     el.classList.add('show');
   }
   return { show, close };
+}
+
+// the line under the picture: an illustration (made with AI, no photo of the species exists), or the
+// photographer, licence and where the photo comes from
+function credit(p) {
+  if (p.ai) return `Ilustracja (AI, Google Flow) · ${esc(p.license)} · brak wolnych zdjęć tego gatunku`;
+  const src = /inaturalist/.test(p.url) ? 'iNaturalist' : /gbif/.test(p.url) ? 'GBIF' : 'Wikimedia Commons';
+  return `Fot. ${esc(p.author || 'autor nieznany')}, ${esc(p.license)} · <a href="${p.url}" target="_blank" rel="noopener">${src}</a>`;
 }
