@@ -12,6 +12,8 @@ import { setupNav, trackGpx } from './nav.js';
 import { sunTimes, forecast, walkWeather, hhmm, hm } from './daylight.js';
 import { loadProfile, saveProfile, AVATARS, BADGES, rank, photoAvatar } from './profile.js';
 import { setupLookEditor } from './lookEditor.js';
+import { setupSearch } from './search.js';
+import { setupRouteDrag } from './routedrag.js';
 import { loadFound, saveFound } from '../nature/discover.js';
 import { challenges, settleChallenges } from '../nature/challenges.js';
 import { buildGpsDiscovery } from '../nature/gps.js';
@@ -98,11 +100,13 @@ const routeLayer = L.layerGroup().addTo(map);
 const markers = L.layerGroup().addTo(map);
 const hoverMark = L.circleMarker([0, 0], { radius: 6, color: '#000', weight: 2, fillColor: '#fff', fillOpacity: 1 });
 
+let SEARCH = null, DRAG = null;      // the from / to fields, dragging the route line (set up below)
 function msg(t) { $('msg').textContent = t || ''; }
 function save() { history.push(stops.slice()); if (history.length > 50) history.shift(); }
 function setStops(s, remember = true) { if (remember) save(); stops = s; update(); }
 
 map.on('click', (ev) => {
+  if (DRAG && DRAG.busy) return;                 // the end of dragging the route line
   const v = G.snap(ev.latlng.lng, ev.latlng.lat, 400);
   if (v < 0) { msg('Tu nie ma znakowanego szlaku (w promieniu 400 m). Kliknij bliżej szlaku.'); return; }
   msg('');
@@ -141,9 +145,16 @@ function update() {
       showSummary();
     }
   }
+  if (SEARCH) SEARCH.sync();
   location.replace('#' + (stops.length ? 'r=' + stops.map((v) => data.v[v][1].toFixed(5) + ',' + data.v[v][0].toFixed(5)).join(';') : ''));
   updateGo();
 }
+
+SEARCH = setupSearch({ $, data, G, getStops: () => stops, setStops, ll,
+  // the whole route in view (on a phone, above the panel)
+  onPicked: () => { const pts = path ? path.map(ll) : stops.map(ll); if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 }); } });
+DRAG = setupRouteDrag({ map, G, ll, getPath: () => path, getStops: () => stops, setStops });
+window.__planner = { map, ll, get path() { return path; }, get stops() { return stops; } };   // tests
 
 function showSummary() {
   const S = summary;
