@@ -187,7 +187,10 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     addGroup(['chamois', 'chamois', 'chamois', 'chamois'], nearTrail(open(1600, 2450), 35, 80), dry);
     addGroup(['chamois', 'chamois'], nearTrail(open(1700, 2500), 30, 70), dry);
   }
-  if (!placed.has('swistak') && high > 1600) addGroup(['marmot', 'marmot', 'marmot'], nearTrail(open(1550, 2200), 20, 55), dry);
+  if (!placed.has('swistak') && high > 1600 && !winter) addGroup(['marmot', 'marmot', 'marmot'], nearTrail(open(1550, 2200), 20, 55), dry);
+  // on a high route one catalogue herd is soon passed: a second small herd and colony elsewhere along it
+  if (placed.has('kozica') && high > 1800) addGroup(['chamois', 'chamois'], nearTrail(open(1650, 2500), 30, 70), dry);
+  if (placed.has('swistak') && high > 1800 && !winter) addGroup(['marmot', 'marmot'], nearTrail(open(1550, 2200), 20, 55), dry);
   // the marmots' burrows: a mound of dug-out earth with the dark hole
   const moundMat = new THREE.MeshLambertMaterial({ color: 0x6a5a48 }), holeMat = new THREE.MeshBasicMaterial({ color: 0x120e0a });
   for (const g of groups) {
@@ -489,6 +492,16 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
   // sparring. Predators that are not on this route come in from out of sight for the scene.
   let ecoT = 25 + r() * 20, birds = null;
   const near = (an, cam, d) => !an.gone && an.state !== 'dead' && Math.hypot(an.x - cam.position.x, an.z - cam.position.z) < d;
+  // close enough and not behind a ridge: a scene is only announced when it can be watched
+  const inView = (an, cam, d) => {
+    if (!near(an, cam, d)) return false;
+    const c = cam.position, ty = terrain.height(an.x, an.z) + 0.8;
+    for (let k = 1; k < 16; k++) {
+      const f = k / 16, px = c.x + (an.x - c.x) * f, pz = c.z + (an.z - c.z) * f;
+      if (terrain.height(px, pz) > c.y + (ty - c.y) * f - 0.25) return false;
+    }
+    return true;
+  };
   function hiddenSpot(from, cam, dMin, dMax) {
     // a place dMin..dMax from `from`, on the far side from the hiker, walkable
     const away = Math.atan2(from.x - cam.position.x, from.z - cam.position.z);
@@ -514,10 +527,10 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     }
     if (ecoT > 0) return;
     ecoT = 70 + r() * 80;
-    const deer = animals.filter((a) => (a.kind === 'hind' || a.kind === 'roe' || a.kind === 'stag') && near(a, cam, 420) && a.state !== 'hunted' && a.state !== 'flee');
+    const deer = animals.filter((a) => (a.kind === 'hind' || a.kind === 'roe' || a.kind === 'stag') && inView(a, cam, 320) && a.state !== 'hunted' && a.state !== 'flee');
     const roll = r();
     // two stags sparring in the rut
-    const stags = animals.filter((a) => a.kind === 'stag' && a.group.rut && near(a, cam, 400) && a.state === 'graze');
+    const stags = animals.filter((a) => a.kind === 'stag' && a.group.rut && inView(a, cam, 400) && a.state === 'graze');
     if (stags.length >= 2 && roll < 0.35) {
       const [a, b] = stags;
       a.state = b.state = 'spar'; a.rival = b; b.rival = a; a.first = b.first = a; a.timer = b.timer = 9 + r() * 6;
@@ -525,7 +538,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       return;
     }
     // a fox mousing, or after a hare
-    const fox = animals.find((a) => a.kind === 'fox' && near(a, cam, 350) && a.state === 'graze');
+    const fox = animals.find((a) => a.kind === 'fox' && inView(a, cam, 300) && a.state === 'graze');
     if (fox && roll < 0.55) {
       const hare = animals.find((a) => a.kind === 'hare' && !a.gone && Math.hypot(a.x - fox.x, a.z - fox.z) < 250 && a.state !== 'dead');
       if (hare && r() < 0.4) {
@@ -538,7 +551,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       }
       return;
     }
-    const boars = animals.filter((a) => a.kind === 'boar' && near(a, cam, 300));
+    const boars = animals.filter((a) => a.kind === 'boar' && inView(a, cam, 250));
     if (boars.length && !boars[0].group.told) { boars[0].group.told = true; onEvent('🐗 Dziki buchtują: ryją ziemię w poszukiwaniu korzonków i larw.'); return; }
     if (!deer.length || roll > 0.75) {
       if (birds && birds.hunt) {
