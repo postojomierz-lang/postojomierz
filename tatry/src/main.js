@@ -968,7 +968,10 @@ async function main() {
     // twilight: after the sun has set the sky still lights the slopes, blue, fading into the night
     const twi = THREE.MathUtils.smoothstep(e, -0.2, 0.02) * (1 - day);
     amb.lerp(new THREE.Color(0.22, 0.28, 0.5), twi);
-    light.ambCol.value.copy(amb).multiplyScalar(w.amb * (0.1 + 0.9 * day + 0.45 * twi));
+    // night: moonlight, a faint blue light from the sky, enough to see the trail, the slopes and the ridges
+    const night = 1 - THREE.MathUtils.smoothstep(e, -0.25, -0.05);
+    amb.lerp(new THREE.Color(0.32, 0.4, 0.62), night);
+    light.ambCol.value.copy(amb).multiplyScalar(w.amb * (0.1 + 0.9 * day + 0.45 * twi + 0.32 * night));
     // scene lights reproduce the tuned sun/ambient colours (Lambert divides by PI)
     sunLight.color.copy(light.sunCol.value); sunLight.intensity = 1.15 * Math.PI;
     hemi.color.copy(light.ambCol.value).multiplyScalar(1.95);   // sky light fills the shaded slopes
@@ -1321,15 +1324,17 @@ async function main() {
       for (const a of wildlife.animals) {
         if (!kinds.includes(a.kind) || !a.obj.visible || a.gone) continue;
         const d = Math.hypot(a.x - pos.x, a.z - pos.z);
-        if (d < bd) { bd = d; best = a.obj; }
+        if (d < bd) { bd = d; best = a; }
       }
-      return best;
+      // the models' length in metres (tools/blender: make_animals.py, make_tatra_animals.py)
+      const LEN = { stag: 2.2, hind: 1.9, roe: 1.2, chamois: 1.25, marmot: 0.6, wolf: 1.3, bear: 2.1, cub: 2.1, boar: 1.4, fox: 1.0, hare: 0.6 };
+      return best ? { obj: best.obj, size: (LEN[best.kind] || 1) * best.scale } : null;
     } });
   const discovery = buildDiscovery({ items: labels.items, found, placeId, onFind: (it, e) => {
     labels.refresh(); renderLabelMenu();
     if (it.species) {
       const sp = it.species, r = RARITY[sp.rarity];
-      if (state.mode === 'walk' && !state.freeCam && P.get('odkrycie') !== '0') reveal.start(sp, it.pos, r.points);
+      if (state.mode === 'walk' && !state.freeCam && P.get('odkrycie') !== '0' && reveal.ready()) reveal.start(sp, it.pos, r.points);
       else toast(`${GROUPS[sp.group].icon} Odkryto: <b>${sp.name}</b> <i>${sp.latin}</i><br>${r.name} · +${r.points} pkt`);
     } else toast(`✓ Odkryto: <b>${it.name}</b> · +${e.pts} pkt`);
     checkChallenges();

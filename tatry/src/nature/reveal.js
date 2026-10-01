@@ -7,15 +7,15 @@ import * as THREE from 'three';
 import { GROUPS, RARITY } from './catalog.js';
 
 const CSS = `
-#rv-bars{position:fixed;inset:0;pointer-events:none;z-index:40;opacity:0;transition:opacity .5s}
+#rv-bars{position:fixed;inset:0;pointer-events:none;z-index:9000;opacity:0;transition:opacity .5s}
 #rv-bars.on{opacity:1}
 #rv-bars:before,#rv-bars:after{content:"";position:absolute;left:0;right:0;height:9vh;background:#000}
 #rv-bars:before{top:0}#rv-bars:after{bottom:0}
-#rv-vig{position:fixed;inset:0;pointer-events:none;z-index:39;opacity:0;transition:opacity .6s;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 45%,rgba(0,0,0,.55) 100%)}
+#rv-vig{position:fixed;inset:0;pointer-events:none;z-index:8999;opacity:0;transition:opacity .6s;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 45%,rgba(0,0,0,.55) 100%)}
 #rv-vig.on{opacity:1}
-#rv-tag{position:fixed;left:50%;top:13vh;transform:translate(-50%,-10px);z-index:41;color:#fff;font:600 13px system-ui,sans-serif;letter-spacing:.25em;text-transform:uppercase;opacity:0;transition:all .5s;text-shadow:0 1px 6px #000}
+#rv-tag{position:fixed;left:50%;top:13vh;transform:translate(-50%,-10px);z-index:9001;color:#fff;font:600 13px system-ui,sans-serif;letter-spacing:.25em;text-transform:uppercase;opacity:0;transition:all .5s;text-shadow:0 1px 6px #000}
 #rv-tag.on{opacity:.9;transform:translate(-50%,0)}
-#rv-card{position:fixed;left:50%;bottom:11vh;z-index:42;width:min(380px,calc(100% - 24px));transform:translate(-50%,40px) scale(.96);opacity:0;transition:all .45s cubic-bezier(.2,.9,.3,1.2);
+#rv-card{position:fixed;left:50%;bottom:11vh;z-index:9002;width:min(380px,calc(100% - 24px));transform:translate(-50%,40px) scale(.96);opacity:0;transition:all .45s cubic-bezier(.2,.9,.3,1.2);
   background:rgba(20,24,28,.92);color:#fff;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5);font:14px/1.4 system-ui,sans-serif;pointer-events:auto;cursor:pointer}
 #rv-card.on{opacity:1;transform:translate(-50%,0) scale(1)}
 #rv-card img{width:100%;height:150px;object-fit:cover;display:block}
@@ -30,9 +30,9 @@ const CSS = `
 #rv-card .bonus{margin-top:8px;padding:6px 8px;border-radius:8px;background:rgba(255,207,58,.15);border:1px solid rgba(255,207,58,.4);font-size:13px;display:none;animation:rvpop .5s cubic-bezier(.2,.9,.3,1.4)}
 #rv-card .hint{font-size:11px;opacity:.55;margin-top:6px;text-align:right}
 @keyframes rvpop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
-.rv-coin{position:fixed;z-index:43;font-size:22px;pointer-events:none;transition:transform .9s cubic-bezier(.5,-0.3,.6,1),opacity .9s;will-change:transform}
-.rv-burst{position:fixed;z-index:43;pointer-events:none;font-size:18px;animation:rvburst 1s ease-out forwards}
-body.revealing #labels,body.revealing #toast,body.revealing #place,body.revealing #hud,body.revealing #controls,body.revealing #bottom,body.revealing #fps{opacity:0!important;pointer-events:none;transition:opacity .3s}
+.rv-coin{position:fixed;z-index:9003;font-size:22px;pointer-events:none;transition:transform .9s cubic-bezier(.5,-0.3,.6,1),opacity .9s;will-change:transform}
+.rv-burst{position:fixed;z-index:9003;pointer-events:none;font-size:18px;animation:rvburst 1s ease-out forwards}
+body.revealing #labels,body.revealing #toast,body.revealing #place,body.revealing #hud,body.revealing #controls,body.revealing #bottom,body.revealing #fps,body.revealing #label-menu,body.revealing #card{opacity:0!important;visibility:hidden!important;pointer-events:none}
 @keyframes rvburst{0%{transform:translate(0,0) scale(.4);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(1);opacity:0}}`;
 
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -58,8 +58,12 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
     const r = queue.shift();
     if (!r) { cur = null; return; }
     const s = r.species, fauna = s.kind === 'fauna', bird = s.group === 'bird';
-    r.obj = fauna ? findAnimal(s.id, r.pos) : null;           // the live animal, if there is one near
-    r.dist = bird ? 9 : fauna ? (r.obj ? 5.5 : 4) : 1.6;
+    // the live animal, if there is one near: {obj, size (m)}
+    const found = fauna ? findAnimal(s.id, r.pos) : null;
+    r.obj = found && found.obj;
+    // how far the camera stops: by the size of the animal (a 20 cm bird must fill the frame too)
+    if (r.obj) { r.size = found.size; r.dist = THREE.MathUtils.clamp(r.size * 2.6, 0.8, 7); }
+    else r.dist = fauna ? 2.5 : 1.3;
     r.t = 0; r.phase = 'in'; r.bonus = []; r.coins = false;
     cur = r;
     bars.classList.add('on'); vig.classList.add('on'); document.body.classList.add('revealing');
@@ -68,7 +72,7 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
   function target(r) {
     if (r.obj) {
       r.obj.getWorldPosition(tmp);
-      return tmp.clone().add(new THREE.Vector3(0, r.species.group === 'bird' ? 0.1 : 0.5, 0));
+      return tmp.clone().add(new THREE.Vector3(0, Math.min(0.5, (r.size || 1) * 0.35), 0));
     }
     const g = groundAt(r.pos.x, r.pos.z);
     return new THREE.Vector3(r.pos.x, (g ?? r.pos.y) + (r.species.kind === 'flora' ? 0.15 : 0.4), r.pos.z);
@@ -150,7 +154,7 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
     const g = groundAt(V.x, V.z);
     V.y = Math.max((g ?? T.y) + 0.8, T.y + r.dist * 0.12);
     // the subject sits in the upper part of the frame: the card comes up below it
-    const aim = T.clone(); aim.y -= r.dist * 0.32;
+    const aim = T.clone(); aim.y -= r.dist * 0.22;
     const qV = lookQ(V, aim);
     let k, ts;
     if (r.phase === 'in') {
@@ -168,7 +172,7 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
       ts = 1 - 0.88 * k;
       if (r.t >= 1.0) {
         bars.classList.remove('on'); vig.classList.remove('on'); document.body.classList.remove('revealing');
-        cur = null; onEnd(); next();
+        cur = null; lastEnd = performance.now(); onEnd(); next();
         return 1;
       }
     }
@@ -177,5 +181,8 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
     camera.quaternion.slerpQuaternions(from.q, qV, k);
     return ts;
   }
-  return { start, apply, bonus, leave, get active() { return !!cur; } };
+  // a full reveal at most every 25 s (several finds at once: the others get the short notice)
+  let lastEnd = -1e9;
+  const ready = () => !cur && !queue.length && performance.now() - lastEnd > 25000;
+  return { start, apply, bonus, leave, ready, get active() { return !!cur; } };
 }
