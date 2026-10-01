@@ -303,7 +303,13 @@ zalogowaniu do `profiles.look` (kolumna w `supabase/schema.sql`; bez niej reszta
 - `src/avatar/svg.js` rysuje całą postać (podgląd) i twarz w kółku: może być awatarem zamiast emoji lub zdjęcia
   (w grupie, na czacie, na mapie);
 - `src/avatar/figure3d.js` buduje z tego samego opisu postać 3D (ok. 40 brył, chód z ruchem nóg, rąk i kijków
-  zależnym od prędkości): piechur w widoku drona i w przelocie. W następnym etapie: członkowie grupy na szlaku.
+  zależnym od prędkości): piechur w widoku drona i w przelocie.
+
+**Grupa na szlaku** (`src/mates.js`): członkowie grupy wybranej w planerze, którzy udostępniają pozycję (nawigacja GPS),
+idą w widoku 3D jako swoje postacie, krokiem piechura do najnowszej pozycji. Nad każdym etykieta w jego kolorze:
+twarz postaci albo zdjęcie, imię, odległość i czas od ostatniej pozycji; dalej niż 1,2 km sama twarz. Widok 3D
+korzysta z logowania planera (ta sama strona) przez REST API co 15 s, bez osobnego logowania. `?grupa=demo`: trzy
+zmyślone osoby kawałek przed piechurem (do pokazania i testów).
 
 ## Zgłoszenia z testów (🐞)
 

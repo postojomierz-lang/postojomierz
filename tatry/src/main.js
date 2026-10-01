@@ -40,6 +40,7 @@ import { buildGrass } from './grass.js';
 import { buildWeather } from './weather.js';
 import { buildBinoculars } from './nature/binoculars.js';
 import { buildFigure } from './avatar/figure3d.js';
+import { buildMates } from './mates.js';
 import { myLook, DEFAULT_LOOK } from './avatar/look.js';
 import { buildFish } from './nature/fish.js';
 import { forecast } from './planner/daylight.js';
@@ -1333,6 +1334,8 @@ async function main() {
     toast(text);
     if (focus && BINOC && state.mode === 'walk' && !state.freeCam && !reveal.active && (binoc.active || binoc.ready())) binoc.start(text, focus);
   }
+  // the group on the trail: the members sharing their GPS position, as their figures (?grupa=demo: made-up ones)
+  const mates = buildMates({ scene, camera, ground: drawnHeight, terrain, demo: P.get('grupa') === 'demo', trail: { at, length: LENGTH } });
   // trout jumping on the lakes near the trail (not on the frozen ones in winter)
   const fishFx = WINTER ? null : buildFish({ scene, lakes: meta.lakes, groundAt: drawnHeight });
   let fishT = 35 + Math.random() * 40;
@@ -1767,6 +1770,7 @@ async function main() {
       const fz = state.mode === 'walk' || state.freeCam ? camera.position.z : hiker.position.z;
       updatePatch(fx, fz); updateNear(fx, fz); trailWin.update(fx, fz); cover.update(fx, fz);
     }
+    mates.update(dt, state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, state.s);
     wildlife.update(wdt, camera);
     birds.update(wdt, camera.position);
     rocks.update(camera.position, dt);
@@ -1819,7 +1823,7 @@ async function main() {
       };
     } });
 
-  window.__rysy = { reveal, binoc, fishFx, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
