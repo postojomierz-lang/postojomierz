@@ -241,6 +241,17 @@ z katalogu (reszta gatunków: proste kształty), drobne rośliny gęstszymi kęp
 w promieniu 250 m; kępy przy samej ścieżce przesuwają się na najbliższy wolny grunt.
 Uruchomienie: `python3 tools/blender/make_flowers.py public/models/flowers`.
 
+## Tryb zimowy
+
+Od 15 listopada do 30 kwietnia (data wędrówki z planera albo dziś; pole „❄ zima” w panelu, `?zima=1` / `?zima=0`):
+śnieg na całym terenie powyżej ~850 m, cieńszy na stromych ścianach (skała prześwituje), udeptany ślad na szlaku;
+czapy śniegu na głazach, dachach i gałęziach drzew i kosówki (`light.winterK`); stawy zamarznięte i zasypane, z
+przewianym lodem; trawa, kwiaty i niska roślinność pod śniegiem. Śpią: świstaki, niedźwiedzie, nietoperze,
+pilchowate, borsuk, płazy i gady, owady i pająki (nie ma ich miejsc ani modeli); kozica w ciemnej, zimowej sierści.
+Planer (`winterCard` w `src/planner/main.js`): w sezonie albo przy granicy zamarzania poniżej szczytu karta z
+odnośnikiem do komunikatu lawinowego TOPR (i HZS dla tras słowackich), skalą 1–5 i zasadami. Danych TOPR nie
+pobieramy: regulamin serwisu wymaga zgody TOPR na publikację ich w innych serwisach.
+
 ## Sceny z życia zwierząt
 
 `src/animals.js` (reżyser scen) co 1–2,5 min, w promieniu ~400 m od piechura:

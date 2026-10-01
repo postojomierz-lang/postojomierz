@@ -12,12 +12,13 @@ export const light = {
   snowK: { value: 0 },               // fresh snow over the ground above snowLine
   snowLine: { value: 9000 },
   rainK: { value: 0 },               // how hard it rains: rings on the lakes
+  winterK: { value: 0 },             // winter: snow over everything above the valleys, frozen lakes, snow caps
 };
 
 // Cumulus layer at ~3.4 km, drifting with the wind. The same density drives the clouds in the sky
 // (objects/Sky shader patch in main.js) and their shadows on the ground, so the shadows sit under them.
 export const CLOUDS = /* glsl */`
-uniform float cloudCover; uniform float windK; uniform float wetK; uniform float snowK; uniform float snowLine;
+uniform float cloudCover; uniform float windK; uniform float wetK; uniform float snowK; uniform float snowLine; uniform float winterK;
 float cl_h(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
 float cl_n(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(cl_h(i),cl_h(i+vec2(1,0)),u.x), mix(cl_h(i+vec2(0,1)),cl_h(i+vec2(1,1)),u.x), u.y); }
@@ -66,7 +67,7 @@ export function makeEnv({ inner, outer, quality }) {
     nInner: { value: new THREE.Vector2(inner.w, inner.h) },
     nOuter: { value: new THREE.Vector2(outer.w, outer.h) },
     sunDir: light.sunDir, time: light.time, cloudCover: light.cloudCover,
-    windK: light.windK, wetK: light.wetK, snowK: light.snowK, snowLine: light.snowLine,
+    windK: light.windK, wetK: light.wetK, snowK: light.snowK, snowLine: light.snowLine, winterK: light.winterK,
     shSteps: { value: { low: 8, mid: 18, high: 28, ultra: 40 }[quality] ?? 28 },
   };
 }
@@ -141,7 +142,8 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
           vTerrSh = ${perVertexShadow ? 'terrainShadow(wpS.xyz)' : '1.0'} * cloudShadow(wpS.xyz);
         }`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vTerrSh; uniform float wetK;')
+      .replace('#include <common>', '#include <common>\nvarying float vTerrSh; uniform float wetK; uniform float winterK;')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n if (winterK > 0.0) { float upS = dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz)); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.94), winterK * smoothstep(0.35, 0.7, upS)); }')
       .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh * (1.0 - 0.3 * wetK);\n reflectedLight.indirectDiffuse *= 1.0 - 0.3 * wetK;');
   };
   material.customProgramCacheKey = () => 'patched' + wind + perVertexShadow;
@@ -465,6 +467,22 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float sn = snowK * smoothstep(snowLine - 80.0, snowLine + 120.0, sy) * flatN;
           col = mix(col, vec3(0.78, 0.8, 0.84), clamp(sn, 0.0, 0.92));
         }
+        if (winterK > 0.0) {
+          // winter: snow lies everywhere above the valley floors, thinner on steep faces (rock shows through
+          // on the walls), the trail trodden into it
+          float wy = vWorld.y + (vnoise(vWorld.xz / 40.0) - 0.5) * 80.0;
+          float steep = smoothstep(0.42, 0.72, normalize(vWN).y);
+          float patchy = 0.75 + 0.25 * vnoise(vWorld.xz / 7.0);
+          float wsn = winterK * smoothstep(820.0, 950.0, wy) * mix(0.25, 1.0, steep) * patchy;
+          vec3 snowC = vec3(0.84, 0.87, 0.92) * (0.92 + 0.08 * vnoise(vWorld.xz * 1.7));
+          // the trail: a trodden track, packed and a little grey, with footprint dimples
+          float trk = texture2D(trailMap, uv).r;
+          vec2 tuvW = (vWorld.xz - trailRect.xy) / (trailRect.zw - trailRect.xy);
+          if (min(min(tuvW.x, 1.0 - tuvW.x), min(tuvW.y, 1.0 - tuvW.y)) > 0.0) trk = max(trk, texture2D(trailNear, tuvW).r);
+          float track = smoothstep(0.25, 0.7, trk);
+          snowC = mix(snowC, vec3(0.66, 0.68, 0.72) * (0.85 + 0.3 * vnoise(vWorld.xz * 3.1)), track * 0.7);
+          col = mix(col, snowC, clamp(wsn, 0.0, 0.96));
+        }
         diffuseColor.rgb = col;
         if (detW <= 0.0) { detN = Nr; detW = 1.0; }
         else { detN = normalize(mix(Nr, detN, detW)); detW = 1.0; }
@@ -514,7 +532,7 @@ export function waterMaterial() {
       #include <logdepthbuf_pars_fragment>
       uniform vec3 sunDir; uniform vec3 sunCol; uniform vec3 ambCol; uniform vec3 skyCol; uniform float time;
       uniform sampler2D reflMap; uniform mat4 reflMat; uniform float reflLevel; uniform float reflOn;
-      uniform float windK; uniform float rainK;
+      uniform float windK; uniform float rainK; uniform float winterK;
       uniform samplerCube skyEnv; uniform float skyEnvOn;
       varying vec3 vWorld;
       ${NOISE}
@@ -571,13 +589,20 @@ export function waterMaterial() {
         vec3 col = mix(deep, refl, fres) + sunCol * (spec + glit * 3.0) * step(0.0, sunDir.y);
         // whitecaps in a gale
         if (w > 1.7) col = mix(col, vec3(0.85) * (ambCol + sunCol * 0.5), smoothstep(0.62, 0.72, h0 + gust * 0.15) * (w - 1.7) * 0.6);
+        if (winterK > 0.5) {
+          // frozen and snowed over: white with wind-swept blue-grey ice showing through, dull, no waves
+          float sweep = smoothstep(0.35, 0.75, fbm2(p * 0.06 + vec2(3.1, 7.7)));
+          vec3 ice = vec3(0.42, 0.52, 0.58), snowL = vec3(0.86, 0.89, 0.93);
+          vec3 lit = ambCol * 1.6 + sunCol * max(sunDir.y, 0.0) * 1.1;
+          col = mix(ice, snowL, sweep * 0.8 + 0.2) * lit * 0.75 + sunCol * pow(max(dot(reflect(-V, vec3(0.0, 1.0, 0.0)), sunDir), 0.0), 60.0) * (1.0 - sweep) * 0.8;
+        }
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
       }`,
   });
-  Object.assign(m.uniforms, { sunDir: light.sunDir, sunCol: light.sunCol, ambCol: light.ambCol, time: light.time, windK: light.windK, rainK: light.rainK });
+  Object.assign(m.uniforms, { sunDir: light.sunDir, sunCol: light.sunCol, ambCol: light.ambCol, time: light.time, windK: light.windK, rainK: light.rainK, winterK: light.winterK });
   return m;
 }
 

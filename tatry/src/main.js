@@ -175,6 +175,22 @@ const SUN_K = (() => {
   try { tz = Math.round((wl('Europe/Warsaw') - wl('UTC')) / 36e5); } catch (e) { /* old browser: summer time */ }
   return { decl, noon: 12 + tz - 20.08 / 15 - eot / 60 };
 })();
+// winter (mid November to April, by the day of the walk; ?zima=1 / ?zima=0 to force): snow over the
+// mountains, frozen lakes, the hibernating animals asleep, no flowers or grass above the snow
+const WINTER = (() => {
+  const q = new URLSearchParams(location.search).get('zima');
+  if (q === '1' || q === '0') return q === '1';
+  const m = SUN_DAY.getMonth(), d = SUN_DAY.getDate();
+  return m === 11 || m <= 2 || (m === 10 && d >= 15) || (m === 3 && d <= 30);
+})();
+// who spends the winter asleep or under the snow: marmots, bears, bats, dormice, amphibians and
+// reptiles, insects and spiders, and the flowers (trees and dwarf shrubs stay)
+const HIBERNATES = new Set(['swistak', 'niedzwiedz', 'podkowiec', 'mroczek', 'nocek-brandta', 'zolednica', 'popielica', 'orzesznica', 'smuzka', 'borsuk']);
+const winterAsleep = (id) => {
+  const s = BY_ID[id];
+  if (!s) return false;
+  return HIBERNATES.has(id) || s.group === 'herp' || s.group === 'alpine' || s.group === 'forest' || (s.group === 'water' && !/pstrag|glowacz|lipien|strzebla|golec|sliz|brzanka|jelec|certa|troc|glowacica/.test(id));
+};
 function sunAt(hour) {
   const lat = THREE.MathUtils.degToRad(49.19), decl = THREE.MathUtils.degToRad(SUN_K.decl);
   const ha = THREE.MathUtils.degToRad((hour - SUN_K.noon) * 15);
@@ -765,7 +781,8 @@ async function main() {
       .filter((p) => cells.has(Math.floor(p.x / G) + ',' + Math.floor(p.z / G)) || (BY_ID[p.id]?.far && Math.min(...trail.X.map((x, i) => Math.hypot(x - p.x, trail.Z[i] - p.z))) < BY_ID[p.id].far));
   } catch (e) { spots = null; }
   if (!spots) spots = buildSpots({ trail, terrain, groundClass, meta });
-  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots, groundClass,
+  if (WINTER) spots = spots.filter((p) => !winterAsleep(p.id));
+  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots, groundClass, winter: WINTER,
     rut: (SUN_DAY.getMonth() === 8 && SUN_DAY.getDate() >= 10) || (SUN_DAY.getMonth() === 9 && SUN_DAY.getDate() <= 20), onEvent: (t) => toast(t) });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
     masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY,
@@ -773,6 +790,8 @@ async function main() {
   // blade grass (?trawa=0: the old grass clumps instead)
   const grass = P.get('trawa') !== '0' ? buildGrass({ scene, terrain, shade, quality: QUALITY, photo: photoPx, bounds: IB, groundClass,
     masks: { path: trailVis, pathSide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.5) }) : null;
+  if (WINTER && grass) for (const f of grass.fields) f.mesh.visible = false;      // under the snow
+  if (WINTER) for (const m of Object.values(cover.meshes)) m.visible = false;
   const deadwood = await buildDeadwood({ scene, terrain, trail, shade, quality: QUALITY, isForest: sound.isForest,
     free: (x, z) => terrain.maskAt(clearing, x, z) === 0 && terrain.maskAt(lakeMask, x, z) < 0.02 && !houses.inside(x, z, 3) });
   const dummy = new THREE.Object3D();
@@ -930,6 +949,7 @@ async function main() {
     light.snowK.value = o.snowCover ?? (w.snowCover || 0);
     light.snowLine.value = o.snowLine ?? (w.snowLine || 9000);
     light.rainK.value = o.rain ?? (w.rain || 0);
+    light.winterK.value = WINTER ? 1 : 0;
     weatherFx.set({ rain: o.rain ?? (w.rain || 0), snow: o.snow ?? (w.snow || 0), storm: w.storm || 0, wind: light.windK.value });
     const e = Math.max(el, -0.2);
     const day = THREE.MathUtils.smoothstep(e, -0.1, 0.25);
@@ -1413,6 +1433,8 @@ async function main() {
   $('btn-slower').onclick = () => setSpeed(-1);
   $('hour').oninput = (e) => setHour(+e.target.value);
   $('time-flow').checked = flow.on;
+  $('winter').checked = WINTER;
+  $('winter').onchange = (e) => { const u = new URL(location.href); u.searchParams.set('zima', e.target.checked ? '1' : '0'); location.href = u.toString(); };
   $('time-flow').onchange = (e) => { flow.on = e.target.checked; flow.base = env.hour - TT[at(state.s).i] / 60; try { localStorage.setItem('rysy-time-flow', flow.on ? '1' : '0'); } catch (err) { /* private mode */ } };
   $('weather').onchange = (e) => setWeather(e.target.value);
   $('btn-help').onclick = () => $('help').classList.toggle('hidden');

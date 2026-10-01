@@ -76,7 +76,7 @@ export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1,
       .replace('#include <common>', `#include <common>
         uniform sampler2D impAlbedo; uniform sampler2D impNormal; uniform float impBright;
         varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix;
-        varying vec3 vBR; varying vec3 vBT; varying float vTint; varying float vTerrSh;\n` + FADE_F)
+        varying vec3 vBR; varying vec3 vBT; varying float vTint; varying float vTerrSh; uniform float winterK;\n` + FADE_F)
       .replace('#include <map_fragment>', (fade ? FADE_TEST : '') + FRAG_SAMPLE + `
         diffuseColor.rgb = impA.rgb * impBright * (1.0 + (vTint - 0.5) * ${(tintAmount * 2).toFixed(3)});`)
       .replace('#include <normal_fragment_maps>', `
@@ -86,6 +86,8 @@ export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1,
           // thin leaves and blades let light through: bend their normals towards the sky
           nw = normalize(mix(nw, vec3(0.0, 1.0, 0.0), ${upNormal.toFixed(2)}));
           normal = normalize((viewMatrix * vec4(nw, 0.0)).xyz);
+          // winter: snow on the boughs (on what faces the sky)
+          if (winterK > 0.0) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.94), winterK * smoothstep(0.25, 0.8, nw.y) * 0.85);
         }`)
       .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh;');
   };

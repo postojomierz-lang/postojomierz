@@ -96,13 +96,17 @@ function patch(m, shade, { wind = 0.5, upNormal = 0, depth = false, fadeR = tree
         ${depth ? '' : 'vTerrSh = terrainShadow((modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz) * cloudShadow(ipos);'}`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform float fadeR; varying float vFadeD; ${depth ? '' : 'varying float vTerrSh; uniform float wetK;'}`)
+        uniform float fadeR; varying float vFadeD; ${depth ? '' : 'varying float vTerrSh; uniform float wetK; uniform float winterK;'}`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
         if (${IGN} >= clamp((fadeR - vFadeD) / ${FADE.toFixed(1)}, 0.0, 1.0)) discard;`);
     if (!depth) {
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-          normal = normalize(mix(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), ${upNormal.toFixed(2)}));`)
+          normal = normalize(mix(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), ${upNormal.toFixed(2)}));
+          if (winterK > 0.0) {                       // snow on the boughs: on what faces the sky
+            float upS = dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.94), winterK * smoothstep(0.2, 0.75, upS) * 0.85);
+          }`)
         .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh * (1.0 - 0.25 * wetK);\n reflectedLight.indirectDiffuse *= 1.0 - 0.25 * wetK;');
     }
   };
