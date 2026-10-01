@@ -163,6 +163,14 @@
   .wxm.bad { border-color: #c8201c; background: #fff0ee; }
   .wxm small { font-size: 10px; color: var(--muted); font-weight: 600; }
   .wxm small i { display: inline-block; font-style: normal; margin-right: 1px; }
+  /* winter */
+  #winter-card { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: #eaf2fb; border: 1px solid #bcd3ec; font-size: 13px; line-height: 1.45; }
+  #winter-card b.h { display: block; font-size: 14px; margin-bottom: 4px; }
+  #winter-card .scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin: 6px 0; text-align: center; font-size: 11px; }
+  #winter-card .scale span { border-radius: 4px; padding: 3px 0; font-weight: 700; color: #1d2327; }
+  #winter-card a.btn { display: inline-block; margin: 4px 6px 0 0; padding: 6px 10px; border-radius: 8px; background: #1f5fb8; color: #fff; text-decoration: none; font-weight: 600; }
+  #winter-card a.btn.sk { background: #3a3f44; }
+  #winter-card ul { margin: 4px 0 0; padding-left: 18px; }
   /* account links, deleting */
   .consent { margin-top: 6px; } .consent a { color: inherit; }
   button.link.danger { color: #c8201c; margin-left: 10px; }
@@ -258,6 +266,7 @@
           <div class="line" id="d-sun"></div>
           <div class="line" id="d-weather"></div>
         </div>
+        <div id="winter-card" hidden></div>
         <canvas id="profile"></canvas>
         <ul id="sections"></ul>
       </section>

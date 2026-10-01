@@ -33,6 +33,11 @@ const COAT = {
   chamois: { Main: [0.2, 0.12, 0.055], Main_Dark: [0.035, 0.024, 0.016], Main_Light: [0.52, 0.45, 0.35] },
   marmot: { Main: [0.24, 0.16, 0.085], Main_Light: [0.5, 0.4, 0.27] },
 };
+// in winter the chamois turns almost black (with the pale face), the hare greyer
+const WINTER_COAT = {
+  chamois: { Main: [0.03, 0.022, 0.016], Main_Dark: [0.012, 0.01, 0.008], Main_Light: [0.5, 0.45, 0.36] },
+  hare: { Main: [0.26, 0.22, 0.17], Main_Light: [0.66, 0.62, 0.55] },
+};
 // the catalogue's animals as groups of these models
 const FROM_CATALOGUE = {
   kozica: [['chamois', 'chamois', 'chamois'], ['chamois', 'chamois', 'chamois', 'chamois', 'chamois']],
@@ -46,7 +51,7 @@ const FROM_CATALOGUE = {
   zajac: [['hare'], ['hare', 'hare']],
 };
 
-export async function buildAnimals({ scene, terrain, groundAt, trail, land, bounds, masks, sound, natureSpots = [], groundClass = null, rut = false, onEvent = () => {} }) {
+export async function buildAnimals({ scene, terrain, groundAt, trail, land, bounds, masks, sound, natureSpots = [], groundClass = null, rut = false, winter = false, onEvent = () => {} }) {
   const loader = new GLTFLoader();
   const proto = {};
   const files = {};
@@ -55,7 +60,8 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     g.scene.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = true; o.receiveShadow = true;
-        const col = (COAT[k] && COAT[k][o.material.name]) ? new THREE.Color(...COAT[k][o.material.name]) : o.material.color;
+        const coat = winter && WINTER_COAT[k] ? WINTER_COAT[k] : COAT[k];
+        const col = (coat && coat[o.material.name]) ? new THREE.Color(...coat[o.material.name]) : o.material.color;
         o.material = new THREE.MeshLambertMaterial({ color: col, flatShading: false });
       }
     });
@@ -150,6 +156,8 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
   if (!placed.has('dzik')) addGroup(['boar', 'boar', 'boar'], spot(woods, 70, 260, 0, 0.45), woods);
   // the rut (mid September to mid October): a second stag with every herd of red deer, roaring and sparring
   if (rut) for (const g of groups) if (g.kinds.includes('stag')) { g.kinds.push('stag'); g.rut = true; }
+  // winter: marmots and bears asleep in their dens
+  if (winter) for (const g of groups) g.kinds = g.kinds.filter((k) => k !== 'marmot' && k !== 'bear' && k !== 'cub');
   // chamois and marmots are what one hopes to see up high: if the catalogue has none on this route, a
   // herd and a colony go on open scree or meadow above 1600 m, 20-80 m off the trail, where there is any
   const open = (lo, hi) => (x, z) => {

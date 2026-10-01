@@ -212,12 +212,33 @@ async function updateDay() {
   const fc = await forecast(data.v[top][1], data.v[top][0], G.H[top]);
   if (req !== dayReq) return;
   const w = fc && walkWeather(fc, t0, t1, G.H[path[0]]);
-  if (!w) { $('d-weather').textContent = fc ? 'Prognoza sięga 3 dni naprzód.' : 'Prognoza niedostępna (brak zasięgu).'; return; }
+  if (!w) { winterCard(t0, G.H[top], null); $('d-weather').textContent = fc ? 'Prognoza sięga 3 dni naprzód.' : 'Prognoza niedostępna (brak zasięgu).'; return; }
+  winterCard(t0, G.H[top], w.freeze);
   const top_n = Math.round(G.H[top]);
   $('d-weather').innerHTML = `${w.icon} ${w.text} · na górze (${top_n} m) ${Math.round(w.tTop)}°C, odczuwalnie ${Math.round(w.feelsTop)}°C · na starcie ok. ${Math.round(w.tStart)}°C`
     + `<br>opady ${w.rainP}%${w.rain >= 0.1 ? ` (${w.rain.toFixed(1)} mm)` : ''} · wiatr ${Math.round(w.wind)} km/h, porywy ${Math.round(w.gust)} km/h`
     + (w.warn.length ? `<ul>${w.warn.map((x) => `<li>${x}</li>`).join('')}</ul>` : '')
     + `<div class="src">Prognoza Open-Meteo dla ${top_n} m n.p.m${w.stale ? `, zapisana ${w.at.toLocaleString('pl-PL')} (brak zasięgu)` : ''}. Sprawdź też komunikat TOPR / HZS.</div>`;
+}
+// winter on the route (mid November to April, or a forecast freezing level below the top): the avalanche
+// bulletin. TOPR's terms forbid republishing its data without consent, so the card links to the bulletin
+// (and the Slovak one, HZS) and explains the five-degree European scale instead of showing the degree.
+function winterCard(t0, topEle, freeze) {
+  const m = t0.getMonth(), d = t0.getDate();
+  const season = m === 11 || m <= 2 || (m === 10 && d >= 15) || (m === 3 && d <= 30) || (m === 4 && d <= 15);
+  const cold = freeze != null && freeze < topEle;
+  const box = $('winter-card');
+  if (!season && !cold) { box.hidden = true; return; }
+  const sk = path && path.some((v) => data.v[v][0] > 20.1 && data.v[v][1] < 49.2);
+  box.innerHTML = `<b class="h">❄ ${season ? 'Warunki zimowe' : 'Możliwy śnieg i lód na górze'}</b>`
+    + `Przed wyjściem sprawdź <b>komunikat lawinowy</b>: stopień zagrożenia (1–5) ogłasza TOPR każdego dnia sezonu.`
+    + `<div class="scale"><span style="background:#ccff66">1 niski</span><span style="background:#ffff00">2 umiark.</span><span style="background:#ff9900">3 znaczny</span><span style="background:#ff0000;color:#fff">4 duży</span><span style="background:#000;color:#fff">5 b. duży</span></div>`
+    + `<a class="btn" href="https://lawiny.topr.pl/" target="_blank" rel="noopener">Komunikat TOPR</a>`
+    + (sk ? `<a class="btn sk" href="https://www.laviny.sk/" target="_blank" rel="noopener">Laviny HZS (Słowacja)</a>` : '')
+    + `<ul><li>Od stopnia 3 tylko z doświadczeniem i sprzętem lawinowym (detektor, sonda, łopata); przy 4–5 nie wychodź w teren lawiniasty.</li>`
+    + `<li>Zimą potrzebne raki i czekan powyżej schronisk, część szlaków jest zamknięta: sprawdź komunikaty TPN.</li>`
+    + `<li>Czas przejścia w śniegu bywa dwa razy dłuższy niż według norm, a dzień jest krótki.</li></ul>`;
+  box.hidden = false;
 }
 $('d-day').onchange = updateDay;
 $('d-time').onchange = updateDay;
