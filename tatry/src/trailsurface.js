@@ -77,7 +77,7 @@ export function buildSteps({ scene, terrain, trail, TH, shade, rockTex, sections
   }
   const mats = [];
   const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), m4 = new THREE.Matrix4();
-  let lastY = -Infinity, lastI = -99;
+  let lastY = -Infinity, lastI = -99, skipped = 0;
   for (let i = 2; i < N - 2; i++) {
     const s = i * step, sec = sections(s);
     if (sec.paved < 0.5 || grade[i] < 0.2) { lastY = -Infinity; continue; }
@@ -99,7 +99,18 @@ export function buildSteps({ scene, terrain, trail, TH, shade, rockTex, sections
       const nx = tz, nz = -tx;   // across the path
       const cx = trail.X[i] + nx * off * width, cz = trail.Z[i] + nz * off * width;
       const h = 0.45;
-      m4.compose(new THREE.Vector3(cx, top - h / 2, cz), q, new THREE.Vector3(width * frac * (0.95 + r() * 0.08), h, depth));
+      // the block must lie on the ground: where the slope falls away across or in front of it (rock
+      // slabs, zigzags) it would stand out like a box
+      const wx = width * frac / 2, dz = depth / 2;
+      let lo = Infinity, hi = -Infinity;
+      for (const [u, w] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1]]) {
+        const gx = cx + nx * u * wx + tx * w * dz, gz = cz + nz * u * wx + tz * w * dz;
+        const g = terrain.height(gx, gz); lo = Math.min(lo, g); hi = Math.max(hi, g);
+      }
+      // so it sinks to at most 16 cm above the lowest corner; buried deep at the other end: no step here
+      const y = Math.min(top, lo + 0.16);
+      if (hi - y > 0.3) { skipped++; continue; }
+      m4.compose(new THREE.Vector3(cx, y - h / 2, cz), q, new THREE.Vector3(width * frac * (0.95 + r() * 0.08), h, depth));
       mats.push(m4.clone());
     }
   }
@@ -128,11 +139,16 @@ export function buildSteps({ scene, terrain, trail, TH, shade, rockTex, sections
         vMapUv = uv * f * 0.9 + instanceMatrix[3].xz * 0.37;
       }
       #endif`);
+    // granite like the path around it: the mossy texture half desaturated and a little lighter
+    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(0.3, 0.55, 0.15))), diffuseColor.rgb, 0.45) * 1.12;`);
   })(mat.onBeforeCompile);
+  const key = mat.customProgramCacheKey.bind(mat);
+  mat.customProgramCacheKey = () => key() + '-steps';               // its own program, not a shared one
   const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, mats.length));
   mats.forEach((x, k) => mesh.setMatrixAt(k, x));
   mesh.count = mats.length;
   mesh.castShadow = mesh.receiveShadow = true;
   scene.add(mesh);
-  return { mesh, count: mats.length };
+  return { mesh, count: mats.length, skipped };
 }
