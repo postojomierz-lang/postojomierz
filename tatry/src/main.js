@@ -1182,7 +1182,11 @@ async function main() {
   }
 
   const SPEEDS = [1, 3, 10, 30];
+  let speedAt = 0;
   function setSpeed(d) {
+    const now = performance.now();
+    if (now - speedAt < 400) return;            // a slow frame can deliver a double tap: one step per tap
+    speedAt = now;
     const i = Math.max(0, Math.min(SPEEDS.length - 1, SPEEDS.indexOf(state.speedMul) + d));
     state.speedMul = SPEEDS[i];
     updateButtons();
@@ -1447,6 +1451,13 @@ async function main() {
     $('btn-fly').classList.toggle('on', state.mode === 'fly');
     $('btn-fly').textContent = state.mode === 'fly' ? '⏹ Stop' : '✈ Przelot';
     $('speed').textContent = `×${state.speedMul}`;
+  }
+  // a tap meant for the discovery card (or a repeated one while it fades) must not land on the buttons
+  // that appear under it again
+  for (const id of ['controls', 'bottom']) {
+    $(id).addEventListener('click', (e) => {
+      if (reveal.active || performance.now() - reveal.endedAt < 800) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
   }
   $('btn-auto').onclick = () => { state.auto = !state.auto; updateButtons(); };
   $('btn-mode').onclick = toggleMode;
@@ -1729,15 +1740,23 @@ async function main() {
     rocks.update(camera.position, dt);
     chains.update(camera.position); deadwood.update(camera.position); flowers.update(camera.position);
     labels.update(dt);
-    discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
+    // a flyover only shows the route: nothing is discovered from 170 m up
+    if (state.mode !== 'fly') discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
     weatherFx.update(wdt, camera.position);
     skyEnv.update(dt);
     if (env.forecast) forecastTick(); else flowTick();
     renderer.toneMappingExposure = 0.55 * (1 + 2.2 * weatherFx.flash);
     sound.update(camera, dt, { walking: dir !== 0 && state.mode === 'walk' && state.s < LENGTH && state.s > 0, speed: Math.abs(v), weather: env.weather, fast: state.speedMul > 3,
       wind: light.windK.value, rain: (env.fx ? env.fx.rain : WEATHER[env.weather].rain) || 0 });
+    // flyover: grass and flowers are invisible from that height, and shadows may lag a little
+    const flying = state.mode === 'fly';
+    if (flying !== state.wasFlying) {
+      state.wasFlying = flying;
+      if (grass && !WINTER) for (const f of grass.fields) f.mesh.visible = !flying;
+      if (flowers.mesh) flowers.mesh.visible = !flying;
+    }
     if (LITE) {
-      if (liteFrame++ % SHADOW_EVERY === 0) renderer.shadowMap.needsUpdate = true;
+      if (liteFrame++ % (flying ? SHADOW_EVERY * 2 : SHADOW_EVERY) === 0) renderer.shadowMap.needsUpdate = true;
       renderer.render(scene, camera);
     } else {
       renderReflection();
