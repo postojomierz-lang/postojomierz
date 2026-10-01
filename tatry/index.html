@@ -142,9 +142,15 @@
   #controls label.flow { display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: .9; margin-top: 2px; }
   /* phones held sideways: little height, the panels scroll instead of running off the screen */
   @media (max-height: 520px) {
-    #controls { max-height: calc(100vh - 24px); overflow-y: auto; width: 210px; }
+    /* the right panel: narrow, every row wraps, scrolls if still too tall; the profile shrinks beside it */
+    #controls { top: 8px; right: 8px; bottom: auto; left: auto; max-height: calc(100vh - 16px); overflow-y: auto; width: 230px; padding: 8px; gap: 6px; }
+    #controls .row { flex-wrap: wrap; }
+    #controls .row button { padding: 5px 6px; font-size: 12px; }
+    #controls .row button.grow { flex: 1 1 auto; }
     #hud { max-height: 45vh; overflow: hidden; }
-    #bottom { display: none; }
+    #bottom { left: 8px; right: 250px; bottom: 6px; padding: 4px 8px 2px; }
+    #bottom #sources { display: none; }
+    #profile { height: 36px; }
   }
 </style>
 </head>
