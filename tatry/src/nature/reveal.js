@@ -135,7 +135,7 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
     cur.phase = 'out'; cur.t = 0;
     card.classList.remove('on'); tag.classList.remove('on');
   }
-  card.addEventListener('click', leave);
+  card.addEventListener('click', (e) => { e.stopPropagation(); leave(); });
   addEventListener('keydown', (e) => { if (cur && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.stopPropagation(); leave(); } }, true);
 
   // called every frame after the walk camera is set: overrides it during a reveal; returns the time scale
@@ -185,5 +185,5 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
   // a full reveal at most every 25 s (several finds at once: the others get the short notice)
   let lastEnd = -1e9;
   const ready = () => !cur && !queue.length && performance.now() - lastEnd > 25000;
-  return { start, apply, bonus, leave, ready, get active() { return !!cur; } };
+  return { start, apply, bonus, leave, ready, get active() { return !!cur; }, get endedAt() { return lastEnd; } };
 }
