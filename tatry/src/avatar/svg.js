@@ -9,7 +9,7 @@ const shade = (hex, k) => {
 
 function parts(L) {
   const skin = SKIN[L.skin], skinD = shade(skin, 0.85), hair = HAIR_COLORS[L.hairColor][0], hairD = shade(hair, 0.75);
-  const jc = CLOTH[L.jacketColor], pc = CLOTH[L.pantsColor], bc = CLOTH[L.bootsColor], kc = CLOTH[L.packColor];
+  const jc = L.jacket === 'sweater' ? '#efe6d2' : CLOTH[L.jacketColor], pat = CLOTH[L.jacketColor], pc = CLOTH[L.pantsColor], bc = CLOTH[L.bootsColor], kc = CLOTH[L.packColor];
   const f = L.sex === 'f';
   const sh = f ? 32 : 38, wa = f ? 27 : 33, hip = f ? 35 : 33;          // half widths: shoulders, waist, hips
   const out = { back: '', body: '', head: '', front: '' };
@@ -26,6 +26,8 @@ function parts(L) {
     const y = L.pack === 'big' ? 78 : 98;
     out.back += `<ellipse cx="100" cy="${y}" rx="${sh - 2}" ry="9" fill="none" stroke="#c8a24a" stroke-width="5"/><ellipse cx="100" cy="${y}" rx="${sh - 9}" ry="6" fill="none" stroke="#b08a36" stroke-width="4"/>`;
   }
+  if (L.flag) out.back += `<path d="M${100 - sh - 2} 20 V170" stroke="#5b4a36" stroke-width="3"/><rect x="${100 - sh - 1}" y="20" width="30" height="10" fill="#fff" stroke="#ccc" stroke-width=".5"/><rect x="${100 - sh - 1}" y="30" width="30" height="10" fill="#dc143c"/>`;
+  if (L.axe) out.back += `<path d="M${100 + sh + 4} 84 L${100 + sh + 16} 200" stroke="#6b5a45" stroke-width="5" stroke-linecap="round"/><path d="M${100 + sh - 10} 82 l30 4 l-2 7 l-12 -1 l-4 8 l-4 -9 l-8 -1z" fill="#9aa0a6"/>`;
   if (['long', 'braid', 'medium', 'curly'].includes(L.hair)) {
     const len = { long: 150, braid: 95, medium: 104, curly: 112 }[L.hair];
     out.back += L.hair === 'curly'
@@ -42,11 +44,16 @@ function parts(L) {
   for (const s of [-1, 1]) {
     const x = s < 0 ? 100 - hip - 2 : 100 + 2;
     out.body += `<path d="M${x + 2} ${bootTop} L${x + hip - 2} ${bootTop} L${x + hip + (s > 0 ? 6 : 0)} 360 L${x - (s < 0 ? 6 : 0)} 360Z" fill="${bc}"/><rect x="${x - (s < 0 ? 6 : 0)}" y="358" width="${hip + 6}" height="6" rx="3" fill="#2a2522"/>`;
+    if (L.crampons) for (let k = 0; k < 5; k++) out.body += `<path d="M${x - (s < 0 ? 6 : 0) + 3 + k * ((hip + 6 - 6) / 4)} 364 l-3 6 h6z" fill="#9aa0a6"/>`;
     if (L.boots === 'trek') out.body += `<path d="M${x + 6} ${bootTop + 8} h${hip - 12} M${x + 6} ${bootTop + 16} h${hip - 12}" stroke="${shade(bc, 0.6)}" stroke-width="2"/>`;
   }
   // ---- torso and arms
   const bulk = L.jacket === 'down' ? 6 : L.jacket === 'tee' ? -2 : 0;
   out.body += `<path d="M${100 - sh - bulk} 102 Q100 92 ${100 + sh + bulk} 102 L${100 + wa + bulk} 206 L${100 - wa - bulk} 206Z" fill="${jc}"/>`;
+  if (L.jacket === 'sweater') {
+    for (const y of [124, 168]) out.body += `<path d="M${100 - wa - 2} ${y} ${Array.from({ length: 9 }, (_, i) => `l${(wa * 2 + 4) / 9 / 2} ${i % 2 ? 6 : -6} l${(wa * 2 + 4) / 9 / 2} ${i % 2 ? -6 : 6}`).join(' ')}" stroke="${pat}" stroke-width="3" fill="none"/>`;
+    out.body += `<path d="M${100 - 10} 140 l10 -9 l10 9 l-10 9z" fill="${pat}"/><path d="M${100 - wa} 196 H${100 + wa}" stroke="${pat}" stroke-width="6"/>`;
+  }
   if (L.jacket === 'down') for (let y = 122; y < 206; y += 18) out.body += `<path d="M${100 - wa - 4} ${y} Q100 ${y + 5} ${100 + wa + 4} ${y}" stroke="${shade(jc, 0.75)}" stroke-width="2" fill="none"/>`;
   if (L.jacket === 'shell' || L.jacket === 'softshell') out.body += `<path d="M100 98 V206" stroke="${shade(jc, 0.6)}" stroke-width="2"/>`;
   if (L.jacket === 'shell') out.body += `<path d="M${100 - 16} 96 Q100 84 ${100 + 16} 96" stroke="${shade(jc, 0.8)}" stroke-width="7" fill="none"/>`;
@@ -61,6 +68,7 @@ function parts(L) {
     if (L.poles) out.body += `<path d="M${x1 + s * 4 - s * 7} 214 L${100 + s * 74} 372" stroke="#8b9096" stroke-width="3"/><rect x="${x1 + s * 4 - s * 7 - 4}" y="212" width="8" height="16" rx="3" fill="#222"/>`;
   }
   if (L.pack !== 'none') out.body += `<path d="M${100 - 18} 100 V188 M${100 + 18} 100 V188" stroke="${shade(kc, 0.7)}" stroke-width="7"/><path d="M${100 - 18} 150 H${100 + 18}" stroke="${shade(kc, 0.6)}" stroke-width="4"/>`;
+  if (L.binos) out.body += `<path d="M90 98 L92 128 M110 98 L108 128" stroke="#222" stroke-width="2"/><rect x="87" y="126" width="11" height="17" rx="4" fill="#2b2f33"/><rect x="102" y="126" width="11" height="17" rx="4" fill="#2b2f33"/><rect x="96" y="130" width="8" height="5" fill="#2b2f33"/>`;
   if (L.rope && L.pack === 'none') out.body += `<path d="M${100 - sh + 4} 104 L${100 + wa} 196" stroke="#c8a24a" stroke-width="7"/>`;
   // ---- head: neck, ears, face
   out.head += `<rect x="92" y="80" width="16" height="22" fill="${skinD}"/>`;
@@ -97,6 +105,9 @@ function parts(L) {
   else if (L.hat === 'cap') out.front += `${cap(48)} Q100 ${top + 6} ${100 - H[0] - 3} 48Z" fill="${jc}"/><path d="M${100 - H[0] + 2} 44 Q100 40 ${100 + H[0] + 14} 46 L${100 + H[0] + 14} 50 Q100 46 ${100 - H[0] + 2} 50Z" fill="${shade(jc, 0.75)}"/>`;
   else if (L.hat === 'beanie') out.front += `${cap(46)} Q100 ${top + 10} ${100 - H[0] - 3} 46Z" fill="${kc}"/><rect x="${100 - H[0] - 4}" y="38" width="${H[0] * 2 + 8}" height="10" rx="5" fill="${shade(kc, 0.8)}"/><circle cx="100" cy="${top - 10}" r="6" fill="${shade(kc, 1.2)}"/>`;
   else if (L.hat === 'band') out.front += `<rect x="${100 - H[0] - 2}" y="${top + 12}" width="${H[0] * 2 + 4}" height="8" rx="4" fill="${kc}"/>`;
+  else if (L.hat === 'goral') out.front += `<ellipse cx="100" cy="${top + 10}" rx="${H[0] + 22}" ry="7" fill="#1c1a19"/><path d="M${100 - H[0] + 4} ${top + 10} Q${100 - H[0] + 2} ${top - 18} 100 ${top - 18} Q${100 + H[0] - 2} ${top - 18} ${100 + H[0] - 4} ${top + 10}Z" fill="#232120"/>`
+    + Array.from({ length: 6 }, (_, i) => `<ellipse cx="${100 - H[0] + 8 + i * (H[0] * 2 - 16) / 5}" cy="${top + 4}" rx="3" ry="2.4" fill="#f4efe4"/>`).join('')
+    + `<path d="M${100 + H[0] - 6} ${top + 2} q14 -16 26 -30" stroke="#2c4a3a" stroke-width="3" fill="none"/><path d="M${100 + H[0] + 6} ${top - 14} q6 -8 14 -14" stroke="#8a6a3a" stroke-width="5" fill="none" stroke-linecap="round"/>`;
   else if (L.hat === 'brim') out.front += `<ellipse cx="100" cy="${top + 12}" rx="${H[0] + 20}" ry="7" fill="#7a5f3c"/><path d="M${100 - H[0] + 2} ${top + 12} Q${100 - H[0]} ${top - 16} 100 ${top - 16} Q${100 + H[0]} ${top - 16} ${100 + H[0] - 2} ${top + 12}Z" fill="#8e7048"/><rect x="${100 - H[0] + 2}" y="${top + 4}" width="${H[0] * 2 - 4}" height="6" fill="#3e2f1e"/>`;
   if (L.lamp) out.front += `<rect x="${100 - H[0] - 4}" y="${top + 16}" width="${H[0] * 2 + 8}" height="5" rx="2" fill="#222"/><rect x="93" y="${top + 12}" width="14" height="11" rx="3" fill="#ddd" stroke="#222" stroke-width="2"/><circle cx="100" cy="${top + 17.5}" r="3" fill="#fff6c0"/>`;
   return out;

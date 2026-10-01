@@ -18,7 +18,7 @@ export function buildFigure(look) {
   const L = cleanLook(look) || DEFAULT_LOOK;
   const f = L.sex === 'f', h = f ? 0.96 : 1;                      // overall height factor
   const skin = mat(SKIN[L.skin]), hair = mat(HAIR_COLORS[L.hairColor][0]);
-  const jc = CLOTH[L.jacketColor], jacket = mat(jc), pants = mat(CLOTH[L.pantsColor]), boots = mat(CLOTH[L.bootsColor]);
+  const jc = L.jacket === 'sweater' ? '#efe6d2' : CLOTH[L.jacketColor], jacket = mat(jc), pants = mat(CLOTH[L.pantsColor]), boots = mat(CLOTH[L.bootsColor]);
   const packM = mat(CLOTH[L.packColor]), dark = mat('#222326');
   const root = new THREE.Group(), body = new THREE.Group();
   root.add(body);
@@ -38,6 +38,7 @@ export function buildFigure(look) {
     const boot = mesh(new THREE.BoxGeometry(0.11, bootH, 0.26), boots, 0, -shinLen + bootH / 2 - 0.02, 0.04);
     const sole = mesh(new THREE.BoxGeometry(0.115, 0.03, 0.27), dark, 0, -shinLen - 0.02, 0.04);
     knee.add(boot, sole);
+    if (L.crampons) for (const dz of [-0.08, 0, 0.08, 0.15]) knee.add(mesh(new THREE.ConeGeometry(0.012, 0.035, 4), mat('#9aa0a6'), 0, -shinLen - 0.05, 0.04 + dz).rotateX(Math.PI));
     legs.push({ hip, knee, s });
   }
   // hips and torso
@@ -46,6 +47,11 @@ export function buildFigure(look) {
   torso.scale.z = 0.62; torso.position.y = (shY + hipY) / 2 + 0.02; body.add(torso);
   const shoulders = mesh(new THREE.SphereGeometry(1, 12, 8), jacket, 0, shY - 0.02, 0);
   shoulders.scale.set(sw * bulk + 0.02, 0.08, 0.13 * bulk); body.add(shoulders);
+  if (L.jacket === 'sweater') for (const y of [0.3, 0.62]) {
+    const band = mesh(new THREE.CylinderGeometry(sw * bulk + 0.006 - y * 0.03, sw * bulk + 0.006 - y * 0.03, 0.05, 10, 1, true), mat(CLOTH[L.jacketColor]), 0, hipY + (shY - hipY) * y, 0);
+    band.scale.z = 0.64; body.add(band);
+  }
+  if (L.binos) for (const s of [-1, 1]) { const b = mesh(new THREE.CylinderGeometry(0.022, 0.024, 0.08, 8), mat('#2b2f33'), s * 0.03, shY - 0.2, 0.13 * bulk * 0.62 + 0.03); body.add(b); }
   if (L.jacket === 'shell') { const hood = mesh(new THREE.TorusGeometry(0.09, 0.035, 6, 12), mat(darker(jc, 0.85)), 0, shY + 0.02, -0.05); hood.rotation.x = Math.PI / 2; body.add(hood); }
   // arms on shoulder pivots, forearm on the elbow
   const arms = [];
@@ -102,6 +108,13 @@ export function buildFigure(look) {
   else if (L.hat === 'cap') { const c = hairCap(1.1, 0.5); c.material = jacket; head.add(c); const v = mesh(new THREE.BoxGeometry(0.13, 0.01, 0.09), mat(darker(jc, 0.75)), 0, top * 0.45, HS[2] + 0.03); v.rotation.x = 0.15; head.add(v); }
   else if (L.hat === 'beanie') { const c = hairCap(1.12, 0.5); c.material = packM; c.scale.y *= 1.12; head.add(c); head.add(mesh(new THREE.SphereGeometry(0.025, 6, 4), mat(darker(CLOTH[L.packColor], 1.25)), 0, top * 1.12, 0)); }
   else if (L.hat === 'band') { const b = mesh(new THREE.TorusGeometry(HS[0] * 1.04, 0.012, 4, 16), packM, 0, top * 0.45, 0); b.rotation.x = Math.PI / 2; head.add(b); }
+  else if (L.hat === 'goral') {
+    const y0 = top * 0.55, black = mat('#1f1d1c');
+    head.add(mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.012, 18), black, 0, y0, 0));
+    head.add(mesh(new THREE.CylinderGeometry(0.09, 0.105, 0.08, 14), black, 0, y0 + 0.045, 0));
+    for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; head.add(mesh(new THREE.SphereGeometry(0.009, 5, 4), mat('#f4efe4'), Math.sin(a) * 0.104, y0 + 0.016, Math.cos(a) * 0.104)); }
+    const fe = mesh(new THREE.ConeGeometry(0.01, 0.16, 4), mat('#8a6a3a'), 0.1, y0 + 0.1, -0.02); fe.rotation.z = -0.5; head.add(fe);
+  }
   else if (L.hat === 'brim') { head.add(mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.01, 16), mat('#7a5f3c'), 0, top * 0.55, 0)); head.add(mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.09, 12), mat('#8e7048'), 0, top * 0.55 + 0.045, 0)); }
   if (L.lamp) {
     const b = mesh(new THREE.TorusGeometry(HS[0] * 1.08, 0.008, 4, 16), dark, 0, top * 0.4, 0); b.rotation.x = Math.PI / 2; head.add(b);
@@ -118,6 +131,19 @@ export function buildFigure(look) {
     if (L.rope) { const r = mesh(new THREE.TorusGeometry(0.13, 0.03, 6, 14), mat('#c8a24a'), 0, shY + (big ? 0.16 : 0.02), pk.position.z); r.rotation.x = Math.PI / 2; r.scale.set(1, 0.8, 1); body.add(r); }
   } else if (L.rope) {
     const r = mesh(new THREE.TorusGeometry(0.2, 0.025, 6, 16), mat('#c8a24a'), 0, shY - 0.18, 0); r.rotation.set(0.1, 0, 0.9); r.scale.set(1, 1.3, 0.5); body.add(r);
+  }
+  // on or by the backpack: the ice axe, the flag
+  const backZ = L.pack === 'none' ? -0.12 : L.pack === 'big' ? -0.4 : -0.3;
+  if (L.axe) {
+    const ax = new THREE.Group(); ax.position.set(0.16, shY - 0.15, backZ); ax.rotation.z = -0.3; body.add(ax);
+    ax.add(mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.6, 6), mat('#6b5a45'), 0, -0.1, 0));
+    ax.add(mesh(new THREE.BoxGeometry(0.22, 0.03, 0.02), mat('#9aa0a6'), 0.02, 0.2, 0));
+  }
+  if (L.flag) {
+    const fl = new THREE.Group(); fl.position.set(-0.15, shY, backZ); body.add(fl);
+    fl.add(mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.9, 5), mat('#5b4a36'), 0, 0.2, 0));
+    fl.add(mesh(new THREE.BoxGeometry(0.005, 0.07, 0.22), mat('#ffffff'), 0, 0.58, -0.11));
+    fl.add(mesh(new THREE.BoxGeometry(0.005, 0.07, 0.22), mat('#dc143c'), 0, 0.51, -0.11));
   }
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
 
