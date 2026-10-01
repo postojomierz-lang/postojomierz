@@ -182,6 +182,17 @@ Długość, podejścia, zejścia, czas, profil pokolorowany szlakami, lista odci
   drogowskazy w 3D.
 - Widok 3D jest na razie tylko dla Morskie Oko → Rysy; dowolne trasy regionu to następny etap.
 
+**Skąd? Dokąd?** (`src/planner/search.js`): pola nad przyciskami z podpowiedziami (schroniska, szczyty, przełęcze,
+drogowskazy oraz popularne miejsca startu i stawy, których dane szlaków nie nazywają: Palenica Białczańska, Kuźnice,
+Siwa Polana…; polskie litery nieobowiązkowe). Podpowiedzi tylko tam, gdzie dochodzi znakowany szlak; przy kilku szlakach
+blisko miejsca (szczyt z dwóch stron) wybierany jest punkt dający najszybszą trasę od drugiego końca. Po wyborze mapa
+pokazuje całą trasę, a pola same podpisują punkty wstawione na mapie. ⇅ zamienia start z celem.
+**Przeciąganie linii trasy** (`src/planner/routedrag.js`), jak w Google Maps: naciśnij na trasę palcem lub myszą i
+przeciągnij; w trakcie przerywana linia pokazuje nową trasę, po puszczeniu w tym odcinku trasy dochodzi punkt pośredni.
+**Przerwy w danych szlaków** (`graph.js`, `heal`; `corrections.js`, `LINKS`): końce szlaków do 30 m od innego szlaku
+są z nim łączone (11 miejsc), a znane większe przerwy ręcznie (parking na Palenicy Białczańskiej: bez tego trasa z
+Palenicy na Rysy szła przez Słowację, 30 km zamiast 12).
+
 ## Widok 3D dowolnej trasy (region)
 Planer otwiera `index.html?trasa#r=lat,lon;...`: silnik wyznacza trasę po szlakach tak jak planer
 (`src/region.js`) i wczytuje tylko dane wokół niej z katalogu `region/` w katalogu głównym

@@ -16,7 +16,7 @@ export function stepMinutes(dist, dh) {
   return t;
 }
 
-import { CORRECTIONS } from './corrections.js';
+import { CORRECTIONS, LINKS } from './corrections.js';
 
 export class TrailGraph {
   constructor(data) {
@@ -45,6 +45,7 @@ export class TrailGraph {
         if (k) this.link(e.v[k - 1], a, ei);
       }
     });
+    this.heal();
     this.mainPart();
     this.applyCorrections();
     // grid index for snapping
@@ -54,6 +55,37 @@ export class TrailGraph {
       const key = this.key(V[i][0], V[i][1]);
       let l = this.grid.get(key); if (!l) this.grid.set(key, l = []);
       l.push(i);
+    }
+  }
+  // gaps in the data: the dead end of a trail within 30 m of another trail's point is joined to it, and the
+  // known larger gaps (corrections.js, LINKS) get a link
+  heal() {
+    const V = this.data.v, cell = 0.0006, grid = new Map();
+    const key = (lon, lat) => Math.floor(lon / cell) * 1000003 + Math.floor(lat / cell);
+    this.data.e.forEach((e, ei) => { for (const i of e.v) { const k = key(V[i][0], V[i][1]); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push([i, ei]); } });
+    const nearest = (lon, lat, maxM, skipEdge = -1, skip = -1) => {
+      let best = -1, bd = maxM;
+      const ci = Math.floor(lon / cell), cj = Math.floor(lat / cell), r = Math.ceil(maxM / 40);
+      for (let di = -r; di <= r; di++) for (let dj = -r; dj <= r; dj++) {
+        for (const [i, ei] of grid.get((ci + di) * 1000003 + cj + dj) || []) {
+          if (ei === skipEdge || i === skip) continue;
+          const d = Math.hypot((V[i][0] - lon) * this.mx, (V[i][1] - lat) * this.mz);
+          if (d < bd) { bd = d; best = i; }
+        }
+      }
+      return best;
+    };
+    this.healed = 0;
+    this.data.e.forEach((e, ei) => {
+      for (const a of [e.v[0], e.v[e.v.length - 1]]) {
+        if (this.adj[a].length !== 1) continue;                  // not a dead end
+        const b = nearest(V[a][0], V[a][1], 30, ei, a);
+        if (b >= 0 && !this.adj[a].some((x) => x[0] === b)) { this.link(a, b, ei); this.healed++; }
+      }
+    });
+    for (const L of LINKS) {
+      const a = nearest(L.a[0], L.a[1], 60), b = nearest(L.b[0], L.b[1], 60);
+      if (a >= 0 && b >= 0 && a !== b) this.link(a, b, this.edgeOf[a]);
     }
   }
   // difficult passages: slower by a factor, some walked one way only (corrections.js); the stretch is
@@ -121,6 +153,36 @@ export class TrailGraph {
       }
     }
     return best;
+  }
+  // all vertices within maxM metres of a point, nearest first: [[vertex, metres], ...]
+  near(lon, lat, maxM = 250) {
+    const V = this.data.v, out = [];
+    const ci = Math.floor(lon / this.cell), cj = Math.floor(lat / this.cell), r = Math.ceil(maxM / 200);
+    for (let di = -r; di <= r; di++) for (let dj = -r; dj <= r; dj++) {
+      for (const i of this.grid.get((ci + di) * 100000 + cj + dj) || []) {
+        if (!this.inMain(i)) continue;
+        const d = Math.hypot((V[i][0] - lon) * this.mx, (V[i][1] - lat) * this.mz);
+        if (d < maxM) out.push([i, d]);
+      }
+    }
+    return out.sort((a, b) => a[1] - b[1]);
+  }
+  // walking minutes from vertex s to every vertex (Infinity where it cannot be reached)
+  times(s) {
+    const n = this.data.v.length, dist = new Float64Array(n).fill(Infinity), heap = [[0, s]];
+    dist[s] = 0;
+    const push = (x) => { heap.push(x); let i = heap.length - 1; while (i) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+    const pop = () => {
+      const top = heap[0], last = heap.pop();
+      if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } }
+      return top;
+    };
+    while (heap.length) {
+      const [d, u] = pop();
+      if (d > dist[u]) continue;
+      for (const [v, w] of this.adj[u]) { const nd = d + w; if (nd < dist[v]) { dist[v] = nd; push([nd, v]); } }
+    }
+    return dist;
   }
   // quickest path from vertex s to t: list of vertices, or null
   route(s, t) {
