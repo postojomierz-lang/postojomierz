@@ -294,6 +294,17 @@ z lekkim drżeniem rąk, do końca sceny (6–12 s), stuknięcia albo Esc. Sceny
 (bez grzbietu terenu i bez więcej niż 35 m lasu na linii wzroku). Najwyżej co 20 s, tylko w spacerze. `?lornetka=0`: sam
 komunikat.
 
+## Wygląd postaci (edytor, awatar, postać 3D)
+
+Konto → „🧍 Wygląd postaci” (`src/planner/lookEditor.js`): płeć, wiek, kolor skóry, kształt głowy, fryzura, kolor włosów,
+zarost, okulary, nakrycie głowy, kurtka, spodnie i buty (krój i kolor), plecak (mały, duży) oraz sprzęt: kijki, lina,
+kask, czołówka; podgląd na żywo i 🎲 losowanie. Opis wyglądu (`src/avatar/look.js`) trafia do profilu (`PR.look`), po
+zalogowaniu do `profiles.look` (kolumna w `supabase/schema.sql`; bez niej reszta profilu dalej się synchronizuje).
+- `src/avatar/svg.js` rysuje całą postać (podgląd) i twarz w kółku: może być awatarem zamiast emoji lub zdjęcia
+  (w grupie, na czacie, na mapie);
+- `src/avatar/figure3d.js` buduje z tego samego opisu postać 3D (ok. 40 brył, chód z ruchem nóg, rąk i kijków
+  zależnym od prędkości): piechur w widoku drona i w przelocie. W następnym etapie: członkowie grupy na szlaku.
+
 ## Zgłoszenia z testów (🐞)
 
 Przycisk 🐞 w widoku 3D (w rzędzie przycisków) i na mapie planera (`src/report.js`) robi zrzut ekranu,

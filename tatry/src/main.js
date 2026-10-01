@@ -39,6 +39,8 @@ import { buildTrees3D, buildMugo3D } from './vegetation3d.js';
 import { buildGrass } from './grass.js';
 import { buildWeather } from './weather.js';
 import { buildBinoculars } from './nature/binoculars.js';
+import { buildFigure } from './avatar/figure3d.js';
+import { myLook, DEFAULT_LOOK } from './avatar/look.js';
 import { buildFish } from './nature/fish.js';
 import { forecast } from './planner/daylight.js';
 import { stepMinutes } from './planner/graph.js';
@@ -917,14 +919,13 @@ async function main() {
 
   // hiker marker (visible in drone mode)
   const hiker = new THREE.Group();
+  let hikerFig = null;
   {
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 1.1, 4, 8), new THREE.MeshLambertMaterial({ color: 0xd0281f, emissive: 0x401010 }));
-    body.position.y = 0.9;
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), new THREE.MeshLambertMaterial({ color: 0x2a4a8a }));
-    pack.position.set(0, 1.1, 0.3);
+    // the figure as set in the planner's look editor (avatar/look.js), or the default hiker
+    hikerFig = buildFigure(myLook() || DEFAULT_LOOK);
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0.8, fog: false }));
     beacon.name = 'beacon';
-    hiker.add(body, pack, beacon);
+    hiker.add(hikerFig.object, beacon);
   }
   scene.add(hiker);
 
@@ -1685,6 +1686,8 @@ async function main() {
     const target = state.free ? state.yaw : headingAt(state.s);
     let d = target - state.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     state.yaw += d * Math.min(1, dt * 0.7);
+    // the figure walks at the pace it moves (seen in the drone view and the flyover)
+    if (hiker.visible && dt > 0) hikerFig.animate(dt, Math.hypot(p.x - hiker.position.x, p.z - hiker.position.z) / dt);
     hiker.position.set(p.x, p.y, p.z);
     hiker.rotation.y = state.yaw;
     const beacon = hiker.getObjectByName('beacon');

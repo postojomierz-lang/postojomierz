@@ -112,6 +112,8 @@ create table if not exists public.discoveries (
 create index if not exists discoveries_date on public.discoveries (found_on);
 alter table public.profiles add column if not exists points integer not null default 0;
 alter table public.profiles add column if not exists species integer not null default 0;
+-- the figure's look from the planner's editor (sex, hair, clothes, gear: a small JSON object)
+alter table public.profiles add column if not exists look jsonb check (pg_column_size(look) <= 4000);
 
 -- ---------------------------------------------------------------- helpers (security definer: no recursive policies)
 create or replace function public.is_member(g uuid) returns boolean
