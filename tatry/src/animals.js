@@ -483,7 +483,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     if (death) { death.setLoop(THREE.LoopOnce, 1); death.clampWhenFinished = true; play(prey, 'Death', 0.15); }
     if (by.acts.Attack || by.acts.Attack_Headbutt) play(by, by.acts.Attack ? 'Attack' : 'Attack_Headbutt', 0.1);
     for (const p of animals) if (p.state === 'chase' && p.prey === prey) { p.state = 'eat'; p.timer = 40 + r() * 30; p.prey = null; p.attackT = 1.2; }
-    onEvent(by.kind === 'bear' ? 'Niedźwiedź dopadł zwierzynę.' : 'Wilki dopadły zdobycz.');
+    onEvent(by.kind === 'bear' ? 'Niedźwiedź dopadł zwierzynę.' : 'Wilki dopadły zdobycz.', { objs: [prey.obj, by.obj], size: 2, dur: 6 });
     setTimeout(() => { prey.obj.visible = false; prey.gone = true; }, 120000);
   }
 
@@ -525,7 +525,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       if (r() < dt / 25) {
         an.state = 'roar'; an.timer = 3 + r() * 2;
         if (sound && sound.roar) sound.roar([an.x, terrain.height(an.x, an.z) + 1.5, an.z], Math.hypot(an.x - cam.position.x, an.z - cam.position.z));
-        if (!an.group.roared && inView(an, cam, 500)) { an.group.roared = true; onEvent('🦌 Rykowisko: jeleń ryczy, słychać go daleko.'); }
+        if (!an.group.roared && inView(an, cam, 500)) { an.group.roared = true; onEvent('🦌 Rykowisko: jeleń ryczy, słychać go daleko.', { objs: [an.obj], size: 2.4, dur: 6 }); }
       }
     }
     if (ecoT > 0) return;
@@ -537,7 +537,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     if (stags.length >= 2 && roll < 0.35) {
       const [a, b] = stags;
       a.state = b.state = 'spar'; a.rival = b; b.rival = a; a.first = b.first = a; a.timer = b.timer = 9 + r() * 6;
-      onEvent('🦌 Dwa byki walczą na poroża: rykowisko.');
+      onEvent('🦌 Dwa byki walczą na poroża: rykowisko.', { objs: [a.obj, b.obj], size: 3, dur: 10 });
       return;
     }
     // a fox mousing, or after a hare
@@ -547,18 +547,18 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       if (hare && r() < 0.4) {
         fox.state = 'chase'; fox.prey = hare; fox.timer = 14; fox.canCatch = r() < 0.2;
         hare.state = 'hunted'; hare.hunters = [fox]; hare.tired = false;
-        onEvent('🦊 Lis goni zająca!');
+        onEvent('🦊 Lis goni zająca!', { objs: [fox.obj, hare.obj], size: 1.6, dur: 10 });
       } else {
         fox.state = 'pounce'; fox.timer = 0;
-        onEvent('🦊 Lis poluje na nornika: nasłuchuje i skacze wysoko w trawę.');
+        onEvent('🦊 Lis poluje na nornika: nasłuchuje i skacze wysoko w trawę.', { objs: [fox.obj], size: 1.3, dur: 8 });
       }
       return;
     }
     const boars = animals.filter((a) => a.kind === 'boar' && inView(a, cam, 250));
-    if (boars.length && !boars[0].group.told) { boars[0].group.told = true; onEvent('🐗 Dziki buchtują: ryją ziemię w poszukiwaniu korzonków i larw.'); return; }
+    if (boars.length && !boars[0].group.told) { boars[0].group.told = true; onEvent('🐗 Dziki buchtują: ryją ziemię w poszukiwaniu korzonków i larw.', { objs: boars.map((b) => b.obj), size: 2.2, dur: 8 }); return; }
     if (!deer.length || roll > 0.75) {
       if (birds && birds.hunt) {
-        const hares = animals.filter((a) => a.kind === 'hare' && near(a, cam, 450) && a.state !== 'dead' && a.state !== 'hidden');
+        const hares = animals.filter((a) => a.kind === 'hare' && inView(a, cam, 450) && a.state !== 'dead' && a.state !== 'hidden');
         if (hares.length && r() < 0.6) birds.hunt(cam, hares, hareAlarm, 'zająca');
         else birds.hunt(cam, marmotsNear(cam), marmotAlarm, 'świstaki');
       }
@@ -582,9 +582,10 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     }
     for (const d of herd) { d.state = 'hunted'; d.hunters = hunters; d.tired = d === target; }
     if (sound) sound.animal(target.sp.sound, [target.x, terrain.height(target.x, target.z) + 1, target.z]);
-    onEvent(wolves ? '🐺 Wilki gonią ' + (target.kind === 'roe' ? 'sarny' : 'jelenie') + '!' : '🐻 Niedźwiedź rzuca się na ' + (target.kind === 'roe' ? 'sarny' : 'jelenie') + '!');
+    onEvent(wolves ? '🐺 Wilki gonią ' + (target.kind === 'roe' ? 'sarny' : 'jelenie') + '!' : '🐻 Niedźwiedź rzuca się na ' + (target.kind === 'roe' ? 'sarny' : 'jelenie') + '!',
+      { objs: [target.obj, ...hunters.map((h) => h.obj)], size: 3, dur: 12 });
   }
-  function marmotsNear(cam) { return animals.filter((a) => a.kind === 'marmot' && near(a, cam, 450)); }
+  function marmotsNear(cam) { return animals.filter((a) => a.kind === 'marmot' && a.state !== 'hidden' && inView(a, cam, 450)); }
   // the eagle over a hare: it runs zigzagging; if caught, it is gone
   function hareAlarm(list, caught) {
     for (const h of list) if (h !== caught && h.state !== 'hidden') {

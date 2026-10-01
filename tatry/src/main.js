@@ -38,6 +38,8 @@ import { SSAOPass } from './ssao.js';
 import { buildTrees3D, buildMugo3D } from './vegetation3d.js';
 import { buildGrass } from './grass.js';
 import { buildWeather } from './weather.js';
+import { buildBinoculars } from './nature/binoculars.js';
+import { buildFish } from './nature/fish.js';
 import { forecast } from './planner/daylight.js';
 import { stepMinutes } from './planner/graph.js';
 import { captureConsole, setupReport, deviceContext } from './report.js';
@@ -784,7 +786,7 @@ async function main() {
   if (!spots) spots = buildSpots({ trail, terrain, groundClass, meta });
   if (WINTER) spots = spots.filter((p) => !winterAsleep(p.id));
   const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots, groundClass, winter: WINTER, hour: () => env.hour,
-    rut: (SUN_DAY.getMonth() === 8 && SUN_DAY.getDate() >= 10) || (SUN_DAY.getMonth() === 9 && SUN_DAY.getDate() <= 20), onEvent: (t) => toast(t) });
+    rut: (SUN_DAY.getMonth() === 8 && SUN_DAY.getDate() >= 10) || (SUN_DAY.getMonth() === 9 && SUN_DAY.getDate() <= 20), onEvent: (t, f) => wildEvent(t, f) });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
     masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY,
     groundClass, grass: P.get('trawa') === '0' });
@@ -1318,11 +1320,21 @@ async function main() {
     nature: { spots, found }, onClick: (it) => cards.show(it) });
   const cards = await buildCards({ found, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
   // the plants of the catalogue at their spots: patches of flowers, herbs, ferns and dwarf shrubs
-  const birds = buildBirds({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), onEvent: (t) => toast(t) });
+  const birds = buildBirds({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), onEvent: (t, f) => wildEvent(t, f) });
   wildlife.setBirds(birds);
   const flowers = buildFlowers({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), shade, patchShading,
     models: await loadFlowerModels() });
   if (grass) grass.setClearings(flowers.clearings);
+  // scenes from the life of the animals: the notice, then the binoculars on the scene (?lornetka=0: notice only)
+  const binoc = buildBinoculars({ camera });
+  const BINOC = P.get('lornetka') !== '0';
+  function wildEvent(text, focus) {
+    toast(text);
+    if (focus && BINOC && state.mode === 'walk' && !state.freeCam && !reveal.active && (binoc.active || binoc.ready())) binoc.start(text, focus);
+  }
+  // trout jumping on the lakes near the trail (not on the frozen ones in winter)
+  const fishFx = WINTER ? null : buildFish({ scene, lakes: meta.lakes, groundAt: drawnHeight });
+  let fishT = 35 + Math.random() * 40;
   // the discovery's moment: the camera goes to the plant or animal, bullet time, the card and the points
   const KIND_OF = { kozica: ['chamois'], swistak: ['marmot'], wilk: ['wolf'], niedzwiedz: ['bear'], jelen: ['stag', 'hind'], sarna: ['roe'], dzik: ['boar'], lis: ['fox'], zajac: ['hare'] };
   const reveal = buildReveal({ camera, groundAt: drawnHeight, scoreEl: $('btn-labels'),
@@ -1344,7 +1356,7 @@ async function main() {
     labels.refresh(); renderLabelMenu();
     if (it.species) {
       const sp = it.species, r = RARITY[sp.rarity];
-      if (state.mode === 'walk' && !state.freeCam && P.get('odkrycie') !== '0' && reveal.ready()) reveal.start(sp, it.pos, r.points);
+      if (state.mode === 'walk' && !state.freeCam && P.get('odkrycie') !== '0' && !binoc.active && reveal.ready()) reveal.start(sp, it.pos, r.points);
       else toast(`${GROUPS[sp.group].icon} Odkryto: <b>${sp.name}</b> <i>${sp.latin}</i><br>${r.name} · +${r.points} pkt`);
     } else toast(`✓ Odkryto: <b>${it.name}</b> · +${e.pts} pkt`);
     checkChallenges();
@@ -1705,6 +1717,17 @@ async function main() {
     if (state.freeCam) { camera.position.copy(state.freeCam.pos); camera.lookAt(state.freeCam.at); } // debug / screenshots
     // bullet time: the world (animals, birds, grass, clouds, rain) slows down during a discovery
     const ts = reveal.apply(dt), wdt = dt * ts;
+    if (reveal.active || state.mode !== 'walk' || state.freeCam) binoc.abort(); else binoc.apply(dt);
+    if (fishFx) {
+      fishFx.update(wdt);
+      if ((fishT -= dt) <= 0) {
+        fishT = 10;                                                // no lake in sight: look again soon
+        if (state.mode === 'walk' && !reveal.active && !binoc.active) {
+          const f = fishFx.start(camera);
+          if (f) { fishT = 60 + Math.random() * 80; wildEvent('🐟 Pstrąg potokowy wyskakuje z wody za owadami.', f); }
+        }
+      }
+    }
     light.time.value += wdt;
     hudT -= dt;
     if (hudT <= 0) {
@@ -1793,7 +1816,7 @@ async function main() {
       };
     } });
 
-  window.__rysy = { reveal, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { reveal, binoc, fishFx, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
