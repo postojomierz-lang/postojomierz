@@ -21,7 +21,9 @@ export function setupTabs() {
     // on a phone, tapping the open tab again pulls the panel up or down
     if (b.dataset.tab === cur && b.closest('#tabs') && innerWidth <= 760) side.classList.toggle('tall');
     show(b.dataset.tab);
-    if (b.dataset.tab === 'account' && !document.getElementById('o-login').hidden) setTimeout(() => document.getElementById('o-mail').focus(), 50);
+    // the e-mail field gets the cursor only on a computer, from the header's "Zaloguj": on a phone the keyboard
+    // would cover half the screen
+    if (b.id === 'b-account' && !matchMedia('(pointer: coarse)').matches && !document.getElementById('o-login').hidden) setTimeout(() => document.getElementById('o-mail').focus(), 50);
   });
   document.getElementById('grab').onclick = () => side.classList.toggle('tall');
   side.addEventListener('transitionend', (e) => { if (e.target === side) dispatchEvent(new Event('resize')); });   // the map fills the rest
