@@ -1,7 +1,8 @@
 // The look editor (the Account tab): who the hiker is and what they wear and carry, with a live preview
 // of the figure. Saved in the profile (PR.look); the face can be the avatar too (instead of an emoji or a
 // photo). The 3D view builds the hiker's figure from the same look (avatar/figure3d.js).
-import { OPTIONS, GEAR, SKIN, HAIR_COLORS, CLOTH, DEFAULT_LOOK, cleanLook, randomLook } from '../avatar/look.js';
+import { OPTIONS, GEAR, SKIN, HAIR_COLORS, CLOTH, DEFAULT_LOOK, SHOP, cleanLook, randomLook, shopItem, spent } from '../avatar/look.js';
+import { loadFound, score } from '../nature/discover.js';
 import { figureSvg, faceSvg, faceDataUrl } from '../avatar/svg.js';
 
 const CSS = `
@@ -27,7 +28,14 @@ const CSS = `
 #look-ed .chips button.on{outline:2px solid var(--accent,#e8573a);outline-offset:1px;font-weight:600}
 #look-ed .sw{width:28px;height:28px;border-radius:50%;padding:0;border:2px solid rgba(0,0,0,.15)}
 #look-ed .sw.on{outline:3px solid var(--accent,#e8573a);outline-offset:2px}
-#look-ed footer{display:flex;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid var(--line,#ddd);flex-wrap:wrap}
+#look-ed .lock{opacity:.75}
+#look-ed .bal{background:var(--bg,#f2f2f2);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:13px}
+#look-ed .bal b{font-size:18px}
+#look-ed .shop{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+#look-ed .item{border:1px solid var(--line,#ddd);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:3px;font-size:12px}
+#look-ed .item .i{font-size:24px}#look-ed .item b{font-size:13px}#look-ed .item small{color:var(--muted,#777)}
+#look-ed .item button{margin-top:auto}
+#look-ed footer{background:var(--panel,#fff);display:flex;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid var(--line,#ddd);flex-wrap:wrap}
 #look-ed footer label{flex:1;font-size:13px;display:flex;gap:6px;align-items:center;min-width:180px}
 @media (max-width:560px){#look-ed .box{border-radius:0;height:100dvh}#look-ed .main{flex-direction:column}#look-ed .prev{width:auto;flex-direction:row;padding:6px}
   #look-ed .prev .fig svg{height:150px}}
@@ -39,6 +47,7 @@ const TABS = [
   ['Dodatki', [['glasses', 'Okulary'], ['hat', 'Na głowie']]],
   ['Ubiór', [['jacket', 'Góra'], ['jacketColor', 'Kolor'], ['pants', 'Spodnie'], ['pantsColor', 'Kolor'], ['boots', 'Buty'], ['bootsColor', 'Kolor']]],
   ['Wyposażenie', [['pack', 'Plecak'], ['packColor', 'Kolor plecaka (i czapki)'], ['gear', 'Sprzęt'], ['helmetColor', 'Kolor kasku']]],
+  ['🛒 Sklepik', [['shop', '']]],
 ];
 
 export function setupLookEditor({ PR, saveProfile, onSaved = () => {} }) {
@@ -57,19 +66,43 @@ export function setupLookEditor({ PR, saveProfile, onSaved = () => {} }) {
     if (key === 'skin') return SKIN.map((c, i) => `<button class="sw${L.skin === i ? ' on' : ''}" data-k="skin" data-v="${i}" style="background:${c}" aria-label="odcień ${i + 1}"></button>`).join('');
     if (key === 'hairColor') return HAIR_COLORS.map(([c, n], i) => `<button class="sw${L.hairColor === i ? ' on' : ''}" data-k="hairColor" data-v="${i}" style="background:${c}" title="${n}" aria-label="${n}"></button>`).join('');
     if (key.endsWith('Color')) return CLOTH.map((c, i) => `<button class="sw${L[key] === i ? ' on' : ''}" data-k="${key}" data-v="${i}" style="background:${c}" aria-label="kolor ${i + 1}"></button>`).join('');
-    if (key === 'gear') return GEAR.map(([k, n]) => `<button class="${L[k] ? 'on' : ''}" data-k="${k}" data-v="toggle">${L[k] ? '✓ ' : ''}${n}</button>`).join('');
-    return OPTIONS[key].map(([v, n]) => `<button class="${L[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}">${n}</button>`).join('');
+    const lock = (it) => (it && !L.owned.includes(it.id) ? it : null);
+    if (key === 'gear') return GEAR.map(([k, n]) => { const it = lock(shopItem(k)); return it ? `<button class="lock" data-buy="${it.id}">🔒 ${n} · ${it.price} 🪙</button>` : `<button class="${L[k] ? 'on' : ''}" data-k="${k}" data-v="toggle">${L[k] ? '✓ ' : ''}${n}</button>`; }).join('');
+    return OPTIONS[key].map(([v, n]) => { const it = lock(shopItem(key, v)); return it ? `<button class="lock" data-buy="${it.id}">🔒 ${n} · ${it.price} 🪙</button>` : `<button class="${L[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}">${n}</button>`; }).join('');
   }
   function render() {
     $e('nav').innerHTML = TABS.map(([n], i) => `<button class="${i === tab ? 'on' : ''}" data-t="${i}">${n}</button>`).join('');
+    if (TABS[tab][1][0][0] === 'shop') { $e('.opts').innerHTML = shopHtml(); $e('.fig').innerHTML = figureSvg(L); $e('.face').innerHTML = faceSvg(L); return; }
     $e('.opts').innerHTML = TABS[tab][1]
       .filter(([k]) => !(k === 'helmetColor' && !L.helmet) && !(k === 'packColor' && L.pack === 'none' && L.hat !== 'beanie' && L.hat !== 'band'))
       .map(([k, n]) => `<div class="grp"><small>${n}</small><div class="chips">${chips(k)}</div></div>`).join('');
     $e('.fig').innerHTML = figureSvg(L);
     $e('.face').innerHTML = faceSvg(L);
   }
+  // the coins: the points from the discoveries minus the extras bought
+  const coins = () => score(loadFound()).pts - spent(L.owned);
+  function shopHtml() {
+    return `<div class="bal">Masz <b>${coins()} 🪙</b><br><small>Monety to punkty za odkrycia przyrody i wyzwania. Zakupy nie zmniejszają punktów w rankingu.</small></div>`
+      + `<div class="shop">${SHOP.map((it) => `<div class="item"><span class="i">${it.icon}</span><b>${it.name}</b><small>${it.desc}</small>`
+      + (L.owned.includes(it.id) ? `<button data-wear="${it.id}">✓ Masz · ${worn(it) ? 'zdejmij' : 'załóż'}</button>` : `<button class="primary" data-buy="${it.id}">Kup za ${it.price} 🪙</button>`) + '</div>').join('')}</div>`
+      + '<p><small>Więcej dodatków wkrótce.</small></p>';
+  }
+  const worn = (it) => { const [k, v] = it.id.split(':'); return v ? L[k] === v : !!L[k]; };
+  function wear(it, on = true) { const [k, v] = it.id.split(':'); if (v) L[k] = on ? v : DEFAULT_LOOK[k]; else L[k] = on; }
+  function buy(id) {
+    const it = SHOP.find((x) => x.id === id); if (!it) return;
+    const c = coins();
+    if (c < it.price) { alert(`${it.name} kosztuje ${it.price} 🪙, masz ${c} 🪙. Odkrywaj rośliny i zwierzęta na szlaku i rób wyzwania, żeby zebrać więcej.`); return; }
+    if (!confirm(`Kupić: ${it.name} za ${it.price} 🪙? Zostanie ${c - it.price} 🪙.`)) return;
+    L.owned = [...L.owned, id]; wear(it);
+    // bought is bought, also when the editor is closed without saving
+    PR.look = cleanLook({ ...(cleanLook(PR.look) || DEFAULT_LOOK), owned: L.owned }); saveProfile(PR); onSaved();
+    render();
+  }
   el.addEventListener('click', (ev) => {
     const b = ev.target.closest('button');
+    if (b && b.dataset.buy) { buy(b.dataset.buy); return; }
+    if (b && b.dataset.wear) { const it = SHOP.find((x) => x.id === b.dataset.wear); wear(it, !worn(it)); render(); return; }
     if (!b) { if (ev.target === el) close(); return; }
     if (b.dataset.t) { tab = +b.dataset.t; render(); return; }
     if (b.dataset.k) {
@@ -80,7 +113,7 @@ export function setupLookEditor({ PR, saveProfile, onSaved = () => {} }) {
       if (k === 'sex' && v === 'f') L.beard = 'none';
       render(); return;
     }
-    if (b.classList.contains('rnd')) { L = randomLook(); render(); return; }
+    if (b.classList.contains('rnd')) { L = { ...randomLook(), owned: L.owned }; render(); return; }
     if (b.classList.contains('x') || b.classList.contains('cancel')) { close(); return; }
     if (b.classList.contains('save')) {
       PR.look = cleanLook(L);
@@ -90,7 +123,7 @@ export function setupLookEditor({ PR, saveProfile, onSaved = () => {} }) {
   });
   addEventListener('keydown', (e) => { if (!el.hidden && e.code === 'Escape') close(); });
   function open() {
-    L = { ...(cleanLook(PR.look) || DEFAULT_LOOK) };
+    L = { ...(cleanLook(PR.look) || DEFAULT_LOOK) }; L.owned = [...(L.owned || [])];
     tab = 0;
     // the face as the avatar: suggested unless a photo is already set
     $e('.useface').checked = !(PR.avatar && PR.avatar.startsWith('data:image/jpeg'));

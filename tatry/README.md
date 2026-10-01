@@ -305,6 +305,10 @@ zalogowaniu do `profiles.look` (kolumna w `supabase/schema.sql`; bez niej reszta
 - `src/avatar/figure3d.js` buduje z tego samego opisu postać 3D (ok. 40 brył, chód z ruchem nóg, rąk i kijków
   zależnym od prędkości): piechur w widoku drona i w przelocie.
 
+**Sklepik** (Konto → Wygląd postaci → 🛒): dodatki za monety, czyli punkty za odkrycia przyrody i wyzwania (zakupy nie
+zmniejszają punktów w rankingu): kapelusz góralski, sweter góralski, czekan, raki, lornetka na szyi, flaga na plecaku.
+Kupione (`look.owned`) są w opisie wyglądu, rysowane w SVG i w 3D; niekupione mają w edytorze kłódkę z ceną.
+
 **Grupa na szlaku** (`src/mates.js`): członkowie grupy wybranej w planerze, którzy udostępniają pozycję (nawigacja GPS),
 idą w widoku 3D jako swoje postacie, krokiem piechura do najnowszej pozycji. Nad każdym etykieta w jego kolorze:
 twarz postaci albo zdjęcie, imię, odległość i czas od ostatniej pozycji; dalej niż 1,2 km sama twarz. Widok 3D
