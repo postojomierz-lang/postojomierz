@@ -285,6 +285,14 @@ pobieramy: regulamin serwisu wymaga zgody TOPR na publikację ich w innych serwi
 - **dziki** (model z wilka): stado buchtuje, zostawiając płaty zrytej ziemi;
 - zwierzę dopadnięte w pościgu pada z animacją „Death”, drapieżnik atakuje („Attack”), potem je.
 Każda scena ma krótki komunikat na ekranie. Orzeł przedni nie łowi ryb (w Tatrach nie ma bielika ani rybołowa), stąd świstaki.
+- **pstrąg potokowy** (`src/nature/fish.js`, nie zimą): na stawie 25–160 m od piechura 3–4 skoki za owadami, z bryzgiem
+  i kręgami na wodzie.
+
+**Lornetka** (`src/nature/binoculars.js`): po komunikacie piechur przykłada lornetkę do oczu (lornetka wjeżdża od dołu
+i wypełnia widok), obraz przybliża się do sceny (8–14×, tak, by uczestnicy sceny mieścili się w kadrze) i podąża za nią
+z lekkim drżeniem rąk, do końca sceny (6–12 s), stuknięcia albo Esc. Sceny są ogłaszane tylko wtedy, gdy zwierzęta widać
+(bez grzbietu terenu i bez więcej niż 35 m lasu na linii wzroku). Najwyżej co 20 s, tylko w spacerze. `?lornetka=0`: sam
+komunikat.
 
 ## Zgłoszenia z testów (🐞)
 

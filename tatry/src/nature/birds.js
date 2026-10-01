@@ -141,7 +141,7 @@ export function buildBirds({ scene, spots, groundAt, onEvent = () => {} }) {
           h.alarm([], h.caught);
           const prey = new THREE.Mesh(new THREE.SphereGeometry(b.size * 0.09, 8, 6), new THREE.MeshLambertMaterial({ color: 0x6a5238 }));
           prey.scale.set(0.8, 0.7, 1.6); prey.position.set(0, -b.size * 0.12, 0); b.obj.add(prey); h.carry = prey;
-          onEvent(h.what === 'zająca' ? '🦅 Orzeł upolował zająca!' : '🦅 Orzeł upolował świstaka!');
+          onEvent(h.what === 'zająca' ? '🦅 Orzeł upolował zająca!' : '🦅 Orzeł upolował świstaka!', { objs: [b.obj], size: 3, dur: 6 });
         }
       }
     } else {
@@ -176,7 +176,7 @@ export function buildBirds({ scene, spots, groundAt, onEvent = () => {} }) {
     const to = new THREE.Vector3(m.x, y0 + 0.4, m.z);
     const caught = Math.random() < 0.3 ? m : null;
     e.hunt = { phase: 'dive', t: 0, dur: Math.max(3, from.distanceTo(to) / 30), from, to, list: marmots, caught, alarm, alarmed: false, what };
-    onEvent(`🦅 Orzeł przedni poluje na ${what}!`);
+    onEvent(`🦅 Orzeł przedni poluje na ${what}!`, { objs: [m.obj], size: 7, dur: 10 });
     return true;
   }
   // the bird of species `id` nearest to pos (for the discovery's camera)
