@@ -85,10 +85,12 @@ export function buildWeather({ scene, quality = 'mid', groundAt, onThunder = () 
   const bolt = new THREE.LineSegments(new THREE.BufferGeometry(), boltMat);
   bolt.frustumCulled = false; bolt.visible = false; scene.add(bolt);
 
-  const st = { rain: 0, snow: 0, storm: 0, wind: 1, windDir: new THREE.Vector2(0.8, 0.6).normalize(), next: 6, flash: 0, boltT: 0, flicker: [] };
+  const st = { rain: 0, snow: 0, storm: 0, wind: 1, windDir: new THREE.Vector2(0.8, 0.6).normalize(), next: 4, flash: 0, boltT: 0, flicker: [] };
 
-  function strike(c) {
-    const a = Math.random() * Math.PI * 2, d = 700 + Math.random() * 5000;
+  // in front of the viewer, so that it is seen, mostly 1-4.5 km away
+  function strike(c, fwd) {
+    const a0 = fwd ? Math.atan2(fwd.z, fwd.x) : Math.random() * Math.PI * 2;
+    const a = a0 + (Math.random() - 0.5) * 1.6, d = 1000 + Math.random() * 3500;
     const x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
     const g = groundAt(x, z);
     const y0 = (g ?? c.y) , y1 = Math.max(y0, c.y) + 1400;
@@ -99,7 +101,8 @@ export function buildWeather({ scene, quality = 'mid', groundAt, onThunder = () 
       while (Y > toY) {
         const nY = Math.max(toY, Y - 40 - Math.random() * 90);
         const nX = X + (Math.random() - 0.5) * jitter, nZ = Z + (Math.random() - 0.5) * jitter;
-        pts.push(X, Y, Z, nX, nY, nZ);
+        // three strands a few metres apart: a single line is a hair at that distance on a phone
+        for (const o of [0, 5, -5]) pts.push(X + o, Y, Z - o, nX + o, nY, nZ - o);
         if (depth < 1 && Math.random() < 0.12) channel(nX, nY, nZ, nY - 200 - Math.random() * 300, jitter * 0.8, depth + 1);
         X = nX; Y = nY; Z = nZ;
       }
@@ -108,13 +111,15 @@ export function buildWeather({ scene, quality = 'mid', groundAt, onThunder = () 
     bolt.geometry.dispose();
     bolt.geometry = new THREE.BufferGeometry();
     bolt.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    st.boltT = 0.35;
+    st.boltT = 0.6;
     st.flicker = [0, 0.07, 0.16];                     // on, off, on again
-    st.flashPeak = 0.6 + 0.8 * Math.max(0, 1 - d / 5000);
+    st.flashPeak = 0.8 + 0.8 * Math.max(0, 1 - d / 4500);
     onThunder(d);
   }
 
-  function update(dt, c) {
+  const lastFwd = new THREE.Vector3(0, 0, -1);
+  function update(dt, c, fwd) {
+    if (fwd) lastFwd.copy(fwd);
     time.value += dt; cam.value.copy(c);
     const wv = st.windDir.clone().multiplyScalar(0.8 * st.wind);
     rain.material.uniforms.vel.value.set(wv.x * 2.2, -9, wv.y * 2.2);
@@ -125,13 +130,14 @@ export function buildWeather({ scene, quality = 'mid', groundAt, onThunder = () 
     // lightning
     if (st.storm > 0) {
       st.next -= dt;
-      if (st.next <= 0) { strike(c); st.next = (8 + Math.random() * 22) / st.storm; }
+      if (st.next <= 0) { strike(c, fwd); st.next = (6 + Math.random() * 16) / st.storm; }
     }
     if (st.boltT > 0) {
-      const age = 0.35 - st.boltT;
-      const on = age < 0.05 || (age > 0.1 && age < 0.19) || age > 0.24;
-      bolt.visible = on; boltMat.opacity = Math.min(1, st.boltT / 0.12);
-      st.flash = on ? st.flashPeak * Math.min(1, st.boltT / 0.15) : st.flash * 0.5;
+      // on, off, on again: long enough phases to be seen at 10 frames a second too
+      const age = 0.6 - st.boltT;
+      const on = age < 0.1 || (age > 0.17 && age < 0.32) || age > 0.4;
+      bolt.visible = on; boltMat.opacity = Math.min(1, st.boltT / 0.2);
+      st.flash = on ? st.flashPeak * Math.min(1, st.boltT / 0.25) : st.flash * 0.5;
       st.boltT -= dt;
       if (st.boltT <= 0) bolt.visible = false;
     } else st.flash *= Math.pow(0.02, dt);
@@ -143,5 +149,5 @@ export function buildWeather({ scene, quality = 'mid', groundAt, onThunder = () 
     if (storm > 0 && st.storm === 0) st.next = 3 + Math.random() * 5;
     st.storm = storm;
   }
-  return { update, set, get flash() { return st.flash; }, strike: () => strike(cam.value) };
+  return { update, set, get flash() { return st.flash; }, strike: () => strike(cam.value, lastFwd) };
 }
