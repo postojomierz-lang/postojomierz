@@ -111,6 +111,15 @@
   #me { display: flex; align-items: center; gap: 10px; margin: 2px 0 10px; }
   #me .avatar { width: 48px; height: 48px; border-radius: 50%; padding: 0; font-size: 26px; background: var(--bg) center / cover no-repeat; }
   #me .who { flex: 1; display: flex; flex-direction: column; } #me .who b { font-size: 16px; } #me .who small { color: var(--muted); }
+  .jlist li.trip { display: block; cursor: default; }
+  .trip-h { display: flex; gap: 6px; } .trip-t { flex: 1; cursor: pointer; font-weight: 600; } .trip-t:hover { color: var(--accent); }
+  .trip small { color: var(--muted); display: block; margin: 2px 0 4px; }
+  .trip-who { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .trip-who .av { width: 22px; height: 22px; font-size: 13px; }
+  .trip-act { display: flex; flex-wrap: wrap; gap: 4px; } .trip-act button { padding: 3px 8px; font-size: 12px; border-radius: 12px; }
+  .trip-act button.on { background: var(--accent); color: #fff; border-color: transparent; }
+  .trip.past { opacity: .55; }
+  #g-trip-form { margin-top: 6px; } #g-trip-form input { width: 100%; }
   .looklink { width: 100%; text-align: left; margin: 0 0 8px; font-size: 13px; }
   .pick { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; } .pick button { font-size: 20px; padding: 4px 6px; }
   .badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
@@ -298,8 +307,14 @@
           <div class="orow"><small>Kod zaproszenia: <b id="g-code"></b></small><button id="g-invite">🔗 Zaproś</button></div>
           <div id="g-members"></div>
           <div class="orow"><small id="g-live"></small><button id="g-show" title="Pokaż na mapie osoby z grupy, które udostępniają pozycję">👥 Pokaż na mapie</button></div>
-          <h3>Trasy grupy</h3><ul id="g-routes" class="jlist"></ul>
-          <button id="g-add-route">📌 Dodaj bieżącą trasę</button>
+          <h3>Wyjścia i trasy grupy</h3><ul id="g-routes" class="jlist"></ul>
+          <button id="g-add-route">📌 Zaproponuj wyjście z trasą z mapy</button>
+          <div id="g-trip-form" class="card" hidden>
+            <small>Wyjście: <b id="g-trip-title"></b></small>
+            <div class="orow"><input id="g-trip-when" type="datetime-local" aria-label="termin"></div>
+            <div class="orow"><input id="g-trip-place" maxlength="200" placeholder="miejsce zbiórki (np. parking Palenica Białczańska)"></div>
+            <div class="orow"><button id="g-trip-ok" class="primary">📌 Dodaj wyjście</button><button id="g-trip-cancel" class="link">Anuluj</button></div>
+          </div>
           <h3>Czat</h3>
           <div id="chat-log"></div>
           <form id="chat-form" class="orow"><input id="chat-in" maxlength="2000" placeholder="Wiadomość do grupy" autocomplete="off"><button>Wyślij</button></form>

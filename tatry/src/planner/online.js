@@ -337,27 +337,84 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
   const who = (id) => members.get(id) || { name: 'Turysta', avatar: '🥾' };
 
   // routes planned together
+  // the group's trips: a route with (optionally) a date and a meeting place; each member answers whether they
+  // come (route_rsvp; without that table, or the place column, the list works as before)
+  let rsvpOk = true, routesTimer = null, editing = null;
+  const fmtWhen = (t) => new Date(t).toLocaleString('pl-PL', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
   async function loadRoutes() {
     if (!gid) return;
+    if (!routesTimer) routesTimer = setInterval(() => { if (gid && !document.hidden) loadRoutes(); }, 60000);
     let rows = [];
-    try { rows = ok(await sb.from('group_routes').select('id,title,hash,created_by,created_at').eq('group_id', gid).order('created_at', { ascending: false }).limit(20)); } catch (e) { return; }
+    const q = (cols) => sb.from('group_routes').select(cols).eq('group_id', gid).order('created_at', { ascending: false }).limit(30);
+    try { rows = ok(await q('id,title,hash,created_by,created_at,starts_at,place')); }
+    catch (e) { try { rows = ok(await q('id,title,hash,created_by,created_at,starts_at')); } catch (e2) { return; } }
+    let rs = [];
+    if (rows.length) { try { rs = ok(await sb.from('route_rsvp').select('route_id,user_id,status').in('route_id', rows.map((r) => r.id))); rsvpOk = true; } catch (e) { rsvpOk = false; } }
+    // the coming trips first (soonest on top), then those without a date, the past ones at the end
+    const now = Date.now(), T = (r) => (r.starts_at ? Date.parse(r.starts_at) : null);
+    const rank = (r) => (T(r) === null ? 1 : T(r) > now - 6 * 3600e3 ? 0 : 2);
+    rows.sort((x, y) => rank(x) - rank(y) || (rank(x) === 0 ? T(x) - T(y) : rank(x) === 2 ? T(y) - T(x) : Date.parse(y.created_at) - Date.parse(x.created_at)));
     const ul = $('g-routes');
-    ul.innerHTML = rows.length ? '' : '<li><span class="empty">Brak tras. Wyznacz trasę i kliknij „Dodaj bieżącą trasę”.</span></li>';
+    ul.innerHTML = rows.length ? '' : '<li><span class="empty">Brak wyjść. Wyznacz trasę i kliknij „Zaproponuj wyjście”.</span></li>';
     for (const r of rows) {
+      const ans = rs.filter((x) => x.route_id === r.id), mineA = (ans.find((x) => x.user_id === user.id) || {}).status;
+      const faces = (st) => ans.filter((x) => x.status === st).map((x) => `<span title="${esc(who(x.user_id).name)}">${avatarHtml(who(x.user_id).avatar, esc)}</span>`).join('');
+      const nYes = ans.filter((x) => x.status === 'yes').length, nMaybe = ans.filter((x) => x.status === 'maybe').length;
       const li = document.createElement('li');
-      li.innerHTML = `<span>🗺 ${esc(r.title)}<br><small>${esc(who(r.created_by).name)} · ${new Date(r.created_at).toLocaleDateString('pl-PL')}</small></span>`
-        + (r.created_by === user.id ? '<span class="t x" title="Usuń z grupy">✕</span>' : '');
+      li.className = 'trip' + (rank(r) === 2 ? ' past' : '');
+      li.innerHTML = `<div class="trip-h"><span class="trip-t" data-open>🗺 ${esc(r.title)}</span>${r.created_by === user.id ? '<span class="t x" title="Usuń z grupy">✕</span>' : ''}</div>`
+        + `<small>${r.starts_at ? '📅 ' + fmtWhen(r.starts_at) : 'bez terminu'}${r.place ? ' · 📍 ' + esc(r.place) : ''} · ${esc(who(r.created_by).name)}</small>`
+        + (rsvpOk ? `<div class="trip-who">${nYes ? `<span>Będą (${nYes}):</span>${faces('yes')}` : '<span>Nikt jeszcze się nie zapisał</span>'}${nMaybe ? `<span>· Może (${nMaybe}):</span>${faces('maybe')}` : ''}</div>`
+          + `<div class="trip-act"><button data-s="yes" class="${mineA === 'yes' ? 'on' : ''}">✓ Będę</button><button data-s="maybe" class="${mineA === 'maybe' ? 'on' : ''}">? Może</button><button data-s="no" class="${mineA === 'no' ? 'on' : ''}">✗ Nie</button>`
+          + `${r.created_by === user.id ? '<button data-e>📅 Termin</button>' : ''}</div>` : '');
       li.onclick = async (ev) => {
-        if (ev.target.classList.contains('x')) { await sb.from('group_routes').delete().eq('id', r.id); loadRoutes(); return; }
-        openHash(r.hash);
+        const b = ev.target.closest('button');
+        if (ev.target.classList.contains('x')) { if (confirm('Usunąć to wyjście z grupy?')) { await sb.from('group_routes').delete().eq('id', r.id); loadRoutes(); } return; }
+        if (b && b.dataset.s) {
+          const { error } = await sb.from('route_rsvp').upsert({ route_id: r.id, user_id: user.id, status: b.dataset.s, updated_at: new Date().toISOString() }, { onConflict: 'route_id,user_id' });
+          if (error) msg(error.message); else loadRoutes();
+          return;
+        }
+        if (b && 'e' in b.dataset) { tripForm(r); return; }
+        if (ev.target.closest('[data-open]') || !b) openHash(r.hash);
       };
       ul.appendChild(li);
     }
   }
-  $('g-add-route').onclick = async () => {
+  // the form: a new trip with the route on the map, or the date and place of one's own trip
+  function tripForm(r = null) {
+    editing = r;
+    $('g-trip-title').textContent = r ? r.title : routeTitle();
+    const pad = (n) => String(n).padStart(2, '0'), d = r && r.starts_at ? new Date(r.starts_at) : null;
+    $('g-trip-when').value = d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` : '';
+    $('g-trip-place').value = r ? r.place || '' : '';
+    $('g-trip-ok').textContent = r ? '💾 Zapisz termin' : '📌 Dodaj wyjście';
+    $('g-trip-form').hidden = false;
+  }
+  $('g-add-route').onclick = () => {
     if (!hasRoute()) { msg('Najpierw wyznacz trasę na mapie.'); return; }
-    const { error } = await sb.from('group_routes').insert({ group_id: gid, title: routeTitle().slice(0, 200), hash: location.hash.slice(0, 2000), created_by: user.id });
-    if (error) msg(error.message); else loadRoutes();
+    tripForm(null);
+  };
+  $('g-trip-cancel').onclick = () => { $('g-trip-form').hidden = true; };
+  $('g-trip-ok').onclick = async () => {
+    const when = $('g-trip-when').value ? new Date($('g-trip-when').value).toISOString() : null;
+    const place = $('g-trip-place').value.trim().slice(0, 200) || null;
+    const extra = { starts_at: when, ...(place ? { place } : {}) };
+    if (editing) {
+      let { error } = await sb.from('group_routes').update({ ...extra, place }).eq('id', editing.id);
+      if (error) ({ error } = await sb.from('group_routes').update({ starts_at: when }).eq('id', editing.id));   // no place column yet
+      if (error) { msg(error.message); return; }
+    } else {
+      const row = { group_id: gid, title: routeTitle().slice(0, 200), hash: location.hash.slice(0, 2000), created_by: user.id };
+      let { data, error } = await sb.from('group_routes').insert({ ...row, ...extra }).select('id').single();
+      if (error) ({ data, error } = await sb.from('group_routes').insert({ ...row, starts_at: when }).select('id').single());
+      if (error) { msg(error.message); return; }
+      // the one who proposes it comes, and the group hears of it in the chat
+      sb.from('route_rsvp').insert({ route_id: data.id, user_id: user.id, status: 'yes' }).then(() => loadRoutes(), () => {});
+      const txt = `📌 Proponuję wyjście: ${row.title}${when ? ', ' + fmtWhen(when) : ''}${place ? ', zbiórka: ' + place : ''}. Kto będzie? (Grupy → Wyjścia)`;
+      sb.from('messages').insert({ group_id: gid, user_id: user.id, body: txt.slice(0, 2000) }).then(() => {}, () => {});
+    }
+    $('g-trip-form').hidden = true; loadRoutes();
   };
 
   // the chat

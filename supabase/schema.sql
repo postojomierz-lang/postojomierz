@@ -275,3 +275,26 @@ do $$ begin
   begin alter publication supabase_realtime add table public.live_positions; exception when duplicate_object then null; end;
   begin alter publication supabase_realtime add table public.group_routes; exception when duplicate_object then null; end;
 end $$;
+
+-- ---------------------------------------------------------------- group trips: a date, a meeting place, who comes
+-- (a route of the group with starts_at and place; each member answers yes / maybe / no)
+alter table public.group_routes add column if not exists place text check (char_length(place) <= 200);
+drop policy if exists routes_edit on public.group_routes;
+create policy routes_edit on public.group_routes for update using (created_by = auth.uid()) with check (created_by = auth.uid());
+
+create table if not exists public.route_rsvp (
+  route_id    uuid not null references public.group_routes (id) on delete cascade,
+  user_id     uuid not null references auth.users (id) on delete cascade default auth.uid(),
+  status      text not null check (status in ('yes', 'maybe', 'no')),
+  updated_at  timestamptz not null default now(),
+  primary key (route_id, user_id)
+);
+alter table public.route_rsvp enable row level security;
+create or replace function public.route_group(r uuid) returns uuid
+  language sql stable security definer set search_path = public as
+  $$ select group_id from group_routes where id = r $$;
+drop policy if exists rsvp_read on public.route_rsvp;
+create policy rsvp_read on public.route_rsvp for select using (public.is_member(public.route_group(route_id)));
+drop policy if exists rsvp_write on public.route_rsvp;
+create policy rsvp_write on public.route_rsvp for all
+  using (user_id = auth.uid()) with check (user_id = auth.uid() and public.is_member(public.route_group(route_id)));
