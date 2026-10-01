@@ -33,6 +33,12 @@ const COAT = {
   chamois: { Main: [0.2, 0.12, 0.055], Main_Dark: [0.035, 0.024, 0.016], Main_Light: [0.52, 0.45, 0.35] },
   marmot: { Main: [0.24, 0.16, 0.085], Main_Light: [0.5, 0.4, 0.27] },
 };
+// lying down to rest: the legs folded under the body (bone turns on top of the Idle clip, so the head and
+// ears keep moving) and the body lowered by `drop` metres; deer lie down mostly around midday, chamois
+// rest on the rocks at any hour
+const REST = { stag: 0.85, hind: 0.55, roe: 0.45, chamois: 0.42 };
+const FOLD = [['FrontUpperLeg', 1.0], ['FrontLowerLeg', -2.2], ['BackUpperLeg', -0.9], ['BackLowerLeg', 2.0]];
+const AX = new THREE.Vector3(1, 0, 0);
 // in winter the chamois turns almost black (with the pale face), the hare greyer
 const WINTER_COAT = {
   chamois: { Main: [0.03, 0.022, 0.016], Main_Dark: [0.012, 0.01, 0.008], Main_Light: [0.5, 0.45, 0.36] },
@@ -51,7 +57,7 @@ const FROM_CATALOGUE = {
   zajac: [['hare'], ['hare', 'hare']],
 };
 
-export async function buildAnimals({ scene, terrain, groundAt, trail, land, bounds, masks, sound, natureSpots = [], groundClass = null, rut = false, winter = false, onEvent = () => {} }) {
+export async function buildAnimals({ scene, terrain, groundAt, trail, land, bounds, masks, sound, natureSpots = [], groundClass = null, rut = false, winter = false, hour = () => 12, onEvent = () => {} }) {
   const loader = new GLTFLoader();
   const proto = {};
   const files = {};
@@ -214,6 +220,8 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       scale: (0.9 + r() * 0.2) * (sp.size || 1),
     };
     obj.scale.setScalar(an.scale);
+    if (REST[kind]) an.legs = FOLD.map(([n, a]) => [['L', 'R'].map((sd) => obj.getObjectByName(n + sd)).filter(Boolean), a]);
+    an.lie = 0;
     obj.visible = false;
     scene.add(obj);
     play(an, 'Eating');
@@ -251,7 +259,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       if (!active) continue;
       const sp = an.sp;
       if (an.kind === 'marmot' && marmot(an, dist, dt, cx, cz)) continue;
-      if (special(an, dt)) { place(an, dist, dt); continue; }
+      if (special(an, dt, dist)) { place(an, dist, dt); continue; }
       // chamois: close but not too close: walk off a little, heads up, then graze again
       if (sp.panic && dist < sp.flee && dist >= sp.panic && an.state !== 'flee' && an.calmT <= 0) {
         const away = Math.atan2(an.x - cx, an.z - cz) + (r() - 0.5) * 1.2;
@@ -278,7 +286,11 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
         }
       } else if (an.timer <= 0 && an.state !== 'watch' && an.state !== 'home') {
         const roll = r();
-        if (roll < 0.45) { an.state = 'graze'; an.timer = 6 + r() * 12; play(an, 'Eating'); }
+        const noon = Math.max(0, 1 - Math.abs(hour() - 13) / 2.5);            // 10:30-15:30, most at 13
+        const restP = REST[an.kind] ? (an.kind === 'chamois' ? 0.2 + 0.2 * noon : 0.08 + 0.5 * noon) : 0;
+        if (an.group.rut && an.kind === 'stag') { /* no rest in the rut */ }
+        else if (r() < restP && dist > (sp.panic || sp.flee) * 1.5) { an.state = 'rest'; an.timer = 25 + r() * 50; play(an, 'Idle', 0.8); }
+        else if (roll < 0.45) { an.state = 'graze'; an.timer = 6 + r() * 12; play(an, 'Eating'); }
         else if (roll < 0.65) { an.state = 'idle'; an.timer = 3 + r() * 5; play(an, r() < 0.5 ? 'Idle' : 'HeadLow'); }
         else { an.state = 'walk'; an.target = pickTarget(an); an.timer = 30; play(an, 'Walk'); }
       }
@@ -326,6 +338,11 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       }
       if (an.state !== 'dead' || an.deadT < 3) an.mixer.update(dt * (dist < 250 ? 1 : 0.5));
       if (an.jump) an.obj.position.y += an.jump;
+      if (an.lie > 0 && an.legs) {
+        const k = an.lie * an.lie * (3 - 2 * an.lie);
+        for (const [bones, a] of an.legs) for (const b of bones) b.rotateOnAxis(AX, a * k);
+        an.obj.position.y -= REST[an.kind] * an.scale * k;
+      }
     }
   }
 
@@ -342,8 +359,24 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
     return dd;
   };
   // returns true when the animal is driven by one of these states this frame
-  function special(an, dt) {
+  function special(an, dt, dist = 1e9) {
     const sp = an.sp;
+    // resting: lie down, stay a while, get up; up and away when the hiker comes too close
+    if (an.state === 'rest') {
+      if (dist < (sp.panic || sp.flee) * 1.3) { an.state = 'graze'; an.lieFast = true; return false; }
+      an.timer -= dt;
+      an.lie = Math.min(1, an.lie + dt / 1.8);
+      play(an, an.lie > 0.9 && r() < dt * 0.05 ? 'HeadLow' : 'Idle', 0.6);
+      if (an.timer <= 0) { an.state = 'getup'; }
+      return true;
+    }
+    if (an.state === 'getup') {
+      an.lie = Math.max(0, an.lie - dt / 1.2);
+      if (an.lie <= 0) { an.state = 'graze'; an.timer = 6 + r() * 8; play(an, 'Eating'); }
+      return true;
+    }
+    if (an.lie > 0) an.lie = Math.max(0, an.lie - dt / (an.lieFast ? 0.35 : 1.2));
+    if (an.lie <= 0) an.lieFast = false;
     // cubs keep close to the mother (and run after her when she runs)
     if (sp.follows && an.state !== 'flee') {
       const mum = animals.find((m) => m.group === an.group && m.kind === sp.follows && m.state !== 'dead');

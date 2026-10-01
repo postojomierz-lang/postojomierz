@@ -241,6 +241,22 @@ z katalogu (reszta gatunków: proste kształty), drobne rośliny gęstszymi kęp
 w promieniu 250 m; kępy przy samej ścieżce przesuwają się na najbliższy wolny grunt.
 Uruchomienie: `python3 tools/blender/make_flowers.py public/models/flowers`.
 
+## Chwila odkrycia (kamera, bullet time, plansza)
+
+`src/nature/reveal.js`: gdy w spacerze odkryjesz roślinę albo zwierzę, kamera opuszcza oczy piechura i w 1,3 s
+podjeżdża do niego (zwierzę śledzone tam, gdzie naprawdę jest jego model; roślina w swoim miejscu), czas zwalnia
+prawie do zatrzymania (zwierzęta, ptaki, trawa, chmury, deszcz; `wdt` w pętli), kamera powoli okrąża obiekt, pasy
+kinowe i winieta, panele chowają się; potem plansza ze zdjęciem, nazwą, gwiazdkami rzadkości, punkty liczą się do
+góry, rozbłysk gwiazdek i monety lecące do przycisku 🏷, wyzwanie wykonane przy tym odkryciu jako odznaka na planszy.
+Stuknięcie (albo spacja / Enter, albo 7 s) i kamera wraca. Kolejne odkrycia czekają w kolejce. Miejsca (szczyty,
+stawy) zostają przy krótkim komunikacie. `?odkrycie=0` wyłącza.
+
+## Odpoczynek zwierząt
+
+Jelenie, łanie, sarny i kozice kładą się: nogi podwinięte pod tułów (obrót kości ud i goleni na animacji Idle,
+więc głowa i uszy dalej się ruszają) i ciało opuszczone. Jelenie najczęściej w południe (10:30–15:30), kozice
+na skałach o każdej porze, byki nie w rykowisku. Spłoszone szybko wstają i uciekają.
+
 ## Tryb zimowy
 
 Od 15 listopada do 30 kwietnia (data wędrówki z planera albo dziś; pole „❄ zima” w panelu, `?zima=1` / `?zima=0`):

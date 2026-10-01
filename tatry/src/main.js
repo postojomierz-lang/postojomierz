@@ -25,6 +25,7 @@ import { challenges, settleChallenges } from './nature/challenges.js';
 import { buildCards } from './nature/card.js';
 import { buildFlowers, loadFlowerModels } from './nature/flowers.js';
 import { buildBirds } from './nature/birds.js';
+import { buildReveal } from './nature/reveal.js';
 import { GROUPS, RARITY, BY_ID } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
@@ -782,7 +783,7 @@ async function main() {
   } catch (e) { spots = null; }
   if (!spots) spots = buildSpots({ trail, terrain, groundClass, meta });
   if (WINTER) spots = spots.filter((p) => !winterAsleep(p.id));
-  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots, groundClass, winter: WINTER,
+  const wildlife = await buildAnimals({ scene, terrain, groundAt: drawnHeight, trail, land: landPx, bounds: IB, masks: { lake: lakeMask }, sound, natureSpots: spots, groundClass, winter: WINTER, hour: () => env.hour,
     rut: (SUN_DAY.getMonth() === 8 && SUN_DAY.getDate() >= 10) || (SUN_DAY.getMonth() === 9 && SUN_DAY.getDate() <= 20), onEvent: (t) => toast(t) });
   const cover = buildGroundCover({ scene, terrain, kinds, photo: photoPx, land: landPx, bounds: IB,
     masks: { path: trailVisWide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.3), nearHut: (x, z) => houses.inside(x, z, 35), quality: QUALITY,
@@ -1309,18 +1310,34 @@ async function main() {
   const flowers = buildFlowers({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), shade, patchShading,
     models: await loadFlowerModels() });
   if (grass) grass.setClearings(flowers.clearings);
+  // the discovery's moment: the camera goes to the plant or animal, bullet time, the card and the points
+  const KIND_OF = { kozica: ['chamois'], swistak: ['marmot'], wilk: ['wolf'], niedzwiedz: ['bear'], jelen: ['stag', 'hind'], sarna: ['roe'], dzik: ['boar'], lis: ['fox'], zajac: ['hare'] };
+  const reveal = buildReveal({ camera, groundAt: drawnHeight, scoreEl: $('btn-labels'),
+    findAnimal: (id, pos) => {
+      if (BY_ID[id]?.group === 'bird') return birds.find(id, pos);
+      const kinds = KIND_OF[id];
+      if (!kinds) return null;
+      let best = null, bd = 150;
+      for (const a of wildlife.animals) {
+        if (!kinds.includes(a.kind) || !a.obj.visible || a.gone) continue;
+        const d = Math.hypot(a.x - pos.x, a.z - pos.z);
+        if (d < bd) { bd = d; best = a.obj; }
+      }
+      return best;
+    } });
   const discovery = buildDiscovery({ items: labels.items, found, placeId, onFind: (it, e) => {
     labels.refresh(); renderLabelMenu();
     if (it.species) {
       const sp = it.species, r = RARITY[sp.rarity];
-      toast(`${GROUPS[sp.group].icon} Odkryto: <b>${sp.name}</b> <i>${sp.latin}</i><br>${r.name} · +${r.points} pkt`);
+      if (state.mode === 'walk' && !state.freeCam && P.get('odkrycie') !== '0') reveal.start(sp, it.pos, r.points);
+      else toast(`${GROUPS[sp.group].icon} Odkryto: <b>${sp.name}</b> <i>${sp.latin}</i><br>${r.name} · +${r.points} pkt`);
     } else toast(`✓ Odkryto: <b>${it.name}</b> · +${e.pts} pkt`);
     checkChallenges();
   } });
   // challenges of the day, week, month and year: done ones get their bonus and a notice (after the discovery's)
   function checkChallenges() {
     const got = settleChallenges(found, J, saveFound);
-    if (got.length) setTimeout(() => toast(`🏅 Wyzwanie wykonane: <b>${got[0].text}</b><br>+${got[0].bonus} pkt`), 4600);
+    if (got.length && !reveal.bonus(`Wyzwanie: ${got[0].text}`, got[0].bonus)) setTimeout(() => toast(`🏅 Wyzwanie wykonane: <b>${got[0].text}</b><br>+${got[0].bonus} pkt`), 4600);
     renderLabelMenu();
   }
   // the 🏷 menu: labels on/off, each category, and the discoveries so far
@@ -1600,7 +1617,6 @@ async function main() {
     if (FPS_CAP && now - lastFrame < 1000 / FPS_CAP - 3) { requestAnimationFrame(tick); return; }
     lastFrame = now;
     const dt = Math.min(0.1, clock.getDelta());
-    light.time.value += dt;
     const grade = gradeAt(state.s);
     // Tobler's hiking function: realistic walking pace on this slope (km/h)
     const tobler = 6 * Math.exp(-3.5 * Math.abs(grade + 0.05));
@@ -1608,6 +1624,7 @@ async function main() {
     if (keys.has('KeyW') || keys.has('ArrowUp')) dir = 1;
     if (keys.has('KeyS') || keys.has('ArrowDown')) dir = -1;
     if (state.auto && dir === 0) dir = 1;
+    if (reveal.active) dir = 0;                         // the discovery's moment: the walk waits
     const run = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 2.5 : 1;
     const v = tobler / 3.6 * state.speedMul * run * dir;
     if (state.free && state.mode === 'walk') {
@@ -1658,6 +1675,9 @@ async function main() {
     }
 
     if (state.freeCam) { camera.position.copy(state.freeCam.pos); camera.lookAt(state.freeCam.at); } // debug / screenshots
+    // bullet time: the world (animals, birds, grass, clouds, rain) slows down during a discovery
+    const ts = reveal.apply(dt), wdt = dt * ts;
+    light.time.value += wdt;
     hudT -= dt;
     if (hudT <= 0) {
       hudT = 0.2;
@@ -1693,13 +1713,13 @@ async function main() {
       const fz = state.mode === 'walk' || state.freeCam ? camera.position.z : hiker.position.z;
       updatePatch(fx, fz); updateNear(fx, fz); trailWin.update(fx, fz); cover.update(fx, fz);
     }
-    wildlife.update(dt, camera);
-    birds.update(dt, camera.position);
+    wildlife.update(wdt, camera);
+    birds.update(wdt, camera.position);
     rocks.update(camera.position, dt);
     chains.update(camera.position); deadwood.update(camera.position); flowers.update(camera.position);
     labels.update(dt);
     discovery.check(state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, dt);
-    weatherFx.update(dt, camera.position);
+    weatherFx.update(wdt, camera.position);
     skyEnv.update(dt);
     if (env.forecast) forecastTick(); else flowTick();
     renderer.toneMappingExposure = 0.55 * (1 + 2.2 * weatherFx.flash);
@@ -1736,7 +1756,7 @@ async function main() {
       };
     } });
 
-  window.__rysy = { weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { reveal, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
