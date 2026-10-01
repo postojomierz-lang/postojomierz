@@ -27,6 +27,7 @@
   .stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
   .stats .tread { color: #ffc9a8; }
   #controls { top: 12px; right: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; width: 236px; }
+  #controls .row:first-child { flex-wrap: wrap; }
   #controls .row:first-child button { padding: 7px 8px; white-space: nowrap; }
   .row { display: flex; gap: 6px; align-items: center; }
   button, select { font: inherit; font-size: 13px; color: var(--ink); background: rgba(255,255,255,0.08); border: 1px solid var(--line);
@@ -49,7 +50,9 @@
     background: rgba(20, 24, 28, 0.78); color: #fff; font-size: 17px; font-weight: 600; opacity: 0; pointer-events: none;
     transition: opacity .5s, transform .5s; z-index: 3; text-align: center; max-width: 80vw; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
-  #help { left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 18px 22px; max-width: 460px; width: calc(100% - 32px); font-size: 14px; line-height: 1.5; z-index: 5; }
+  #help { left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 18px 22px; max-width: 460px; width: calc(100% - 32px); font-size: 14px; line-height: 1.5; z-index: 5;
+          max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  #help-x { position: sticky; top: -18px; float: right; margin: -10px -14px 0 8px; width: 38px; height: 38px; border-radius: 50%; font-size: 18px; line-height: 1; z-index: 1; }
   #help h2 { margin: 0 0 8px; font-size: 17px; }
   #help kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px;
     background: rgba(255,255,255,.08); font-family: inherit; font-size: 12px; text-align: center; }
@@ -100,7 +103,7 @@
   #label-menu .lm-ch { font-size: 12px; color: #4b5358; }
   #label-menu .lm-score { border-top: 1px solid rgba(0,0,0,.12); padding-top: 6px; font-size: 13px; line-height: 1.45; }
   .flag .pole { position: absolute; left: 0; top: 100%; width: 2px; background: rgba(252,250,244,.85); box-shadow: 0 0 2px rgba(0,0,0,.5); }
-  #hud, #controls, #bottom, #place, #help { z-index: 2; }
+  #hud, #controls, #bottom, #place { z-index: 2; }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0b1013; z-index: 10; transition: opacity .8s; }
   #loading.done { opacity: 0; pointer-events: none; }
   #loading .box { text-align: center; }
@@ -137,6 +140,12 @@
   }
   #fc-info { font-size: 12px; line-height: 1.35; margin-top: 6px; max-width: 300px; opacity: .92; }
   #controls label.flow { display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: .9; margin-top: 2px; }
+  /* phones held sideways: little height, the panels scroll instead of running off the screen */
+  @media (max-height: 520px) {
+    #controls { max-height: calc(100vh - 24px); overflow-y: auto; width: 210px; }
+    #hud { max-height: 45vh; overflow: hidden; }
+    #bottom { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -202,6 +211,7 @@
 </div>
 
 <div id="help" class="panel">
+  <button id="help-x" title="Zamknij">✕</button>
   <h2>Sterowanie</h2>
   <table class="touch-only">
     <tr><td>▶ Idź sam</td><td>marsz szlakiem (drugi raz: zatrzymaj)</td></tr>
@@ -246,7 +256,7 @@
   <p class="note">Teren: model wysokości 30 m i zdjęcie satelitarne 10 m (dane otwarte). Drobne skały i trawa z bliska
     są generowane. Tempo marszu liczone wzorem Toblera, jak na prawdziwym szlaku. „Bieżnia” pokazuje, jakie nachylenie
     ustawiłaby domowa bieżnia (max 15%).</p>
-  <div class="row" style="margin-top:10px"><button class="grow" onclick="document.getElementById('help').classList.add('hidden')">Ruszamy</button></div>
+  <div class="row" style="margin-top:10px"><button class="grow" id="help-go">Ruszamy</button></div>
 </div>
 
 <div id="loading"><div class="box"><div class="t">Szlakownik 3D</div><div id="loading-text">Ładowanie…</div></div></div>

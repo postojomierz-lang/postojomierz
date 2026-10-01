@@ -1454,7 +1454,13 @@ async function main() {
   $('winter').onchange = (e) => { const u = new URL(location.href); u.searchParams.set('zima', e.target.checked ? '1' : '0'); location.href = u.toString(); };
   $('time-flow').onchange = (e) => { flow.on = e.target.checked; flow.base = env.hour - TT[at(state.s).i] / 60; try { localStorage.setItem('rysy-time-flow', flow.on ? '1' : '0'); } catch (err) { /* private mode */ } };
   $('weather').onchange = (e) => setWeather(e.target.value);
-  $('btn-help').onclick = () => $('help').classList.toggle('hidden');
+  // the help: shown by itself only the first time; ✕ / Ruszamy / Esc close it
+  const helpSeen = () => { try { localStorage.setItem('rysy-help-seen', '1'); } catch (e) { /* private mode */ } };
+  const closeHelp = () => { $('help').classList.add('hidden'); helpSeen(); };
+  $('help-x').onclick = closeHelp; $('help-go').onclick = closeHelp;
+  addEventListener('keydown', (e) => { if (e.code === 'Escape' && !$('help').classList.contains('hidden')) closeHelp(); });
+  try { if (localStorage.getItem('rysy-help-seen') === '1') $('help').classList.add('hidden'); } catch (e) { /* private mode */ }
+  $('btn-help').onclick = () => { $('help').classList.toggle('hidden'); helpSeen(); };
   $('btn-sound').onclick = () => { sound.setEnabled(!sound.enabled); updateButtons(); };
   $('btn-labels').onclick = () => { renderLabelMenu(); $('label-menu').classList.toggle('show'); };
   $('btn-free').onclick = () => toggleFree();
