@@ -4,6 +4,7 @@
 // only on purpose, only with the chosen group, removed at the end of the walk, expiring in any case), and the
 // nature discoveries with their points for the rankings (only for those who show their profile publicly).
 // Everything works without an account too: the journal stays in the browser as before.
+import { cleanLook } from '../avatar/look.js';
 import L from 'leaflet';
 import { createClient } from '@supabase/supabase-js';
 import { loadFound, saveFound, score } from '../nature/discover.js';
@@ -151,7 +152,8 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     const s = ok(await sb.from('profiles').select('name,avatar,km,ascent,peaks,updated_at').eq('id', user.id).maybeSingle());
     if (!s) return;
     const serverT = Date.parse(s.updated_at) || 0;
-    if (serverT > (PR.updatedAt || 0)) {
+    const newer = serverT > (PR.updatedAt || 0);
+    if (newer) {
       // changed on another device; a new account's default name does not replace the one set here
       if (s.name !== 'Turysta' || !PR.name) PR.name = s.name;
       if (s.avatar) PR.avatar = s.avatar;
@@ -165,7 +167,23 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
       ok(await sb.from('profiles').update(row).eq('id', user.id));
       PR.updatedAt = Date.parse(row.updated_at);
     }
+    await syncLook(newer);
     saveProfile(PR, false);
+  }
+  // the figure's look (profiles.look, added later in schema.sql: without that column the rest still syncs)
+  async function syncLook(serverNewer) {
+    try {
+      const s = ok(await sb.from('profiles').select('look').eq('id', user.id).maybeSingle());
+      if (!s) return;
+      const server = cleanLook(s.look);
+      if (serverNewer && server) { PR.look = server; return; }
+      const mine = cleanLook(PR.look);
+      if (mine && JSON.stringify(mine) !== JSON.stringify(server)) {
+        const at = new Date().toISOString();                      // newer: the other devices take it
+        ok(await sb.from('profiles').update({ look: mine, updated_at: at }).eq('id', user.id));
+        PR.updatedAt = Date.parse(at);
+      }
+    } catch (e) { /* no look column yet */ }
   }
 
   async function syncJournal() {

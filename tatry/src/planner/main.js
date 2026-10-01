@@ -11,6 +11,7 @@ import { loadJournal, saveJournal, routeKey, toggleFav, totals, fmtClock, addWal
 import { setupNav, trackGpx } from './nav.js';
 import { sunTimes, forecast, walkWeather, hhmm, hm } from './daylight.js';
 import { loadProfile, saveProfile, AVATARS, BADGES, rank, photoAvatar } from './profile.js';
+import { setupLookEditor } from './lookEditor.js';
 import { loadFound, saveFound } from '../nature/discover.js';
 import { challenges, settleChallenges } from '../nature/challenges.js';
 import { buildGpsDiscovery } from '../nature/gps.js';
@@ -448,15 +449,20 @@ $('p-edit').onclick = () => {
   if (n === null) return;
   PR.name = n.trim().slice(0, 40); saveProfile(PR); renderJournal(); ONLINE.sync();
 };
+// the look of the figure (on the trail in 3D, in the group); its face can be the avatar
+const LOOK_ED = setupLookEditor({ PR, saveProfile, onSaved: () => { renderJournal(); ONLINE.sync(); } });
+$('p-look').onclick = () => LOOK_ED.open();
 $('p-avatar').onclick = () => {
   const box = $('p-pick');
   box.hidden = !box.hidden;
-  box.innerHTML = AVATARS.map((a) => `<button data-a="${a}">${a}</button>`).join('') + '<button data-a="photo" title="Zdjęcie z telefonu">📷</button>';
+  box.innerHTML = '<button data-a="look" title="Postać z edytora wyglądu">🧍</button><button data-a="photo" title="Zdjęcie z telefonu">📷</button>'
+    + AVATARS.map((a) => `<button data-a="${a}">${a}</button>`).join('');
 };
 $('p-pick').onclick = (ev) => {
   const a = ev.target.closest('button') && ev.target.closest('button').dataset.a;
   if (!a) return;
   if (a === 'photo') { $('p-photo').click(); return; }
+  if (a === 'look') { $('p-pick').hidden = true; LOOK_ED.open(); return; }
   PR.avatar = a; saveProfile(PR); $('p-pick').hidden = true; renderJournal(); ONLINE.sync();
 };
 $('p-photo').onchange = async (ev) => {
