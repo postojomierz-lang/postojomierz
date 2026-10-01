@@ -17,7 +17,8 @@ const CSS = `
 #rv-tag.on{opacity:.9;transform:translate(-50%,0)}
 #rv-card{position:fixed;left:50%;bottom:11vh;z-index:9002;width:min(380px,calc(100% - 24px));transform:translate(-50%,40px) scale(.96);opacity:0;transition:all .45s cubic-bezier(.2,.9,.3,1.2);
   background:rgba(20,24,28,.92);color:#fff;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5);font:14px/1.4 system-ui,sans-serif;pointer-events:auto;cursor:pointer}
-#rv-card.on{opacity:1;transform:translate(-50%,0) scale(1)}
+#rv-card:not(.on){pointer-events:none;visibility:hidden;transition:opacity .3s,transform .3s,visibility 0s .3s}
+#rv-card.on{opacity:1;transform:translate(-50%,0) scale(1);visibility:visible}
 #rv-card img{width:100%;height:150px;object-fit:cover;display:block}
 #rv-card .b{padding:10px 14px 12px}
 #rv-card .g{font-size:12px;opacity:.75;letter-spacing:.05em}
