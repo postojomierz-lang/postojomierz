@@ -48,6 +48,13 @@ export const WMO = {
 };
 export const ICON = (c) => c >= 95 ? '⛈' : c >= 71 && c <= 86 && c !== 80 && c !== 81 && c !== 82 ? '🌨' : c >= 51 ? '🌧' : c >= 45 ? '🌫' : c === 3 ? '☁️' : c === 2 ? '⛅' : '☀️';
 
+// a fetch that gives up after `ms` (a blocked or very slow network must not leave "Pobieram prognozę…" forever)
+export function fetchTimeout(url, ms = 12000) {
+  const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const t = setTimeout(() => ac && ac.abort(), ms);
+  return fetch(url, ac ? { signal: ac.signal } : {}).finally(() => clearTimeout(t));
+}
+
 // hourly forecast at (lat, lon, ele); cached per place for 3 h (maxAge), the last one kept for offline use
 export async function forecast(lat, lon, ele, maxAge = 3 * 3600e3) {
   const id = `${lat.toFixed(2)},${lon.toFixed(2)},${Math.round(ele / 50) * 50}`;
@@ -60,7 +67,7 @@ export async function forecast(lat, lon, ele, maxAge = 3 * 3600e3) {
     timezone: 'Europe/Warsaw', forecast_days: 3, wind_speed_unit: 'kmh',
   });
   try {
-    const j = await (await fetch(url)).json();
+    const j = await (await fetchTimeout(url)).json();
     if (!j.hourly) throw new Error('no data');
     const out = { id, at: Date.now(), ele, hourly: j.hourly };
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch (err) { /* full */ }
