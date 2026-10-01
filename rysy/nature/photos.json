@@ -898,5 +898,19 @@
   "author": "Zoologisches Forschungsmuseum Alexander Koenig (ZFMK), okaz muzealny",
   "license": "CC BY-SA 4.0",
   "url": "https://www.gbif.org/occurrence/search?catalog_number=ZFMK-ICH-052058"
+ },
+ "darniowka": {
+  "file": "darniowka.jpg",
+  "author": "Szlakownik",
+  "license": "© Szlakownik",
+  "url": "",
+  "ai": true
+ },
+ "polonozercon": {
+  "file": "polonozercon.jpg",
+  "author": "Szlakownik",
+  "license": "© Szlakownik",
+  "url": "",
+  "ai": true
  }
 }
