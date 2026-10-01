@@ -182,8 +182,8 @@ export function buildBirds({ scene, spots, groundAt, onEvent = () => {} }) {
   // the bird of species `id` nearest to pos (for the discovery's camera)
   function find(id, pos) {
     let best = null, bd = 250;
-    for (const b of birds) { if (b.id !== id) continue; const d = b.obj.position.distanceTo(pos); if (d < bd) { bd = d; best = b.obj; } }
-    return best;
+    for (const b of birds) { if (b.id !== id) continue; const d = b.obj.position.distanceTo(pos); if (d < bd) { bd = d; best = b; } }
+    return best ? { obj: best.obj, size: best.size } : null;
   }
   return { update, hunt, find, get count() { return birds.length; } };
 }
