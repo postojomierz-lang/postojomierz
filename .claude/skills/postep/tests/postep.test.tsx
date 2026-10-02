@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
-import { estimateLeft, formatLeft, formatWeek, replyLine, withLine, withSteps } from '../hooks/register'
+import { estimateLeft, formatLeft, formatWeek, nextLine, withLine, withSteps } from '../hooks/register'
 import type { PostepRun } from '../types'
 
 const MIN = 60_000
@@ -166,6 +166,20 @@ describe('postęp zadania', () => {
     const again = await $.prompt.compose({ model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] })
     expect(again.sections.map(section => section.id)).toContain('postep:plan')
   })
+
+  test('/postep czat off zostawia pasek włączony', async ($, on) => {
+    world(on)
+
+    const quiet = await $.command.run({
+      command: 'postep',
+      args: 'czat off',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: false, columns: 100 },
+    } as never)
+    expect(quiet.text).toContain('podsumowanie')
+    const composed = await $.prompt.compose({ model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] })
+    expect(composed.sections.map(section => section.id)).toContain('postep:plan')
+  })
 })
 
 describe('obliczenia', () => {
@@ -201,12 +215,22 @@ describe('obliczenia', () => {
     expect(formatWeek({ ...base, weekStart: null })).toBe(null)
   })
 
-  test('linia pod odpowiedzią: postęp w trakcie, podsumowanie na koniec', () => {
-    const half = withSteps(withSteps(base, steps(0, 2), 0), steps(1, 2), 3 * MIN)
-    expect(replyLine(half, 3 * MIN)).toBe('⏱ █████░░░░░ 1/2 · ~3 min · limit tyg. <0.1% · 3:00')
+  test('linia pod odpowiedzią tylko przy postępie, krótka, podsumowanie raz', () => {
+    const fresh = { done: 0, isSummarized: false }
+    const none = withSteps(base, steps(0, 2), 0)
+    expect(nextLine(none, MIN, fresh, false)).toBe(null)
+
+    const half = withSteps(none, steps(1, 2), 3 * MIN)
+    expect(nextLine(half, 3 * MIN, fresh, false)).toBe('⏱ 1/2 · ~3 min · 3:00')
+    expect(nextLine(half, 3 * MIN, { done: 1, isSummarized: false }, false)).toBe(null)
+    expect(nextLine(half, 3 * MIN, fresh, true)).toBe(null)
+    expect(nextLine({ ...half, weekNow: 10.3 }, 3 * MIN, fresh, false)).toBe('⏱ 1/2 · ~3 min · 3:00 · limit tyg. +0.3%')
 
     const done = { ...withSteps(half, steps(2, 2), 5 * MIN), weekNow: 10.5 }
-    expect(replyLine(done, 5 * MIN)).toBe('✓ Gotowe: 2/2 kroków w 5:00 · limit tyg. +0.5%')
+    expect(nextLine(done, 5 * MIN, { done: 1, isSummarized: false }, true)).toBe(
+      '✓ Gotowe: 2/2 kroków w 5:00 · limit tyg. +0.5%',
+    )
+    expect(nextLine(done, 5 * MIN, { done: 2, isSummarized: true }, false)).toBe(null)
   })
 
   test('linia trafia pod ostatni blok tekstu', () => {

@@ -12,6 +12,6 @@
   Terrain data is prepared by `tatry/tools/prepare.py` into `tatry/src/data/` (committed).
 - `.claude/skills/postep/` is a Claude Code mod: a progress bar above the prompt for multi-step tasks (steps done,
   estimated time left, weekly limit used), with a toast and a sound when the work is done; `/postep` toggles it.
-  Cloud sessions have no surface for the bar, so the mod also adds a progress line under Claude's replies in the chat
-  (a summary line once every step is done).
+  Cloud sessions have no surface for the bar, so the mod also adds a short progress line under the next reply after a
+  step is completed, and a summary line once every step is done; `/postep czat off` keeps only the summary.
   Check it with `claude plugin validate .claude/skills/postep` and `claude plugin test .claude/skills/postep`.
