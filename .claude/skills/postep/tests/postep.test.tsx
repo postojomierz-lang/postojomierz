@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
-import { estimateLeft, formatLeft, formatWeek, withSteps } from '../hooks/register'
+import { estimateLeft, formatLeft, formatWeek, replyLine, withLine, withSteps } from '../hooks/register'
 import type { PostepRun } from '../types'
 
 const MIN = 60_000
@@ -11,7 +11,7 @@ const MIN = 60_000
 const world = (on: On) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   mock.store(on)
-  const seen = { week: 10, toasts: [] as string[], sounds: 0, nextId: 1, updates: [] as { subject?: string; status?: string }[], todos: [] as string[][] }
+  const seen = { week: 10, toasts: [] as string[], sounds: 0, nextId: 1 }
 
   on('session.usage', () => ({
     value: {
@@ -44,13 +44,7 @@ const world = (on: On) => {
     }
 
     if (e.tool === 'TaskUpdate') {
-      seen.updates.push({ subject: e.subject, status: e.status })
-
       return { result: { success: true, taskId: e.taskId, updatedFields: ['status'] } }
-    }
-
-    if (e.tool === 'TodoWrite') {
-      seen.todos.push(e.todos.map(todo => todo.content))
     }
 
     return { result: { oldTodos: [], newTodos: [] } }
@@ -150,50 +144,6 @@ describe('postęp zadania', () => {
     expect(seen.sounds).toBe(0)
   })
 
-  test('panel planu: postęp przy bieżącym kroku i podsumowanie na koniec', async ($, on) => {
-    const { clock, seen } = world(on)
-
-    await $.prompt.submit({ text: 'zadanie', origin: { kind: 'composer' }, wait: false })
-    await $.tool.call({ tool: 'TaskCreate', subject: 'Analiza', description: 'a' })
-    await $.tool.call({ tool: 'TaskCreate', subject: 'Build', description: 'b' })
-    await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'in_progress' })
-    expect(seen.updates[0]?.subject).toBe('Analiza ⏱ 0/2 · szacuję… · limit tyg. <0.1%')
-
-    await clock.advance(3 * MIN)
-    await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'completed' })
-    expect(seen.updates[1]?.subject).toBe('Analiza')
-    await $.tool.call({ tool: 'TaskUpdate', taskId: '2', status: 'in_progress' })
-    expect(seen.updates[2]?.subject).toBe('Build ⏱ 1/2 · ~3 min · limit tyg. <0.1%')
-
-    seen.week = 10.5
-    await clock.advance(2 * MIN)
-    const last = await $.tool.call({ tool: 'TaskUpdate', taskId: '2', status: 'completed' })
-    expect(seen.updates[3]?.subject).toBe('Build')
-    expect(last.context?.join()).toContain('✓ Gotowe: 2/2 kroków w 5:00 · limit tyg. +0.5%')
-  })
-
-  test('nieznane zadanie zachowuje swoją nazwę', async ($, on) => {
-    const { seen } = world(on)
-
-    await $.prompt.submit({ text: 'zadanie', origin: { kind: 'composer' }, wait: false })
-    await $.tool.call({ tool: 'TaskUpdate', taskId: '9', status: 'in_progress' })
-    expect(seen.updates[0]?.subject).toBe(undefined)
-  })
-
-  test('TodoWrite: postęp dopisany do bieżącego kroku', async ($, on) => {
-    const { seen } = world(on)
-
-    await $.prompt.submit({ text: 'zadanie', origin: { kind: 'composer' }, wait: false })
-    await $.tool.call({
-      tool: 'TodoWrite',
-      todos: [
-        { content: 'A', status: 'in_progress', activeForm: 'Robię A' },
-        { content: 'B', status: 'pending', activeForm: 'B' },
-      ],
-    })
-    expect(seen.todos[0]).toEqual(['A ⏱ 0/2 · szacuję… · limit tyg. <0.1%', 'B'])
-  })
-
   test('/postep wyłącza pasek i instrukcję planowania', async ($, on) => {
     world(on)
 
@@ -249,5 +199,27 @@ describe('obliczenia', () => {
     expect(formatWeek(base)).toBe('limit tyg. <0.1%')
     expect(formatWeek({ ...base, weekNow: 10.6 })).toBe('limit tyg. +0.6%')
     expect(formatWeek({ ...base, weekStart: null })).toBe(null)
+  })
+
+  test('linia pod odpowiedzią: postęp w trakcie, podsumowanie na koniec', () => {
+    const half = withSteps(withSteps(base, steps(0, 2), 0), steps(1, 2), 3 * MIN)
+    expect(replyLine(half, 3 * MIN)).toBe('⏱ █████░░░░░ 1/2 · ~3 min · limit tyg. <0.1% · 3:00')
+
+    const done = { ...withSteps(half, steps(2, 2), 5 * MIN), weekNow: 10.5 }
+    expect(replyLine(done, 5 * MIN)).toBe('✓ Gotowe: 2/2 kroków w 5:00 · limit tyg. +0.5%')
+  })
+
+  test('linia trafia pod ostatni blok tekstu', () => {
+    const content = [
+      { type: 'text', text: 'Najpierw.' },
+      { type: 'text', text: 'Potem.' },
+      { type: 'tool_use', id: 't', name: 'Bash', input: {} },
+    ]
+    expect(withLine(content, 'L')).toEqual([
+      { type: 'text', text: 'Najpierw.' },
+      { type: 'text', text: 'Potem.\n\nL' },
+      { type: 'tool_use', id: 't', name: 'Bash', input: {} },
+    ])
+    expect(withLine([{ type: 'tool_use' }], 'L')).toEqual([{ type: 'tool_use' }])
   })
 })
