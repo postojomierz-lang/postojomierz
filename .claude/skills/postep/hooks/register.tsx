@@ -99,11 +99,17 @@ const currentStep = (current: PostepRun): PostepStep | undefined =>
   current.steps.find(step => step.status === 'in_progress') ??
   current.steps.find(step => step.status === 'pending')
 
-/** `2/4 · ~6 min · limit tyg. +0.3%`: the progress under a reply written mid-task. */
-export const progressLabel = (current: PostepRun): string =>
-  [`${countDone(current.steps)}/${current.steps.length}`, formatLeft(estimateLeft(current)), formatWeek(current)]
-    .filter((part): part is string => part !== null)
-    .join(' · ')
+/** `3/6 · ~2 min · 4:12`, the limit only once it grew: the short line under a reply written mid-task. */
+export const progressLine = (current: PostepRun, now: number): string => {
+  const parts = [
+    `⏱ ${countDone(current.steps)}/${current.steps.length}`,
+    formatLeft(estimateLeft(current)),
+    formatClock(now - current.startedAt),
+  ]
+  const grew = current.weekStart === null || current.weekNow === null ? 0 : current.weekNow - current.weekStart
+
+  return [...parts, ...(grew >= 0.1 ? [`limit tyg. +${grew.toFixed(1)}%`] : [])].join(' · ')
+}
 
 export const summaryLine = (current: PostepRun, now: number): string => {
   const week = formatWeek(current)
@@ -155,11 +161,22 @@ export const todoSteps = (todos: readonly { content: string; status: PostepStep[
     status: todo.status,
   }))
 
-/** The line the mod puts under a reply of the model while a task with several steps runs. */
-export const replyLine = (current: PostepRun, now: number): string =>
-  isAllDone(current)
-    ? summaryLine(current, now)
-    : `⏱ ${bar(countDone(current.steps), current.steps.length, 10)} ${progressLabel(current)} · ${formatClock(now - current.startedAt)}`
+/**
+ * The line under the next reply, or null for none: the summary once every step is done, otherwise the
+ * progress only when a step was completed since the last line (and the chat lines are on).
+ */
+export const nextLine = (
+  current: PostepRun,
+  now: number,
+  shown: { done: number; isSummarized: boolean },
+  isChatQuiet: boolean,
+): string | null => {
+  if (isAllDone(current)) {
+    return shown.isSummarized ? null : summaryLine(current, now)
+  }
+
+  return isChatQuiet || countDone(current.steps) <= shown.done ? null : progressLine(current, now)
+}
 
 /** A line the mod put under a reply before: a row can pass through `session.append` more than once. */
 const OLD_LINE = /\n\n(?:⏱ |✓ Gotowe: )[^\n]*/g
@@ -176,8 +193,10 @@ export const withLine = <B extends { type: string }>(content: readonly B[], line
 }
 
 let tick: Timer | undefined
-/** The run (by its start) whose summary line already went under a reply. */
-let summarizedAt: number | null = null
+/** What the chat already shows of the run that started at `runAt`, and the line each reply got. */
+let shown = { runAt: -1, done: 0, isSummarized: false, byRow: new Map<string, string>() }
+/** `/postep czat off`: no progress lines in the chat, the summary alone. */
+let isChatQuiet = false
 
 const stopTicking = () => {
   tick?.cancel()
@@ -216,16 +235,30 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: 'Włącza lub wyłącza pasek postępu zadania (/postep on, /postep off)',
+      description: 'Pasek postępu: /postep on|off, linie w czacie: /postep czat on|off',
     })
     const stored = await $.store.get('isHidden')
     await update($, isHidden, () => stored === true)
+    isChatQuiet = (await $.store.get('isChatQuiet')) === true
 
     return next(e)
   })
 
   on('command.run', { command: COMMAND }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
+    const chat = /^czat\s+(on|off)$/.exec(arg)
+
+    if (chat !== null) {
+      isChatQuiet = chat[1] === 'off'
+      await $.store.set('isChatQuiet', isChatQuiet)
+
+      return {
+        text: isChatQuiet
+          ? 'Linie postępu w czacie wyłączone; zostaje podsumowanie na koniec.'
+          : 'Linie postępu w czacie włączone.',
+      }
+    }
+
     const wasHidden = await read($, isHidden)
     const hide = arg === 'off' ? true : arg === 'on' ? false : !wasHidden
 
@@ -315,19 +348,35 @@ export const register: Register = on => {
       return next(e)
     }
 
-    if (summarizedAt === current.startedAt || (await read($, isHidden))) {
+    if (await read($, isHidden)) {
       return next(e)
+    }
+
+    if (shown.runAt !== current.startedAt) {
+      shown = { runAt: current.startedAt, done: 0, isSummarized: false, byRow: new Map() }
+    }
+
+    // A row can pass through more than once: it keeps the line it got the first time.
+    const again = shown.byRow.get(e.uuid)
+
+    if (again !== undefined) {
+      return next({ ...e, message: { ...e.message, content: withLine(e.message.content, again) } })
     }
 
     await measure($)
     const now = await $.clock.now()
     const measured = (await read($, run)) ?? current
+    const line = nextLine(measured, now, shown, isChatQuiet)
 
-    if (isAllDone(measured)) {
-      summarizedAt = measured.startedAt
+    if (line === null) {
+      return next(e)
     }
 
-    return next({ ...e, message: { ...e.message, content: withLine(e.message.content, replyLine(measured, now)) } })
+    shown.byRow.set(e.uuid, line)
+    shown.done = countDone(measured.steps)
+    shown.isSummarized = isAllDone(measured)
+
+    return next({ ...e, message: { ...e.message, content: withLine(e.message.content, line) } })
   })
 
   on('turn.complete', async ($, e, next) => {
