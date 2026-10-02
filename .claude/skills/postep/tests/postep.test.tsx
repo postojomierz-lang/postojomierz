@@ -221,5 +221,8 @@ describe('obliczenia', () => {
       { type: 'tool_use', id: 't', name: 'Bash', input: {} },
     ])
     expect(withLine([{ type: 'tool_use' }], 'L')).toEqual([{ type: 'tool_use' }])
+    expect(withLine([{ type: 'text', text: 'Raz.\n\n⏱ ███ 1/3 · 0:40' }], '⏱ 2/3')).toEqual([
+      { type: 'text', text: 'Raz.\n\n⏱ 2/3' },
+    ])
   })
 })

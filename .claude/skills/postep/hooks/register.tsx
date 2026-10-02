@@ -161,13 +161,16 @@ export const replyLine = (current: PostepRun, now: number): string =>
     ? summaryLine(current, now)
     : `⏱ ${bar(countDone(current.steps), current.steps.length, 10)} ${progressLabel(current)} · ${formatClock(now - current.startedAt)}`
 
-/** The blocks with `line` under the last text block; the others as they were. */
+/** A line the mod put under a reply before: a row can pass through `session.append` more than once. */
+const OLD_LINE = /\n\n(?:⏱ |✓ Gotowe: )[^\n]*/g
+
+/** The blocks with `line` under the last text block, in place of any line put there before. */
 export const withLine = <B extends { type: string }>(content: readonly B[], line: string): B[] => {
   const textAt = content.findLastIndex(block => block.type === 'text')
 
   return content.map((block, index) =>
     index === textAt && 'text' in block && typeof block.text === 'string'
-      ? { ...block, text: `${block.text}\n\n${line}` }
+      ? { ...block, text: `${block.text.replace(OLD_LINE, '')}\n\n${line}` }
       : block,
   )
 }
