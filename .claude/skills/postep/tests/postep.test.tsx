@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
-import { estimateLeft, formatLeft, formatWeek, nextLine, withLine, withSteps } from '../hooks/register'
+import { applyUpdate, estimateLeft, formatLeft, formatWeek, nextLine, withLine, withSteps } from '../hooks/register'
 import type { PostepRun } from '../types'
 
 const MIN = 60_000
@@ -107,7 +107,7 @@ describe('postęp zadania', () => {
       await finishTurn($)
       await ui.redraw()
       expect(await text(ui)).toContain('✓ Gotowe')
-      expect(seen.toasts.join()).toContain('Gotowe: 1/4 kroków')
+      expect(seen.toasts.join()).toContain('🟢 Gotowe: 1/4 kroków')
       expect(seen.sounds).toBe(1)
     })
   }
@@ -221,16 +221,22 @@ describe('obliczenia', () => {
     expect(nextLine(none, MIN, fresh, false)).toBe(null)
 
     const half = withSteps(none, steps(1, 2), 3 * MIN)
-    expect(nextLine(half, 3 * MIN, fresh, false)).toBe('⏱ 1/2 · ~3 min · 3:00')
+    expect(nextLine(half, 3 * MIN, fresh, false)).toBe('🟡 1/2 · ~3 min · 3:00')
     expect(nextLine(half, 3 * MIN, { done: 1, isSummarized: false }, false)).toBe(null)
     expect(nextLine(half, 3 * MIN, fresh, true)).toBe(null)
-    expect(nextLine({ ...half, weekNow: 10.3 }, 3 * MIN, fresh, false)).toBe('⏱ 1/2 · ~3 min · 3:00 · limit tyg. +0.3%')
+    expect(nextLine({ ...half, weekNow: 10.3 }, 3 * MIN, fresh, false)).toBe('🟡 1/2 · ~3 min · 3:00 · limit tyg. +0.3%')
 
     const done = { ...withSteps(half, steps(2, 2), 5 * MIN), weekNow: 10.5 }
     expect(nextLine(done, 5 * MIN, { done: 1, isSummarized: false }, true)).toBe(
-      '✓ Gotowe: 2/2 kroków w 5:00 · limit tyg. +0.5%',
+      '🟢 Gotowe: 2/2 kroków w 5:00 · limit tyg. +0.5%',
     )
     expect(nextLine(done, 5 * MIN, { done: 2, isSummarized: true }, false)).toBe(null)
+  })
+
+  test('spóźnione in_progress nie cofa zrobionego kroku', () => {
+    const one = [{ id: '1', subject: 'A', status: 'completed' as const }]
+    expect(applyUpdate(one, { taskId: '1', status: 'in_progress' })[0]?.status).toBe('completed')
+    expect(applyUpdate(one, { taskId: '1', subject: 'B' })[0]?.subject).toBe('B')
   })
 
   test('linia trafia pod ostatni blok tekstu', () => {
@@ -245,6 +251,7 @@ describe('obliczenia', () => {
       { type: 'tool_use', id: 't', name: 'Bash', input: {} },
     ])
     expect(withLine([{ type: 'tool_use' }], 'L')).toEqual([{ type: 'tool_use' }])
+    expect(withLine([{ type: 'text', text: 'Dwa.\n\n🟡 1/3 · 0:40' }], '🟡 2/3')).toEqual([{ type: 'text', text: 'Dwa.\n\n🟡 2/3' }])
     expect(withLine([{ type: 'text', text: 'Raz.\n\n⏱ ███ 1/3 · 0:40' }], '⏱ 2/3')).toEqual([
       { type: 'text', text: 'Raz.\n\n⏱ 2/3' },
     ])
