@@ -167,16 +167,16 @@ describe('postęp zadania', () => {
     expect(again.sections.map(section => section.id)).toContain('postep:plan')
   })
 
-  test('/postep czat off zostawia pasek włączony', async ($, on) => {
+  test('/postep czat on|off nie rusza paska', async ($, on) => {
     world(on)
 
     const quiet = await $.command.run({
       command: 'postep',
-      args: 'czat off',
+      args: 'czat on',
       origin: { kind: 'composer' },
       presentation: { isFullscreen: false, columns: 100 },
     } as never)
-    expect(quiet.text).toContain('podsumowanie')
+    expect(quiet.text).toBe('Postęp w czacie włączony.')
     const composed = await $.prompt.compose({ model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] })
     expect(composed.sections.map(section => section.id)).toContain('postep:plan')
   })
@@ -218,19 +218,18 @@ describe('obliczenia', () => {
   test('linia pod odpowiedzią tylko przy postępie, krótka, podsumowanie raz', () => {
     const fresh = { done: 0, isSummarized: false }
     const none = withSteps(base, steps(0, 2), 0)
-    expect(nextLine(none, MIN, fresh, false)).toBe(null)
+    expect(nextLine(none, MIN, fresh)).toBe(null)
 
     const half = withSteps(none, steps(1, 2), 3 * MIN)
-    expect(nextLine(half, 3 * MIN, fresh, false)).toBe('🟡 1/2 · ~3 min · 3:00')
-    expect(nextLine(half, 3 * MIN, { done: 1, isSummarized: false }, false)).toBe(null)
-    expect(nextLine(half, 3 * MIN, fresh, true)).toBe(null)
-    expect(nextLine({ ...half, weekNow: 10.3 }, 3 * MIN, fresh, false)).toBe('🟡 1/2 · ~3 min · 3:00 · limit tyg. +0.3%')
+    expect(nextLine(half, 3 * MIN, fresh)).toBe('🟡 1/2 · ~3 min · 3:00')
+    expect(nextLine(half, 3 * MIN, { done: 1, isSummarized: false })).toBe(null)
+    expect(nextLine({ ...half, weekNow: 10.3 }, 3 * MIN, fresh)).toBe('🟡 1/2 · ~3 min · 3:00 · limit tyg. +0.3%')
 
     const done = { ...withSteps(half, steps(2, 2), 5 * MIN), weekNow: 10.5 }
-    expect(nextLine(done, 5 * MIN, { done: 1, isSummarized: false }, true)).toBe(
+    expect(nextLine(done, 5 * MIN, { done: 1, isSummarized: false })).toBe(
       '🟢 Gotowe: 2/2 kroków w 5:00 · limit tyg. +0.5%',
     )
-    expect(nextLine(done, 5 * MIN, { done: 2, isSummarized: true }, false)).toBe(null)
+    expect(nextLine(done, 5 * MIN, { done: 2, isSummarized: true })).toBe(null)
   })
 
   test('spóźnione in_progress nie cofa zrobionego kroku', () => {
