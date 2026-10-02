@@ -99,16 +99,7 @@ const currentStep = (current: PostepRun): PostepStep | undefined =>
   current.steps.find(step => step.status === 'in_progress') ??
   current.steps.find(step => step.status === 'pending')
 
-/** Marks the progress the mod appends to a step's name in the plan panel. */
-const MARK = ' ⏱ '
-
-export const stripMark = (text: string): string => {
-  const at = text.indexOf(MARK)
-
-  return at === -1 ? text : text.slice(0, at)
-}
-
-/** `2/4 · ~6 min · limit tyg. +0.3%`: what the plan panel shows beside the running step. */
+/** `2/4 · ~6 min · limit tyg. +0.3%`: the progress under a reply written mid-task. */
 export const progressLabel = (current: PostepRun): string =>
   [`${countDone(current.steps)}/${current.steps.length}`, formatLeft(estimateLeft(current)), formatWeek(current)]
     .filter((part): part is string => part !== null)
@@ -122,9 +113,6 @@ export const summaryLine = (current: PostepRun, now: number): string => {
     (week === null ? '' : ` · ${week}`)
   )
 }
-
-const summaryContext = (line: string): string =>
-  `[postep] Every step is done. End your final reply to the user with this exact line, on its own: ${line}`
 
 export const isAllDone = (current: PostepRun): boolean =>
   current.steps.length >= MIN_STEPS && countDone(current.steps) === current.steps.length
@@ -151,8 +139,8 @@ export const applyUpdate = (steps: readonly PostepStep[], change: TaskChange): P
     step.id === change.taskId
       ? {
           ...step,
-          subject: change.subject === undefined ? step.subject : stripMark(change.subject),
-          activeForm: change.activeForm === undefined ? step.activeForm : stripMark(change.activeForm),
+          subject: change.subject ?? step.subject,
+          activeForm: change.activeForm ?? step.activeForm,
           status: status ?? step.status,
         }
       : step,
@@ -162,12 +150,31 @@ export const applyUpdate = (steps: readonly PostepStep[], change: TaskChange): P
 export const todoSteps = (todos: readonly { content: string; status: PostepStep['status']; activeForm: string }[]) =>
   todos.map((todo, index) => ({
     id: `todo-${index}`,
-    subject: stripMark(todo.content),
-    activeForm: stripMark(todo.activeForm),
+    subject: todo.content,
+    activeForm: todo.activeForm,
     status: todo.status,
   }))
 
+/** The line the mod puts under a reply of the model while a task with several steps runs. */
+export const replyLine = (current: PostepRun, now: number): string =>
+  isAllDone(current)
+    ? summaryLine(current, now)
+    : `⏱ ${bar(countDone(current.steps), current.steps.length, 10)} ${progressLabel(current)} · ${formatClock(now - current.startedAt)}`
+
+/** The blocks with `line` under the last text block; the others as they were. */
+export const withLine = <B extends { type: string }>(content: readonly B[], line: string): B[] => {
+  const textAt = content.findLastIndex(block => block.type === 'text')
+
+  return content.map((block, index) =>
+    index === textAt && 'text' in block && typeof block.text === 'string'
+      ? { ...block, text: `${block.text}\n\n${line}` }
+      : block,
+  )
+}
+
 let tick: Timer | undefined
+/** The run (by its start) whose summary line already went under a reply. */
+let summarizedAt: number | null = null
 
 const stopTicking = () => {
   tick?.cancel()
@@ -261,34 +268,13 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
-    const current = await read($, run)
+    const ran = await next(e)
 
-    if (e.agentId !== undefined || current === null || current.state !== 'working') {
-      return next(e)
+    if (e.agentId === undefined && ran.deny === undefined && ran.isError !== true) {
+      await setSteps($, () => todoSteps(e.todos))
     }
 
-    const steps = todoSteps(e.todos)
-    const predicted = withSteps(current, steps, await $.clock.now())
-    const isShown = steps.length >= MIN_STEPS && !(await read($, isHidden))
-    const label = progressLabel(predicted)
-    const todos = e.todos.map((todo, index) => {
-      const step = steps[index]
-
-      return step !== undefined && isShown && todo.status === 'in_progress'
-        ? { ...todo, content: step.subject + MARK + label, activeForm: (step.activeForm ?? step.subject) + MARK + label }
-        : { ...todo, content: step?.subject ?? todo.content, activeForm: step?.activeForm ?? todo.activeForm }
-    })
-    const ran = await next({ ...e, todos })
-
-    if (ran.deny !== undefined || ran.isError === true) {
-      return ran
-    }
-
-    await setSteps($, () => steps)
-
-    return isShown && isAllDone(predicted)
-      ? { ...ran, context: [...(ran.context ?? []), summaryContext(summaryLine(predicted, predicted.now))] }
-      : ran
+    return ran
   })
 
   on('tool.call', { tool: 'TaskCreate' }, async ($, e, next) => {
@@ -304,36 +290,41 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'TaskUpdate' }, async ($, e, next) => {
-    const current = await read($, run)
+    const ran = await next(e)
 
-    if (e.agentId !== undefined || current === null || current.state !== 'working') {
+    if (e.agentId === undefined && ran.deny === undefined && ran.isError !== true && ran.result.success) {
+      await setSteps($, steps => applyUpdate(steps, e))
+    }
+
+    return ran
+  })
+
+  // The chat is what every app shows, a cloud session's included: the progress goes under the model's replies.
+  on('session.append', async ($, e, next) => {
+    if (e.agentId !== undefined || e.message.type !== 'assistant' || e.door !== 'response') {
       return next(e)
     }
 
-    const steps = applyUpdate(current.steps, e)
-    const predicted = withSteps(current, steps, await $.clock.now())
-    // A task the mod never saw keeps its own name: only its id would be known here.
-    const isKnown = current.steps.some(one => one.id === e.taskId)
-    const step = isKnown ? steps.find(one => one.id === e.taskId) : undefined
-    const isShown = steps.length >= MIN_STEPS && !(await read($, isHidden))
-    const label = progressLabel(predicted)
-    const rewritten =
-      step === undefined || e.status === 'deleted'
-        ? e
-        : step.status === 'in_progress' && isShown
-          ? { ...e, subject: step.subject + MARK + label, activeForm: (step.activeForm ?? step.subject) + MARK + label }
-          : { ...e, subject: step.subject }
-    const ran = await next(rewritten)
+    const textAt = e.message.content.findLastIndex(block => block.type === 'text')
+    const current = await read($, run)
 
-    if (ran.deny !== undefined || ran.isError === true || !ran.result.success) {
-      return ran
+    if (textAt === -1 || current === null || current.state !== 'working' || current.steps.length < MIN_STEPS) {
+      return next(e)
     }
 
-    await setSteps($, () => steps)
+    if (summarizedAt === current.startedAt || (await read($, isHidden))) {
+      return next(e)
+    }
 
-    return isShown && e.status === 'completed' && isAllDone(predicted)
-      ? { ...ran, context: [...(ran.context ?? []), summaryContext(summaryLine(predicted, predicted.now))] }
-      : ran
+    await measure($)
+    const now = await $.clock.now()
+    const measured = (await read($, run)) ?? current
+
+    if (isAllDone(measured)) {
+      summarizedAt = measured.startedAt
+    }
+
+    return next({ ...e, message: { ...e.message, content: withLine(e.message.content, replyLine(measured, now)) } })
   })
 
   on('turn.complete', async ($, e, next) => {
