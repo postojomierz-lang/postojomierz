@@ -99,6 +99,74 @@ const currentStep = (current: PostepRun): PostepStep | undefined =>
   current.steps.find(step => step.status === 'in_progress') ??
   current.steps.find(step => step.status === 'pending')
 
+/** Marks the progress the mod appends to a step's name in the plan panel. */
+const MARK = ' ⏱ '
+
+export const stripMark = (text: string): string => {
+  const at = text.indexOf(MARK)
+
+  return at === -1 ? text : text.slice(0, at)
+}
+
+/** `2/4 · ~6 min · limit tyg. +0.3%`: what the plan panel shows beside the running step. */
+export const progressLabel = (current: PostepRun): string =>
+  [`${countDone(current.steps)}/${current.steps.length}`, formatLeft(estimateLeft(current)), formatWeek(current)]
+    .filter((part): part is string => part !== null)
+    .join(' · ')
+
+export const summaryLine = (current: PostepRun, now: number): string => {
+  const week = formatWeek(current)
+
+  return (
+    `✓ Gotowe: ${countDone(current.steps)}/${current.steps.length} kroków w ${formatClock(now - current.startedAt)}` +
+    (week === null ? '' : ` · ${week}`)
+  )
+}
+
+const summaryContext = (line: string): string =>
+  `[postep] Every step is done. End your final reply to the user with this exact line, on its own: ${line}`
+
+export const isAllDone = (current: PostepRun): boolean =>
+  current.steps.length >= MIN_STEPS && countDone(current.steps) === current.steps.length
+
+export type TaskChange = {
+  taskId: string
+  subject?: string
+  activeForm?: string
+  status?: 'pending' | 'in_progress' | 'completed' | 'deleted'
+}
+
+export const applyUpdate = (steps: readonly PostepStep[], change: TaskChange): PostepStep[] => {
+  if (change.status === 'deleted') {
+    return steps.filter(step => step.id !== change.taskId)
+  }
+
+  const known = steps.some(step => step.id === change.taskId)
+  const base: PostepStep[] = known
+    ? [...steps]
+    : [...steps, { id: change.taskId, subject: change.subject ?? `krok ${change.taskId}`, status: 'pending' }]
+  const status = change.status
+
+  return base.map(step =>
+    step.id === change.taskId
+      ? {
+          ...step,
+          subject: change.subject === undefined ? step.subject : stripMark(change.subject),
+          activeForm: change.activeForm === undefined ? step.activeForm : stripMark(change.activeForm),
+          status: status ?? step.status,
+        }
+      : step,
+  )
+}
+
+export const todoSteps = (todos: readonly { content: string; status: PostepStep['status']; activeForm: string }[]) =>
+  todos.map((todo, index) => ({
+    id: `todo-${index}`,
+    subject: stripMark(todo.content),
+    activeForm: stripMark(todo.activeForm),
+    status: todo.status,
+  }))
+
 let tick: Timer | undefined
 
 const stopTicking = () => {
@@ -193,20 +261,34 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
-    const ran = await next(e)
+    const current = await read($, run)
 
-    if (e.agentId === undefined && ran.deny === undefined && ran.isError !== true) {
-      await setSteps($, () =>
-        e.todos.map((todo, index) => ({
-          id: `todo-${index}`,
-          subject: todo.content,
-          activeForm: todo.activeForm,
-          status: todo.status,
-        })),
-      )
+    if (e.agentId !== undefined || current === null || current.state !== 'working') {
+      return next(e)
     }
 
-    return ran
+    const steps = todoSteps(e.todos)
+    const predicted = withSteps(current, steps, await $.clock.now())
+    const isShown = steps.length >= MIN_STEPS && !(await read($, isHidden))
+    const label = progressLabel(predicted)
+    const todos = e.todos.map((todo, index) => {
+      const step = steps[index]
+
+      return step !== undefined && isShown && todo.status === 'in_progress'
+        ? { ...todo, content: step.subject + MARK + label, activeForm: (step.activeForm ?? step.subject) + MARK + label }
+        : { ...todo, content: step?.subject ?? todo.content, activeForm: step?.activeForm ?? todo.activeForm }
+    })
+    const ran = await next({ ...e, todos })
+
+    if (ran.deny !== undefined || ran.isError === true) {
+      return ran
+    }
+
+    await setSteps($, () => steps)
+
+    return isShown && isAllDone(predicted)
+      ? { ...ran, context: [...(ran.context ?? []), summaryContext(summaryLine(predicted, predicted.now))] }
+      : ran
   })
 
   on('tool.call', { tool: 'TaskCreate' }, async ($, e, next) => {
@@ -222,35 +304,36 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'TaskUpdate' }, async ($, e, next) => {
-    const ran = await next(e)
+    const current = await read($, run)
 
-    if (e.agentId === undefined && ran.deny === undefined && ran.isError !== true && ran.result.success) {
-      await setSteps($, steps => {
-        if (e.status === 'deleted') {
-          return steps.filter(step => step.id !== e.taskId)
-        }
-
-        const known = steps.some(step => step.id === e.taskId)
-        const base = known
-          ? steps
-          : [...steps, { id: e.taskId, subject: e.subject ?? `krok ${e.taskId}`, status: 'pending' as const }]
-
-        const status = e.status
-
-        return base.map(step =>
-          step.id === e.taskId
-            ? {
-                ...step,
-                subject: e.subject ?? step.subject,
-                activeForm: e.activeForm ?? step.activeForm,
-                status: status ?? step.status,
-              }
-            : step,
-        )
-      })
+    if (e.agentId !== undefined || current === null || current.state !== 'working') {
+      return next(e)
     }
 
-    return ran
+    const steps = applyUpdate(current.steps, e)
+    const predicted = withSteps(current, steps, await $.clock.now())
+    // A task the mod never saw keeps its own name: only its id would be known here.
+    const isKnown = current.steps.some(one => one.id === e.taskId)
+    const step = isKnown ? steps.find(one => one.id === e.taskId) : undefined
+    const isShown = steps.length >= MIN_STEPS && !(await read($, isHidden))
+    const label = progressLabel(predicted)
+    const rewritten =
+      step === undefined || e.status === 'deleted'
+        ? e
+        : step.status === 'in_progress' && isShown
+          ? { ...e, subject: step.subject + MARK + label, activeForm: (step.activeForm ?? step.subject) + MARK + label }
+          : { ...e, subject: step.subject }
+    const ran = await next(rewritten)
+
+    if (ran.deny !== undefined || ran.isError === true || !ran.result.success) {
+      return ran
+    }
+
+    await setSteps($, () => steps)
+
+    return isShown && e.status === 'completed' && isAllDone(predicted)
+      ? { ...ran, context: [...(ran.context ?? []), summaryContext(summaryLine(predicted, predicted.now))] }
+      : ran
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -286,12 +369,7 @@ export const register: Register = on => {
     await update($, run, () => finished)
 
     if (!e.isAborted && !(await read($, isHidden))) {
-      const week = formatWeek(finished)
-      const done = countDone(finished.steps)
-      $.ui.toast(
-        `✓ Gotowe: ${done}/${finished.steps.length} kroków w ${formatClock(now - finished.startedAt)}` +
-          (week === null ? '' : ` · ${week}`),
-      )
+      $.ui.toast(summaryLine(finished, now))
       void $.audio.play({ asset: 'sounds/done.wav' }).catch(() => undefined)
     }
 
