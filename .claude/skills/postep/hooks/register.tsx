@@ -196,8 +196,8 @@ export const withLine = <B extends { type: string }>(content: readonly B[], line
 let tick: Timer | undefined
 /** What the chat already shows of the run that started at `runAt`, and the line each reply got. */
 let shown = { runAt: -1, done: 0, isSummarized: false, byRow: new Map<string, string>() }
-/** `/postep czat on`: progress and summary lines in the chat; off unless asked for. */
-let isChatOn = false
+/** Progress and summary lines in the chat: on unless `/postep czat off` turned them off. */
+let isChatOn = true
 
 const stopTicking = () => {
   tick?.cancel()
@@ -240,7 +240,7 @@ export const register: Register = on => {
     })
     const stored = await $.store.get('isHidden')
     await update($, isHidden, () => stored === true)
-    isChatOn = (await $.store.get('isChatOn')) === true
+    isChatOn = (await $.store.get('isChatOn')) !== false
 
     return next(e)
   })
