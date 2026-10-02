@@ -21,7 +21,8 @@ const PLAN_SECTION = {
     'When the user gives you a task that takes several distinct steps, write the steps down first with the task tools ' +
       '(TaskCreate for each step, or TodoWrite), then keep them current: mark a step in_progress when you start it and ' +
       'completed as soon as it is done, and add steps you discover along the way. The user watches a progress bar and a ' +
-      'time estimate built from this list. Skip the list for questions and one-step tasks.',
+      'time estimate built from this list. Skip the list for questions and one-step tasks. Never put two status ' +
+      'changes of the same task in one batch of parallel tool calls: they can run out of order.',
   ].join('\n'),
 } as const
 
@@ -102,7 +103,7 @@ const currentStep = (current: PostepRun): PostepStep | undefined =>
 /** `3/6 · ~2 min · 4:12`, the limit only once it grew: the short line under a reply written mid-task. */
 export const progressLine = (current: PostepRun, now: number): string => {
   const parts = [
-    `⏱ ${countDone(current.steps)}/${current.steps.length}`,
+    `🟡 ${countDone(current.steps)}/${current.steps.length}`,
     formatLeft(estimateLeft(current)),
     formatClock(now - current.startedAt),
   ]
@@ -115,7 +116,7 @@ export const summaryLine = (current: PostepRun, now: number): string => {
   const week = formatWeek(current)
 
   return (
-    `✓ Gotowe: ${countDone(current.steps)}/${current.steps.length} kroków w ${formatClock(now - current.startedAt)}` +
+    `🟢 Gotowe: ${countDone(current.steps)}/${current.steps.length} kroków w ${formatClock(now - current.startedAt)}` +
     (week === null ? '' : ` · ${week}`)
   )
 }
@@ -147,7 +148,8 @@ export const applyUpdate = (steps: readonly PostepStep[], change: TaskChange): P
           ...step,
           subject: change.subject ?? step.subject,
           activeForm: change.activeForm ?? step.activeForm,
-          status: status ?? step.status,
+          // Parallel calls can land out of order: a step once completed is not taken back by a late in_progress.
+          status: step.status === 'completed' && status !== 'completed' && status !== undefined ? step.status : (status ?? step.status),
         }
       : step,
   )
@@ -179,7 +181,7 @@ export const nextLine = (
 }
 
 /** A line the mod put under a reply before: a row can pass through `session.append` more than once. */
-const OLD_LINE = /\n\n(?:⏱ |✓ Gotowe: )[^\n]*/g
+const OLD_LINE = /\n\n(?:⏱ |✓ Gotowe: |🟡 |🟢 Gotowe: )[^\n]*/g
 
 /** The blocks with `line` under the last text block, in place of any line put there before. */
 export const withLine = <B extends { type: string }>(content: readonly B[], line: string): B[] => {
