@@ -165,19 +165,18 @@ export const todoSteps = (todos: readonly { content: string; status: PostepStep[
 
 /**
  * The line under the next reply, or null for none: the summary once every step is done, otherwise the
- * progress only when a step was completed since the last line (and the chat lines are on).
+ * progress only when a step was completed since the last line.
  */
 export const nextLine = (
   current: PostepRun,
   now: number,
   shown: { done: number; isSummarized: boolean },
-  isChatQuiet: boolean,
 ): string | null => {
   if (isAllDone(current)) {
     return shown.isSummarized ? null : summaryLine(current, now)
   }
 
-  return isChatQuiet || countDone(current.steps) <= shown.done ? null : progressLine(current, now)
+  return countDone(current.steps) <= shown.done ? null : progressLine(current, now)
 }
 
 /** A line the mod put under a reply before: a row can pass through `session.append` more than once. */
@@ -197,8 +196,8 @@ export const withLine = <B extends { type: string }>(content: readonly B[], line
 let tick: Timer | undefined
 /** What the chat already shows of the run that started at `runAt`, and the line each reply got. */
 let shown = { runAt: -1, done: 0, isSummarized: false, byRow: new Map<string, string>() }
-/** `/postep czat off`: no progress lines in the chat, the summary alone. */
-let isChatQuiet = false
+/** `/postep czat on`: progress and summary lines in the chat; off unless asked for. */
+let isChatOn = false
 
 const stopTicking = () => {
   tick?.cancel()
@@ -241,7 +240,7 @@ export const register: Register = on => {
     })
     const stored = await $.store.get('isHidden')
     await update($, isHidden, () => stored === true)
-    isChatQuiet = (await $.store.get('isChatQuiet')) === true
+    isChatOn = (await $.store.get('isChatOn')) === true
 
     return next(e)
   })
@@ -251,14 +250,10 @@ export const register: Register = on => {
     const chat = /^czat\s+(on|off)$/.exec(arg)
 
     if (chat !== null) {
-      isChatQuiet = chat[1] === 'off'
-      await $.store.set('isChatQuiet', isChatQuiet)
+      isChatOn = chat[1] === 'on'
+      await $.store.set('isChatOn', isChatOn)
 
-      return {
-        text: isChatQuiet
-          ? 'Linie postępu w czacie wyłączone; zostaje podsumowanie na koniec.'
-          : 'Linie postępu w czacie włączone.',
-      }
+      return { text: isChatOn ? 'Postęp w czacie włączony.' : 'Postęp w czacie wyłączony.' }
     }
 
     const wasHidden = await read($, isHidden)
@@ -337,9 +332,9 @@ export const register: Register = on => {
     return ran
   })
 
-  // The chat is what every app shows, a cloud session's included: the progress goes under the model's replies.
+  // The chat is what every app shows, a cloud session's included: on request the progress goes under the replies.
   on('session.append', async ($, e, next) => {
-    if (e.agentId !== undefined || e.message.type !== 'assistant' || e.door !== 'response') {
+    if (!isChatOn || e.agentId !== undefined || e.message.type !== 'assistant' || e.door !== 'response') {
       return next(e)
     }
 
@@ -368,7 +363,7 @@ export const register: Register = on => {
     await measure($)
     const now = await $.clock.now()
     const measured = (await read($, run)) ?? current
-    const line = nextLine(measured, now, shown, isChatQuiet)
+    const line = nextLine(measured, now, shown)
 
     if (line === null) {
       return next(e)
