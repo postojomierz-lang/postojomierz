@@ -84,7 +84,7 @@
   #card { display: none; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92vw, 380px); max-height: 86vh; overflow: auto;
     padding: 14px 16px 12px; z-index: 40; font-size: 14px; line-height: 1.45; }
   #card.show { display: block; }
-  #card img { width: 100%; max-height: 260px; object-fit: cover; border-radius: 8px; display: block; margin-bottom: 10px; }
+  #card img { width: 100%; max-height: 300px; object-fit: contain; background: #111; border-radius: 8px; display: block; margin-bottom: 10px; }
   #card h3 { margin: 0 24px 2px 0; font-size: 18px; } #card .lat { font-style: italic; color: #5b6368; margin-bottom: 8px; }
   #card .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   #card .tags span { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: rgba(0,0,0,.07); }
@@ -181,6 +181,7 @@
   <div class="row">
     <button id="btn-auto" class="grow">▶ Idź sam</button>
     <button id="btn-labels" title="Nazwy szczytów i miejsc (L)">🏷</button>
+    <button id="btn-binoc" title="Lornetka: przybliżenie (B; dwa palce lub kółko myszy)">🔭</button>
     <button id="btn-sound" title="Dźwięk (N)">🔊</button>
     <button id="btn-plan" title="Planer tras (mapa)" onclick="location.href='./planer.html'">🗺</button>
     <button id="btn-bug" title="Zgłoś problem (zrzut ekranu + opis)">🐞</button>
@@ -244,6 +245,7 @@
     <tr><td><kbd>T</kbd> / <kbd>M</kbd></td><td>pora dnia / pogoda</td></tr>
     <tr><td><kbd>N</kbd></td><td>dźwięk włącz / wyłącz</td></tr>
     <tr><td><kbd>L</kbd></td><td>nazwy szczytów, przełęczy, jezior i schronisk</td></tr>
+    <tr><td><kbd>B</kbd> / 🔭</td><td>lornetka (przybliżenie 2–12×: dwa palce lub kółko myszy)</td></tr>
     <tr><td>profil na dole</td><td>kliknij, żeby przeskoczyć</td></tr>
   </table>
   <p class="note"><a href="prywatnosc.html" target="_blank" style="color:inherit">Polityka prywatności</a> · <a href="regulamin.html" target="_blank" style="color:inherit">Regulamin</a> · w górach: TOPR 985 / +48 601 100 300</p>

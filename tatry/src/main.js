@@ -1131,6 +1131,7 @@ async function main() {
     if (e.code === 'Space') { state.auto = !state.auto; e.preventDefault(); updateButtons(); }
     if (e.code === 'KeyF') toggleMode();
     if (e.code === 'KeyG') toggleFree();
+    if (e.code === 'KeyB') $('btn-binoc').click();
     if (e.code === 'KeyP') toggleFly();
     if (e.code === 'KeyR') { state.yawOff = 0; state.pitchOff = 0; }
     if (e.code === 'KeyT') setHour(env.hour >= 21 ? 4.5 : env.hour + 1);
@@ -1164,7 +1165,7 @@ async function main() {
     if (state.free) {
       const n = nearestTrail(state.free.x, state.free.z);
       state.s = n.i * trail.step; state.free = null; state.yawOff = 0;
-      $('tpn').classList.remove('show');
+      $('tpn').classList.remove('show'); tpnT = 0; tpnAt = 0;
     } else {
       const p0 = at(state.s);
       state.free = { x: p0.x, z: p0.z };
@@ -1173,6 +1174,8 @@ async function main() {
     }
     updateButtons();
   }
+  let tpnT = 0, tpnAt = 0;
+  $('tpn').addEventListener('click', () => { tpnT = 0; $('tpn').classList.remove('show'); });
   function freeStep(ds) {
     const yaw = state.yaw + state.yawOff;
     const nx = state.free.x + Math.sin(yaw) * ds, nz = state.free.z + Math.cos(yaw) * ds;
@@ -1184,7 +1187,9 @@ async function main() {
     state.free.x = nx; state.free.z = nz;
     state.s = n.i * trail.step;                                           // for the profile, places and the HUD
     const off = n.d > 6;
-    $('tpn').classList.toggle('show', off);
+    // the reminder: when leaving the trail and again every 25 m farther; it goes by itself after 6 s
+    if (!off) { tpnAt = 0; if (tpnT > 0) { tpnT = 0; $('tpn').classList.remove('show'); } }
+    else if (n.d > tpnAt) { tpnAt = n.d + 25; tpnT = 6; $('tpn').classList.add('show'); }
     if (off) sess.fair = false;                                           // no route record when leaving the trail
   }
 
@@ -1199,16 +1204,41 @@ async function main() {
     updateButtons();
   }
 
-  // mouse / touch look
-  let drag = null;
-  renderer.domElement.addEventListener('pointerdown', (e) => { if (state.mode === 'walk') { drag = { x: e.clientX, y: e.clientY }; renderer.domElement.setPointerCapture(e.pointerId); } });
+  // mouse / touch look; two fingers apart (or the mouse wheel) raise the binoculars and zoom them
+  let drag = null, BINO = null;                       // BINO: the binoculars (set up with the wildlife scenes)
+  const touches = new Map();
+  let pinch = null;
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (state.mode !== 'walk') return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    renderer.domElement.setPointerCapture(e.pointerId);
+    if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: BINO && BINO.manual ? BINO.manualZoom : 1 }; drag = null; }
+    else drag = { x: e.clientX, y: e.clientY };
+  });
   renderer.domElement.addEventListener('pointermove', (e) => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && touches.size === 2) {
+      const [a, b] = [...touches.values()], z = pinch.z0 * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(20, pinch.d0);
+      if (BINO && !BINO.active && z > 1.6 && !reveal.active) BINO.startManual(Math.max(2, z));
+      else if (BINO && BINO.manual) BINO.setZoom(z);
+      return;
+    }
     if (!drag) return;
-    state.yawOff -= (e.clientX - drag.x) * 0.004;
-    state.pitchOff = Math.max(-1.2, Math.min(1.2, state.pitchOff - (e.clientY - drag.y) * 0.004));
+    // through the binoculars a finger's move turns the view as many times less as they magnify
+    const k = 0.004 / (BINO && BINO.active ? BINO.zoom : 1);
+    state.yawOff -= (e.clientX - drag.x) * k;
+    state.pitchOff = Math.max(-1.2, Math.min(1.2, state.pitchOff - (e.clientY - drag.y) * k));
     drag = { x: e.clientX, y: e.clientY };
   });
-  renderer.domElement.addEventListener('pointerup', () => { drag = null; });
+  const up = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (!touches.size) drag = null; };
+  renderer.domElement.addEventListener('pointerup', up);
+  renderer.domElement.addEventListener('pointercancel', up);
+  renderer.domElement.addEventListener('wheel', (e) => {
+    if (state.mode !== 'walk' || !BINO || reveal.active) return;
+    e.preventDefault();
+    if (BINO.manual) BINO.setZoom(BINO.manualZoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+    else if (!BINO.active && e.deltaY < 0) BINO.startManual(3);
+  }, { passive: false });
 
   // drone mode
   const orbit = new OrbitControls(camera, renderer.domElement);
@@ -1330,6 +1360,7 @@ async function main() {
   if (grass) grass.setClearings(flowers.clearings);
   // scenes from the life of the animals: the notice, then the binoculars on the scene (?lornetka=0: notice only)
   const binoc = buildBinoculars({ camera });
+  BINO = binoc;
   const BINOC = P.get('lornetka') !== '0';
   function wildEvent(text, focus) {
     toast(text);
@@ -1491,6 +1522,7 @@ async function main() {
       if (reveal.active || performance.now() - reveal.endedAt < 800) { e.stopPropagation(); e.preventDefault(); }
     }, true);
   }
+  $('btn-binoc').onclick = () => { if (binoc.active) binoc.stop(); else if (state.mode === 'walk' && !reveal.active) binoc.startManual(6); };
   $('btn-auto').onclick = () => { state.auto = !state.auto; updateButtons(); };
   $('btn-mode').onclick = toggleMode;
   $('btn-fly').onclick = toggleFly;
@@ -1748,6 +1780,7 @@ async function main() {
     }
     light.time.value += wdt;
     hudT -= dt;
+    if (tpnT > 0 && (tpnT -= dt) <= 0) $('tpn').classList.remove('show');
     if (hudT <= 0) {
       hudT = 0.2;
       $('h-ghost').textContent = state.ghostTxt || '–';

@@ -84,7 +84,27 @@ export class Sound {
   // a red deer stag roaring in the rut: a deep, rough, falling bellow (a sawtooth through two formants,
   // with breath noise), from where the stag stands, arriving as late as the distance makes it
   roar(pos, dist = 0) {
-    if (!this.ctx || this.ctx.state !== 'running' || !this.noise) return;
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    // a recording of the rut (CC0, freesound), the loudest stretches of it, one at a time
+    const rec = this.buf.stagRoar && this.buf.stagRoar[0];
+    if (rec) {
+      if (!this.roars) this.roars = loudParts(rec);
+      if (this.roars.length) {
+        const [off, dur] = this.roars[Math.floor(Math.random() * this.roars.length)];
+        const ctx = this.ctx, t0 = ctx.currentTime + dist / 343;
+        const p = ctx.createPanner();
+        Object.assign(p, { panningModel: 'equalpower', distanceModel: 'inverse', refDistance: 40, maxDistance: 3000, rolloffFactor: 0.8 });
+        p.positionX.value = pos[0]; p.positionY.value = pos[1]; p.positionZ.value = pos[2];
+        p.connect(this.master);
+        const g = ctx.createGain(); g.connect(p);
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(1.6, t0 + 0.15);
+        g.gain.setValueAtTime(1.6, t0 + dur - 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        const src = ctx.createBufferSource(); src.buffer = rec; src.playbackRate.value = 0.94 + Math.random() * 0.1;
+        src.connect(g); src.start(t0, off, dur + 0.05);
+        return;
+      }
+    }
+    if (!this.noise) return;
     const ctx = this.ctx, t0 = ctx.currentTime + dist / 343, len = 2.2 + Math.random() * 1.2;
     const p = ctx.createPanner();
     Object.assign(p, { panningModel: 'equalpower', distanceModel: 'inverse', refDistance: 40, maxDistance: 3000, rolloffFactor: 0.8 });
@@ -251,4 +271,20 @@ export class Sound {
       this.nextMarmot = 25 + Math.random() * 60;
     }
   }
+}
+
+// the loud stretches of a recording (a stag's roars between the quiet): [offset, duration] in seconds
+function loudParts(buf) {
+  const d = buf.getChannelData(0), win = Math.floor(buf.sampleRate * 0.1), rms = [];
+  for (let i = 0; i + win <= d.length; i += win) { let s = 0; for (let j = i; j < i + win; j += 4) s += d[j] * d[j]; rms.push(Math.sqrt(s / (win / 4))); }
+  const top = [...rms].sort((a, b) => b - a)[Math.floor(rms.length * 0.05)] || 0;
+  const out = [];
+  for (let i = 0; i < rms.length; i++) {
+    if (rms[i] < top * 0.6) continue;
+    let j = i; while (j < rms.length && rms[j] > top * 0.35) j++;
+    const a = Math.max(0, i - 4), b = Math.min(rms.length, j + 4);
+    if (b - a >= 12) out.push([a * 0.1, Math.min(5, (b - a) * 0.1)]);
+    i = j;
+  }
+  return out;
 }

@@ -7,6 +7,7 @@ import * as THREE from 'three';
 const CSS = `
 #bn{position:fixed;inset:0;z-index:8990;pointer-events:none;visibility:hidden}
 #bn.on{pointer-events:auto;visibility:visible}
+#bn.on.manual{pointer-events:none}#bn.manual .cap{pointer-events:auto}
 #bn svg.mask{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity .25s}
 #bn.view svg.mask{opacity:1}
 #bn .body{position:absolute;left:50%;bottom:0;width:min(92vw,560px);transform:translate(-50%,105%) scale(1);transform-origin:50% 35%;
@@ -70,6 +71,7 @@ export function buildBinoculars({ camera, onStart = () => {}, onEnd = () => {} }
   }
   // focus: { objs: [Object3D], size: metres, dur: seconds the scene lasts at most }
   function start(text, focus) {
+    if (cur && cur.manual) return false;                // looking around oneself: only the notice
     if (cur) {                                           // the scene goes on (the catch after the chase): follow it
       if (cur.phase !== 'down') { cap.innerHTML = `${text}<small>stuknij, aby opuścić lornetkę</small>`; if (focus) { cur.f = focus; cur.t = Math.min(cur.t, 2); } }
       return true;
@@ -82,6 +84,22 @@ export function buildBinoculars({ camera, onStart = () => {}, onEnd = () => {} }
     onStart();
     return true;
   }
+  // the binoculars on demand (🔭, two fingers apart): the hiker looks around (dragging the view) at a
+  // zoom of 2-12x, changed with two fingers or the mouse wheel; 🔭, Esc or ✕ lowers them
+  const capManual = () => { cap.innerHTML = `🔭 Lornetka · ${Math.round(cur.zoom)}×<small>przeciągaj, by się rozglądać · dwa palce: przybliżenie · <b class="x" style="cursor:pointer;pointer-events:auto">✕ opuść</b></small>`; };
+  function startManual(zoom = 6) {
+    if (cur) return;
+    cur = { manual: true, zoom, phase: 'up', t: 0, fov0: camera.fov, near0: camera.near };
+    el.classList.add('on', 'manual'); document.body.classList.add('binoc');
+    capManual();
+    requestAnimationFrame(() => el.classList.add('up'));
+    onStart();
+  }
+  function setZoom(z) {
+    if (!cur || !cur.manual) return;
+    const nz = THREE.MathUtils.clamp(z, 2, 12);
+    if (Math.round(nz) !== Math.round(cur.zoom)) { cur.zoom = nz; capManual(); } else cur.zoom = nz;
+  }
   function stop() {
     if (!cur || cur.phase === 'down') return;
     cur.phase = 'down'; cur.t = 0; cur.fovFrom = camera.fov; cur.qFrom = camera.quaternion.clone();
@@ -90,10 +108,10 @@ export function buildBinoculars({ camera, onStart = () => {}, onEnd = () => {} }
   function abort() {                                    // at once, e.g. a discovery's camera takes over
     if (!cur) return;
     camera.fov = cur.fov0; camera.near = cur.near0; camera.updateProjectionMatrix();
-    el.classList.remove('on', 'view', 'up'); document.body.classList.remove('binoc');
+    el.classList.remove('on', 'view', 'up', 'manual'); document.body.classList.remove('binoc');
     cur = null; lastEnd = performance.now(); onEnd();
   }
-  el.addEventListener('click', (e) => { e.stopPropagation(); stop(); });
+  el.addEventListener('click', (e) => { e.stopPropagation(); if (!cur || !cur.manual || e.target.closest('.x')) stop(); });
   addEventListener('keydown', (e) => { if (cur && (e.code === 'Escape' || e.code === 'Space' || e.code === 'Enter')) { e.stopPropagation(); stop(); } }, true);
 
   // every frame after the walk camera is set: turns it to the scene and zooms in
@@ -107,6 +125,19 @@ export function buildBinoculars({ camera, onStart = () => {}, onEnd = () => {} }
       camera.quaternion.slerpQuaternions(c.qFrom, walkQ, k);
       camera.fov = c.fovFrom + (c.fov0 - c.fovFrom) * k; camera.near = c.near0; camera.updateProjectionMatrix();
       if (k >= 1) abort();
+      return;
+    }
+    if (c.manual) {
+      // the view stays where the hiker turns it; only the zoom (and the near focus limit)
+      const want = c.fov0 / c.zoom;
+      camera.near = Math.max(c.near0, Math.min(6, c.zoom * 0.5));
+      if (c.phase === 'up') {
+        const k = ease(Math.min(1, c.t / 0.8));
+        camera.fov = c.fov0 + (want - c.fov0) * k;
+        if (c.t >= 0.75) el.classList.add('view');
+        if (c.t >= 0.8) { c.phase = 'watch'; c.t = 0; }
+      } else camera.fov += (want - camera.fov) * (1 - Math.exp(-dt * 6));
+      camera.updateProjectionMatrix();
       return;
     }
     if (centre(c.f, aim)) c.lost = 0; else c.lost += dt;
@@ -135,5 +166,6 @@ export function buildBinoculars({ camera, onStart = () => {}, onEnd = () => {} }
     camera.updateProjectionMatrix();
   }
   const ready = () => !cur && performance.now() - lastEnd > 20000;
-  return { start, stop, abort, apply, ready, get active() { return !!cur; } };
+  return { start, startManual, setZoom, stop, abort, apply, ready, get active() { return !!cur; }, get manual() { return !!(cur && cur.manual); },
+    get zoom() { return cur ? cur.fov0 / camera.fov : 1; }, get manualZoom() { return cur && cur.manual ? cur.zoom : 0; } };
 }
