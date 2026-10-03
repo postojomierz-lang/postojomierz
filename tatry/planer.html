@@ -27,6 +27,14 @@
   #nav .big b { font-size: 22px; }
   #nav .big span { color: var(--muted); font-size: 12px; }
   #nav .row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 4px; }
+  /* the reminder of a group trip today or tomorrow, over the map (not while navigating) */
+  #trip-remind { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; width: min(440px, calc(100% - 20px));
+                 background: rgba(255,255,255,.97); border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.25); padding: 8px 12px; border-left: 4px solid #2f6fb0; }
+  #nav:not([hidden]) ~ #trip-remind { display: none; }
+  #trip-remind .tr-h { display: flex; gap: 8px; align-items: flex-start; } #trip-remind .tr-h b { flex: 1; font-size: 15px; }
+  #trip-remind .tr-x { border: 0; background: none; font-size: 16px; padding: 0 2px; cursor: pointer; }
+  #trip-remind small { display: block; color: var(--muted); margin: 2px 0 6px; }
+  #trip-remind .tr-act { display: flex; flex-wrap: wrap; gap: 4px; } #trip-remind .tr-act button { padding: 4px 10px; font-size: 13px; border-radius: 12px; }
   #nav .warn { color: #fff; background: #c8201c; border-radius: 6px; padding: 3px 8px; margin-top: 6px; font-weight: 600; }
   #nav .btns { display: flex; gap: 6px; margin-top: 8px; }
   .wx-alert { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; padding: 6px 8px; border-radius: 8px; background: #fff3d6; border: 2px solid #e0a000; font-size: 13px; line-height: 1.35; }
@@ -233,6 +241,7 @@
     #grab i { width: 38px; height: 4px; border-radius: 2px; background: #cfccc4; }
     header { padding-top: 4px; }
     .brand small { display: none; }
+    #trip-remind { width: auto; left: 54px; right: 54px; transform: none; padding: 6px 10px; }
   }
 </style>
 </head>
@@ -392,6 +401,7 @@
         <button id="nav-stop">⏹ Zakończ</button>
       </div>
     </div>
+    <div id="trip-remind" hidden></div>
   </div>
 </div>
 <div id="sos" class="modal" hidden>

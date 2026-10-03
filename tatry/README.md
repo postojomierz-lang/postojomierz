@@ -404,6 +404,10 @@ ogłasza).
 - Pozycje: w panelu nawigacji „👥 Udostępnij pozycję” (świadomie, tylko otwartej grupie; co ≥15 s,
   przy ruchu ≥20 m lub co minutę). Po „Zakończ” pozycja jest kasowana, w każdym razie wygasa po 12 h.
   Członkowie grupy widzą awatary z imionami na mapie (wyblakłe po 15 min bez aktualizacji).
+- Przypomnienie o wyjściu: gdy wyjście którejś z grup jest dziś lub jutro (i nie odpowiedziało się „Nie”), nad mapą
+  pojawia się pasek z godziną, miejscem zbiórki, przyciskami Będę / Może / Nie i „Pokaż trasę” (✕ chowa go, wraca,
+  jeśli zmieni się termin). Raz na wyjście także powiadomienie systemowe (zgoda pytana przy „Będę”/„Może”). Działa,
+  gdy planer jest otwarty (sprawdza przy otwarciu, powrocie do karty i co 15 min); bez serwera.
 
 ## Słowackie Tatry Wysokie w regionie
 Region planera i widoku 3D obejmuje polskie i słowackie Tatry Wysokie (19,85–20,31°E, 49,08–49,29°N):
