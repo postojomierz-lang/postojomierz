@@ -298,3 +298,12 @@ create policy rsvp_read on public.route_rsvp for select using (public.is_member(
 drop policy if exists rsvp_write on public.route_rsvp;
 create policy rsvp_write on public.route_rsvp for all
   using (user_id = auth.uid()) with check (user_id = auth.uid() and public.is_member(public.route_group(route_id)));
+
+-- ---------------------------------------------------------------- who may call the functions
+-- (the security advisor: security definer functions are callable through /rest/v1/rpc by anyone). Joining a
+-- group and deleting one's account need a signed-in user; the triggers' functions are not for calling at all.
+-- is_member, shares_group and route_group stay: the row policies use them for every reader.
+revoke execute on function public.join_group(text) from public, anon;
+revoke execute on function public.delete_my_account() from public, anon;
+revoke execute on function public.on_user_created() from public, anon, authenticated;
+revoke execute on function public.on_group_created() from public, anon, authenticated;
