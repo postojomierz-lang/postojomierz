@@ -139,7 +139,7 @@ Szczegóły każdej funkcji są w `tatry/README.md` (sekcje po polsku). Pozosta�
 
 1. Sprawdzić wyjścia grupowe na dwóch prawdziwych kontach (termin, miejsce, Będę / Może / Nie).
 2. Runda testów na Samsungach (~30 min): A55, jeśli dostępny, inaczej S25 Ultra. Lornetka, przelot, burza, postać, wyszukiwarka i przeciąganie palcem, grupa demo (`?grupa=demo`).
-3. Przypomnienie o wyjściu grupowym dzień wcześniej (funkcja Supabase albo Vercel i powiadomienie push).
+3. Przypomnienie o wyjściu: jest w aplikacji (pasek nad mapą + powiadomienie, gdy planer otwarty). Ewentualnie później e-mail (funkcja Supabase + Brevo) albo push przy zamkniętej aplikacji.
 4. Zawody, etap 1: odcinki na czas z GPS (według `docs/zawody.md`).
 5. Więcej scen ze zwierzętami (kozice na grani, pluszcz w potoku, świstaki mocujące się) i więcej dodatków w sklepiku.
 6. Później: domena szlakownik.pl, wydanie w Google Play (wtedy płatności w sklepiku), ewentualna zgoda TOPR na dane.

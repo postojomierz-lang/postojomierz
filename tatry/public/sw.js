@@ -64,3 +64,15 @@ self.addEventListener('fetch', (e) => {
   }
   if (/tile\.opentopomap\.org|tile\.openstreetmap\.org/.test(url.hostname)) e.respondWith(cacheFirst(req, TILES, 3000));
 });
+
+// a tap on a notification (the weather on the trail, a group trip's reminder): back to the open planner, or open
+// it (with the trip's route when the notification carries one)
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL('planer.html' + ((e.notification.data && e.notification.data.hash) || ''), self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => c.url.includes('/planer.html'));
+    if (open) return open.focus();
+    return self.clients.openWindow(url);
+  }));
+});

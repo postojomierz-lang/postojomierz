@@ -116,6 +116,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     $('o-note').textContent = ''; $('o-code-row').hidden = true;
     await sync();
     await loadGroups();
+    checkTrips();
     const code = store.get(JOIN);
     if (code) { store.set(JOIN, null); await join(code); }
   }
@@ -123,6 +124,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     stopSharing();
     closeGroup();
     groups = []; gid = null;
+    $('trip-remind').hidden = true;
     showAccount();
   }
   if (store.get(JOIN)) msg('Zaproszenie do grupy zapamiętane: zaloguj się (niżej, przy profilu), a dołączysz automatycznie.');
@@ -371,8 +373,9 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
         const b = ev.target.closest('button');
         if (ev.target.classList.contains('x')) { if (confirm('Usunąć to wyjście z grupy?')) { await sb.from('group_routes').delete().eq('id', r.id); loadRoutes(); } return; }
         if (b && b.dataset.s) {
+          if (b.dataset.s !== 'no') askNotify();
           const { error } = await sb.from('route_rsvp').upsert({ route_id: r.id, user_id: user.id, status: b.dataset.s, updated_at: new Date().toISOString() }, { onConflict: 'route_id,user_id' });
-          if (error) msg(error.message); else loadRoutes();
+          if (error) msg(error.message); else { loadRoutes(); checkTrips(); }
           return;
         }
         if (b && 'e' in b.dataset) { tripForm(r); return; }
@@ -414,10 +417,73 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
       const txt = `📌 Proponuję wyjście: ${row.title}${when ? ', ' + fmtWhen(when) : ''}${place ? ', zbiórka: ' + place : ''}. Kto będzie? (Grupy → Wyjścia)`;
       sb.from('messages').insert({ group_id: gid, user_id: user.id, body: txt.slice(0, 2000) }).then(() => {}, () => {});
     }
-    $('g-trip-form').hidden = true; loadRoutes();
+    $('g-trip-form').hidden = true; loadRoutes(); checkTrips();
   };
 
   // the chat
+  // ------------------------------------------------------------ the reminder of a group trip (the day before)
+  // while the planner is open: a trip of one's groups today or tomorrow, not declined, shows a bar over the map
+  // (until closed, again if its date changes) and, if allowed, one system notification; no server needed
+  const SEEN = 'tatry-trip-seen', TOLD = 'tatry-trip-told';
+  const marks = (k) => { try { return JSON.parse(store.get(k)) || {}; } catch (e) { return {}; } };
+  const mark = (k, r) => { const m = marks(k); m[r.id] = r.starts_at; for (const id in m) if (Date.parse(m[id]) < Date.now() - 2 * 864e5) delete m[id]; store.set(k, JSON.stringify(m)); };
+  const marked = (k, r) => marks(k)[r.id] === r.starts_at;
+  function whenWord(t) {
+    const d = new Date(t), n = new Date();
+    const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(n.getFullYear(), n.getMonth(), n.getDate())) / 864e5);
+    const hm = d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    return `${days <= 0 ? (d < n ? 'Trwa' : 'Dziś') : 'Jutro'} o ${hm}`;
+  }
+  async function checkTrips() {
+    const bar = $('trip-remind');
+    if (!user || !groups.length) { bar.hidden = true; return; }
+    const now = new Date(), end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);   // the end of tomorrow
+    let rows, mine;
+    try {
+      rows = ok(await sb.from('group_routes').select('id,group_id,title,hash,starts_at,place').in('group_id', groups.map((g) => g.id))
+        .gt('starts_at', new Date(now - 2 * 3600e3).toISOString()).lt('starts_at', end.toISOString()).order('starts_at').limit(10));
+      mine = rows.length ? ok(await sb.from('route_rsvp').select('route_id,status').eq('user_id', user.id).in('route_id', rows.map((r) => r.id))) : [];
+    } catch (e) { return; }
+    const ans = (r) => (mine.find((x) => x.route_id === r.id) || {}).status;
+    const trips = rows.filter((r) => ans(r) !== 'no');
+    for (const r of trips) {
+      if (marked(TOLD, r)) continue;
+      mark(TOLD, r);
+      try {
+        if ('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) {
+          navigator.serviceWorker.ready.then((w) => w.showNotification(`Szlakownik: ${whenWord(r.starts_at).toLowerCase()} wyjście`,
+            { body: r.title + (r.place ? ` · zbiórka: ${r.place}` : ''), tag: 'trip-' + r.id, icon: 'icons/icon-192.png', data: { hash: r.hash } })).catch(() => {});
+        }
+      } catch (e) { /* no notifications here */ }
+    }
+    const r = trips.find((x) => !marked(SEEN, x));
+    if (!r) { bar.hidden = true; return; }
+    const g = groups.find((x) => x.id === r.group_id), a = ans(r);
+    bar.innerHTML = `<div class="tr-h"><b>⏰ ${whenWord(r.starts_at)}: ${esc(r.title)}</b><button class="tr-x" title="Zamknij">✕</button></div>`
+      + `<small>${r.place ? '📍 ' + esc(r.place) + ' · ' : ''}grupa „${esc(g ? g.name : '')}”${a === 'yes' ? ' · idziesz ✓' : a === 'maybe' ? ' · może idziesz' : ''}</small>`
+      + `<div class="tr-act">${a ? '' : '<button data-s="yes">✓ Będę</button><button data-s="maybe">? Może</button><button data-s="no">✗ Nie</button>'}<button data-open>🗺 Pokaż trasę</button></div>`;
+    bar.hidden = false;
+    bar.onclick = async (ev) => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      if (b.classList.contains('tr-x')) { mark(SEEN, r); checkTrips(); return; }
+      if ('open' in b.dataset) { openHash(r.hash); return; }
+      if (b.dataset.s) {
+        askNotify();
+        const { error } = await sb.from('route_rsvp').upsert({ route_id: r.id, user_id: user.id, status: b.dataset.s, updated_at: new Date().toISOString() }, { onConflict: 'route_id,user_id' });
+        if (error) { msg(error.message); return; }
+        if (b.dataset.s === 'no') mark(SEEN, r);
+        checkTrips(); if (r.group_id === gid) loadRoutes();
+      }
+    };
+  }
+  // asked when one answers "I come" / "maybe" (a tap, as browsers want), so the day before can be told
+  function askNotify() {
+    try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); } catch (e) { /* old API */ }
+  }
+  setInterval(() => { if (user && !document.hidden) checkTrips(); }, 15 * 60e3);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && user) checkTrips(); });
+
   async function loadChat() {
     let rows = [];
     try { rows = ok(await sb.from('messages').select('id,user_id,body,created_at').eq('group_id', gid).order('created_at', { ascending: false }).limit(60)); } catch (e) { return; }
