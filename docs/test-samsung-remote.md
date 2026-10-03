@@ -39,6 +39,47 @@ Na każdym telefonie: Android, przeglądarka **Chrome**, orientacja **pionowa**,
 Jedno zgłoszenie to jeden problem. Nie zgłaszaj kilka razy tego samego na tym samym telefonie, ale ten sam
 problem na innym telefonie zgłoś osobno.
 
+## Runda bieżąca (ok. 30 min): zrób ją ZAMIAST sekcji A–C
+
+Jeden telefon: **Galaxy A55**, a jeśli niedostępny, **Galaxy S25 Ultra**. Chrome, pionowo (chyba że punkt mówi
+inaczej). Testujesz rzeczy, których jeszcze nikt nie sprawdził na telefonie. Problemy zgłaszaj przez 🐞 jak wyżej.
+
+**R1. Planer: wyszukiwarka i przeciąganie trasy (ok. 7 min)**
+1. Otwórz planer. W polu „Skąd?” wpisz `Palenica`, wybierz „Palenica Białczańska”. W polu „Dokąd?” wpisz `Rysy`
+   i wybierz Rysy. Powinna się pojawić trasa ok. 8–10 km w jedną stronę i czas przejścia. Zgłoś, jeśli podpowiedzi
+   nie pojawiają się, klawiatura zasłania listę albo trasa jest dużo dłuższa (np. 30 km).
+2. **Przeciąganie palcem:** przyłóż palec do narysowanej linii trasy (gdzieś w połowie), przytrzymaj i przesuń
+   na sąsiedni szlak. Podczas przesuwania powinna być widoczna przerywana linia nowej trasy, a po puszczeniu
+   trasa ma iść przez nowy punkt. Zgłoś, jeśli zamiast tego przesuwa się mapa albo nic się nie dzieje.
+
+**R2. Postać i sklepik (ok. 5 min)**
+1. Zakładka **Dziennik** → przycisk **🧍 Wygląd postaci**. Zmień płeć, fryzurę, kolor kurtki, stuknij **🎲 Losuj**.
+   Sprawdź, czy okno mieści się na ekranie i się przewija.
+2. Otwórz **🛒 Sklepik**: zobacz, czy ceny i liczba monet są czytelne (bez monet nic nie kupisz: to nie błąd).
+3. Zapisz i stuknij **▶ Idź w 3D** (przy trasie z R1). W 3D stuknij **🚁 Dron**: Twoja postać powinna stać na
+   szlaku w wybranym wyglądzie. Zgłoś, jeśli jej nie ma, jest w ziemi albo wygląda inaczej niż w edytorze.
+
+**R3. Lornetka (ok. 5 min)** – w widoku 3D na trasie z R1:
+1. Stuknij **🔭**. Przeciągaj palcem, by się rozglądać; rozsuń/zsuń **dwa palce**, by zmienić przybliżenie
+   (2–12×, widać na napisie). Zamknij przez **✕ opuść**.
+2. Bez stukania 🔭 rozsuń dwa palce na widoku: lornetka powinna się podnieść sama.
+3. Zgłoś, jeśli gest dwóch palców przybliża całą stronę zamiast lornetki, obraz skacze albo nie da się zamknąć.
+
+**R4. Grupa na szlaku i ryk jelenia (ok. 6 min)**
+1. Otwórz: `https://postojomierz-lang.github.io/postojomierz/rysy/index.html?grupa=demo&start=2026-10-04T17:30`
+2. Kawałek przed Tobą na szlaku powinny stać trzy postacie z etykietami (twarz, imię, odległość). Stuknij
+   etykietę: menu z widokiem z drona, śladem i czatem. Sprawdź każdą opcję.
+3. **Włącz dźwięk telefonu.** Idź („▶ Idź sam”) 2–3 minuty. Jesienią o zmierzchu może się trafić scena rykowiska:
+   ryk jelenia ma brzmieć jak prawdziwe zwierzę, nie jak buczenie. Napisz w raporcie, czy go słychać.
+
+**R5. Przelot i burza: płynność (ok. 5 min)**
+1. Stuknij **✈ Przelot**. Zapisz liczbę klatek (licznik u góry) w trakcie; sprawdź, czy **Stop** działa.
+2. Lista pogody → **⛈ Burza**. Po ok. 20 s zapisz kl/s i czy błyskawica jest widoczna przed Tobą.
+3. Zgłoś 🐞, jeśli kl/s spadnie poniżej 15 albo obraz się zacina.
+
+**Raport końcowy** jak niżej, plus: kl/s w przelocie i w burzy, czy było słychać ryk, czy działały dwa palce
+i przeciąganie trasy.
+
 ## A. Widok 3D: działanie i płynność (najważniejsze)
 
 1. Otwórz adres widoku 3D. Ładowanie może potrwać do 1–2 minut. Jeśli trwa dłużej niż 3 minuty albo strona
