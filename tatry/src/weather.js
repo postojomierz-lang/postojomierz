@@ -90,19 +90,19 @@ export function buildWeather({ scene, quality = 'mid', groundAt, onThunder = () 
   // in front of the viewer, so that it is seen, mostly 1-4.5 km away
   function strike(c, fwd) {
     const a0 = fwd ? Math.atan2(fwd.z, fwd.x) : Math.random() * Math.PI * 2;
-    const a = a0 + (Math.random() - 0.5) * 1.6, d = 1000 + Math.random() * 3500;
+    const a = a0 + (Math.random() - 0.5) * 1.2, d = 800 + Math.random() * 2400;
     const x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
     const g = groundAt(x, z);
     const y0 = (g ?? c.y) , y1 = Math.max(y0, c.y) + 1400;
     // a jagged main channel with a couple of branches
-    const pts = [];
+    const pts = [], w = Math.max(3, d * 0.0022);
     const channel = (px, py, pz, toY, jitter, depth) => {
       let X = px, Y = py, Z = pz;
       while (Y > toY) {
         const nY = Math.max(toY, Y - 40 - Math.random() * 90);
         const nX = X + (Math.random() - 0.5) * jitter, nZ = Z + (Math.random() - 0.5) * jitter;
-        // three strands a few metres apart: a single line is a hair at that distance on a phone
-        for (const o of [0, 5, -5]) pts.push(X + o, Y, Z - o, nX + o, nY, nZ - o);
+        // five strands, spread with the distance: a single line is a hair at that distance on a phone
+        for (const o of [0, w, -w, 2 * w, -2 * w]) pts.push(X + o, Y, Z - o, nX + o, nY, nZ - o);
         if (depth < 1 && Math.random() < 0.12) channel(nX, nY, nZ, nY - 200 - Math.random() * 300, jitter * 0.8, depth + 1);
         X = nX; Y = nY; Z = nZ;
       }
@@ -111,7 +111,7 @@ export function buildWeather({ scene, quality = 'mid', groundAt, onThunder = () 
     bolt.geometry.dispose();
     bolt.geometry = new THREE.BufferGeometry();
     bolt.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    st.boltT = 0.6;
+    st.boltT = 0.9;
     st.flicker = [0, 0.07, 0.16];                     // on, off, on again
     st.flashPeak = 0.8 + 0.8 * Math.max(0, 1 - d / 4500);
     onThunder(d);
@@ -130,12 +130,12 @@ export function buildWeather({ scene, quality = 'mid', groundAt, onThunder = () 
     // lightning
     if (st.storm > 0) {
       st.next -= dt;
-      if (st.next <= 0) { strike(c, fwd); st.next = (6 + Math.random() * 16) / st.storm; }
+      if (st.next <= 0) { strike(c, fwd); st.next = (5 + Math.random() * 12) / st.storm; }
     }
     if (st.boltT > 0) {
       // on, off, on again: long enough phases to be seen at 10 frames a second too
-      const age = 0.6 - st.boltT;
-      const on = age < 0.1 || (age > 0.17 && age < 0.32) || age > 0.4;
+      const age = 0.9 - st.boltT;
+      const on = age < 0.1 || (age > 0.17 && age < 0.32) || (age > 0.4 && age < 0.58) || age > 0.68;
       bolt.visible = on; boltMat.opacity = Math.min(1, st.boltT / 0.2);
       st.flash = on ? st.flashPeak * Math.min(1, st.boltT / 0.25) : st.flash * 0.5;
       st.boltT -= dt;

@@ -66,10 +66,13 @@ export function buildFish({ scene, lakes, groundAt }) {
         let shore = true;
         for (let q = 0; q < 6 && shore; q++) { const b = q * 1.047; if (!inside(l.ring, x + Math.cos(b) * 6, z + Math.sin(b) * 6)) shore = false; }
         if (!shore) continue;
+        // the water there in sight: the ground every ~2.5 m of the way, the bank right by the water included
+        // (a coarser check let a bank fill the binoculars with a brown wall)
         let seen = true;
-        for (let s = 1; s < 12 && seen; s++) {
-          const f = s / 12, px = c.x + (x - c.x) * f, pz = c.z + (z - c.z) * f, g = groundAt(px, pz);
-          if (g != null && g > c.y + (l.level - c.y) * f + 0.3) seen = false;
+        const steps = Math.max(12, Math.ceil(d / 2.5));
+        for (let s = 1; s < steps && seen; s++) {
+          const f = s / steps, px = c.x + (x - c.x) * f, pz = c.z + (z - c.z) * f, g = groundAt(px, pz);
+          if (g != null && g > c.y + (l.level + 0.6 - c.y) * f + 0.4) seen = false;
         }
         if (seen) return { x, z, y: l.level };
       }

@@ -73,7 +73,7 @@ Szczegóły każdej funkcji są w `tatry/README.md` (sekcje po polsku). Pozosta�
 - Tabele: `profiles` (z `look` jsonb), `walks`, `peaks`, `groups`, `group_members`, `group_routes`, `messages`, `live_positions`, `discoveries`, `bug_reports`.
 - **Zgłoszenia 🐞:** tabela `bug_reports`, którą anon może wstawiać i czytać przez 60 dni. Odczyt:
   `tools/bug_reports.py` albo REST z kluczem anon (zrzut ekranu w `screenshot` jako data URL, kontekst w `context`).
-  Ostatnie obsłużone zgłoszenie: **nr 18**.
+  Ostatnie obsłużone zgłoszenie: **nr 23** (runda S25 Ultra 3.10: nr 19 i 20 to błędy instrukcji testu).
 - **MCP Supabase:** odczyty i zapisy działają (`apply_migration`, `execute_sql`), ALE instrukcje uznane za
   niszczące (`drop …`, także `drop policy if exists`) serwer chce potwierdzić formularzem, którego sesja w chmurze
   nie pokazuje, więc wiszą 60 s i nic się nie wykonuje. Wdrażaj bez `drop` (np. samo `create policy`, gdy polityki

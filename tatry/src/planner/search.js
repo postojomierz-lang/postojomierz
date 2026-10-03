@@ -60,7 +60,17 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
     list.hidden = !list.innerHTML;
     // under the field
     list.style.top = (input.offsetTop + input.offsetHeight + 2) + 'px';
+    fit();
   }
+  // on a phone the keyboard covers the lower half: the list ends above it (it scrolls) and the field stays in view
+  function fit() {
+    const vv = window.visualViewport;
+    if (list.hidden || !vv) return;
+    list.style.maxHeight = '';
+    const bottom = vv.offsetTop + vv.height, r = list.getBoundingClientRect();
+    if (r.bottom > bottom - 4) list.style.maxHeight = Math.max(88, bottom - r.top - 6) + 'px';
+  }
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
   function pick(p) {
     list.hidden = true;
     if (!p) return;

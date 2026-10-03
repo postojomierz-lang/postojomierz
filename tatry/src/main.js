@@ -1285,8 +1285,10 @@ async function main() {
     if (state.mode === 'drone') {
       orbit.target.set(p.x, p.y, p.z);
       const yaw = state.yaw + state.yawOff;
-      camera.position.set(p.x - Math.sin(yaw) * 450, p.y + 380, p.z - Math.cos(yaw) * 450);
+      // close behind the hiker, so that one's own figure is seen; two fingers or the wheel take the drone up
+      camera.position.set(p.x - Math.sin(yaw) * 24, p.y + 13, p.z - Math.cos(yaw) * 24);
       orbit.enabled = true; orbit.update();
+      if (!state.droneHint) { state.droneHint = true; toast('🚁 Dron: przeciągaj, by obracać; dwa palce lub kółko myszy oddalają widok.'); }
     } else orbit.enabled = false;
     hiker.visible = state.mode === 'drone';
     updateButtons();
@@ -1364,7 +1366,7 @@ async function main() {
   const BINOC = P.get('lornetka') !== '0';
   function wildEvent(text, focus) {
     toast(text);
-    if (focus && BINOC && state.mode === 'walk' && !state.freeCam && !reveal.active && (binoc.active || binoc.ready())) binoc.start(text, focus);
+    if (focus && BINOC && state.mode === 'walk' && state.flyStopS == null && !state.freeCam && !reveal.active && (binoc.active || binoc.ready())) binoc.start(text, focus);
   }
   // the group on the trail: the members sharing their GPS position, as their figures (?grupa=demo: made-up ones)
   const mates = buildMates({ scene, camera, ground: drawnHeight, terrain, demo: P.get('grupa') === 'demo', trail: { at, length: LENGTH },
@@ -1738,6 +1740,7 @@ async function main() {
     const beacon = hiker.getObjectByName('beacon');
     const cd = camera.position.distanceTo(hiker.position);
     beacon.position.y = 3 + cd * 0.012; beacon.scale.setScalar(Math.max(0.4, cd * 0.006));
+    beacon.visible = cd > 90;                                 // close by the figure itself is seen
 
     if (state.mode === 'fly') flyCamera(dt);
     else if (state.mode === 'walk') {
@@ -1772,7 +1775,7 @@ async function main() {
       fishFx.update(wdt);
       if ((fishT -= dt) <= 0) {
         fishT = 10;                                                // no lake in sight: look again soon
-        if (state.mode === 'walk' && !reveal.active && !binoc.active) {
+        if (state.mode === 'walk' && state.flyStopS == null && !reveal.active && !binoc.active) {
           const f = fishFx.start(camera);
           if (f) { fishT = 60 + Math.random() * 80; wildEvent('🐟 Pstrąg potokowy wyskakuje z wody za owadami.', f); }
         }

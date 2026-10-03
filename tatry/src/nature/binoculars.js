@@ -86,7 +86,7 @@ export function buildBinoculars({ camera, onStart = () => {}, onEnd = () => {} }
   }
   // the binoculars on demand (🔭, two fingers apart): the hiker looks around (dragging the view) at a
   // zoom of 2-12x, changed with two fingers or the mouse wheel; 🔭, Esc or ✕ lowers them
-  const capManual = () => { cap.innerHTML = `🔭 Lornetka · ${Math.round(cur.zoom)}×<small>przeciągaj, by się rozglądać · dwa palce: przybliżenie · <b class="x" style="cursor:pointer;pointer-events:auto">✕ opuść</b></small>`; };
+  const capManual = () => { cap.innerHTML = `🔭 Lornetka · ${Math.round(cur.zoom)}×<small>przeciągaj, by się rozglądać · dwa palce: przybliżenie · <b class="x" style="cursor:pointer;pointer-events:auto;display:inline-block;margin:4px 0 0 4px;padding:6px 12px;border-radius:14px;background:rgba(255,255,255,.18)">✕ opuść</b></small>`; };
   function startManual(zoom = 6) {
     if (cur) return;
     cur = { manual: true, zoom, phase: 'up', t: 0, fov0: camera.fov, near0: camera.near };

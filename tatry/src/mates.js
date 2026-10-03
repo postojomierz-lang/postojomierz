@@ -54,7 +54,9 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
     menu.innerHTML = `<b>${esc(m.name)}</b><button data-a="focus">🎯 Pokaż z drona</button><button data-a="trail">${m.trailOn ? '〰 Ukryj ślad' : '〰 Pokaż ślad przejścia'}</button><button data-a="chat">💬 Czat grupy (planer)</button>`;
     menu.hidden = false;
   });
+  for (const ev of ['pointerdown', 'pointerup', 'touchstart', 'touchend']) menu.addEventListener(ev, (e) => e.stopPropagation());
   menu.addEventListener('click', (e) => {
+    e.stopPropagation();
     const a = e.target.closest('button') && e.target.closest('button').dataset.a; if (!a) return;
     const m = mates.get(menuFor);
     menu.hidden = true;
@@ -129,12 +131,13 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
   }
 
   // ------------------------------------------------ made-up hikers along the route, a little ahead (?grupa=demo)
-  const DEMO = [['Ania', 22], ['Marek', 60], ['Kasia', 180]];
+  // close together, so that all three are in view at the start even where the trail bends
+  const DEMO = [['Ania', 14], ['Marek', 30], ['Kasia', 48]];
   if (demo && trail) DEMO.forEach(([name], i) => profiles.set('demo' + i, { name, look: randomLook(), avatar: '🥾' }));
   function demoTick(hikerS) {
     DEMO.forEach(([, ahead], i) => {
       const p = trail.at(Math.min(trail.length, hikerS + ahead));
-      place('demo' + i, p.x + 0.9 * (i - 1), p.z + 0.6 * (i - 1), Date.now() - (i * 2 + 1) * 60000, profiles.get('demo' + i));
+      place('demo' + i, p.x + 1.2 * (i - 1), p.z + 0.8 * (i - 1), Date.now() - (i * 2 + 1) * 60000, profiles.get('demo' + i));
     });
   }
 
@@ -144,6 +147,11 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
     if (demo && trail) demoTick(hikerS);
     else if ((pollT -= dt) <= 0) { pollT = 15; poll(); }
     const w = innerWidth, h = innerHeight;
+    // the labels stay between the top panel and the buttons at the bottom (on a phone they cover the lower half)
+    let top = 0, low = h;
+    for (const id of ['hud']) { const e = document.getElementById(id); if (e && e.offsetParent) top = Math.max(top, e.getBoundingClientRect().bottom); }
+    for (const id of ['controls', 'bottom']) { const e = document.getElementById(id); if (e && e.offsetParent) { const r = e.getBoundingClientRect(); if (r.top > h * 0.4) low = Math.min(low, r.top); } }
+    const shown = [];
     for (const m of mates.values()) {
       const dx = m.target.x - m.pos.x, dz = m.target.z - m.pos.z, d = Math.hypot(dx, dz);
       let speed = 0;
@@ -172,8 +180,21 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
       const html = far ? av : `${av}<div><b>${esc(m.name)}</b><small>${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'} · ${ago(m.t)}</small></div>`;
       if (html !== m.html) { m.el.innerHTML = html; m.html = html; m.el.classList.toggle('far', far); }
       const half = far ? 14 : 70;                                     // kept on the screen at its edges
-      m.el.style.transform = `translate(${Math.max(half, Math.min(w - half, (v.x + 1) / 2 * w)).toFixed(1)}px,${((1 - v.y) / 2 * h).toFixed(1)}px) translate(-50%,-100%)`;
+      shown.push({ m, dist, x: Math.max(half, Math.min(w - half, (v.x + 1) / 2 * w)), y: (1 - v.y) / 2 * h, lw: m.el.offsetWidth || 2 * half, lh: m.el.offsetHeight || 36 });
       m.el.title = m.name;
+    }
+    // the nearest first; a label that would cover one already placed goes up above it
+    shown.sort((a, b) => a.dist - b.dist);
+    const placed = [];
+    for (const L of shown) {
+      L.y = Math.max(top + L.lh + 4, Math.min(low - 8, L.y));
+      for (let k = 0; k < 6; k++) {
+        const o = placed.find((P) => Math.abs(P.x - L.x) < (P.lw + L.lw) / 2 + 2 && Math.abs(P.y - L.y) < (P.lh + L.lh) / 2 + 2);
+        if (!o) break;
+        L.y = o.y - o.lh - 6;
+      }
+      placed.push(L);
+      L.m.el.style.transform = `translate(${L.x.toFixed(1)}px,${L.y.toFixed(1)}px) translate(-50%,-100%)`;
     }
   }
   return { update, pos: (id) => mates.get(id)?.pos || null, get count() { return mates.size; }, list: () => [...mates.entries()].map(([id, m]) => ({ id, name: m.name, x: m.pos.x, z: m.pos.z })) };
