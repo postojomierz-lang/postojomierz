@@ -70,5 +70,8 @@
   "bear_0",
   "bear_1",
   "bear_2"
+ ],
+ "stagRoar": [
+  "stag_roar_0"
  ]
 }

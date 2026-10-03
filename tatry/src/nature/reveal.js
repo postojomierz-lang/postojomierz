@@ -19,7 +19,9 @@ const CSS = `
   background:rgba(20,24,28,.92);color:#fff;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5);font:14px/1.4 system-ui,sans-serif;pointer-events:auto;cursor:pointer}
 #rv-card:not(.on){pointer-events:none;visibility:hidden;transition:opacity .3s,transform .3s,visibility 0s .3s}
 #rv-card.on{opacity:1;transform:translate(-50%,0) scale(1);visibility:visible}
-#rv-card img{width:100%;height:150px;object-fit:cover;display:block}
+#rv-card .ph{position:relative;height:190px;overflow:hidden;background:#111}
+#rv-card .ph::before{content:'';position:absolute;inset:-20px;background:var(--ph) center/cover;filter:blur(16px) brightness(.55)}
+#rv-card .ph img{position:relative;width:100%;height:100%;object-fit:contain;display:block}
 #rv-card .b{padding:10px 14px 12px}
 #rv-card .g{font-size:12px;opacity:.75;letter-spacing:.05em}
 #rv-card .n{font-size:20px;font-weight:700;margin:2px 0 0}
@@ -80,7 +82,8 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
   }
   function showCard(r) {
     const s = r.species, rar = RARITY[s.rarity], ph = photos && photos[s.id];
-    card.innerHTML = (ph ? `<img src="nature/${s.id}.jpg" alt="">` : '')
+    // the whole photo (portrait or landscape), the rest of the frame filled with a blurred copy of it
+    card.innerHTML = (ph ? `<div class="ph" style="--ph:url('nature/${s.id}.jpg')"><img src="nature/${s.id}.jpg" alt=""></div>` : '')
       + `<div class="b"><div class="g">${GROUPS[s.group].icon} ${GROUPS[s.group].name}</div>`
       + `<div class="n">${s.name}</div><div class="l">${s.latin}</div>`
       + `<div class="row"><span class="stars">${'★'.repeat(s.rarity)}${'☆'.repeat(4 - s.rarity)}</span><span class="rar">${rar.name}</span><span class="pts">+0</span></div>`
