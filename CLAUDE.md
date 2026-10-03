@@ -14,4 +14,6 @@
   estimated time left, weekly limit used), with a toast and a sound when the work is done; `/postep` toggles it.
   Cloud sessions have no surface for the bar, so the mod adds a short progress line under the next reply after a step
   is completed, and a summary line once every step is done; `/postep czat off` turns the chat lines off.
+  It also shows how big the session is (context tokens, cost) and advises a new session from 300k tokens;
+  `/postep sesja` prints the figures.
   Check it with `claude plugin validate .claude/skills/postep` and `claude plugin test .claude/skills/postep`.

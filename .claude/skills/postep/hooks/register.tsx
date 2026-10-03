@@ -1,10 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PromptOrigin, Register, SessionRateLimit, Timer } from 'claude-code'
 
-import type { PostepRun, PostepStep } from '../types'
+import type { PostepRun, PostepSession, PostepStep } from '../types'
 
 const run = atom({ plugin: 'postep', key: 'run' } as const, null)
 const isHidden = atom({ plugin: 'postep', key: 'isHidden' } as const, false)
+const session = atom({ plugin: 'postep', key: 'session' } as const, null)
 
 const COMMAND = 'postep'
 const TICK_MS = 2000
@@ -112,13 +113,65 @@ export const progressLine = (current: PostepRun, now: number): string => {
   return [...parts, ...(grew >= 0.1 ? [`limit tyg. +${grew.toFixed(1)}%`] : [])].join(' · ')
 }
 
-export const summaryLine = (current: PostepRun, now: number): string => {
-  const week = formatWeek(current)
+/** `272k`, `1.2M`: a token count as the line shows it. */
+export const formatTokens = (tokens: number): string =>
+  tokens >= 1_000_000 ? `${(tokens / 1_000_000).toFixed(1)}M` : `${Math.round(tokens / 1000)}k`
 
-  return (
-    `🟢 Gotowe: ${countDone(current.steps)}/${current.steps.length} kroków w ${formatClock(now - current.startedAt)}` +
-    (week === null ? '' : ` · ${week}`)
-  )
+export type SessionLevel = 'ok' | 'growing' | 'plan' | 'switch'
+
+/** How big the session is, by the conversation it sends with every request. */
+export const sessionLevel = (tokens: number): SessionLevel =>
+  tokens >= 400_000 ? 'switch' : tokens >= 300_000 ? 'plan' : tokens >= 200_000 ? 'growing' : 'ok'
+
+export const sessionHint = (level: SessionLevel): string | null =>
+  level === 'switch'
+    ? 'czas na nową sesję (najpierw notatka przekazania)'
+    : level === 'plan'
+      ? 'po tym etapie nowa sesja (najpierw notatka przekazania)'
+      : null
+
+/** `sesja 272k`, or the advice once the session is big; null before the first reading. */
+export const sessionNote = (stats: PostepSession | null): string | null => {
+  if (stats === null || stats.tokens === null) {
+    return null
+  }
+
+  const hint = sessionHint(sessionLevel(stats.tokens))
+
+  return hint === null ? `sesja ${formatTokens(stats.tokens)}` : `⚠️ sesja ${formatTokens(stats.tokens)} — ${hint}`
+}
+
+/** What `/postep sesja` answers: the figures, and what to do about them. */
+export const sessionReport = (stats: PostepSession | null): string => {
+  if (stats === null || stats.tokens === null) {
+    return 'Brak odczytu sesji (pojawi się po pierwszej odpowiedzi).'
+  }
+
+  const level = sessionLevel(stats.tokens)
+  const percent = Math.round((stats.tokens / stats.window) * 100)
+  const advice = {
+    ok: 'Sesja mała, nic nie trzeba robić.',
+    growing: 'Sesja rośnie; przy zmianie tematu lepiej zacząć nową.',
+    plan: 'Po bieżącym etapie: notatka przekazania w docs/, potem nowa sesja.',
+    switch: 'Czas na nową sesję: najpierw notatka przekazania w docs/ (odnośnik w CLAUDE.md), potem nowa sesja.',
+  }[level]
+
+  return [
+    `Kontekst: ${formatTokens(stats.tokens)} tokenów (${percent}% okna ${formatTokens(stats.window)})`,
+    ...(stats.usd === null ? [] : [`Koszt sesji: ${stats.usd.toFixed(2)} $`]),
+    ...(stats.compactions > 0 ? [`Kompresje rozmowy od wczytania moda: ${stats.compactions}`] : []),
+    advice,
+  ].join('\n')
+}
+
+export const summaryLine = (current: PostepRun, now: number, stats: PostepSession | null = null): string => {
+  const parts = [
+    `🟢 Gotowe: ${countDone(current.steps)}/${current.steps.length} kroków w ${formatClock(now - current.startedAt)}`,
+    formatWeek(current),
+    sessionNote(stats),
+  ]
+
+  return parts.filter((part): part is string => part !== null).join(' · ')
 }
 
 export const isAllDone = (current: PostepRun): boolean =>
@@ -171,9 +224,10 @@ export const nextLine = (
   current: PostepRun,
   now: number,
   shown: { done: number; isSummarized: boolean },
+  stats: PostepSession | null = null,
 ): string | null => {
   if (isAllDone(current)) {
-    return shown.isSummarized ? null : summaryLine(current, now)
+    return shown.isSummarized ? null : summaryLine(current, now, stats)
   }
 
   return countDone(current.steps) <= shown.done ? null : progressLine(current, now)
@@ -204,10 +258,21 @@ const stopTicking = () => {
   tick = undefined
 }
 
-/** The weekly limit used now, in percent; null where there is no reading. */
+let compactions = 0
+
+/** The weekly limit used now, in percent, and the session's size; null where there is no reading. */
 async function readWeek($: EngineInterface): Promise<number | null> {
   try {
-    return weekPercent((await $.session.usage()).rateLimits)
+    const usage = await $.session.usage()
+    const stats: PostepSession = {
+      tokens: usage.context.tokens ?? null,
+      window: usage.context.window,
+      usd: usage.cost?.usd ?? null,
+      compactions,
+    }
+    await update($, session, () => stats)
+
+    return weekPercent(usage.rateLimits)
   } catch {
     return null
   }
@@ -236,7 +301,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: 'Pasek postępu: /postep on|off, linie w czacie: /postep czat on|off',
+      description: 'Pasek postępu: /postep on|off, czat: /postep czat on|off, rozmiar sesji: /postep sesja',
     })
     const stored = await $.store.get('isHidden')
     await update($, isHidden, () => stored === true)
@@ -248,6 +313,12 @@ export const register: Register = on => {
   on('command.run', { command: COMMAND }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
     const chat = /^czat\s+(on|off)$/.exec(arg)
+
+    if (arg === 'sesja') {
+      await readWeek($)
+
+      return { text: sessionReport(await read($, session)) }
+    }
 
     if (chat !== null) {
       isChatOn = chat[1] === 'on'
@@ -363,7 +434,7 @@ export const register: Register = on => {
     await measure($)
     const now = await $.clock.now()
     const measured = (await read($, run)) ?? current
-    const line = nextLine(measured, now, shown)
+    const line = nextLine(measured, now, shown, await read($, session))
 
     if (line === null) {
       return next(e)
@@ -374,6 +445,13 @@ export const register: Register = on => {
     shown.isSummarized = isAllDone(measured)
 
     return next({ ...e, message: { ...e.message, content: withLine(e.message.content, line) } })
+  })
+
+  on('session.compact', async ($, e, next) => {
+    const result = await next(e)
+    compactions += 1
+
+    return result
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -409,7 +487,7 @@ export const register: Register = on => {
     await update($, run, () => finished)
 
     if (!e.isAborted && !(await read($, isHidden))) {
-      $.ui.toast(summaryLine(finished, now))
+      $.ui.toast(summaryLine(finished, now, await read($, session)))
       void $.audio.play({ asset: 'sounds/done.wav' }).catch(() => undefined)
     }
 
@@ -430,6 +508,16 @@ export const register: Register = on => {
     const width = Math.max(8, Math.min(24, e.props.bodyColumns - 60))
     const week = formatWeek(current)
     const elapsed = formatClock((current.finishedAt ?? current.now) - current.startedAt)
+    const stats = await read($, session)
+    const level = stats === null || stats.tokens === null ? null : sessionLevel(stats.tokens)
+    const hint = level === null ? null : sessionHint(level)
+    const sessionRow =
+      stats === null || stats.tokens === null || level === null ? null : (
+        <Text color={level === 'switch' ? 'red' : level === 'ok' ? 'green' : 'yellow'} wrap="truncate-end">
+          sesja: {formatTokens(stats.tokens)} tok{stats.usd === null ? '' : ` · ${stats.usd.toFixed(2)} $`}
+          {hint === null ? '' : ` · ${hint}`}
+        </Text>
+      )
 
     if (current.state !== 'working') {
       const label = current.state === 'done' ? '✓ Gotowe' : '■ Przerwane'
@@ -440,6 +528,7 @@ export const register: Register = on => {
             {label} · {done}/{total} kroków · {elapsed}
             {week === null ? '' : ` · ${week}`}
           </Text>
+          {sessionRow}
         </Box>
       )
     }
@@ -459,6 +548,7 @@ export const register: Register = on => {
             ▸ {step.status === 'in_progress' ? (step.activeForm ?? step.subject) : `dalej: ${step.subject}`}
           </Text>
         )}
+        {sessionRow}
       </Box>
     )
   })

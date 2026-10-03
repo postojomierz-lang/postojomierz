@@ -22,8 +22,18 @@ export type PostepRun = {
   finishedAt: number | null
 }
 
+export type PostepSession = {
+  /** Tokens of the conversation the last response was answered over; null before the first reading. */
+  tokens: number | null
+  window: number
+  /** What the session cost so far, in US dollars; null where the host keeps no ledger. */
+  usd: number | null
+  /** Compactions seen since the mod loaded. */
+  compactions: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
-    postep: { run: PostepRun | null; isHidden: boolean }
+    postep: { run: PostepRun | null; isHidden: boolean; session: PostepSession | null }
   }
 }
