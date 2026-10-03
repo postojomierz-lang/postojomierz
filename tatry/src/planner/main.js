@@ -103,12 +103,14 @@ const hoverMark = L.circleMarker([0, 0], { radius: 6, color: '#000', weight: 2, 
 let SEARCH = null, DRAG = null;      // the from / to fields, dragging the route line (set up below)
 function msg(t) { $('msg').textContent = t || ''; }
 function save() { history.push(stops.slice()); if (history.length > 50) history.shift(); }
-function setStops(s, remember = true) { if (remember) save(); stops = s; update(); }
+const OFF_TRAIL = 'Tu nie ma znakowanego szlaku (w promieniu 400 m). Kliknij bliżej szlaku.';
+// a new route (dragged, searched, clicked) makes the notice of a click off the trail out of date
+function setStops(s, remember = true) { if (remember) save(); stops = s; if ($('msg').textContent === OFF_TRAIL) msg(''); update(); }
 
 map.on('click', (ev) => {
   if (DRAG && DRAG.busy) return;                 // the end of dragging the route line
   const v = G.snap(ev.latlng.lng, ev.latlng.lat, 400);
-  if (v < 0) { msg('Tu nie ma znakowanego szlaku (w promieniu 400 m). Kliknij bliżej szlaku.'); return; }
+  if (v < 0) { msg(OFF_TRAIL); return; }
   msg('');
   setStops([...stops, v]);
 });
