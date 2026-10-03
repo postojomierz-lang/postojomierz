@@ -2,7 +2,18 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
-import { applyUpdate, estimateLeft, formatLeft, formatWeek, nextLine, withLine, withSteps } from '../hooks/register'
+import {
+  applyUpdate,
+  estimateLeft,
+  formatLeft,
+  formatWeek,
+  nextLine,
+  sessionNote,
+  sessionReport,
+  summaryLine,
+  withLine,
+  withSteps,
+} from '../hooks/register'
 import type { PostepRun } from '../types'
 
 const MIN = 60_000
@@ -11,12 +22,13 @@ const MIN = 60_000
 const world = (on: On) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   mock.store(on)
-  const seen = { week: 10, toasts: [] as string[], sounds: 0, nextId: 1 }
+  const seen = { week: 10, toasts: [] as string[], sounds: 0, nextId: 1, tokens: 120_000 }
 
   on('session.usage', () => ({
     value: {
       startedAt: 0,
-      context: {} as SessionUsage['context'],
+      context: { tokens: seen.tokens, window: 1_000_000 } as SessionUsage['context'],
+      cost: { usd: 3.5 },
       rateLimits: [{ kind: 'seven_day', percentUsed: seen.week }],
     },
   }))
@@ -108,6 +120,7 @@ describe('postęp zadania', () => {
       await ui.redraw()
       expect(await text(ui)).toContain('✓ Gotowe')
       expect(seen.toasts.join()).toContain('🟢 Gotowe: 1/4 kroków')
+      expect(seen.toasts.join()).toContain('sesja 120k')
       expect(seen.sounds).toBe(1)
     })
   }
@@ -165,6 +178,21 @@ describe('postęp zadania', () => {
     } as never)
     const again = await $.prompt.compose({ model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] })
     expect(again.sections.map(section => section.id)).toContain('postep:plan')
+  })
+
+  test('/postep sesja: liczby i zalecenie', async ($, on) => {
+    const { seen } = world(on)
+    seen.tokens = 480_000
+
+    const report = await $.command.run({
+      command: 'postep',
+      args: 'sesja',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: false, columns: 100 },
+    } as never)
+    expect(report.text).toContain('Kontekst: 480k tokenów (48% okna 1.0M)')
+    expect(report.text).toContain('Koszt sesji: 3.50 $')
+    expect(report.text).toContain('Czas na nową sesję')
   })
 
   test('/postep czat on|off nie rusza paska', async ($, on) => {
@@ -254,5 +282,19 @@ describe('obliczenia', () => {
     expect(withLine([{ type: 'text', text: 'Raz.\n\n⏱ ███ 1/3 · 0:40' }], '⏱ 2/3')).toEqual([
       { type: 'text', text: 'Raz.\n\n⏱ 2/3' },
     ])
+  })
+
+  test('rozmiar sesji: progi i zalecenia', () => {
+    const stats = (tokens: number | null) => ({ tokens, window: 1_000_000, usd: 1, compactions: 0 })
+    expect(sessionNote(null)).toBe(null)
+    expect(sessionNote(stats(null))).toBe(null)
+    expect(sessionNote(stats(272_000))).toBe('sesja 272k')
+    expect(sessionNote(stats(350_000))).toBe('⚠️ sesja 350k — po tym etapie nowa sesja (najpierw notatka przekazania)')
+    expect(sessionNote(stats(480_000))).toBe('⚠️ sesja 480k — czas na nową sesję (najpierw notatka przekazania)')
+    expect(sessionReport(stats(150_000))).toContain('Sesja mała')
+    expect(sessionReport(null)).toContain('Brak odczytu')
+
+    const done = withSteps(base, steps(2, 2), 30_000)
+    expect(summaryLine(done, 30_000, stats(272_000))).toBe('🟢 Gotowe: 2/2 kroków w 0:30 · limit tyg. <0.1% · sesja 272k')
   })
 })
