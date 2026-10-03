@@ -12,10 +12,3 @@
   The planner's online part (`tatry/src/planner/online.js`) needs `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the
   environment at build time, otherwise it is built without it (the build warns).
   Terrain data is prepared by `tatry/tools/prepare.py` into `tatry/src/data/` (committed).
-- `.claude/skills/postep/` is a Claude Code mod: a progress bar above the prompt for multi-step tasks (steps done,
-  estimated time left, weekly limit used), with a toast and a sound when the work is done; `/postep` toggles it.
-  Cloud sessions have no surface for the bar, so the mod adds a short progress line under the next reply after a step
-  is completed, and a summary line once every step is done; `/postep czat off` turns the chat lines off.
-  It also shows how big the session is (context tokens, cost) and advises a new session from 300k tokens;
-  `/postep sesja` prints the figures.
-  Check it with `claude plugin validate .claude/skills/postep` and `claude plugin test .claude/skills/postep`.

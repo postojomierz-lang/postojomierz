@@ -1,6 +1,0 @@
-{
-  "name": "postep",
-  "version": "0.1.0",
-  "description": "Pasek postępu pracy Claude nad zadaniem: kroki, przewidywany czas i zużycie limitu tygodniowego",
-  "types": "./types/index.d.ts"
-}
