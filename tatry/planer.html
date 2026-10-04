@@ -195,6 +195,20 @@
   .wxm small i { display: inline-block; font-style: normal; margin-right: 1px; }
   /* winter */
   #winter-card { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: #eaf2fb; border: 1px solid #bcd3ec; font-size: 13px; line-height: 1.45; }
+  #tab-stay { font-size: 13.5px; }
+  #tab-stay .st-h { margin: 4px 0; font-size: 16px; } #tab-stay .st-note { color: #5b6368; margin: 0 0 8px; }
+  #st-people { list-style: none; padding: 0; margin: 0 0 6px; }
+  #st-people li { display: flex; gap: 6px; align-items: center; padding: 4px 0; flex-wrap: wrap; }
+  #st-people input[type=number], #st-days { width: 52px; }
+  #st-people button { border: 0; background: none; cursor: pointer; color: #8a3a2a; }
+  #tab-stay .st-row { display: flex; gap: 14px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  #st-go { margin: 6px 0 10px; width: 100%; }
+  #st-plan .st-sum { background: #f3f1ea; border-radius: 8px; padding: 8px 10px; }
+  #st-plan .st-days { padding-left: 0; list-style: none; }
+  #st-plan .st-days li { padding: 8px 0; border-top: 1px solid rgba(0,0,0,.08); }
+  #st-plan .st-days li span { display: block; color: #5b6368; font-size: 12.5px; margin: 2px 0 4px; }
+  #st-plan .src { font-size: 11px; color: #6b7378; }
+  .chain-ico { font-size: 15px; line-height: 20px; text-align: center; background: #fff; border: 1.5px solid #2b2b2b; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
   #pack { margin: 8px 0; padding: 8px 12px; border-radius: 10px; background: #f3f1ea; border: 1px solid #ddd7c6; font-size: 13px; line-height: 1.4; }
   #pack summary { cursor: pointer; font-weight: 650; font-size: 14px; }
   #pack summary span { font-weight: 400; color: #6b7378; }
@@ -269,6 +283,7 @@
     </header>
     <nav id="tabs" role="tablist">
       <button data-tab="route" role="tab">🗺<span>Trasa</span></button>
+      <button data-tab="stay" role="tab">🗓<span>Pobyt</span></button>
       <button data-tab="journal" role="tab">📔<span>Dziennik</span></button>
       <button data-tab="play" role="tab">🏆<span>Wyzwania</span></button>
       <button data-tab="groups" role="tab">👥<span>Grupy</span></button>
@@ -327,6 +342,17 @@
       </section>
     </div>
 
+    <div class="tab" id="tab-stay">
+      <h3 class="st-h">Plan pobytu w górach</h3>
+      <p class="st-note">Kto jedzie, na ile dni i gdzie nocujecie: dobiorę trasę na każdy dzień według najsłabszej osoby w grupie.</p>
+      <ul id="st-people"></ul>
+      <button id="st-add" class="chip">+ dodaj osobę</button>
+      <div class="st-row"><label>Dni <input id="st-days" type="number" min="1" max="14" value="5"></label>
+        <label>Nocleg <select id="st-base"></select></label></div>
+      <label class="st-row"><input type="checkbox" id="st-nochains"> bez łańcuchów i ekspozycji</label>
+      <button id="st-go" class="primary">Ułóż plan</button>
+      <div id="st-plan"></div>
+    </div>
     <div class="tab" id="tab-journal">
       <div class="stats" id="j-stats"></div>
       <h3>Ulubione trasy</h3><ul id="j-favs" class="jlist"></ul>
