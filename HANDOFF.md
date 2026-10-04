@@ -1,11 +1,11 @@
-# HANDOFF (5.10.2026)
-- Cel: Szlakownik (tatry/) — region 3D poszerzony na zachód (zadanie 4 z docs/tatry-mobile.md), dane terenu w Cloudflare R2.
-- Stan: PR #222 scalony, Pages #4 OK (wdraża .github/workflows/pages.yml). Region od 19,681°E (Chochołowska, Wołowiec, Kominiarski), panorama od 19,55°E; 2124 odcinki tras.
-- Dane w R2 pod `region2/` (22 304 pliki, 658 MB); REGION_BASE w tatry/src/region.js -> .../r2.dev/region2/. Stary `region/` w R2 jeszcze leży.
-- Decyzje: siatka przesunięta o 12 bloków (stare pliki przenumerowane +12 bloków/+48 kafli); nowy prefiks R2, bo nazwy dostały inną treść (cache 1 dzień); region/ usunięty z gita (.gitignore).
-- Roháče i Orawa: Copernicus 30 m (uskok 2,4 m na łączeniu); instrukcja dla agenta Cowork: docs/zbgis-rohace.md (78 kafli ZBGIS, 54 priorytet A).
-- Pliki: tatry/tools/{prepare,prepare_trails,prepare_gugik,upload_r2}.py (WINDOW=bi,bj,nbi,nbj; --prefix; 8 prób GUGiK), docs/tatry-mobile.md, docs/zbgis-rohace.md.
-- Następny krok: test na telefonie Siwa Polana → Wołowiec; po zgodzie właściciela (~7.10) usunąć region/ z R2; po wgraniu ZBGIS przeliczyć słowacką część pasa; zadanie 5: własna domena R2.
-- Lokalne region/ i tools/.cache nie przetrwają kontenera: dane bazowe pobierz z R2 region2/ przed przeliczaniem.
-- Komendy: ZBGIS_EXTRA=… ZBGIS_ORTO_EXTRA=… AREA=region WINDOW=0,0,12,23 python3 tatry/tools/prepare_gugik.py; MERGE=1 …; AREA=region ONLY=… prepare_classes.py / prepare_trees.py
-- Wysyłka: python3 tatry/tools/upload_r2.py --prefix region2/ [--dry-run]. Test 3D: Playwright, page.route(/r2\.dev/) przez curl, --no-proxy-server, waitUntil commit.
+# HANDOFF (4.10.2026)
+- Cel: Szlakownik (tatry/) — region 3D z R2, poprawki ze zgłoszeń 🐞, wierne budynki schronisk.
+- Stan: PR 222–227 scalone. Region od 19,681°E (R2 `region2/`). Zgłoszenia: brak nowych po nr 49; wszystkie pomysły zrobione (lista z PR w docs/tatry-mobile.md).
+- PR 224: planer na telefonie — panel w 3 wysokościach (uchwyt przesuwany, przycisk ⤢), opis punktów we wstępie.
+- PR 225–227: tatry/src/buildings.js — katalog HUTS (31 schronisk/stacji/chat PL+SK według zdjęć z Commons: skrzydła, lukarny, balkony, daszki, tarasy ze stołami, gablet), reszta wg nazwy/wielkości (tynk+kopertowy, domy drewniane, niższe dachy), budynki do 90 m od schroniska w jego kolorach; Morskie Oko i HONEY jaśniejsze.
+- Decyzje: zadanie 5 (własna domena R2) odłożone do publicznego startu/Google Play (szlakownik.pl zajęta); budynki tylko w kodzie (bez danych/R2); przód budynku = strona od doliny; Krivánska chata pominięta (ruina), Murań bez zdjęć.
+- Wikimedia api.php z kontenera daje 429; działają strony kategorii Commons, Special:FilePath i miniatury 960px.
+- Pliki: tatry/src/buildings.js, tatry/src/planner/{tabs,intro}.js, tatry/planer.html, docs/tatry-mobile.md, rysy/*.
+- Następny krok: test na telefonie (Siwa Polana → Wołowiec, Kondratowa, Morskie Oko, planer ⤢); po zgodzie (~7.10) usunąć stary `region/` z R2; po wgraniu ZBGIS (docs/zbgis-rohace.md) przeliczyć Roháče i wysłać do R2.
+- Poprawka schroniska: wpis w HUTS (regex nazwy + wygląd). Podgląd budynków: tatry/bt.html (lokalny, w .git/info/exclude) + vite --port 5199.
+- Komendy: cd tatry && npm run build; zgłoszenia: python3 tools/bug_reports.py --since 49; wysyłka R2: python3 tatry/tools/upload_r2.py --prefix region2/
