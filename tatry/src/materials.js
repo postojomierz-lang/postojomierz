@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { limeTexture } from './geology.js';
 
 // Shared lighting uniforms, updated by the time-of-day / weather code.
 export const light = {
@@ -69,11 +70,20 @@ export function makeEnv({ inner, outer, quality }) {
     sunDir: light.sunDir, time: light.time, cloudCover: light.cloudCover,
     windK: light.windK, wetK: light.wetK, snowK: light.snowK, snowLine: light.snowLine, winterK: light.winterK,
     shSteps: { value: { low: 8, mid: 18, high: 28, ultra: 40 }[quality] ?? 28 },
+    limeMap: { value: limeTexture([outer.x0, outer.z0, outer.x1, outer.z1]) },
+    limeRect: { value: new THREE.Vector4(outer.x0, outer.z0, outer.x1, outer.z1) },
   };
 }
 
+// 0 granite .. 1 limestone (geology.js)
+const LIME = /* glsl */`
+uniform sampler2D limeMap; uniform vec4 limeRect;
+float limeAt(vec2 p){ return texture2D(limeMap, clamp((p - limeRect.xy) / (limeRect.zw - limeRect.xy), 0.0, 1.0)).r; }
+`;
+
 export const HEIGHTS = /* glsl */`
 ${CLOUDS}
+${LIME}
 uniform sampler2D hInner; uniform sampler2D hOuter;
 uniform vec4 bInner; uniform vec4 bOuter; uniform vec2 nInner; uniform vec2 nOuter;
 uniform vec3 sunDir; uniform float time; uniform int shSteps;
@@ -283,6 +293,10 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         sat = sharpen(satMap, uv, sat, detail > 0.5 ? 0.9 * smoothstep(150.0, 600.0, dist) : 0.8);
         vec3 N = normalize(vWN);
         float slope = 1.0 - N.y;
+        // the rock's colour: Tatra granite (grey, a little warm) or the pale grey limestone and dolomite of the
+        // northern belt (Giewont, Czerwone Wierchy, the Belianske Tatry), lighter and cooler
+        float lime = limeAt(vWorld.xz);
+        vec3 ROCK = mix(vec3(1.02, 1.0, 0.95), vec3(1.0, 1.0, 0.975) * 1.25, lime);
         // lift the baked-in satellite shadows a bit, real-time light adds relief back; less on walls,
         // which the sun lights head-on while the photo (taken from above) already shows them bright
         // bright photos (light granite scree on the Slovak 2025 photo) are not lifted, or they burn out to white
@@ -307,7 +321,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float L = dot(sat, LW), Lraw = max(dot(texture2D(satMap, uv).rgb, LW), 0.02);
           float Llow = dot(textureLod(satMap, uv, lod + log2(stretch) + 0.5).rgb, LW) * clamp(L / Lraw, 0.5, 3.0);
           float Lc = mix(L, Llow, smear);
-          sat = mix(sat, vec3(1.02, 1.0, 0.95) * Lc, smear * 0.9);
+          sat = mix(sat, ROCK * Lc, smear * 0.9);
           float fine = 1.0 - smoothstep(400.0, 1500.0, dist);
           if (fine > 0.0) {
             // a wall faces mostly sideways: one projection (the one it faces) is enough, 2 reads instead of up to 6
@@ -333,7 +347,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           // its brightness from the photo blurred as much as the photo is drawn out on the wall (de-smearing, above)
           vec3 satWall = smear > 0.0 ? mix(satBlur, textureLod(satMap, uv, 1.5 + 1.6 * log2(stretch)).rgb * 1.55 + 0.01, smear) : satBlur;
           float glum = dot(satWall, vec3(0.3, 0.45, 0.25));
-          vec3 rock = vec3(glum) * vec3(1.02, 1.0, 0.95) * (0.55 + 0.9 * t1) * (0.82 + 0.36 * t2) * strata;
+          vec3 rock = vec3(glum) * ROCK * (0.55 + 0.9 * t1) * (0.82 + 0.36 * t2) * strata;
           // walls are granite whatever green the top-down photo smeared over them (from ~40° up the photo's
           // green is ignored; the mesh normals are smoothed, so real walls show up from ~0.4)
           float sl = max(slope, slopeH);
@@ -414,13 +428,15 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               tc /= wsum; tm /= wsum; tn = normalize(tn);
               // top-down photos smear on walls: there, take their colour from a blurred level
               vec3 satLow = textureLod(satMap, uv, 3.0).rgb * (1.55 - 0.3 * smoothstep(0.35, 0.75, slope)) + 0.01;
-              satLow = mix(satLow, vec3(1.02, 1.0, 0.95) * dot(satLow, vec3(0.3, 0.55, 0.15)), smear * 0.9);   // its green smears too
+              satLow = mix(satLow, ROCK * dot(satLow, vec3(0.3, 0.55, 0.15)), smear * 0.9);   // its green smears too
               vec3 baseC = mix(col, satLow * (0.8 + 0.4 * nBig), wCliff * 0.85);
               // the top-down photo smears green and white streaks down the walls: keep only its
               // brightness there, the colour is Tatra granite (grey, a little warm, lichen spots)
               float wl = dot(baseC, vec3(0.3, 0.55, 0.15));
-              vec3 granite = vec3(1.02, 1.0, 0.95) * clamp(wl, 0.18, 0.62) * (0.9 + 0.2 * vnoise(w.xz / 7.0 + w.y / 9.0));
-              granite = mix(granite, granite * vec3(0.92, 1.0, 0.8), smoothstep(0.55, 0.8, vnoise(w.xz / 3.0 + w.y / 4.0)) * 0.6);
+              vec3 granite = ROCK * clamp(wl, 0.18 + 0.08 * lime, 0.62 + 0.14 * lime) * (0.9 + 0.2 * vnoise(w.xz / 7.0 + w.y / 9.0));
+              // lichen spots on granite; limestone gets dark rain streaks down the wall instead
+              granite = mix(granite, granite * vec3(0.92, 1.0, 0.8), smoothstep(0.55, 0.8, vnoise(w.xz / 3.0 + w.y / 4.0)) * 0.6 * (1.0 - lime));
+              granite *= 1.0 - lime * 0.3 * smoothstep(0.55, 0.85, vnoise(vec2(dot(w.xz, vec2(0.7, 0.7)) / 2.5, w.y / 40.0)));
               baseC = mix(baseC, granite, wCliff * smoothstep(0.45, 0.7, max(slope, slopeH)) * 0.8);
               float lt = dot(tm, vec3(0.3, 0.55, 0.15)), ls = dot(baseC, vec3(0.3, 0.55, 0.15));
               vec3 byRatio = baseC * (tc / max(tm, vec3(0.02)));
@@ -434,6 +450,11 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
                 float ml = dot(mc, vec3(0.3, 0.55, 0.15)) / max(dot(texMean[0], vec3(0.3, 0.55, 0.15)), 0.02);
                 nearCol *= mix(1.0, clamp(ml, 0.55, 1.45), wCliff * 0.85);
                 tn = normalize(tn + (nm - N) * wCliff * 0.7);
+              }
+              // limestone: the photo textures' granite specks and green lichen slabs washed out to pale grey
+              {
+                float rk = clamp(wCliff + wT[1] + wT[2], 0.0, 1.0) * lime * (1.0 - wTrail);
+                nearCol = mix(nearCol, vec3(dot(nearCol, vec3(0.3, 0.55, 0.15))) * vec3(1.0, 1.0, 0.97) * 1.18, rk * 0.7);
               }
               // tame the lime tint of sunlit grass in the satellite image
               nearCol = mix(nearCol, vec3(dot(nearCol, vec3(0.3, 0.55, 0.15))), 0.22 * wGreen);
@@ -480,7 +501,8 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float y = vWorld.y + (vnoise(vWorld.xz / 400.0) - 0.5) * 160.0;
           float st = smoothstep(0.28, 0.62, slope);
           vec3 forestC = vec3(0.10, 0.15, 0.08), mugoC = vec3(0.16, 0.21, 0.10), meadowC = vec3(0.30, 0.33, 0.18);
-          vec3 rockC = vec3(0.47, 0.46, 0.44) * (0.85 + 0.3 * vnoise(vWorld.xz / 90.0)), screeC = vec3(0.55, 0.54, 0.51);
+          vec3 rockC = mix(vec3(0.47, 0.46, 0.44), vec3(0.58, 0.58, 0.56), lime) * (0.85 + 0.3 * vnoise(vWorld.xz / 90.0));
+          vec3 screeC = mix(vec3(0.55, 0.54, 0.51), vec3(0.64, 0.64, 0.62), lime);
           vec3 veg = mix(forestC, mugoC, smoothstep(1450.0, 1600.0, y));
           veg = mix(veg, meadowC, smoothstep(1750.0, 1950.0, y));
           vec3 bare = mix(screeC, rockC, st);
@@ -673,6 +695,7 @@ export function rockDetail(material) {
       .replace('#include <common>', `#include <common>
         varying vec3 vRW; varying vec3 vRN;
         ${NOISE}
+        ${LIME}
         // value noise on the three planes, weighted by the normal (no stretching on steep faces)
         float tri(vec3 p, vec3 n, float f) {
           vec3 w = abs(n); w /= (w.x + w.y + w.z);
@@ -686,12 +709,13 @@ export function rockDetail(material) {
         float rdist = length(vRW - cameraPosition);
         float rnear = 1.0 - smoothstep(18.0, 45.0, rdist);
         vec3 rn = normalize(vRN);
+        float rlime = limeAt(vRW.xz);
         if (rnear > 0.0) {
-          // grains: dark and light specks
+          // grains: dark and light specks (granite; limestone is fine-grained, hardly any)
           float g1 = tri(vRW + 3.1, rn, 90.0), g2 = tri(vRW - 7.7, rn, 55.0);
           float dark = smoothstep(0.72, 0.8, g1), light = smoothstep(0.7, 0.78, g2);
           vec3 gcol = diffuseColor.rgb * (1.0 - 0.45 * dark) + vec3(0.08) * light;
-          diffuseColor.rgb = mix(diffuseColor.rgb, gcol, rnear);
+          diffuseColor.rgb = mix(diffuseColor.rgb, gcol, rnear * (1.0 - 0.8 * rlime));
         }
         {
           // lichens on the faces open to the sky (they fade into the baked texture far away)
@@ -703,8 +727,9 @@ export function rockDetail(material) {
           float orange = smoothstep(0.72, 0.75, trifbm(vRW - 23.0, rn, 2.2)) * upf;
           vec3 c = diffuseColor.rgb;
           c = mix(c, c * 1.15 + vec3(0.05), crust * 0.5);
-          c = mix(c, vec3(0.52, 0.58, 0.18) * (0.8 + 0.4 * tri(vRW, rn, 20.0)), mapL * 0.85);
-          c = mix(c, vec3(0.05), rim * upf * 0.7 * (0.3 + 0.7 * rnear));
+          // the map lichen shuns limestone
+          c = mix(c, vec3(0.52, 0.58, 0.18) * (0.8 + 0.4 * tri(vRW, rn, 20.0)), mapL * 0.85 * (1.0 - rlime));
+          c = mix(c, vec3(0.05), rim * upf * 0.7 * (0.3 + 0.7 * rnear) * (1.0 - rlime));
           c = mix(c, vec3(0.75, 0.35, 0.08), orange * 0.8);
           diffuseColor.rgb = c;
         }`)

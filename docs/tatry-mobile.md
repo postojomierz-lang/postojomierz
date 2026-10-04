@@ -65,6 +65,7 @@ Szczegóły każdej funkcji są w `tatry/README.md` (sekcje po polsku). Pozosta�
   - `?grupa=demo`: trzy zmyślone osoby z grupy na szlaku.
   - `?odmaz=0` / `?odmaz=pokaz`: bez odmazywania ścian (porównanie) / ściany objęte odmazywaniem na czerwono.
 - Do testów: `window.__rysy` (stan 3D; `__rysy.pick(x, y)` mówi, jaka siatka jest pod punktem ekranu) i `window.__planner` (mapa, `path`, `stops`).
+- Geologia: `tatry/src/geology.js` (granica wapień/granit, uproszczona z mapy geologicznej; na północ od niej wapień). Używa jej kolor skał w shaderze terenu (`limeAt` z `limeMap`), głazy (odcień instancji, `rockDetail`) i rośliny wapienne (`nature/spots.js`).
 - Shadery: każdy fragment używający wspólnych uniformów (`wetK`, `winterK`, …) musi je zadeklarować. Brak deklaracji już raz ukrył skały i łańcuchy, więc sprawdzaj konsolę.
 
 ## 4. Supabase

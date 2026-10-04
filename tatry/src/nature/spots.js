@@ -4,13 +4,10 @@
 // Common species get several spots along a route, the rarest one at most.
 import { CATALOG } from './catalog.js';
 import { rng } from '../noise.js';
+import { limeAt } from '../geology.js';
 
-// the local frame (tools/prepare.py): x east, z south, metres from the Rysy area's centre
-const LON0 = 20.076, LAT0 = 49.191, MX = 111320 * Math.cos(LAT0 * Math.PI / 180), MZ = 110574;
-const lonlat = (x, z) => [LON0 + x / MX, LAT0 - z / MZ];
-// limestone: the northern belt of the Tatras (reglowe hills, Giewont, Kasprowy's northern slopes);
-// the High Tatras are granite
-const isLime = (x, z) => { const [lon, lat] = lonlat(x, z); return lat > 49.235 && lon < 20.06; };
+// limestone: the northern belt of the Tatras (geology.js); the High Tatras are granite
+const isLime = (x, z) => limeAt(x, z) > 0.5;
 
 function segDist(px, pz, ax, az, bx, bz) {
   const dx = bx - ax, dz = bz - az, l = dx * dx + dz * dz;
