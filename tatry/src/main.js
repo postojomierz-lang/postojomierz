@@ -33,7 +33,7 @@ import { buildReveal } from './nature/reveal.js';
 import { GROUPS, RARITY, BY_ID } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
-import { routeFromHash, routePath, loadRegionArea, REGION_BASE } from './region.js';
+import { routeFromHash, routePath, loadRegionArea, REGION_BASE, toLocal } from './region.js';
 import { routeInfo } from './routeinfo.js';
 import { loadJournal, saveJournal, routeKey, addWalk, addPeak, ghostAt, fmtClock } from './journal.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -774,7 +774,32 @@ async function main() {
     rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso),
     ...(RI ? { colourAt: RI.colourAt, colours: route.colours } : {}) });
   const steps = buildSteps({ scene, terrain, trail, TH, shade, sections, rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso) });
+  // chains where OpenStreetMap has them (safety_rope, via ferrata: tools/prepare_hard.py) within ~20 m of the
+  // trail; they hang there however steep it is. Elsewhere the guess: difficult rock high up
+  const osmChain = new Uint8Array(N);
+  try {
+    const hard = await (await fetch('data/region/hard.json')).json();
+    const cell = new Map(), key = (x, z) => `${Math.floor(x / 25)},${Math.floor(z / 25)}`;
+    for (const [, pts] of hard.c) {
+      const L = pts.map(([lon, lat]) => toLocal(lon, lat));
+      for (let k = 1; k < L.length; k++) {
+        const n = Math.max(1, Math.ceil(Math.hypot(L[k][0] - L[k - 1][0], L[k][1] - L[k - 1][1]) / 5));
+        for (let j = 0; j <= n; j++) {
+          const x = L[k - 1][0] + (L[k][0] - L[k - 1][0]) * j / n, z = L[k - 1][1] + (L[k][1] - L[k - 1][1]) * j / n;
+          (cell.get(key(x, z)) || cell.set(key(x, z), []).get(key(x, z))).push(x, z);
+        }
+      }
+    }
+    for (let i = 0; i < N; i++) {
+      const x = trail.X[i], z = trail.Z[i], cx = Math.floor(x / 25), cz = Math.floor(z / 25);
+      for (let a = -1; a <= 1 && !osmChain[i]; a++) for (let b = -1; b <= 1 && !osmChain[i]; b++) {
+        const c = cell.get(`${cx + a},${cz + b}`);
+        if (c) for (let k = 0; k < c.length; k += 2) if ((c[k] - x) ** 2 + (c[k + 1] - z) ** 2 < 400) { osmChain[i] = 1; break; }
+      }
+    }
+  } catch (e) { /* no data: the guess only */ }
   const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6, ...(RI ? { chainOK: RI.chainAt } : {}),
+    osm: (i) => osmChain[i] === 1,
     maxDistance: tier(120, 160, 220, 300) });
   const cross = buildCross({ scene, terrain, shade });          // the cross on Wielki Giewont
   // benches, picnic tables, shelters and springs along the route (OpenStreetMap, tools/prepare_rest.py)

@@ -44,7 +44,7 @@ export function packList(r) {
   const metres = (len) => `ok. ${Math.max(10, Math.round(len / 10) * 10)} m`;
   const named = (m) => [...m].filter(([n, len]) => n && len >= 5).map(([n]) => n).slice(0, 3);
   const list = (m, total) => metres(total) + (named(m).length ? ` (${named(m).join(', ')})` : '');
-  const chains = o.chainM >= 5, alpineT = o.alpineM >= 20 ? o.grade : 0;
+  const chains = o.chainM >= 20, alpineT = o.alpineM >= 100 ? o.grade : 0;   // not a side path passing by
   if (chains || alpineT || r.hard.length || r.maxE >= 2100) {
     const why = [chains && `łańcuchy/klamry ${list(o.chains, o.chainM)}`, alpineT && `teren eksponowany T${alpineT}, ${String(Math.round(o.alpineM / 100) / 10).replace('.', ',')} km${named(o.alpine).length ? ` (${named(o.alpine).join(', ')})` : ''}`,
       r.hard.length && `trudne odcinki: ${r.hard.join(', ')}`].filter(Boolean);

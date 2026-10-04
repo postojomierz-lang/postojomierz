@@ -25,6 +25,7 @@ import { setupSos } from './sos.js';
 import { setupIntro } from './intro.js';
 import { clearLocalData } from './localdata.js';
 import { packList } from './packlist.js';
+import { setupStay } from './stay.js';
 import { captureConsole, setupReport, deviceContext } from '../report.js';
 captureConsole();
 
@@ -52,6 +53,9 @@ const offMap = L.tileLayer('offline/{z}/{x}/{y}.webp', { minZoom: 11, maxNativeZ
 // hard passages (OpenStreetMap, tools/prepare_hard.py): chains, staples, ladders and exposed alpine stretches
 // (SAC T4-T6). Their lines, cut into ~8 m steps, go into a 30 m grid; a route vertex within ~25 m of one is on it (OSM draws the chain and the trail as separate lines)
 const HARD = { grid: new Map(), ready: false };
+const chainLayer = L.layerGroup();
+const chainSync = () => { const show = map.getZoom() >= 14; if (show && !map.hasLayer(chainLayer)) chainLayer.addTo(map); if (!show && map.hasLayer(chainLayer)) chainLayer.remove(); };
+map.on('zoomend', chainSync); chainSync();
 fetch('data/region/hard.json').then((r) => r.json()).then((d) => {
   const KX = 72700, KZ = 111200;                    // metres a degree of longitude / latitude here
   const put = (kind, name, grade, pts) => {
@@ -65,7 +69,14 @@ fetch('data/region/hard.json').then((r) => r.json()).then((d) => {
       }
     }
   };
-  for (const [name, pts] of d.c) put('c', name, 0, pts);
+  for (const [name, pts] of d.c) {
+    put('c', name, 0, pts);
+    // on the map from zoom 14: the chain stretch as a dotted dark line and a ⛓ at its middle
+    const ll = pts.map(([lon, lat]) => [lat, lon]);
+    L.polyline(ll, { color: '#2b2b2b', weight: 5, opacity: 0.75, dashArray: '1 7', lineCap: 'round', interactive: false }).addTo(chainLayer);
+    L.marker(ll[Math.floor(ll.length / 2)], { icon: L.divIcon({ className: 'chain-ico', html: '⛓', iconSize: [20, 20] }), bubblingMouseEvents: false })
+      .bindPopup(`⛓ <b>${name ? name.replace(/[&<>"]/g, '') : 'Łańcuchy, klamry'}</b><br>ubezpieczony odcinek (OpenStreetMap): kask i rękawiczki`).addTo(chainLayer);
+  }
   for (const [name, grade, pts] of d.a) put('a', name, grade, pts);
   HARD.ready = true; HARD.KX = KX; HARD.KZ = KZ;
   if (summary) updateDay();
@@ -299,6 +310,8 @@ async function updateDay() {
     + (w.warn.length ? `<ul>${w.warn.map((x) => `<li>${x}</li>`).join('')}</ul>` : '')
     + `<div class="src">Prognoza Open-Meteo dla ${top_n} m n.p.m${w.stale ? `, zapisana ${w.at.toLocaleString('pl-PL')} (brak zasięgu)` : ''}. Sprawdź też komunikat TOPR / HZS.</div>`;
 }
+// 🗓 the stay planner (stay.js): a walk of the plan opens as the route
+setupStay({ G, along: hardAlong, $, onOpen: (s) => { setStops(s); document.querySelector('#tabs [data-tab="route"]').click(); } });
 // 🎒 what to take (packlist.js): ticks are kept on this device, for any route (the same gear)
 const PACK_KEY = 'szlakownik-pack';
 let packTicks = {};
