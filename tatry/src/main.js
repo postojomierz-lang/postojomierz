@@ -18,6 +18,7 @@ import { buildBuildings, buildingFlats } from './buildings.js';
 import { buildChains } from './chains.js';
 import { buildCross } from './cross.js';
 import { buildRest } from './rest.js';
+import { setupPhoto } from './photo.js';
 import { buildTrailMarks, planBlazes } from './trailmarks.js';
 import { buildSigns } from './signs.js';
 import { buildLabels, placeId, CATS } from './labels.js';
@@ -441,8 +442,8 @@ async function main() {
   const step = tier(16, 8, 6, 4.5) * Math.sqrt(AREA_K);
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
-  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, lowerUnderPatch: true });
-  const patchMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near });
+  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, hole: near.patch, desmear: P.get('odmaz') === 'pokaz' ? 2 : P.get('odmaz') !== '0' });
+  const patchMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, desmear: P.get('odmaz') === 'pokaz' ? 2 : P.get('odmaz') !== '0' });
   const innerMesh = new THREE.Mesh(innerGeo, innerMat);
   innerMesh.receiveShadow = true;
 
@@ -501,14 +502,11 @@ async function main() {
   scene.add(innerMesh);
 
   status('Budowanie panoramy Tatr…'); await frame();
-  const shrink = 120;
   // the panorama: every sample on the better tiers, every second on low (far away, largely under the detailed area)
   const oDiv = tier(2, 1, 1, 1);
-  const outerGeo = gridGeometry(OB[0], OB[1], OB[2], OB[3], Math.round((meta.outer.n[0] - 1) / oDiv), Math.round((meta.outer.n[1] - 1) / oDiv), (x, z) => {
-    const h = terrain.base(x, z);
-    return inner.inside(x, z, shrink) ? h - 60 : h;
-  });
-  const outerMesh = new THREE.Mesh(outerGeo, terrainMaterial({ map: outerTex, trailMap: blank, bounds: OB, detail: false, env: shade, aoStrength: 0.6, textures, near: noNear }));
+  const outerGeo = gridGeometry(OB[0], OB[1], OB[2], OB[3], Math.round((meta.outer.n[0] - 1) / oDiv), Math.round((meta.outer.n[1] - 1) / oDiv), (x, z) => terrain.base(x, z));
+  const outerMesh = new THREE.Mesh(outerGeo, terrainMaterial({ map: outerTex, trailMap: blank, bounds: OB, detail: false, env: shade, aoStrength: 0.6, textures, near: noNear,
+    hole: { value: new THREE.Vector4(IB[0], IB[1], IB[2], IB[3]) }, desmear: P.get('odmaz') === 'pokaz' ? 2 : P.get('odmaz') !== '0' }));   // the detailed area draws itself
   scene.add(outerMesh);
 
   // ---------- lakes
@@ -1900,6 +1898,10 @@ async function main() {
     adaptResolution();
     requestAnimationFrame(tick);
   }
+  // 📷: a photo or a 180° panorama of the view, rendered once in full quality (photo.js)
+  setupPhoto({ button: $('btn-photo'), renderer, composer, camera, grade, name: TITLE,
+    beforeRender: () => { if (!LITE) renderReflection(); },
+    restore: () => { sizeRefl(); streams.setPixelRatio(renderer.getPixelRatio(), innerHeight); } });
   // test reports (🐞): a screenshot of the 3D view and where exactly it was taken
   setupReport({ app: '3d', button: $('btn-bug'),
     screenshot: () => {
@@ -1921,7 +1923,14 @@ async function main() {
       };
     } });
 
-  window.__rysy = { cross, rest, reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  // for tests: what is under a point of the screen (pixels)
+  const pick = (sx, sy) => {
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(new THREE.Vector2(sx / innerWidth * 2 - 1, 1 - sy / innerHeight * 2), camera);
+    return rc.intersectObjects(scene.children, true).slice(0, 6).map((h) => ({ name: h.object.name, type: h.object.type, parent: h.object.parent && h.object.parent.name,
+      mat: h.object.material && (h.object.material.name || h.object.material.type), dist: Math.round(h.distance), verts: h.object.geometry && h.object.geometry.attributes.position.count }));
+  };
+  window.__rysy = { pick, cross, rest, reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 

@@ -153,28 +153,27 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
 // lit by the scene lights (so it receives tree and rock shadows) plus terrain shadow and AO.
 // `near` (shared object) holds the sharp orthophoto window around the camera and the rectangle
 // covered by the 1 m patch mesh; `lowerUnderPatch` hides this mesh where the patch replaces it.
-export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1, textures, near, lowerUnderPatch = false }) {
+// desmear: the walls' de-smearing (below; ?odmaz=0 turns it off, to compare)
+// hole: { value: Vector4 } x0, z0, x1, z1 where a finer mesh lies and this one is not drawn
+export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1, textures, near, hole = null, desmear = true }) {
   const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const u = {
-    nearMap: near.map, nearRect: near.rect, clsNear: near.cls, patchRect: near.patch, trailNear: near.trail, trailRect: near.trailRect, lowerInside: { value: lowerUnderPatch ? 1 : 0 },
+    nearMap: near.map, nearRect: near.rect, clsNear: near.cls, trailNear: near.trail, trailRect: near.trailRect, holeRect: hole || { value: new THREE.Vector4(0, 0, 0, 0) },
     texD: { value: textures.diff }, texN: { value: textures.nor },
     texMean: { value: textures.mean }, texScale: { value: textures.scale },
     satMap: { value: map }, trailMap: { value: trailMap },
-    bounds: { value: new THREE.Vector4(...bounds) }, detail: { value: detail ? 1 : 0 },
+    bounds: { value: new THREE.Vector4(...bounds) }, detail: { value: detail ? 1 : 0 }, desmear: { value: +desmear },
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, env, u);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWorld; varying vec3 vWN; uniform vec4 patchRect; uniform float lowerInside;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWorld; varying vec3 vWN;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normal;
-        if (lowerInside > 0.5 && vWorld.x > patchRect.x + 6.0 && vWorld.x < patchRect.z - 6.0 && vWorld.z > patchRect.y + 6.0 && vWorld.z < patchRect.w - 6.0) {
-          transformed.y -= 30.0; vWorld.y -= 30.0;
-        }`);
+        vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normal;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        varying vec3 vWorld; varying vec3 vWN;
-        uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail;
+        varying vec3 vWorld; varying vec3 vWN; uniform vec4 holeRect;
+        uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail; uniform float desmear;
         uniform sampler2D nearMap; uniform vec4 nearRect; uniform sampler2D clsNear; uniform sampler2D trailNear; uniform vec4 trailRect;
         uniform sampler2DArray texD; uniform sampler2DArray texN; uniform vec3 texMean[6]; uniform float texScale[6];
         ${NOISE}
@@ -262,6 +261,12 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           vec3 b = textureLod(tex, uv, lod + 1.6).rgb;
           return max(c + (c - b) * amount, vec3(0.0));
         }`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+        // not drawn where a finer mesh lies (the panorama under the detailed area, the coarse mesh under the
+        // 1 m patch around the camera). They used to be pushed down there, but where the edge of the finer one
+        // crossed a wall, the big triangles of the coarser one rose through it as wedges with the top-down photo
+        // drawn out into green streaks on them. The finer meshes' skirts hide the seams.
+        if (vWorld.x > holeRect.x + 1.0 && vWorld.x < holeRect.z - 1.0 && vWorld.z > holeRect.y + 1.0 && vWorld.z < holeRect.w - 1.0) discard;`)
       .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0;
       {
         vec2 uv = (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy);
@@ -288,6 +293,29 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         if (detail > 0.5) Nr = normalize(mix(N, hNormal(vWorld.xz, 4.0), smoothstep(60.0, 200.0, dist)));
         vec3 Nsm = Nr;                                              // slope direction for the fall lines
         float slopeH = 1.0 - Nr.y;                                  // from the 4 m heights: real walls read as walls
+        // de-smearing of the walls: a photo taken from above covers a wall of slope θ with 1/cos θ times fewer
+        // pixels, drawn out down the fall line into streaks, and where grass grows on a ledge above, into green
+        // smears down the rock. The more a spot is stretched, the more of the photo's detail is dropped (its
+        // blurred level instead, as blurred as the photo is drawn out there) and its colour turned to granite
+        // (its brightness kept); the fine detail comes from the granite texture, laid on from three sides
+        float stretch = 1.0 / max(min(N.y, Nr.y), 0.12);
+        float smear = smoothstep(1.55, 3.0, stretch) * min(desmear, 1.0);   // ~50° .. 70°
+        if (smear > 0.0) {
+          const vec3 LW = vec3(0.3, 0.55, 0.15);
+          vec2 tsz = vec2(textureSize(satMap, 0));
+          float lod = log2(max(max(length(dFdx(uv * tsz)), length(dFdy(uv * tsz))), 1.0));
+          float L = dot(sat, LW), Lraw = max(dot(texture2D(satMap, uv).rgb, LW), 0.02);
+          float Llow = dot(textureLod(satMap, uv, lod + log2(stretch) + 0.5).rgb, LW) * clamp(L / Lraw, 0.5, 3.0);
+          float Lc = mix(L, Llow, smear);
+          sat = mix(sat, vec3(1.02, 1.0, 0.95) * Lc, smear * 0.9);
+          float fine = 1.0 - smoothstep(400.0, 1500.0, dist);
+          if (fine > 0.0) {
+            // a wall faces mostly sideways: one projection (the one it faces) is enough, 2 reads instead of up to 6
+            vec3 gn;
+            vec3 gc = texLayer(abs(N.x) > abs(N.z) ? vWorld.zy : vWorld.xy, 0.0, texScale[0] * 2.0, gn);
+            sat *= mix(1.0, clamp(dot(gc, LW) / max(dot(texMean[0], LW), 0.02), 0.6, 1.4), smear * 0.6 * fine);
+          }
+        }
         // ribs and gullies belong to rock and scree, not to grass and dwarf pine
         float greenish = clamp((sat.g - max(sat.r, sat.b)) * 9.0 - 0.25, 0.0, 1.0);
         float fl = fallLine(vWorld, Nr, Nsm, (detail > 0.5 ? 1.0 : 0.8) * (1.0 - 0.9 * greenish));
@@ -302,7 +330,9 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float t1 = fbm2(w.zy * 0.22) * an.x + fbm2(w.xz * 0.22) * an.y + fbm2(w.xy * 0.22) * an.z;
           float t2 = vnoise(w.zy * 1.6) * an.x + vnoise(w.xz * 1.6) * an.y + vnoise(w.xy * 1.6) * an.z;
           float strata = 0.88 + 0.12 * sin(w.y * 0.7 + t1 * 9.0);
-          float glum = dot(satBlur, vec3(0.3, 0.45, 0.25));
+          // its brightness from the photo blurred as much as the photo is drawn out on the wall (de-smearing, above)
+          vec3 satWall = smear > 0.0 ? mix(satBlur, textureLod(satMap, uv, 1.5 + 1.6 * log2(stretch)).rgb * 1.55 + 0.01, smear) : satBlur;
+          float glum = dot(satWall, vec3(0.3, 0.45, 0.25));
           vec3 rock = vec3(glum) * vec3(1.02, 1.0, 0.95) * (0.55 + 0.9 * t1) * (0.82 + 0.36 * t2) * strata;
           // walls are granite whatever green the top-down photo smeared over them (from ~40° up the photo's
           // green is ignored; the mesh normals are smoothed, so real walls show up from ~0.4)
@@ -346,6 +376,14 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
                 }
               }
             }
+            // a stretched wall is rock whatever grass the top-down photo and the ground map (made from it) smear
+            // down it from the ledges above: granite and lichen slabs, no meadow or forest floor (de-smearing)
+            if (smear > 0.0) {
+              float ks = smear * 0.85;
+              wT[0] = mix(wT[0], 1.0 - nC, ks); wT[1] = mix(wT[1], nC, ks);
+              wT[2] *= 1.0 - ks; wT[4] *= 1.0 - ks; wT[5] *= 1.0 - ks;
+              wCliff = max(wCliff, smear);
+            }
             // the path: the sharp window around the camera where there is one (R = path, G = R * paved),
             // with a ragged, trodden edge; the coarse whole-area mask elsewhere
             float tr = texture2D(trailMap, uv).r, paved = 0.0;
@@ -376,6 +414,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               tc /= wsum; tm /= wsum; tn = normalize(tn);
               // top-down photos smear on walls: there, take their colour from a blurred level
               vec3 satLow = textureLod(satMap, uv, 3.0).rgb * (1.55 - 0.3 * smoothstep(0.35, 0.75, slope)) + 0.01;
+              satLow = mix(satLow, vec3(1.02, 1.0, 0.95) * dot(satLow, vec3(0.3, 0.55, 0.15)), smear * 0.9);   // its green smears too
               vec3 baseC = mix(col, satLow * (0.8 + 0.4 * nBig), wCliff * 0.85);
               // the top-down photo smears green and white streaks down the walls: keep only its
               // brightness there, the colour is Tatra granite (grey, a little warm, lichen spots)
@@ -484,6 +523,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           col = mix(col, snowC, clamp(wsn, 0.0, 0.96));
         }
         diffuseColor.rgb = col;
+        if (desmear > 1.5) diffuseColor.rgb = mix(col, vec3(1.0, 0.0, 0.0), smear * 0.8);   // ?odmaz=pokaz: where it works
         if (detW <= 0.0) { detN = Nr; detW = 1.0; }
         else { detN = normalize(mix(Nr, detN, detW)); detW = 1.0; }
       }`)
