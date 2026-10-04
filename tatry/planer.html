@@ -195,6 +195,16 @@
   .wxm small i { display: inline-block; font-style: normal; margin-right: 1px; }
   /* winter */
   #winter-card { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: #eaf2fb; border: 1px solid #bcd3ec; font-size: 13px; line-height: 1.45; }
+  #pack { margin: 8px 0; padding: 8px 12px; border-radius: 10px; background: #f3f1ea; border: 1px solid #ddd7c6; font-size: 13px; line-height: 1.4; }
+  #pack summary { cursor: pointer; font-weight: 650; font-size: 14px; }
+  #pack summary span { font-weight: 400; color: #6b7378; }
+  #pack ul { list-style: none; margin: 6px 0; padding: 0; }
+  #pack li { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; border-top: 1px solid rgba(0,0,0,.06); }
+  #pack li input { margin-top: 2px; flex: none; }
+  #pack li .why { display: block; font-size: 11.5px; color: #6b7378; }
+  #pack li.must > label > b::after { content: ' ●'; color: #c2410c; font-size: 10px; }
+  #pack li.done b { text-decoration: line-through; opacity: .6; }
+  #pack .src { font-size: 11px; color: #6b7378; }
   #winter-card b.h { display: block; font-size: 14px; margin-bottom: 4px; }
   #winter-card .scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin: 6px 0; text-align: center; font-size: 11px; }
   #winter-card .scale span { border-radius: 4px; padding: 3px 0; font-weight: 700; color: #1d2327; }
@@ -308,6 +318,10 @@
           <div class="line" id="d-weather"></div>
         </div>
         <div id="winter-card" hidden></div>
+        <details id="pack" hidden><summary>🎒 Co zabrać <span id="pack-n"></span></summary>
+          <ul id="pack-list"></ul>
+          <div class="src">Lista z czasu, przewyższeń, wysokości, trudnych odcinków, zapasu do zmroku, prognozy i pory roku. <a href="#" id="pack-clear">Odznacz wszystko</a></div>
+        </details>
         <canvas id="profile"></canvas>
         <ul id="sections"></ul>
       </section>

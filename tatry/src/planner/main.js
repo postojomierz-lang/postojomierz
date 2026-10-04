@@ -24,6 +24,7 @@ import { setupNavWeather } from './navweather.js';
 import { setupSos } from './sos.js';
 import { setupIntro } from './intro.js';
 import { clearLocalData } from './localdata.js';
+import { packList } from './packlist.js';
 import { captureConsole, setupReport, deviceContext } from '../report.js';
 captureConsole();
 
@@ -237,6 +238,8 @@ async function updateDay() {
   else html += ` · <span class="ok">zapas ${hm(margin)}</span>`;
   if (sun.sunrise && t0 < sun.sunrise) html += `<br>Wyjście przed wschodem słońca (${hhmm(sun.sunrise)}): czołówka.`;
   $('d-sun').innerHTML = html;
+  const pack = { time: summary.time, up: summary.up, down: summary.down, maxE: summary.maxE, minE: summary.minE, margin, early: !!(sun.sunrise && t0 < sun.sunrise), date: t0, w: null, hard: hardOn(path) };
+  renderPack(pack);
   // the forecast for the highest point of the route
   const req = ++dayReq;
   let top = path[0];
@@ -247,12 +250,33 @@ async function updateDay() {
   const w = fc && walkWeather(fc, t0, t1, G.H[path[0]]);
   if (!w) { winterCard(t0, G.H[top], null); $('d-weather').textContent = fc ? 'Prognoza sięga 3 dni naprzód.' : 'Prognoza niedostępna: brak połączenia z serwisem pogody (Open-Meteo).'; return; }
   winterCard(t0, G.H[top], w.freeze);
+  renderPack({ ...pack, w });
   const top_n = Math.round(G.H[top]);
   $('d-weather').innerHTML = `${w.icon} ${w.text} · na górze (${top_n} m) ${Math.round(w.tTop)}°C, odczuwalnie ${Math.round(w.feelsTop)}°C · na starcie ok. ${Math.round(w.tStart)}°C`
     + `<br>opady ${w.rainP}%${w.rain >= 0.1 ? ` (${w.rain.toFixed(1)} mm)` : ''} · wiatr ${Math.round(w.wind)} km/h, porywy ${Math.round(w.gust)} km/h`
     + (w.warn.length ? `<ul>${w.warn.map((x) => `<li>${x}</li>`).join('')}</ul>` : '')
     + `<div class="src">Prognoza Open-Meteo dla ${top_n} m n.p.m${w.stale ? `, zapisana ${w.at.toLocaleString('pl-PL')} (brak zasięgu)` : ''}. Sprawdź też komunikat TOPR / HZS.</div>`;
 }
+// 🎒 what to take (packlist.js): ticks are kept on this device, for any route (the same gear)
+const PACK_KEY = 'szlakownik-pack';
+let packTicks = {};
+try { packTicks = JSON.parse(localStorage.getItem(PACK_KEY) || '{}'); } catch (e) { /* private mode */ }
+const savePack = () => { try { localStorage.setItem(PACK_KEY, JSON.stringify(packTicks)); } catch (e) { /* full */ } };
+// the difficult stretches (chains, ladders) the route goes along
+function hardOn(p) { const on = new Set(p); return (G.corrected || []).filter((c) => on.has(c.from) && on.has(c.to)).map((c) => c.name.replace(/\s*\(.*\)$/, '')); }
+function renderPack(r) {
+  const items = packList(r);
+  const done = () => items.filter((it) => packTicks[it.id]).length;
+  $('pack-list').innerHTML = items.map((it) => `<li class="${it.must ? 'must' : ''}${packTicks[it.id] ? ' done' : ''}"><input type="checkbox" id="pk-${it.id}" data-id="${it.id}" ${packTicks[it.id] ? 'checked' : ''}>`
+    + `<label for="pk-${it.id}"><b>${it.t}</b><span class="why">${it.why}</span></label></li>`).join('');
+  const count = () => { $('pack-n').innerHTML = `· ${done()}/${items.length} spakowane · <span style="color:#c2410c">●</span> potrzebne na tę trasę`; };
+  $('pack-list').querySelectorAll('input').forEach((el) => {
+    el.onchange = () => { packTicks[el.dataset.id] = el.checked; if (!el.checked) delete packTicks[el.dataset.id]; savePack(); el.closest('li').classList.toggle('done', el.checked); count(); };
+  });
+  count();
+  $('pack').hidden = false;
+}
+$('pack-clear').onclick = (e) => { e.preventDefault(); packTicks = {}; savePack(); $('pack-list').querySelectorAll('input').forEach((el) => { el.checked = false; el.closest('li').classList.remove('done'); }); $('pack-n').innerHTML = $('pack-n').innerHTML.replace(/· \d+\//, '· 0/'); };
 // winter on the route (mid November to April, or a forecast freezing level below the top): the avalanche
 // bulletin. TOPR's terms forbid republishing its data without consent, so the card links to the bulletin
 // (and the Slovak one, HZS) and explains the five-degree European scale instead of showing the degree.
