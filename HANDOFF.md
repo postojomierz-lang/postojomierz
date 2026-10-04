@@ -1,0 +1,11 @@
+# HANDOFF (5.10.2026)
+- Cel: Szlakownik (tatry/) — region 3D poszerzony na zachód (zadanie 4 z docs/tatry-mobile.md), dane terenu w Cloudflare R2.
+- Stan: PR #222 scalony, Pages #4 OK (wdraża .github/workflows/pages.yml). Region od 19,681°E (Chochołowska, Wołowiec, Kominiarski), panorama od 19,55°E; 2124 odcinki tras.
+- Dane w R2 pod `region2/` (22 304 pliki, 658 MB); REGION_BASE w tatry/src/region.js -> .../r2.dev/region2/. Stary `region/` w R2 jeszcze leży.
+- Decyzje: siatka przesunięta o 12 bloków (stare pliki przenumerowane +12 bloków/+48 kafli); nowy prefiks R2, bo nazwy dostały inną treść (cache 1 dzień); region/ usunięty z gita (.gitignore).
+- Roháče i Orawa: Copernicus 30 m (uskok 2,4 m na łączeniu); instrukcja dla agenta Cowork: docs/zbgis-rohace.md (78 kafli ZBGIS, 54 priorytet A).
+- Pliki: tatry/tools/{prepare,prepare_trails,prepare_gugik,upload_r2}.py (WINDOW=bi,bj,nbi,nbj; --prefix; 8 prób GUGiK), docs/tatry-mobile.md, docs/zbgis-rohace.md.
+- Następny krok: test na telefonie Siwa Polana → Wołowiec; po zgodzie właściciela (~7.10) usunąć region/ z R2; po wgraniu ZBGIS przeliczyć słowacką część pasa; zadanie 5: własna domena R2.
+- Lokalne region/ i tools/.cache nie przetrwają kontenera: dane bazowe pobierz z R2 region2/ przed przeliczaniem.
+- Komendy: ZBGIS_EXTRA=… ZBGIS_ORTO_EXTRA=… AREA=region WINDOW=0,0,12,23 python3 tatry/tools/prepare_gugik.py; MERGE=1 …; AREA=region ONLY=… prepare_classes.py / prepare_trees.py
+- Wysyłka: python3 tatry/tools/upload_r2.py --prefix region2/ [--dry-run]. Test 3D: Playwright, page.route(/r2\.dev/) przez curl, --no-proxy-server, waitUntil commit.
