@@ -16,7 +16,7 @@ Stan na 3.10.2026. Dla nowej sesji Claude: przeczytaj całość, zanim zaczniesz
 Zadania bieżące (po kolei):
 1. ~~Sprawdzić, czy 5 zmiennych R2 jest widocznych, i wysłać jeden plik testowy do bucketu (S3 API, endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`), odczytać go przez `R2_PUBLIC_URL` (też z nagłówkiem Origin, żeby sprawdzić CORS).~~ Zrobione.
 2. ~~Napisać `tatry/tools/upload_r2.py`: wysyła `region/` (tylko zmienione pliki, poprawne Content-Type, Cache-Control), potem przełączyć `REGION_BASE` w `tatry/src/region.js` (i miejsca używające `../region/`, w tym `sw.js`/offline) na adres R2; test 3D i planera.~~ Zrobione (test: Kuźnice → Kasprowy z R2, 453 pliki bez błędów; planer OK).
-3. Usunąć `region/` z publikowanej strony (najlepiej automat GitHub Actions publikujący tylko `rysy/`, `plastic-front/` i pliki z katalogu głównego; właściciel przełącza Settings → Pages → Source na „GitHub Actions”).
+3. ~~Usunąć `region/` z publikowanej strony.~~ Zrobione: `.github/workflows/pages.yml` (push do main / ręcznie) publikuje tylko `rysy/`, `plastic-front/`, `toy-soldiers/` i pliki z katalogu głównego (~106 MB). **Właściciel musi przełączyć Settings → Pages → Source na „GitHub Actions”** — do tego czasu Pages serwuje gałąź jak dotąd, a workflow może kończyć się błędem przy wdrożeniu.
 4. Rozszerzenie regionu na zachód (Chochołowska, Wołowiec, Kominiarski; do ~19,68°E) — dane od razu do R2. Roháče w pełnej jakości po wgraniu kafli ZBGIS na gałąź `dane-zbgis` (19,68–19,86°E, 49,16–49,23°N).
 5. Przed produkcją: własna domena w R2 (np. `dane.szlakownik.pl`), bo r2.dev ma limit zapytań i nie cache'uje.
 
