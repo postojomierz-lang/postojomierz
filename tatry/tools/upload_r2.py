@@ -27,6 +27,11 @@ CACHE_SHORT = {'meta.json': 'public, max-age=300'}
 EMPTY_SHA = hashlib.sha256(b'').hexdigest()
 
 
+def set_prefix(p):
+    global PREFIX
+    PREFIX = p.rstrip('/') + '/'
+
+
 def env(name):
     v = os.environ.get(name)
     if not v:
@@ -107,7 +112,10 @@ def main():
     ap.add_argument('--dry-run', action='store_true', help='tylko pokaż, co zostałoby wysłane')
     ap.add_argument('--delete', action='store_true', help='usuń z bucketu pliki, których nie ma lokalnie')
     ap.add_argument('--jobs', type=int, default=16, help='liczba równoległych wysyłek')
+    ap.add_argument('--prefix', default=PREFIX, help='klucz w buckecie (np. region2/ przy zmianie siatki regionu: '
+                    'stare nazwy plików dostają inną treść, a przeglądarki trzymają je przez dobę)')
     a = ap.parse_args()
+    set_prefix(a.prefix)
 
     local = {PREFIX + p.relative_to(ROOT).as_posix(): p for p in sorted(ROOT.rglob('*')) if p.is_file()}
     remote = remote_etags()

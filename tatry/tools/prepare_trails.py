@@ -17,7 +17,7 @@ HERE = os.path.dirname(__file__)
 sys.path.insert(0, HERE)
 CACHE = os.path.join(HERE, '.cache')
 OUT = os.path.join(HERE, '..', 'public', 'data', 'region')
-REGION = (19.85, 49.08, 20.31, 49.29)       # lon0, lat0, lon1, lat1: Polish and Slovak High Tatras
+REGION = (19.682, 49.08, 20.31, 49.29)      # lon0, lat0, lon1, lat1: from Dolina Chochołowska to the Slovak High Tatras
 STEP = 10.0                                   # m between vertices
 OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter',
             'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.osm.jp/api/interpreter']
