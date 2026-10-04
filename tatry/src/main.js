@@ -17,7 +17,7 @@ import { buildAnimals } from './animals.js';
 import { buildBuildings, buildingFlats } from './buildings.js';
 import { buildChains } from './chains.js';
 import { buildCross } from './cross.js';
-import { buildTrailMarks } from './trailmarks.js';
+import { buildTrailMarks, planBlazes } from './trailmarks.js';
 import { buildSigns } from './signs.js';
 import { buildLabels, placeId, CATS } from './labels.js';
 import { buildSpots } from './nature/spots.js';
@@ -734,6 +734,15 @@ async function main() {
     for (const v of kept) arr.push(v);
   }
   for (const v of thin(realTrees, 6, CAP.real)) spruce.push(v);
+  // the trail marks: in the forest (below 1500 m) each on a spruce planted beside the path, as they are painted
+  // on trunks there; on stones above the trees (trailmarks.js)
+  const blazeSites = planBlazes({ trail, terrain,
+    blocked: (x, z) => houses.inside(x, z, 1) || terrain.maskAt(lakeMask, x, z) > 0.05,
+    forestAt: (x, z) => {
+      const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * LW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * LH);
+      return u >= 0 && v >= 0 && u < LW && v < LH && land[(v * LW + u) * 4] === 10 && terrain.height(x, z) < 1500;
+    } });
+  for (const b of blazeSites) if (b.tree) spruce.push(b.x, terrain.height(b.x, b.z), b.z, 2, 17 + hash(b.x, b.z) * 9, 0);
   const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba', 'rowan'], shade, {
     spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
@@ -761,9 +770,8 @@ async function main() {
     },
     isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.2,
   });
-  const blazes = buildTrailMarks({ scene, terrain, trail, shade,
+  const blazes = buildTrailMarks({ scene, terrain, trail, shade, trees: forest.trees, sites: blazeSites,
     rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso),
-    blocked: (x, z) => houses.inside(x, z, 1) || terrain.maskAt(lakeMask, x, z) > 0.05,
     ...(RI ? { colourAt: RI.colourAt, colours: route.colours } : {}) });
   const steps = buildSteps({ scene, terrain, trail, TH, shade, sections, rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso) });
   const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6, ...(RI ? { chainOK: RI.chainAt } : {}),

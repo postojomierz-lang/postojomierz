@@ -1,6 +1,7 @@
-// Trail blazes: the Polish mark (white–colour–white stripes, in the trail's colour) painted on stones beside the path every
-// ~30 m, facing the hiker coming up. Each stone is a small block with one flat, weathered face that
-// carries the mark; stones and marks are instanced.
+// Trail blazes: the Polish mark (white–colour–white stripes, in the trail's colour) every ~30 m, facing the
+// hiker coming up. In the forest it is painted on the trunk of a spruce beside the path, as it is there;
+// above the trees (or where no tree stands close) on a stone: a small block with one flat, weathered face.
+// Stones and marks are instanced.
 import * as THREE from 'three';
 import { patchShading } from './materials.js';
 import { rng, simplex } from './noise.js';
@@ -46,29 +47,74 @@ function stoneGeometry() {
 }
 
 // colourAt(s): the trail colour at s metres ('red', 'blue', ...), colours: name -> CSS colour
-export function buildTrailMarks({ scene, terrain, trail, shade, rockTex, blocked, every = 30, colourAt = () => 'red', colours = { red: '#c8201c' } }) {
+// Where the marks go, decided before the forest is planted: in the forest (forestAt) a spruce is planted
+// beside the path for each mark (they stand right by the trail, the forest's own trees keep away from it),
+// elsewhere a stone. Returns [{ i: trail point, x, z, side, tree }].
+export function planBlazes({ trail, terrain, blocked, every = 30, forestAt = () => false }) {
   const N = trail.X.length, step = trail.step;
-  const r = rng(99);
-  const stones = [], marks = {};
-  const heading = (i) => {
-    const a = Math.max(0, i - 4), b = Math.min(N - 1, i + 4);
-    const dx = trail.X[b] - trail.X[a], dz = trail.Z[b] - trail.Z[a], l = Math.hypot(dx, dz) || 1;
-    return [dx / l, dz / l];
-  };
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  const r = rng(99), out = [];
   const n = Math.round(every / step);
   for (let i = Math.round(25 / step); i < N - 10; i += n + Math.round((r() - 0.5) * n * 0.4)) {
-    const [tx, tz] = heading(i);
-    // the side with less drop (do not put the stone over the edge), else alternate
+    const [tx, tz] = heading(trail, i);
+    const tree = forestAt(trail.X[i], trail.Z[i]);
+    const off = tree ? 2.6 + r() * 0.5 : 2.1;
+    // the side with less drop (do not put it over the edge), else alternate
     let best = null;
     for (const side of (r() < 0.5 ? [1, -1] : [-1, 1])) {
       const nx = -tz * side, nz = tx * side;
-      const x = trail.X[i] + nx * 2.1, z = trail.Z[i] + nz * 2.1;
+      const x = trail.X[i] + nx * off, z = trail.Z[i] + nz * off;
       if (blocked(x, z)) continue;
       const drop = terrain.height(trail.X[i], trail.Z[i]) - terrain.height(x, z);
-      if (!best || drop < best.drop) best = { x, z, side, drop };
+      if (!best || drop < best.drop) best = { i, x, z, side, drop, tree };
     }
-    if (!best) continue;
+    if (best) out.push(best);
+  }
+  return out;
+}
+const heading = (trail, i) => {
+  const N = trail.X.length, a = Math.max(0, i - 4), b = Math.min(N - 1, i + 4);
+  const dx = trail.X[b] - trail.X[a], dz = trail.Z[b] - trail.Z[a], l = Math.hypot(dx, dz) || 1;
+  return [dx / l, dz / l];
+};
+
+// sites: planBlazes(); trees: the forest's spruces ({x, z, ty: foot, th: height, cw: crown width}, vegetation.js)
+export function buildTrailMarks({ scene, terrain, trail, shade, rockTex, sites, colourAt = () => 'red', colours = { red: '#c8201c' }, trees = [] }) {
+  const step = trail.step;
+  const r = rng(98);
+  const stones = [], marks = {};
+  let onTrees = 0;
+  // the spruces in 8 m cells, to find the one planted for a mark
+  const cells = new Map(), C = 8;
+  for (const t of trees) {
+    const k = Math.floor(t.x / C) * 100003 + Math.floor(t.z / C);
+    let l = cells.get(k); if (!l) cells.set(k, l = []);
+    l.push(t);
+  }
+  const treeAt = (x, z) => {
+    let best = null, bd = 0.5;
+    for (const t of cells.get(Math.floor(x / C) * 100003 + Math.floor(z / C)) || []) {
+      const d = Math.hypot(t.x - x, t.z - z);
+      if (d < bd) { best = t; bd = d; }
+    }
+    return best;
+  };
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  for (const best of sites) {
+    const i = best.i, [tx, tz] = heading(trail, i);
+    const tree = best.tree && treeAt(best.x, best.z);
+    if (tree) {
+      // on the trunk at eye height, on the side that faces the hiker coming up the trail (~10 m back)
+      const bx = trail.X[Math.max(0, i - Math.round(10 / step))], bz = trail.Z[Math.max(0, i - Math.round(10 / step))];
+      const yaw = Math.atan2(bx - tree.x, bz - tree.z);
+      const hy = 1.5, t = hy / tree.th, rad = (0.028 * (1 - t) + 0.003) * tree.cw;   // the trunk's radius there (vegetation3d.js)
+      q.setFromAxisAngle(up, yaw);
+      m4.compose(new THREE.Vector3(tree.x + Math.sin(yaw) * (rad + 0.012), tree.ty + hy, tree.z + Math.cos(yaw) * (rad + 0.012)), q,
+        new THREE.Vector3(Math.min(0.2, rad * 1.3), 0.27, 1));
+      const c = colourAt(i * step);
+      (marks[c] = marks[c] || []).push(m4.clone());
+      onTrees++;
+      continue;
+    }
     const s = 0.8 + r() * 0.4;
     // front faces down the trail, turned ~35° towards the path so it reads from the approach
     const yaw = Math.atan2(-tx, -tz) + best.side * 0.6;
@@ -103,5 +149,5 @@ export function buildTrailMarks({ scene, terrain, trail, shade, rockTex, blocked
   const plane = new THREE.PlaneGeometry(1, 1);
   for (const [c, list] of Object.entries(marks)) inst(plane, markMat(c), list, false);
   scene.add(group);
-  return { group, count: stones.length };
+  return { group, count: stones.length, onTrees };
 }
