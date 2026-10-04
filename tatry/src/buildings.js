@@ -20,7 +20,7 @@ const STYLE = {
 // texture size in metres
 const TILE = { logs: 2.5, planks: 2.2, stone: 2.0, roof: 2.4, plaster: 3.0 };
 // tints (linear, over the material's texture and colour)
-const WOOD = [1, 1, 1], DARK = [0.68, 0.62, 0.58], HONEY = [1.4, 1.18, 0.82], GREYWOOD = [0.85, 0.85, 0.86], REDWOOD = [1.3, 0.72, 0.58];
+const WOOD = [1, 1, 1], DARK = [0.68, 0.62, 0.58], HONEY = [1.6, 1.5, 0.95], GREYWOOD = [0.85, 0.85, 0.86], REDWOOD = [1.3, 0.72, 0.58];
 const CREAM = [1, 0.93, 0.8], WHITE = [1, 1, 1], YELLOW = [1, 0.9, 0.62], PALE = [0.86, 0.87, 0.88];
 const SHINGLE = [0.86, 0.72, 0.58], GREY_ROOF = [0.82, 0.85, 0.9], DARK_ROOF = [0.5, 0.5, 0.53],
   RED_ROOF = [1.25, 0.62, 0.5], GREEN_ROOF = [0.58, 0.8, 0.6], BROWN_ROOF = [0.8, 0.58, 0.45];
@@ -74,7 +74,7 @@ const HUTS = [
   // Massive granite-masonry hut (1925): two storeys of rough grey stone, above them a timber (light honey boards after renovation) top storey and attic in a steep gable roof with green sheet-metal skirt r (high)
   [/Murowaniec/, { wall: 'planks', wallTint: HONEY, base: 2, plinth: 0.5, floors: 3, floorH: 3, pitch: 52, hip: 0, roofTint: GREEN_ROOF, eave: 0.8, chimney: 2, windows: 2.6, dormers: [{ n: 3, w: 2.2, side: 0 }], terrace: { side: 1, d: 4, len: 0.6, tables: 5, rail: false, stone: true }, wings: [{ x: 0, z: 0, w: 1, d: 1 }, { x: 0.44, z: -0.3, w: 0.16, d: 0.32, floors: 4, base: 4, wall: 'stone', pitch: 60, hip: 1 }] }],
   // Large Zakopane-style timber hut (1908): dark-brown log/board walls on a low granite plinth, two storeys plus attic under a steep shingle roof with Zakopane half-hips, a projecting front cross-gable wi (high)
-  [/^Schronisko PTTK (nad Morskim Okiem|przy Morskim Oku|Morskie Oko)/, { wall: 'logs', wallTint: DARK, plinth: 0.6, floors: 2, floorH: 3, pitch: 50, hip: 0.3, roofTint: SHINGLE, eave: 1, chimney: 3, windows: 2.4, dormers: [{ n: 3, w: 2, side: 1 }, { n: 2, w: 2, side: -1 }], balcony: [{ floor: 2, side: 1, len: 0.3, x: 0.15 }], terrace: { side: 1, d: 3, len: 0.7, tables: 6, rail: true, stone: true }, wings: [{ x: 0, z: 0, w: 1, d: 0.8 }, { x: 0.15, z: 0.12, w: 0.3, d: 0.95, across: true, hip: 0.3, pitch: 52 }] }],
+  [/^Schronisko PTTK (nad Morskim Okiem|przy Morskim Oku|Morskie Oko)/, { wall: 'logs', wallTint: HONEY, plinth: 0.6, floors: 2, floorH: 3, pitch: 50, hip: 0.3, roofTint: SHINGLE, eave: 1, chimney: 3, windows: 2.4, dormers: [{ n: 3, w: 2, side: 1 }, { n: 2, w: 2, side: -1 }], balcony: [{ floor: 2, side: 1, len: 0.3, x: 0.15 }], terrace: { side: 1, d: 3, len: 0.7, tables: 6, rail: true, stone: true }, wings: [{ x: 0, z: 0, w: 1, d: 0.8 }, { x: 0.15, z: 0.12, w: 0.3, d: 0.95, across: true, hip: 0.3, pitch: 52 }] }],
   // Former 1891 coach-house: single storey of dark reddish-brown vertical boards on a low stone plinth under a very steep, tall weathered grey shingle gable roof reaching low to the ground; small gabled d (high)
   [/Stare Schronisko/, { wall: 'planks', wallTint: REDWOOD, plinth: 0.4, floors: 1, floorH: 2.8, pitch: 56, hip: 0, roofTint: DARK_ROOF, eave: 0.9, chimney: 1, windows: 3, dormers: [{ n: 1, w: 1.8, side: 1 }], porch: true, terrace: { side: 1, d: 2, len: 0.6, tables: 0, rail: true, stone: false } }],
   // Small steep-roofed wooden hut: reddish-brown plank walls on a granite plinth, one storey plus attic under a tall dark grey shingle gable roof with a brick chimney; low pent-roofed lean-to along the fr (medium)
