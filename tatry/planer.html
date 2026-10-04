@@ -208,6 +208,9 @@
   #st-plan .st-days li { padding: 8px 0; border-top: 1px solid rgba(0,0,0,.08); }
   #st-plan .st-days li span { display: block; color: #5b6368; font-size: 12.5px; margin: 2px 0 4px; }
   #st-plan .src { font-size: 11px; color: #6b7378; }
+  #st-plan .st-days li .wx { float: right; font-size: 12.5px; color: #5b6368; }
+  #st-plan .st-days li .wx.bad { color: #b3261e; font-weight: 600; }
+  #st-plan .st-days li .ride { color: #3d5a73; }
   .chain-ico { font-size: 15px; line-height: 20px; text-align: center; background: #fff; border: 1.5px solid #2b2b2b; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
   #pack { margin: 8px 0; padding: 8px 12px; border-radius: 10px; background: #f3f1ea; border: 1px solid #ddd7c6; font-size: 13px; line-height: 1.4; }
   #pack summary { cursor: pointer; font-weight: 650; font-size: 14px; }
@@ -347,7 +350,8 @@
       <p class="st-note">Kto jedzie, na ile dni i gdzie nocujecie: dobiorę trasę na każdy dzień według najsłabszej osoby w grupie.</p>
       <ul id="st-people"></ul>
       <button id="st-add" class="chip">+ dodaj osobę</button>
-      <div class="st-row"><label>Dni <input id="st-days" type="number" min="1" max="14" value="5"></label>
+      <div class="st-row"><label>Od <input id="st-from" type="date"></label>
+        <label>Dni <input id="st-days" type="number" min="1" max="14" value="5"></label>
         <label>Nocleg <select id="st-base"></select></label></div>
       <label class="st-row"><input type="checkbox" id="st-nochains"> bez łańcuchów i ekspozycji</label>
       <button id="st-go" class="primary">Ułóż plan</button>
