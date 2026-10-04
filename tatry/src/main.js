@@ -23,6 +23,7 @@ import { buildTrailMarks, planBlazes } from './trailmarks.js';
 import { buildSigns } from './signs.js';
 import { buildLabels, placeId, CATS } from './labels.js';
 import { buildSpots } from './nature/spots.js';
+import { limeAt } from './geology.js';
 import { loadFound, saveFound, buildDiscovery, score } from './nature/discover.js';
 import { challenges, settleChallenges } from './nature/challenges.js';
 import { buildCards } from './nature/card.js';
@@ -957,6 +958,8 @@ async function main() {
       };
       vr.near = mk(vr.geo, true); vr.farMesh = mk(vr.geoFar, false);
       vr.pos = vr.items.map(([m]) => new THREE.Vector3().setFromMatrixPosition(m));
+      // limestone blocks (Giewont, Czerwone Wierchy, Belianske) are paler and cooler than the granite
+      vr.tint = vr.pos.map((p) => { const l = limeAt(p.x, p.z), g = 1 + 0.24 * l; return [g, g, 1 + 0.2 * l]; });
     }
     let rockAt = null, rockT = 0;
     rocks.update = (cam, dt) => {
@@ -967,8 +970,9 @@ async function main() {
         const farMax = vr.big ? FAR_B : FAR_S;
         vr.items.forEach(([m, g], j) => {
           const d = vr.pos[j].distanceTo(cam);
-          if (d < NEAR) { vr.near.setMatrixAt(n, m); vr.near.setColorAt(n++, col.setRGB(g, g, g)); }
-          else if (d < farMax) { vr.farMesh.setMatrixAt(f, m); vr.farMesh.setColorAt(f++, col.setRGB(g, g, g)); }
+          const [tr, tg, tb] = vr.tint[j];
+          if (d < NEAR) { vr.near.setMatrixAt(n, m); vr.near.setColorAt(n++, col.setRGB(g * tr, g * tg, g * tb)); }
+          else if (d < farMax) { vr.farMesh.setMatrixAt(f, m); vr.farMesh.setColorAt(f++, col.setRGB(g * tr, g * tg, g * tb)); }
         });
         vr.near.count = n; vr.farMesh.count = f;
         for (const mm of [vr.near, vr.farMesh]) { mm.instanceMatrix.needsUpdate = true; if (mm.instanceColor) mm.instanceColor.needsUpdate = true; mm.computeBoundingSphere(); }
