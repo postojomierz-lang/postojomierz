@@ -18,6 +18,7 @@ import { buildBuildings, buildingFlats } from './buildings.js';
 import { buildChains } from './chains.js';
 import { buildCross } from './cross.js';
 import { buildRest } from './rest.js';
+import { setupPhoto } from './photo.js';
 import { buildTrailMarks, planBlazes } from './trailmarks.js';
 import { buildSigns } from './signs.js';
 import { buildLabels, placeId, CATS } from './labels.js';
@@ -1900,6 +1901,10 @@ async function main() {
     adaptResolution();
     requestAnimationFrame(tick);
   }
+  // 📷: a photo or a 180° panorama of the view, rendered once in full quality (photo.js)
+  setupPhoto({ button: $('btn-photo'), renderer, composer, camera, grade, name: TITLE,
+    beforeRender: () => { if (!LITE) renderReflection(); },
+    restore: () => { sizeRefl(); streams.setPixelRatio(renderer.getPixelRatio(), innerHeight); } });
   // test reports (🐞): a screenshot of the 3D view and where exactly it was taken
   setupReport({ app: '3d', button: $('btn-bug'),
     screenshot: () => {
