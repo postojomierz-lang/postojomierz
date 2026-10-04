@@ -35,14 +35,20 @@ SUMMIT = (20.08813, 49.17952)                  # Rysy, Polish summit 2499 m
 LAT0 = (INNER[1] + INNER[3]) / 2
 LON0 = (INNER[0] + INNER[2]) / 2
 INNER_IMG = (1024, 1024)
-if AREA == 'region':
-    # Polish High Tatras with Kasprowy, and the Slovak High Tatras (Štrbské Pleso to Lomnica)
-    INNER = (19.85, 49.08, 20.31, 49.29)
-    INNER_N = (1120, 780)
-    INNER_IMG = (3300, 2300)
-    OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'region')
+OUTER_IMG = (2048, 2048)
 MX = 111320 * math.cos(math.radians(LAT0))
 MZ = 110574
+if AREA == 'region':
+    # Polish Tatras from Dolina Chochołowska to Kasprowy and the Slovak High Tatras (Štrbské Pleso to
+    # Lomnica). The west edge lies exactly 12 blocks (12 x 1024 m, see prepare_gugik.py) west of 19.85°E,
+    # where the region began until October 2026, so the older blocks kept their content (~19.681°E).
+    INNER = (19.85 - 12 * 1024 / MX, 49.08, 20.31, 49.29)
+    INNER_N = (1532, 780)                      # ~30 m
+    INNER_IMG = (4514, 2300)                   # ~10 m
+    OUTER = (19.55, 49.07, 20.34, 49.33)       # panorama reaches the Western Tatras and Orava
+    OUTER_N = (1056, 512)
+    OUTER_IMG = (3392, 2048)
+    OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'region')
 
 def cached(url):
     """Local copy of a remote raster (downloaded once into tools/.cache/remote): reading big remote COGs
@@ -166,18 +172,19 @@ def main():
     to_u16(inner_h).tofile(os.path.join(OUT, 'inner.u16'))
 
     # ---------- imagery ----------
-    tci = [cached('https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/34/U/DV/2025/7/S2C_34UDV_20250702_0_L2A/TCI.tif')]
+    tci = [cached(f'https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/34/U/{t}/2025/7/S2C_34U{t}_20250702_0_L2A/TCI.tif')
+           for t in (('DV', 'CV') if OUTER[0] < 19.64 else ('DV',))]   # CV: west of ~19.63°E
     def img(bounds, w, h, name, q):
         a, _ = warp(tci, bounds, w, h, bands=3, resampling=Resampling.lanczos, dtype='uint8')
         im = Image.fromarray(np.moveaxis(a, 0, -1))
         im = im.filter(ImageFilter.UnsharpMask(radius=1.2, percent=60, threshold=2))
         im.save(os.path.join(OUT, name), quality=q, optimize=True, progressive=True)
-    img(OUTER, 2048, 2048, 'outer.jpg', 82)
+    img(OUTER, *OUTER_IMG, 'outer.jpg', 82)
     img(INNER, *INNER_IMG, 'inner.sentinel.jpg', 88)  # fallback for Slovakia; prepare_gugik.py writes inner.jpg
 
     # ---------- land cover (inner only) ----------
     wc = [cached('https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N48E018_Map.tif')]
-    lc, _ = warp(wc, INNER, *((512, 512) if AREA != 'region' else (3300, 2300)), resampling=Resampling.nearest, dtype='uint8')
+    lc, _ = warp(wc, INNER, *((512, 512) if AREA != 'region' else INNER_IMG), resampling=Resampling.nearest, dtype='uint8')
     Image.fromarray(lc[0]).save(os.path.join(OUT, 'landcover.png'))
 
     # ---------- vectors in local metres ----------

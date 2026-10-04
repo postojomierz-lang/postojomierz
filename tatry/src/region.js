@@ -7,7 +7,7 @@
 // the engine does not care where it came from.
 import { TrailGraph, stepMinutes } from './planner/graph.js';
 
-export const REGION_BASE = import.meta.env.VITE_REGION_BASE || 'https://pub-5185677c9bfa4bd98f6768e62de07255.r2.dev/region/';
+export const REGION_BASE = import.meta.env.VITE_REGION_BASE || 'https://pub-5185677c9bfa4bd98f6768e62de07255.r2.dev/region2/';
 const TRAILS = 'data/region/trails.json';
 // the local frame of all the data (tools/prepare.py): centre of the Rysy area
 const LAT0 = (49.168 + 49.214) / 2, LON0 = (20.040 + 20.112) / 2;

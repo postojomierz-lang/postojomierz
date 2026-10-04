@@ -51,7 +51,7 @@ to2180 = Transformer.from_crs(4326, 2180, always_xy=True)
 def get(url, path):
     path = os.path.join(CACHE, path)
     if os.path.exists(path): return open(path, 'rb').read()
-    for attempt in range(4):
+    for attempt in range(8):        # the geoportal drops connections now and then, for minutes at a time
         try:
             b = urllib.request.urlopen(url, timeout=120).read()
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -59,7 +59,7 @@ def get(url, path):
             return b
         except Exception as e:
             print('retry', attempt, e)
-            __import__('time').sleep(3 * (attempt + 1))
+            __import__('time').sleep(5 * (attempt + 1))
     raise RuntimeError(url)
 
 def lonlat(x, z):
@@ -262,16 +262,22 @@ def main():
     meta = json.load(open(os.path.join(DATA, 'meta.json')))
     rb = meta['inner']['bounds']              # local metres x0 z0 x1 z1
     ib, boff, toff, chunk = rb, (0, 0), (0, 0), None
-    if REGION and os.environ.get('CHUNK'):
-        # this chunk only: whole blocks from the region's origin, global block and tile numbers
-        ci, cj = map(int, os.environ['CHUNK'].split(','))
+    if REGION and (os.environ.get('CHUNK') or os.environ.get('WINDOW')):
+        # this chunk only: whole blocks from the region's origin, global block and tile numbers.
+        # WINDOW="bi,bj,nbi,nbj" instead: any rectangle of blocks (e.g. a strip added to the region)
         BM = BLOCK * BASE_STEP
-        x0 = rb[0] + ci * CHUNK_BLOCKS[0] * BM; z0 = rb[1] + cj * CHUNK_BLOCKS[1] * BM
+        if os.environ.get('WINDOW'):
+            bi0, bj0, nbi, nbj = map(int, os.environ['WINDOW'].split(','))
+            chunk = (f'w{bi0}', bj0)
+        else:
+            ci, cj = map(int, os.environ['CHUNK'].split(','))
+            bi0, bj0, nbi, nbj = ci * CHUNK_BLOCKS[0], cj * CHUNK_BLOCKS[1], *CHUNK_BLOCKS
+            chunk = (ci, cj)
+        x0 = rb[0] + bi0 * BM; z0 = rb[1] + bj0 * BM
         if x0 >= rb[2] or z0 >= rb[3]: print('chunk outside the region'); return
-        nbx = math.ceil((min(rb[2], x0 + CHUNK_BLOCKS[0] * BM) - x0) / BM); nbz = math.ceil((min(rb[3], z0 + CHUNK_BLOCKS[1] * BM) - z0) / BM)
+        nbx = math.ceil((min(rb[2], x0 + nbi * BM) - x0) / BM); nbz = math.ceil((min(rb[3], z0 + nbj * BM) - z0) / BM)
         ib = [x0, z0, x0 + nbx * BM, z0 + nbz * BM]
-        boff = (ci * CHUNK_BLOCKS[0], cj * CHUNK_BLOCKS[1]); toff = (round((x0 - rb[0]) / TILE), round((z0 - rb[1]) / TILE))
-        chunk = (ci, cj)
+        boff = (bi0, bj0); toff = (round((x0 - rb[0]) / TILE), round((z0 - rb[1]) / TILE))
         print('chunk', chunk, 'bounds', [round(v) for v in ib])
     ll = (*lonlat(ib[0], ib[3]), *lonlat(ib[2], ib[1]))   # lon0 lat0 lon1 lat1
     in_poland = ll[3] > 49.165                            # the chunk reaches north of Rysy: GUGiK has data
