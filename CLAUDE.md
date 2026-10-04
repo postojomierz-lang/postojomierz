@@ -12,3 +12,13 @@
   The planner's online part (`tatry/src/planner/online.js`) needs `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the
   environment at build time, otherwise it is built without it (the build warns).
   Terrain data is prepared by `tatry/tools/prepare.py` into `tatry/src/data/` (committed).
+- Handoff: `HANDOFF.md` in the repo root is the session handoff note (committed, so cloud sessions see it;
+  a SessionStart hook prints it). When the owner writes "kończę", "koncze przed 400K", "handoff" or uses
+  `/koncze`, overwrite it (max 15 lines, Polish: cel, stan, decyzje, zmienione pliki i PR, następny krok,
+  komendy), commit and push it to the working branch.
+
+## Compact instructions
+
+When compacting keep: the task and project goal, project conventions and the owner's preferences, decisions
+(with a short reason), changed files and PR links, unresolved errors and open questions, the next steps.
+Drop: old logs, test output (keep only the verdict), screenshots, exploration of finished tasks.
