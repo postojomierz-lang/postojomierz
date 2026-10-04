@@ -20,7 +20,7 @@ const STYLE = {
 // texture size in metres
 const TILE = { logs: 2.5, planks: 2.2, stone: 2.0, roof: 2.4, plaster: 3.0 };
 // tints (linear, over the material's texture and colour)
-const WOOD = [1, 1, 1], DARK = [0.68, 0.62, 0.58], HONEY = [1.4, 1.18, 0.82], GREYWOOD = [0.85, 0.85, 0.86];
+const WOOD = [1, 1, 1], DARK = [0.68, 0.62, 0.58], HONEY = [1.4, 1.18, 0.82], GREYWOOD = [0.85, 0.85, 0.86], REDWOOD = [1.3, 0.72, 0.58];
 const CREAM = [1, 0.93, 0.8], WHITE = [1, 1, 1], YELLOW = [1, 0.9, 0.62], PALE = [0.86, 0.87, 0.88];
 const SHINGLE = [0.86, 0.72, 0.58], GREY_ROOF = [0.82, 0.85, 0.9], DARK_ROOF = [0.5, 0.5, 0.53],
   RED_ROOF = [1.25, 0.62, 0.5], GREEN_ROOF = [0.58, 0.8, 0.6], BROWN_ROOF = [0.8, 0.58, 0.45];
@@ -29,19 +29,29 @@ const SHINGLE = [0.86, 0.72, 0.58], GREY_ROOF = [0.82, 0.85, 0.9], DARK_ROOF = [
 // bottom; hip: how far the roof's ends are hipped (0 a gable, about 0.3 the half-hip of the Zakopane style,
 // 1 a hipped roof).
 const HUTS = [
+  // Long 1938 modernist block: cream plaster walls over a dark stone/brown-panelled ground floor, 3-4 storeys with regular rows of windows, very low-pitch dark gable roof with a deep bracketed overhang (s (high)
+  [/Kalatówki/, { wall: 'plaster', wallTint: CREAM, base: 1, plinth: 0.8, floors: 4, floorH: 3, pitch: 14, hip: 0, roofTint: DARK_ROOF, eave: 1.5, chimney: 3, windows: 2.2, terrace: { side: 1, d: 4, len: 0.5, tables: 4, rail: true, stone: true }, woodpile: 1, wings: [{ x: 0, z: 0, w: 1, d: 0.62 }, { x: 0.3, z: 0.36, w: 0.3, d: 0.3, across: true, floors: 1, base: 1, wall: 'plaster', pitch: 10, eave: 0.5 }] }],
+  // Massive granite-masonry hut (1925): two storeys of rough grey stone, above them a timber (light honey boards after renovation) top storey and attic in a steep gable roof with green sheet-metal skirt r (high)
+  [/Murowaniec/, { wall: 'planks', wallTint: HONEY, base: 2, plinth: 0.5, floors: 3, floorH: 3, pitch: 52, hip: 0, roofTint: GREEN_ROOF, eave: 0.8, chimney: 2, windows: 2.6, dormers: [{ n: 3, w: 2.2, side: 0 }], terrace: { side: 1, d: 4, len: 0.6, tables: 5, rail: false, stone: true }, wings: [{ x: 0, z: 0, w: 1, d: 1 }, { x: 0.44, z: -0.3, w: 0.16, d: 0.32, floors: 4, base: 4, wall: 'stone', pitch: 60, hip: 1 }] }],
+  // Large Zakopane-style timber hut (1908): dark-brown log/board walls on a low granite plinth, two storeys plus attic under a steep shingle roof with Zakopane half-hips, a projecting front cross-gable wi (high)
+  [/^Schronisko PTTK (nad Morskim Okiem|przy Morskim Oku|Morskie Oko)/, { wall: 'logs', wallTint: DARK, plinth: 0.6, floors: 2, floorH: 3, pitch: 50, hip: 0.3, roofTint: SHINGLE, eave: 1, chimney: 3, windows: 2.4, dormers: [{ n: 3, w: 2, side: 1 }, { n: 2, w: 2, side: -1 }], balcony: [{ floor: 2, side: 1, len: 0.3, x: 0.15 }], terrace: { side: 1, d: 3, len: 0.7, tables: 6, rail: true, stone: true }, wings: [{ x: 0, z: 0, w: 1, d: 0.8 }, { x: 0.15, z: 0.12, w: 0.3, d: 0.95, across: true, hip: 0.3, pitch: 52 }] }],
+  // Former 1891 coach-house: single storey of dark reddish-brown vertical boards on a low stone plinth under a very steep, tall weathered grey shingle gable roof reaching low to the ground; small gabled d (high)
+  [/Stare Schronisko/, { wall: 'planks', wallTint: REDWOOD, plinth: 0.4, floors: 1, floorH: 2.8, pitch: 56, hip: 0, roofTint: DARK_ROOF, eave: 0.9, chimney: 1, windows: 3, dormers: [{ n: 1, w: 1.8, side: 1 }], porch: true, terrace: { side: 1, d: 2, len: 0.6, tables: 0, rail: true, stone: false } }],
+  // Small steep-roofed wooden hut: reddish-brown plank walls on a granite plinth, one storey plus attic under a tall dark grey shingle gable roof with a brick chimney; low pent-roofed lean-to along the fr (medium)
+  [/Betlejemka/, { wall: 'planks', wallTint: REDWOOD, plinth: 0.6, floors: 1, floorH: 2.8, pitch: 55, hip: 0, roofTint: DARK_ROOF, eave: 0.7, chimney: 1, windows: 2.8, porch: true, wings: [{ x: 0, z: 0, w: 1, d: 0.8 }, { x: 0, z: 0.42, w: 0.7, d: 0.25, floors: 1, pitch: 20 }] }],
+  // Long low granite-walled hut (1953): one storey of rough stone with stone pillars along the front terrace, under a huge steep wood-shingle roof (silver-grey when weathered, dark brown when new), mostly (high)
+  [/Pięciu Stawów/, { wall: 'stone', plinth: 0.5, floors: 1, floorH: 3.2, pitch: 48, hip: 0.75, roofTint: SHINGLE, eave: 0.9, chimney: 2, windows: 2.6, dormers: [{ n: 2, w: 7, side: 1 }, { n: 2, w: 7, side: -1 }], terrace: { side: 1, d: 3.5, len: 0.7, tables: 8, rail: false, stone: true }, wings: [{ x: -0.12, z: 0, w: 0.76, d: 0.75 }, { x: 0.36, z: 0.05, w: 0.28, d: 1, across: true, hip: 0, pitch: 52 }] }],
+  // Zakopane-style log hut: one storey of dark-brown logs on a low stone plinth under a steep dark wood-shingle roof with Zakopane half-hips, a row of small gabled dormers and a central decorated cross-ga (high)
+  [/Roztoki|Roztoka/, { wall: 'logs', wallTint: DARK, plinth: 0.4, floors: 1, floorH: 3, pitch: 50, hip: 0.3, roofTint: DARK_ROOF, eave: 0.9, chimney: 2, windows: 2.4, dormers: [{ n: 4, w: 1.6, side: 1 }, { n: 3, w: 1.6, side: -1 }], porch: true, terrace: { side: 1, d: 4, len: 0.7, tables: 6, rail: false, stone: false }, wings: [{ x: 0, z: -0.12, w: 1, d: 0.75 }, { x: 0, z: 0.3, w: 0.22, d: 0.4, across: true, hip: 0.3, pitch: 55 }, { x: -0.38, z: 0.2, w: 0.24, d: 0.6, across: true, hip: 0.3 }] }],
+  // Big 1953 hut: two storeys of rough granite masonry with arched entrances, a dark-wood third storey set back under a dark shingle roof that is hipped with small gablets, a broad facjata dormer with a r (medium)
+  [/Chochołowsk/, { wall: 'planks', wallTint: DARK, base: 2, plinth: 0.6, floors: 3, floorH: 2.9, pitch: 42, hip: 0.65, roofTint: DARK_ROOF, eave: 1, chimney: 3, windows: 2.4, dormers: [{ n: 1, w: 10, side: 1 }], terrace: { side: 1, d: 5, len: 0.6, tables: 8, rail: true, stone: true }, wings: [{ x: -0.15, z: 0, w: 0.7, d: 0.8 }, { x: 0.33, z: 0.1, w: 0.34, d: 1, across: true }] }],
+  // T-shaped 1948 hut: a long one-storey log wing under a steep dark shingle roof with small dormers and solar panels, crossed by a taller block with a granite-masonry ground floor and a very steep plank- (high)
+  [/Ornak/, { wall: 'logs', wallTint: WOOD, plinth: 0.5, floors: 1, floorH: 3, pitch: 50, hip: 0, roofTint: DARK_ROOF, eave: 0.9, chimney: 2, windows: 2.5, dormers: [{ n: 3, w: 1.6, side: 1 }, { n: 3, w: 1.6, side: -1 }], terrace: { side: 1, d: 4, len: 0.8, tables: 8, rail: false, stone: true }, woodpile: -1, wings: [{ x: -0.1, z: -0.1, w: 0.8, d: 0.6 }, { x: 0.25, z: 0.1, w: 0.32, d: 1, across: true, wall: 'logs', base: 1, floors: 1, pitch: 56, hip: 0, balcony: [{ floor: 1, side: 1, len: 0.6, x: 0 }] }] }],
+  // No photos found (hostel at Droga do Walczaków 46, Skibówki; OSM building:levels=3). Spec is a generic Zakopane guesthouse: plastered masonry on a stone ground floor, steep dark roof with half-hips and (low)
+  [/Murań/, { wall: 'plaster', wallTint: WHITE, base: 1, plinth: 0.8, floors: 2, pitch: 45, hip: 0.3, roofTint: DARK_ROOF, eave: 0.8, chimney: 2, windows: 2.6, dormers: [{ n: 2, w: 2.2, side: 0 }], balcony: [{ floor: 1, side: 1, len: 0.6, x: 0 }], porch: true }],
   [/Hala Kondratowa/, { wall: 'logs', wallTint: HONEY, base: 0, plinth: 1.2, floors: 1, floorH: 3.0, pitch: 60, gablet: 0.3, roofTint: DARK_ROOF,
     eave: 1.0, chimney: 3, windows: 2.0, dormers: [{ n: 1, w: 7, side: 1 }, { n: 1, w: 5, side: -1 }],
     terrace: { side: 1, d: 4, len: 0.6, tables: 3, rail: true, stone: true } }],
-  [/Kalatówki/, { wall: 'plaster', wallTint: CREAM, base: 1, floors: 3, pitch: 45, hip: 0.35, roofTint: DARK_ROOF }],
-  [/^Murowaniec$/, { wall: 'stone', floors: 3, pitch: 52, hip: 0.3, roofTint: DARK_ROOF, chimney: 2 }],
-  [/^Schronisko PTTK Morskie Oko/, { wall: 'logs', base: 1, floors: 3, pitch: 52, roofTint: SHINGLE }],
-  [/Stare Schronisko/, { wall: 'logs', wallTint: DARK, base: 0, floors: 2, pitch: 55, roofTint: SHINGLE }],
-  [/Pięciu Stawów/, { wall: 'logs', base: 1, floors: 2, pitch: 42, roofTint: GREY_ROOF }],
-  [/Dolinie Roztoki/, { wall: 'logs', base: 1, floors: 3, pitch: 50, roofTint: SHINGLE }],
-  [/Polanie Chochołowskiej$/, { wall: 'logs', base: 1, floors: 3, pitch: 48, hip: 0.3, roofTint: SHINGLE }],
-  [/Hali Ornak/, { wall: 'logs', wallTint: DARK, base: 1, floors: 2, pitch: 50, roofTint: SHINGLE }],
-  [/^Betlejemka$/, { wall: 'logs', wallTint: DARK, floors: 2, pitch: 50, roofTint: SHINGLE }],
-  [/Murań/, { wall: 'logs', floors: 3, pitch: 50, hip: 0.3, roofTint: SHINGLE }],
   [/Obserwatorium Meteorologiczne Kasprowy|Stacja IMGW/, { wall: 'stone', floors: 2, pitch: 25, hip: 1, roofTint: GREY_ROOF, windows: 3 }],
   [/Górna stacja kolei linowej Kasprowy/, { wall: 'stone', floors: 2, pitch: 18, hip: 1, roofTint: GREY_ROOF }],
   [/Pośrednia stacja kolei linowej/, { wall: 'stone', floors: 2, pitch: 30, roofTint: GREY_ROOF }],
@@ -87,8 +97,15 @@ export function lookOf(b) {
   // no giant roofs: wide buildings get a lower pitch (a roof at most ~7-9 m high)
   const maxRise = lk.wall === 'plaster' ? 7 : 9, rise = Math.tan(lk.pitch * Math.PI / 180) * b.d / 2;
   if (rise > maxRise) lk.pitch = Math.atan(maxRise / (b.d / 2)) * 180 / Math.PI;
-  if (lk.hip) lk.gable = lk.eave;                 // the hipped ends overhang like the eaves
+  hipped(lk);
   return lk;
+}
+// a hip over one half means a roof hipped from the eaves with a small gable at the top (a gablet); the hipped
+// ends overhang like the eaves
+function hipped(k) {
+  if (k.hip > 0.5 && k.hip < 1) { k.gablet = 1 - k.hip; k.hip = 0; }
+  if (k.hip || k.gablet) k.gable = Math.max(k.gable, k.eave * 0.8);
+  return k;
 }
 
 function windowTexture() {
@@ -465,7 +482,7 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture 
     const frame = { ox: b.x, oz: b.z, rot, W, D, fz };
     let main = null;
     for (const [n, wg] of (lk.wings || [{}]).entries()) {
-      const k = { ...lk, ...wg };
+      const k = hipped({ ...lk, ...wg, ...('hip' in wg ? { gablet: wg.gablet || 0 } : {}) });
       const ww = (wg.w ?? 1) * W, dd = (wg.d ?? 1) * D, p = L((wg.x || 0) * W, 0, (wg.z || 0) * D * fz);
       const f = wg.across ? { ox: p.x, oz: p.z, rot: rot + Math.PI / 2, W: dd, D: ww, fz: 1 } : { ox: p.x, oz: p.z, rot, W: ww, D: dd, fz };
       const r = block(f, k, { door: n === 0 });
