@@ -286,6 +286,12 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
         if (an.fleeing <= 0 && dist > sp.flee * 1.5) {
           // settle where it ran to
           an.group.home = { x: an.x, z: an.z }; an.state = 'idle'; an.timer = 4 + r() * 4; play(an, 'Idle'); an.heard = false;
+        } else if (!an.target) {
+          // ran as far as it meant to (or met a lake or a wall) with the hiker still close: on, away from
+          // them, instead of galloping on the spot
+          const away = Math.atan2(an.x - cx, an.z - cz) + (r() - 0.5) * 1.6, d = sp.slowFlee ? 40 : 80;
+          an.target = { x: an.x + Math.sin(away) * d, z: an.z + Math.cos(away) * d };
+          an.fleeing = Math.max(an.fleeing, 2);
         }
       } else if (an.timer <= 0 && an.state !== 'watch' && an.state !== 'home') {
         const roll = r();
@@ -310,7 +316,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
           const v = (an.state === 'flee' ? sp.run : sp.walk) * an.scale * (Math.abs(dy) > 1 ? 0.3 : 1);
           const nx = an.x + Math.sin(an.yaw) * v * dt, nz = an.z + Math.cos(an.yaw) * v * dt;
           // do not walk into lakes or up walls
-          if (terrain.maskAt(masks.lake, nx, nz) > 0 || terrain.normal(nx, nz, 2).y < 0.6) { an.target = pickTarget(an); }
+          if (terrain.maskAt(masks.lake, nx, nz) > 0 || terrain.normal(nx, nz, 2).y < 0.6) { an.target = an.state === 'flee' ? null : pickTarget(an); }
           else { an.x = nx; an.z = nz; }
         }
       }

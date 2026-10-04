@@ -90,8 +90,10 @@ uniform vec3 sunDir; uniform float time; uniform int shSteps;
 vec2 gridUV(vec2 p, vec4 b, vec2 n){ vec2 f=(p-b.xy)/(b.zw-b.xy); return (f*(n-1.0)+0.5)/n; }
 float hAt(vec2 p){
   vec2 f=(p-bInner.xy)/(bInner.zw-bInner.xy);
-  if (f.x>0.01 && f.y>0.01 && f.x<0.99 && f.y<0.99) return texture(hInner, gridUV(p,bInner,nInner)).r+1000.0;
-  return texture(hOuter, gridUV(p,bOuter,nOuter)).r+1000.0;
+  float h;   // one way out: Direct3D (Windows) warns of an uninitialised result otherwise
+  if (f.x>0.01 && f.y>0.01 && f.x<0.99 && f.y<0.99) h = texture(hInner, gridUV(p,bInner,nInner)).r;
+  else h = texture(hOuter, gridUV(p,bOuter,nOuter)).r;
+  return h+1000.0;
 }
 // soft shadow cast by the terrain itself (ridges, peaks), up to ~12 km away
 float terrainShadow(vec3 wp){

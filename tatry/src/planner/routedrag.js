@@ -35,7 +35,8 @@ export function setupRouteDrag({ map, G, ll, getPath, getStops, setStops, onDrag
     }
     return stops.length - 2;
   }
-  const onMarker = (t) => t.closest && t.closest('.leaflet-marker-icon, .leaflet-control, .leaflet-popup');
+  // only the map itself: not markers, popups, controls or panels laid over the map (the weather bar)
+  const onMarker = (t) => !t.closest || (t !== el && !t.closest('.leaflet-map-pane')) || t.closest('.leaflet-marker-icon, .leaflet-popup');
 
   el.addEventListener('pointerdown', (ev) => {
     if (ev.button > 0 || onMarker(ev.target)) return;

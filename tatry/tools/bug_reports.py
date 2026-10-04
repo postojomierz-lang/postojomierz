@@ -33,6 +33,8 @@ for r in rows:
     print('  urządzenie:', c.get('screen'), '|', c.get('quality', ''), c.get('fps', ''), '|', (c.get('ua') or '')[:90])
     if c.get('build'):
         print('  wersja:', c['build'])
+    for u in c.get('ui') or []:
+        print('  na ekranie:', u)
     log = c.get('log') or []
     for e in log[-6:]:
         print(f"  {e.get('type')}: {e.get('msg', '')[:160]}")

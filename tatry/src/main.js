@@ -836,6 +836,15 @@ async function main() {
       variants.push({ geo: o.geometry, geoFar: far[o.name] || o.geometry, mat, size: Math.max(size.x, size.y, size.z), hy: bb.max.y, big: o.name.startsWith('boulder'), items: [] });
     });
     const stones = variants.filter((v) => !v.big), boulders = variants.filter((v) => v.big);
+    // the whole stone off the footpath, not only its middle: its edge and a ring around it are tested too
+    // (a 4-8 m boulder set 3 m from the line used to block the path and one walked into it)
+    const offPath = (x, z, rad) => {
+      for (let j = 0; j < 8; j++) {
+        const a = j * Math.PI / 4;
+        if (terrain.maskAt(trailVisWide, x + Math.cos(a) * rad, z + Math.sin(a) * rad) > 0.02) return false;
+      }
+      return rad < 3 || terrain.maskAt(trailVisWide, x, z) <= 0.02 && offPath(x, z, rad * 0.5);
+    };
     const pick = (s) => { const g = s > 2.2 && boulders.length ? boulders : stones; return g[Math.floor(r() * g.length)]; };
     const count = tier(5000, 9000, 16000, 32000);
     const ip = photoRGBA, IW = innerBmp.width;
@@ -866,6 +875,7 @@ async function main() {
       const nrm = terrain.normal(x, z, 3);
       if (nrm.y < 0.55) continue; // no boulders glued to cliffs
       const s = (0.3 + Math.pow(r(), 3) * (d < 8 ? 0.8 : 2.8) * big) * Math.min(1, (nrm.y - 0.45) * 2.5);
+      if (s > 0.8 && !offPath(x, z, s * 0.7 + 0.6)) continue;
       const vr = pick(s);
       // rest on the slope: tilt towards the ground normal, random turn, sink a little
       q.setFromUnitVectors(up, nrm.clone().lerp(up, 0.4).normalize());
@@ -891,6 +901,7 @@ async function main() {
       const nrm = terrain.normal(x, z, 4);
       if (nrm.y > 0.75 || nrm.y < 0.1) continue;
       const s = 2.5 + Math.pow(r(), 2) * 7;
+      if (!offPath(x, z, s * 0.7 + 0.6)) continue;
       const vr = pick(s);
       q.setFromUnitVectors(up, nrm);
       qy.setFromAxisAngle(up, r() * 6.283);
@@ -1226,7 +1237,7 @@ async function main() {
     if (state.mode !== 'walk') return;
     if (state.free) {
       const n = nearestTrail(state.free.x, state.free.z);
-      state.s = n.i * trail.step; state.free = null; state.yawOff = 0;
+      state.s = n.i * trail.step; state.free = null; state.yawOff = 0; state.rev = false;
       $('tpn').classList.remove('show'); tpnT = 0; tpnAt = 0;
     } else {
       const p0 = at(state.s);
@@ -1376,6 +1387,44 @@ async function main() {
   const pc = $('profile'), pg = pc.getContext('2d');
   let pmin = Infinity, pmax = -Infinity;
   for (const v of profile) { pmin = Math.min(pmin, v); pmax = Math.max(pmax, v); }
+  // the minimap in the bottom-left corner: the orthophoto around, north up, the route (walked part darker)
+  // and where one is with the way one looks; a click makes it bigger or smaller again
+  const mm = $('minimap'), mmc = mm.getContext('2d'), mmDir = new THREE.Vector3();
+  mm.onclick = () => { mm.classList.toggle('big'); drawMinimap(); };
+  function drawMinimap() {
+    if (!mm.clientWidth) return;                       // hidden (an upright phone, a low screen)
+    mm.style.bottom = ($('bottom').offsetHeight + 24) + 'px';
+    const W = Math.round(mm.clientWidth * devicePixelRatio);
+    if (mm.width !== W) { mm.width = W; mm.height = W; }
+    const p = state.mode === 'walk' || state.freeCam ? camera.position : hiker.position;
+    const R = mm.classList.contains('big') ? 1500 : 700;
+    const kx = innerBmp.width / (IB[2] - IB[0]), kz = innerBmp.height / (IB[3] - IB[1]);
+    mmc.fillStyle = '#c9d2c3'; mmc.fillRect(0, 0, W, W);
+    try { mmc.drawImage(innerBmp, (p.x - R - IB[0]) * kx, (p.z - R - IB[1]) * kz, 2 * R * kx, 2 * R * kz, 0, 0, W, W); } catch (e) { /* off the photo */ }
+    const sx = (x) => ((x - p.x) / R * 0.5 + 0.5) * W, sz = (z) => ((z - p.z) / R * 0.5 + 0.5) * W;
+    const here = Math.round(state.s / trail.step);
+    mmc.lineCap = mmc.lineJoin = 'round';
+    for (const [from, to, col] of [[0, here, '#7a1d12'], [here, N - 1, '#e8402a']]) {
+      mmc.strokeStyle = 'rgba(255,255,255,.85)'; mmc.lineWidth = 5 * devicePixelRatio;
+      for (const pass of [0, 1]) {
+        mmc.beginPath();
+        for (let i = from; i <= to; i += 3) { const x = sx(trail.X[i]), z = sz(trail.Z[i]); i === from ? mmc.moveTo(x, z) : mmc.lineTo(x, z); }
+        mmc.lineTo(sx(trail.X[to]), sz(trail.Z[to]));
+        mmc.stroke();
+        mmc.strokeStyle = col; mmc.lineWidth = 2.6 * devicePixelRatio;
+      }
+    }
+    // the view: a cone the way the camera looks, and a dot where one stands
+    camera.getWorldDirection(mmDir);
+    const a = Math.atan2(mmDir.z, mmDir.x), c = W / 2, r = W * 0.16, half = (camera.fov * camera.aspect / 2) * Math.PI / 180;
+    mmc.fillStyle = 'rgba(31,95,209,.28)';
+    mmc.beginPath(); mmc.moveTo(c, c); mmc.arc(c, c, r, a - Math.min(1, half), a + Math.min(1, half)); mmc.closePath(); mmc.fill();
+    mmc.fillStyle = '#1f5fd1'; mmc.strokeStyle = '#fff'; mmc.lineWidth = 2 * devicePixelRatio;
+    mmc.beginPath(); mmc.arc(c, c, 5 * devicePixelRatio, 0, 7); mmc.fill(); mmc.stroke();
+    mmc.font = `bold ${11 * devicePixelRatio}px system-ui`; mmc.textAlign = 'center'; mmc.fillStyle = '#fff';
+    mmc.strokeStyle = 'rgba(0,0,0,.6)'; mmc.lineWidth = 3 * devicePixelRatio;
+    mmc.strokeText('N', c, 14 * devicePixelRatio); mmc.fillText('N', c, 14 * devicePixelRatio);
+  }
   function drawProfile() {
     const w = pc.width = pc.clientWidth * devicePixelRatio, h = pc.height = pc.clientHeight * devicePixelRatio;
     pg.clearRect(0, 0, w, h);
@@ -1430,7 +1479,37 @@ async function main() {
   const labels = buildLabels({ meta, terrain, camera, container: document.body, blockers: signs.posts.map((p) => p.at),
     extra: [...(RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }]), ...rest.labels],
     nature: { spots, found }, onClick: (it) => cards.show(it) });
-  const cards = await buildCards({ found, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
+  // a peak or a place clicked: how far, how long, how hard and how many calories from where one is now
+  // (along the trail when it lies on it, else in a straight line)
+  function routeTo(pos) {
+    let j = 0, bd = Infinity;
+    for (let i = 0; i < N; i += 2) { const dd = (trail.X[i] - pos.x) ** 2 + (trail.Z[i] - pos.z) ** 2; if (dd < bd) { bd = dd; j = i; } }
+    const me = state.free ? { x: state.free.x, z: state.free.z } : at(state.s);
+    const i0 = state.free ? nearestTrail(me.x, me.z).i : Math.round(state.s / trail.step);
+    const hNow = state.free ? drawnHeight(me.x, me.z) : profile[Math.min(N - 1, i0)];
+    if (Math.sqrt(bd) > 150) {
+      const km = Math.hypot(pos.x - me.x, pos.z - me.z) / 1000, dh = Math.round(pos.y - hNow);
+      return `<div class="rt"><b>Poza tą trasą</b> · ${km.toFixed(1)} km w linii prostej · ${dh >= 0 ? '↗' : '↘'} ${Math.abs(dh)} m różnicy wysokości</div>`;
+    }
+    const k = j >= i0 ? 1 : -1;
+    let up = 0, down = 0, min = 0, steep = 0;
+    for (let i = i0; i !== j; i += k) {
+      const dh = profile[i + k] - profile[i];
+      if (dh > 0) up += dh; else down -= dh;
+      min += stepMinutes(trail.step, dh);
+      steep = Math.max(steep, Math.abs(dh) / trail.step);
+    }
+    const km = Math.abs(j - i0) * trail.step / 1000;
+    if (km < 0.05) return '<div class="rt"><b>Jesteś na miejscu.</b></div>';
+    const top = Math.max(profile[i0], profile[j]);
+    const hard = steep > 0.4 || top > 2200 ? 'trudna' : steep > 0.22 || up > 600 ? 'średnia' : 'łatwa';
+    // ~75 kg with a light pack: walking about 0.55 kcal/kg/km, climbing ~0.9 kcal a metre up, 0.15 down
+    const kcal = Math.round((75 * 0.55 * km + 0.9 * up + 0.15 * down) / 10) * 10;
+    const t = Math.round(min);
+    return `<div class="rt"><b>${k > 0 ? 'Przed tobą' : 'Za tobą (z powrotem)'}</b> · ${km.toFixed(1)} km szlakiem · ok. ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} h (normy PTTK)<br>`
+      + `↗ ${Math.round(up)} m · ↘ ${Math.round(down)} m · trudność: ${hard} · ok. ${kcal} kcal <small>(osoba 75 kg)</small></div>`;
+  }
+  const cards = await buildCards({ found, routeTo, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
   // the plants of the catalogue at their spots: patches of flowers, herbs, ferns and dwarf shrubs
   const birds = buildBirds({ scene, spots, groundAt: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.2 ? null : drawnHeight(x, z)), onEvent: (t, f) => wildEvent(t, f) });
   wildlife.setBirds(birds);
@@ -1705,6 +1784,26 @@ async function main() {
   composer.addPass(new RenderPass(scene, camera));
   const ssao = AO ? new SSAOPass(camera, { samples: ULTRA ? 16 : 10 }) : null;
   if (ssao) { composer.addPass(ssao); ssao.combineMat.uniforms.show.value = { show: 1, depth: -1 }[P.get('ao')] || 0; }
+  // fireflies: a lone pixel far brighter than its neighbours (a specular spike on a blade or a stone, or a
+  // NaN) would flicker as a yellow dot once the bloom spreads it; it is brought down to its neighbourhood
+  const despeckle = new ShaderPass({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+      float lum(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+      vec3 ok(vec3 c){ return (c.r == c.r && c.g == c.g && c.b == c.b) ? clamp(c, 0.0, 60.0) : vec3(0.0); }
+      void main(){
+        vec2 px = 1.0 / vec2(textureSize(tDiffuse, 0));
+        vec4 t = texture2D(tDiffuse, vUv);
+        vec3 c = ok(t.rgb);
+        float m = max(max(lum(ok(texture2D(tDiffuse, vUv + vec2(px.x, 0.0)).rgb)), lum(ok(texture2D(tDiffuse, vUv - vec2(px.x, 0.0)).rgb))),
+                      max(lum(ok(texture2D(tDiffuse, vUv + vec2(0.0, px.y)).rgb)), lum(ok(texture2D(tDiffuse, vUv - vec2(0.0, px.y)).rgb))));
+        float l = lum(c), cap = 1.5 * m + 0.4;
+        if (l > cap) c *= cap / l;
+        gl_FragColor = vec4(c, t.a);
+      }`,
+  });
+  composer.addPass(despeckle);
   const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.22, 0.5, 1.1);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -1788,6 +1887,22 @@ async function main() {
   });
   addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 
+  // where the detail is drawn around (3D trees, grass, the sharp terrain and photo, stones): the camera, but
+  // through the binoculars a point towards what they look at, as if one stood zoom times closer to it; so
+  // they show the place itself in detail, not a blown-up picture of its far, simplified version
+  const lodTmp = new THREE.Vector3(), lodDir = new THREE.Vector3();
+  function lodPoint() {
+    const z = binoc.active ? binoc.zoom : 1;
+    if (z < 1.6 || state.mode !== 'walk') return camera.position;
+    camera.getWorldDirection(lodDir);
+    const c = camera.position;
+    let D = 2500;
+    for (let t = 8; t < 2500; t *= 1.07) {
+      const x = c.x + lodDir.x * t, z2 = c.z + lodDir.z * t;
+      if (c.y + lodDir.y * t < drawnHeight(x, z2)) { D = t; break; }
+    }
+    return lodTmp.copy(c).addScaledVector(lodDir, D * (1 - 1 / z));
+  }
   let liteFrame = 0;
   vegFar.value = tier(1200, 2000, 1e9);
   // phones: at most 30 frames a second (a 120 Hz screen would otherwise drive the GPU flat out, the phone
@@ -1800,14 +1915,25 @@ async function main() {
     if (FPS_CAP && now - lastFrame < 1000 / FPS_CAP - 3) { requestAnimationFrame(tick); return; }
     lastFrame = now;
     const dt = Math.min(0.1, clock.getDelta());
-    const grade = gradeAt(state.s);
-    // Tobler's hiking function: realistic walking pace on this slope (km/h)
-    const tobler = 6 * Math.exp(-3.5 * Math.abs(grade + 0.05));
     let dir = 0;
     if (keys.has('KeyW') || keys.has('ArrowUp')) dir = 1;
     if (keys.has('KeyS') || keys.has('ArrowDown')) dir = -1;
+    // on the trail W goes where one looks and S steps back: looking back down the trail W walks back. The
+    // figure turns to face the way it walks; the view stays where it is
+    if (dir !== 0 && !state.free && state.mode === 'walk') {
+      const rel = state.yaw + state.yawOff - headingAt(state.s);
+      if (Math.cos(rel) < 0) dir = -dir;
+    }
     if (state.auto && dir === 0) dir = 1;
     if (reveal.active) dir = 0;                         // the discovery's moment: the walk waits
+    if (dir !== 0 && !state.free && (dir < 0) !== !!state.rev) {
+      state.rev = dir < 0;
+      state.yaw += Math.PI; state.yawOff = Math.atan2(Math.sin(state.yawOff - Math.PI), Math.cos(state.yawOff - Math.PI));
+      if (state.auto && !keys.size) state.yawOff = 0;     // walking on by itself: the view turns ahead again
+    }
+    // the slope the way one faces; Tobler's hiking function: realistic walking pace on it (km/h)
+    const grade = gradeAt(state.s) * (state.rev && !state.free ? -1 : 1);
+    const tobler = 6 * Math.exp(-3.5 * Math.abs(grade + 0.05));
     const run = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 2.5 : 1;
     const v = tobler / 3.6 * state.speedMul * run * dir;
     if (state.free && state.mode === 'walk') {
@@ -1825,7 +1951,7 @@ async function main() {
     if (keys.has('KeyE')) state.pitchOff = Math.max(-1.2, state.pitchOff - dt);
 
     const p = state.free && state.mode === 'walk' ? { x: state.free.x, y: drawnHeight(state.free.x, state.free.z), z: state.free.z } : at(state.s);
-    const target = state.free ? state.yaw : headingAt(state.s);
+    const target = state.free ? state.yaw : headingAt(state.s) + (state.rev ? Math.PI : 0);
     let d = target - state.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     state.yaw += d * Math.min(1, dt * 0.7);
     // the figure walks at the pace it moves (seen in the drone view and the flyover)
@@ -1895,6 +2021,7 @@ async function main() {
       $('place').textContent = place;
       $('place').classList.toggle('show', !!place);
       drawProfile();
+      drawMinimap();
     }
     // shadow box around the camera, snapped to texels to avoid shimmering
     {
@@ -1904,20 +2031,21 @@ async function main() {
       sunLight.position.copy(light.sunDir.value).multiplyScalar(3000).add(sunLight.target.position);
     }
     forest.update(camera);
-    treeFade.cam.value.copy(camera.position);
-    if (trees3d) trees3d.update(camera.position);
-    if (mugo3d) mugo3d.update(camera.position);
-    if (grass) grass.update(camera.position);
+    const lodP = lodPoint();
+    treeFade.cam.value.copy(lodP);
+    if (trees3d) trees3d.update(lodP);
+    if (mugo3d) mugo3d.update(lodP);
+    if (grass) grass.update(lodP);
     {
-      const fx = state.mode === 'walk' || state.freeCam ? camera.position.x : hiker.position.x;
-      const fz = state.mode === 'walk' || state.freeCam ? camera.position.z : hiker.position.z;
+      const fx = state.mode === 'walk' || state.freeCam ? lodP.x : hiker.position.x;
+      const fz = state.mode === 'walk' || state.freeCam ? lodP.z : hiker.position.z;
       updatePatch(fx, fz); updateNear(fx, fz); trailWin.update(fx, fz); cover.update(fx, fz);
     }
     mates.update(dt, state.mode === 'walk' || state.freeCam ? camera.position : hiker.position, state.s);
     wildlife.update(wdt, camera);
-    birds.update(wdt, camera.position);
-    rocks.update(camera.position, dt);
-    chains.update(camera.position); deadwood.update(camera.position); flowers.update(camera.position);
+    birds.update(wdt, lodP);
+    rocks.update(lodP, dt);
+    chains.update(lodP); deadwood.update(lodP); flowers.update(lodP);
     labels.update(dt);
     // a flyover only shows the route: nothing is discovered from 170 m up
     if (state.flyStopS != null && Math.abs(state.s - state.flyStopS) > 30) state.flyStopS = null;

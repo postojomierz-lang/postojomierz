@@ -90,15 +90,18 @@
   #card .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   #card .tags span { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: rgba(0,0,0,.07); }
   #card .tags .r3 { background: #e6d3f5; } #card .tags .r4 { background: #ffd98a; font-weight: 700; }
+  #card .rt { margin: 6px 0 8px; padding: 7px 10px; border-radius: 8px; background: rgba(31,95,209,.08); font-size: 13.5px; line-height: 1.5; }
   #card p { margin: 6px 0; } #card .when { font-size: 12.5px; color: #2e7d32; }
   #card .credit { font-size: 11px; color: #6b7378; margin-top: 8px; } #card .credit a { color: inherit; }
   #card .more, .rv-card .more { display: inline-block; margin: 2px 0 6px; font-size: 13.5px; font-weight: 600; color: #1f5fd1; text-decoration: none; }
-  #card .x { position: absolute; top: 8px; right: 8px; border: 0; background: transparent; font-size: 18px; cursor: pointer; }
+  /* the ✕ stays in view while the card scrolls */
+  #card .x { position: sticky; top: 0; float: right; margin: -6px -8px 0 0; padding: 4px 8px; border: 0; border-radius: 14px; background: rgba(255,255,255,.85); font-size: 20px; cursor: pointer; z-index: 1; }
   #card .unk { font-size: 64px; text-align: center; opacity: .5; }
   #tpn { display: none; position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 25; max-width: min(92vw, 520px);
     background: rgba(160, 60, 0, .9); color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 13.5px; text-align: center; }
   #tpn.show { display: block; }
-  #label-menu { display: none; top: 132px; right: 12px; padding: 10px 12px; flex-direction: column; gap: 6px; font-size: 14px; z-index: 30; min-width: 220px; }
+  /* beside the controls, not over them */
+  #label-menu { display: none; top: 12px; right: 260px; max-height: calc(100vh - 24px); overflow-y: auto; padding: 10px 12px; flex-direction: column; gap: 6px; font-size: 14px; z-index: 30; min-width: 220px; }
   #label-menu.show { display: flex; }
   #label-menu label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
   #label-menu .lm-all { font-weight: 600; border-bottom: 1px solid rgba(0,0,0,.12); padding-bottom: 6px; }
@@ -106,6 +109,9 @@
   #label-menu .lm-score { border-top: 1px solid rgba(0,0,0,.12); padding-top: 6px; font-size: 13px; line-height: 1.45; }
   .flag .pole { position: absolute; left: 0; top: 100%; width: 2px; background: rgba(252,250,244,.85); box-shadow: 0 0 2px rgba(0,0,0,.5); }
   #hud, #controls, #bottom, #place { z-index: 2; }
+  #minimap { left: 12px; bottom: 112px; width: 170px; height: 170px; padding: 0; z-index: 2; cursor: pointer; border-radius: 12px; }
+  #minimap.big { width: 320px; height: 320px; }
+  @media (max-width: 560px) and (orientation: portrait), (max-height: 520px) { #minimap { display: none; } }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0b1013; z-index: 10; transition: opacity .8s; }
   #loading.done { opacity: 0; pointer-events: none; }
   #loading .box { text-align: center; }
@@ -116,6 +122,7 @@
     #hud h1 { font-size: 13px; }
     .stats { font-size: 12px; }
     #controls { width: 196px; }
+    #label-menu { right: 220px; }
     #controls .row:first-child button { padding: 6px 5px; }
     #profile { height: 44px; }
   }
@@ -132,6 +139,7 @@
     #hud .stats dt:nth-of-type(n+3), #hud .stats dd:nth-of-type(n+3) { display: none; }
     #hud .stats dt:nth-of-type(6), #hud .stats dd:nth-of-type(6) { display: block; }
     #controls { top: auto; bottom: 86px; left: 8px; right: 8px; width: auto; padding: 8px; gap: 6px; }
+    #label-menu { top: 132px; right: 12px; max-height: calc(100vh - 330px); }
     #controls > label, #controls > #hour, #controls > #weather, #controls > #fc-info { display: none; }
     #controls.more > label, #controls.more > #hour, #controls.more > #weather { display: block; }
     #controls.more > #fc-info:not([hidden]) { display: block; }
@@ -154,6 +162,7 @@
   @media (max-height: 520px) {
     /* the right panel: narrow, every row wraps, scrolls if still too tall; the profile shrinks beside it */
     #controls { top: 8px; right: 8px; bottom: auto; left: auto; max-height: calc(100vh - 16px); overflow-y: auto; width: 230px; padding: 8px; gap: 6px; }
+    #label-menu { top: 8px; right: 246px; max-height: calc(100vh - 16px); }
     #controls .row { flex-wrap: wrap; }
     #controls .row button { padding: 5px 6px; font-size: 12px; }
     #controls .row button.grow { flex: 1 1 auto; }
@@ -226,6 +235,7 @@
 
 <div id="place"></div>
 
+<canvas id="minimap" class="panel" title="Mapa okolicy, północ u góry (kliknij: większa / mniejsza)"></canvas>
 <div id="bottom" class="panel">
   <canvas id="profile" title="Kliknij, żeby przeskoczyć w to miejsce szlaku"></canvas>
   <div id="sources"></div>
@@ -246,7 +256,7 @@
     <tr><td>profil na dole</td><td>dotknij, żeby przeskoczyć</td></tr>
   </table>
   <table class="keys-only">
-    <tr><td><kbd>W</kbd> <kbd>↑</kbd> / <kbd>S</kbd> <kbd>↓</kbd></td><td>idź szlakiem do przodu / do tyłu</td></tr>
+    <tr><td><kbd>W</kbd> <kbd>↑</kbd> / <kbd>S</kbd> <kbd>↓</kbd></td><td>idź szlakiem tam, gdzie patrzysz / cofnij się</td></tr>
     <tr><td><kbd>Spacja</kbd></td><td>idź sam (jak na bieżni)</td></tr>
     <tr><td><kbd>Shift</kbd></td><td>szybciej, dopóki trzymasz</td></tr>
     <tr><td><kbd>+</kbd> / <kbd>−</kbd></td><td>przyspieszenie czasu ×1, ×3, ×10, ×30</td></tr>
@@ -259,6 +269,7 @@
     <tr><td><kbd>L</kbd></td><td>nazwy szczytów, przełęczy, jezior i schronisk</td></tr>
     <tr><td><kbd>B</kbd> / 🔭</td><td>lornetka (przybliżenie 2–12×: dwa palce lub kółko myszy)</td></tr>
     <tr><td>profil na dole</td><td>kliknij, żeby przeskoczyć</td></tr>
+    <tr><td>mapka w rogu</td><td>okolica, północ u góry; kliknij, żeby powiększyć</td></tr>
   </table>
   <p class="note"><a href="prywatnosc.html" target="_blank" style="color:inherit">Polityka prywatności</a> · <a href="regulamin.html" target="_blank" style="color:inherit">Regulamin</a> · w górach: TOPR 985 / +48 601 100 300</p>
   <p class="note" id="perf"></p>
