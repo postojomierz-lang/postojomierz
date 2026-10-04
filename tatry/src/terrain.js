@@ -80,9 +80,26 @@ export class Terrain {
     return this.dtmMask[j * g.w + i];
   }
   // Terraces levelled under buildings: [{x, z, c, s, w, d, level}] (see buildings.js)
-  setFlats(flats) { this.flats = flats; }
+  // kept in 64 m cells: the height is asked thousands of times a frame and there are hundreds of houses
+  // (Zakopane, Kuźnice), so each call looks only at the few terraces around it
+  setFlats(flats) {
+    const C = 64, cells = new Map();
+    for (const f of flats) {
+      const b = f.blend || 6, r = Math.hypot(f.w / 2 + b, f.d / 2 + b);   // the corner of the blended rectangle
+      for (let cx = Math.floor((f.x - r) / C); cx <= Math.floor((f.x + r) / C); cx++) {
+        for (let cz = Math.floor((f.z - r) / C); cz <= Math.floor((f.z + r) / C); cz++) {
+          const k = cx * 100003 + cz;
+          let l = cells.get(k); if (!l) cells.set(k, l = []);
+          l.push(f);
+        }
+      }
+    }
+    this.flats = flats.length ? { cells, C } : null;
+  }
   flatten(x, z, h) {
-    for (const f of this.flats) {
+    const F = this.flats, l = F.cells.get(Math.floor(x / F.C) * 100003 + Math.floor(z / F.C));
+    if (!l) return h;
+    for (const f of l) {
       const dx = x - f.x, dz = z - f.z;
       const u = Math.abs(dx * f.c - dz * f.s) - f.w / 2, v = Math.abs(dx * f.s + dz * f.c) - f.d / 2;
       const out = Math.max(u, v);

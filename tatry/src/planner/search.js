@@ -3,6 +3,8 @@
 // ("lysa polana" finds Łysa Polana). The fields follow the route: points set on the map get the name of
 // the nearest place.
 
+import { NORMS } from './graph.js';
+
 // trailheads and lakes the trail data has no name for (lat, lon)
 const EXTRA = [
   ['Palenica Białczańska (parking)', 49.2547, 20.1046, 'start'], ['Łysa Polana', 49.2667, 20.1172, 'start'],
@@ -83,7 +85,10 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
       if (cand.length > 1) {
         const T = G.times(other);
         let best = Infinity;
-        for (const [c, d] of cand) { const t = T[c] + d / 6; if (t < best) { best = t; v = c; } }
+        // the rest of the way to the place itself counts as walked, climb included (a flat minute per 6 m let
+        // the route stop 30 m and 33 m of height below Wielki Giewont, as that last bit is steeper)
+        const up = (c) => (p.e ? Math.max(0, p.e - G.H[c]) / 100 * NORMS.upSteep : 0);
+        for (const [c, d] of cand) { const t = T[c] + d / 6 + up(c); if (t < best) { best = t; v = c; } }
       }
     }
     if (v < 0) { active.value = ''; active.placeholder = 'Tam nie dochodzi znakowany szlak'; return; }

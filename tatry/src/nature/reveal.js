@@ -66,7 +66,8 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
     r.obj = found && found.obj;
     // how far the camera stops: by the size of the animal (a 20 cm bird must fill the frame too)
     if (r.obj) { r.size = found.size; r.dist = THREE.MathUtils.clamp(r.size * 2.6, 0.8, 7); }
-    else r.dist = fauna ? 2.5 : 1.3;
+    else r.dist = fauna ? 2.5 : s.group === 'tree' ? 7 : 1.3;     // a tree: back far enough to see its crown
+    if (photos && photos[s.id]) new Image().src = `nature/${s.id}.jpg`;   // ready by the time the card shows
     r.t = 0; r.phase = 'in'; r.bonus = []; r.coins = false;
     cur = r;
     bars.classList.add('on'); vig.classList.add('on'); document.body.classList.add('revealing');
@@ -78,7 +79,8 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
       return tmp.clone().add(new THREE.Vector3(0, Math.min(0.5, (r.size || 1) * 0.35), 0));
     }
     const g = groundAt(r.pos.x, r.pos.z);
-    return new THREE.Vector3(r.pos.x, (g ?? r.pos.y) + (r.species.kind === 'flora' ? 0.15 : 0.4), r.pos.z);
+    const up = r.species.group === 'tree' ? 3.5 : r.species.kind === 'flora' ? 0.15 : 0.4;   // the crown, not its foot
+    return new THREE.Vector3(r.pos.x, (g ?? r.pos.y) + up, r.pos.z);
   }
   function showCard(r) {
     const s = r.species, rar = RARITY[s.rarity], ph = photos && photos[s.id];

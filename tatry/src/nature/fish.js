@@ -60,6 +60,9 @@ export function buildFish({ scene, lakes, groundAt }) {
   function place(cam) {
     const c = cam.position;
     for (const l of lakes) {
+      // a lake whose bounds are farther than the 160 m looked at is skipped (most of the region's lakes)
+      if (!l.box) { l.box = [Infinity, Infinity, -Infinity, -Infinity]; for (const [x, z] of l.ring) { l.box[0] = Math.min(l.box[0], x); l.box[1] = Math.min(l.box[1], z); l.box[2] = Math.max(l.box[2], x); l.box[3] = Math.max(l.box[3], z); } }
+      if (c.x < l.box[0] - 160 || c.x > l.box[2] + 160 || c.z < l.box[1] - 160 || c.z > l.box[3] + 160) continue;
       for (let k = 0; k < 60; k++) {
         const a = Math.random() * 6.283, d = 25 + Math.random() * 135, x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
         if (!inside(l.ring, x, z)) continue;
