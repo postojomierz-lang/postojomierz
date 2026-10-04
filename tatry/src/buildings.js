@@ -29,6 +29,28 @@ const SHINGLE = [0.86, 0.72, 0.58], GREY_ROOF = [0.82, 0.85, 0.9], DARK_ROOF = [
 // bottom; hip: how far the roof's ends are hipped (0 a gable, about 0.3 the half-hip of the Zakopane style,
 // 1 a hipped roof).
 const HUTS = [
+  // Compact two-storey block of grey granite rubble masonry on the summit, flat/very low roof of light grey sheet with masts and instruments; stone-walled platform around. Looks fortress-like from a dista (medium)
+  [/Obserwatorium.*Kasprow/, { wall: 'stone', base: 2, floors: 2, floorH: 3, pitch: 5, hip: 1, roofTint: GREY_ROOF, eave: 0.3, chimney: 1, windows: 3, terrace: { side: 1, d: 3, len: 0.6, rail: true, stone: true } }],
+  // Granite rubble-masonry station/restaurant built into the slope below the summit: stepped blocks of 1-3 storeys with low hipped light grey metal roofs and a flat-roofed taller block; big stone-paved te (medium)
+  [/G[óo]rna stacja.*Kasprow/, { wall: 'stone', base: 2, floors: 2, floorH: 3.2, pitch: 12, hip: 1, roofTint: GREY_ROOF, eave: 0.5, chimney: 1, windows: 3, wings: [{ x: 0, z: -0.15, w: 0.7, d: 0.7 }, { x: 0.05, z: 0.25, w: 0.9, d: 0.5, floors: 1, pitch: 10 }, { x: 0.4, z: 0, w: 0.2, d: 0.6, across: true, floors: 3, pitch: 5 }], terrace: { side: 1, d: 4, len: 0.8, tables: 8, rail: true, stone: true } }],
+  // Three-storey 1930s block with grey-beige rendered walls, small square windows and a granite rubble plinth; very low-pitched roof with a deep overhang and tall dark weathered-wood fascia; the cabin hal (medium)
+  [/Po[śs]rednia stacja|My[śs]lenickie/, { wall: 'plaster', wallTint: PALE, plinth: 1.5, floors: 3, floorH: 3, pitch: 8, hip: 1, roofTint: BROWN_ROOF, eave: 1.5, windows: 3, wings: [{ x: 0.1, z: 0, w: 0.8, d: 1 }, { x: -0.42, z: 0.1, w: 0.16, d: 0.6, across: true, wall: 'stone', floors: 2, pitch: 8 }], terrace: { side: 1, d: 5, len: 0.4, rail: true, stone: true } }],
+  // Same 1936 style as the middle station but smaller: pale grey plaster walls with granite rubble corners/plinth, a taller stone tower-like cabin hall at the cableway end, low roof with wide overhang. Se (low)
+  [/Dolna stacja.*Kasprow|Ku[źz]nice.*kolej/, { wall: 'plaster', wallTint: PALE, plinth: 1.2, floors: 2, floorH: 3.2, pitch: 8, hip: 1, roofTint: BROWN_ROOF, eave: 1.2, windows: 3, wings: [{ x: -0.1, z: 0, w: 0.8, d: 1 }, { x: 0.4, z: 0, w: 0.2, d: 0.7, across: true, wall: 'stone', floors: 3, pitch: 6 }] }],
+  // Low dark-wood pavilion dominated by a huge steep roof of weathered grey wooden shingle reaching almost to the ground, clipped/hipped ends; open front under the eaves with tables and white umbrellas, r (medium)
+  [/W[łl]osienic/, { wall: 'logs', wallTint: DARK, plinth: 0.4, floors: 1, floorH: 2.5, pitch: 45, hip: 0.5, roofTint: DARK_ROOF, eave: 1.5, windows: 3.5, terrace: { side: 1, d: 5, len: 0.9, tables: 8, rail: true } }],
+  // Granite rubble ground floor with red shutters, attic/upper part clad in dark grey sheet with small dormers and solar panels, moderate dark grey roof; a dark wooden steep-gabled annex at one end; built (high)
+  [/Chata pod Rysmi/, { wall: 'stone', base: 1, floors: 1, floorH: 3, pitch: 28, roofTint: DARK_ROOF, eave: 0.4, chimney: 1, windows: 2.5, dormers: [{ n: 4, w: 1.2, side: 1 }], wings: [{ x: -0.1, z: 0, w: 0.8, d: 1 }, { x: 0.42, z: 0, w: 0.16, d: 1, wall: 'planks', wallTint: DARK, pitch: 45, floors: 1 }], terrace: { side: 1, d: 3, len: 0.6, tables: 3, stone: true } }],
+  // Large hotel with a steep roof (formerly brown shingle, now dark grey) with rows of gabled dormers and a big central front cross-gable decorated with a sunburst; wood-clad walls (dark brown before, hon (high)
+  [/Horsk[ýy] hotel Poprad|Chata pri Popradskom/, { wall: 'planks', wallTint: HONEY, plinth: 1, floors: 2, floorH: 3, pitch: 45, hip: 0.3, roofTint: DARK_ROOF, eave: 1, chimney: 2, windows: 2.5, dormers: [{ n: 6, w: 1.5, side: 0 }], balcony: [{ floor: 1, side: 1, len: 0.7, x: 0 }], wings: [{ x: 0, z: -0.15, w: 1, d: 0.7 }, { x: 0, z: 0.15, w: 0.28, d: 0.75, across: true, floors: 3, hip: 0 }], terrace: { side: 1, d: 5, len: 0.5, tables: 8, stone: true } }],
+  // Rebuilt (2010) small chalet: white render with dark brown half-timbering, steep dark grey gable roof with dark-boarded gable top, large framed windows; a low glazed veranda/lean-to on one side; stone  (medium)
+  [/Majl[áa]th/, { wall: 'plaster', wallTint: WHITE, plinth: 0.6, floors: 1, floorH: 3.2, pitch: 50, roofTint: DARK_ROOF, eave: 0.6, chimney: 1, windows: 2.2, wings: [{ x: 0.1, z: 0, w: 0.8, d: 1 }, { x: -0.4, z: 0.1, w: 0.2, d: 0.6, floors: 1, pitch: 15, wall: 'planks', wallTint: DARK }] }],
+  // Large chalet: granite rubble ground floor, two upper storeys of dark brown boards with white-framed windows, steep red sheet roof with gabled ends (small hip at apex), attic windows in the gable; benc (medium)
+  [/Zverovka/, { wall: 'planks', wallTint: DARK, base: 1, floors: 3, floorH: 2.8, pitch: 45, hip: 0.15, roofTint: RED_ROOF, eave: 0.8, chimney: 1, windows: 2.5, dormers: [{ n: 3, w: 1.2, side: 1 }], terrace: { side: 1, d: 3, len: 0.4, tables: 4 } }],
+  // Rebuilt hut (2017): orange-honey log walls on a stone plinth, steep dark blue-grey roof with a front cross-gable (two storeys of logs in the gable) and small dormers, granite-walled part at one end; t (high)
+  [/[ŤT]atliakova/, { wall: 'logs', wallTint: HONEY, plinth: 0.6, floors: 1, floorH: 3, pitch: 45, roofTint: DARK_ROOF, eave: 0.6, chimney: 1, windows: 2.5, dormers: [{ n: 2, w: 1.2, side: 1 }], wings: [{ x: -0.1, z: 0, w: 0.8, d: 1 }, { x: -0.15, z: 0.2, w: 0.3, d: 0.7, across: true, floors: 2 }, { x: 0.42, z: 0, w: 0.16, d: 0.9, wall: 'stone', pitch: 40 }], terrace: { side: 1, d: 4, len: 0.6, tables: 5 } }],
+  // New Žiarska chata: granite rubble ground floor, one storey of orange-honey timber with dark-framed windows, dark grey roof with three large gabled dormers on the front and solar panels; wooden-railed  (medium)
+  [/[ŽZ]iarska/, { wall: 'logs', wallTint: HONEY, base: 1, floors: 2, floorH: 2.9, pitch: 40, hip: 0.3, roofTint: DARK_ROOF, eave: 0.7, chimney: 1, windows: 2.5, dormers: [{ n: 3, w: 2.5, side: 1 }], wings: [{ x: 0, z: 0.2, w: 1, d: 0.6 }, { x: 0.25, z: -0.25, w: 0.35, d: 0.5, across: true, floors: 2 }], balcony: [{ floor: 1, side: 1, len: 0.4, x: 0.1 }], terrace: { side: 1, d: 4, len: 0.5, rail: true, stone: true, tables: 4 } }],
   // Long 1938 modernist block: cream plaster walls over a dark stone/brown-panelled ground floor, 3-4 storeys with regular rows of windows, very low-pitch dark gable roof with a deep bracketed overhang (s (high)
   [/Kalatówki/, { wall: 'plaster', wallTint: CREAM, base: 1, plinth: 0.8, floors: 4, floorH: 3, pitch: 14, hip: 0, roofTint: DARK_ROOF, eave: 1.5, chimney: 3, windows: 2.2, terrace: { side: 1, d: 4, len: 0.5, tables: 4, rail: true, stone: true }, woodpile: 1, wings: [{ x: 0, z: 0, w: 1, d: 0.62 }, { x: 0.3, z: 0.36, w: 0.3, d: 0.3, across: true, floors: 1, base: 1, wall: 'plaster', pitch: 10, eave: 0.5 }] }],
   // Massive granite-masonry hut (1925): two storeys of rough grey stone, above them a timber (light honey boards after renovation) top storey and attic in a steep gable roof with green sheet-metal skirt r (high)
@@ -52,11 +74,6 @@ const HUTS = [
   [/Hala Kondratowa/, { wall: 'logs', wallTint: HONEY, base: 0, plinth: 1.2, floors: 1, floorH: 3.0, pitch: 60, gablet: 0.3, roofTint: DARK_ROOF,
     eave: 1.0, chimney: 3, windows: 2.0, dormers: [{ n: 1, w: 7, side: 1 }, { n: 1, w: 5, side: -1 }],
     terrace: { side: 1, d: 4, len: 0.6, tables: 3, rail: true, stone: true } }],
-  [/Obserwatorium Meteorologiczne Kasprowy|Stacja IMGW/, { wall: 'stone', floors: 2, pitch: 25, hip: 1, roofTint: GREY_ROOF, windows: 3 }],
-  [/Górna stacja kolei linowej Kasprowy/, { wall: 'stone', floors: 2, pitch: 18, hip: 1, roofTint: GREY_ROOF }],
-  [/Pośrednia stacja kolei linowej/, { wall: 'stone', floors: 2, pitch: 30, roofTint: GREY_ROOF }],
-  [/Dolna stacja kolei linowej/, { wall: 'plaster', wallTint: CREAM, base: 1, floors: 3, pitch: 40, roofTint: DARK_ROOF }],
-  [/Włosienicy/, { wall: 'logs', floors: 1, pitch: 45, roofTint: SHINGLE }],
   [/^Téryho chata/, { wall: 'stone', floors: 2, pitch: 38, roofTint: GREY_ROOF }],
   [/^Zbojnícka chata/, { wall: 'logs', base: 1, floors: 2, pitch: 45, roofTint: GREY_ROOF }],
   [/Chata pri Zelenom plese/, { wall: 'logs', base: 1, floors: 2, pitch: 40, roofTint: GREY_ROOF }],
@@ -64,14 +81,7 @@ const HUTS = [
   [/^Rainerova chata/, { wall: 'stone', floors: 1, pitch: 45, roofTint: SHINGLE }],
   [/^Bilíkova chata/, { wall: 'logs', wallTint: DARK, floors: 2, pitch: 48, roofTint: SHINGLE }],
   [/^Skalnatá chata/, { wall: 'stone', floors: 1, pitch: 35, roofTint: GREY_ROOF }],
-  [/^Žiarska chata/, { wall: 'logs', base: 1, floors: 3, pitch: 45, roofTint: GREY_ROOF }],
-  [/^Ťatliakova chata/, { wall: 'logs', floors: 2, pitch: 48, roofTint: GREY_ROOF }],
   [/^Chata pod Soliskom/, { wall: 'logs', floors: 1, pitch: 40, roofTint: GREY_ROOF }],
-  [/Horský hotel Popradské pleso/, { wall: 'plaster', wallTint: CREAM, base: 1, floors: 4, pitch: 38, hip: 0.6, roofTint: DARK_ROOF }],
-  [/^Majláthova chata/, { wall: 'logs', floors: 1, pitch: 45, roofTint: SHINGLE }],
-  [/^Krivánska chata/, { wall: 'stone', floors: 2, pitch: 45, roofTint: SHINGLE }],
-  [/^Chata Zverovka/, { wall: 'logs', base: 1, floors: 2, pitch: 45, roofTint: GREY_ROOF }],
-  [/Chata pod Rysmi/, { wall: 'stone', floors: 2, pitch: 30, roofTint: GREY_ROOF }],
   [/Horská ubytovňa Hrebienok|Bistro Strednica/, { wall: 'logs', base: 1, floors: 3, pitch: 40, roofTint: DARK_ROOF }],
 ];
 // large or public buildings in the villages and towns: plastered, hipped roofs
@@ -426,26 +436,26 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture 
     // a terrace in front with tables and benches
     if (k.terrace) {
       const tr = k.terrace, sd = fz * (tr.side || 1), td = tr.d || 5, tl = (tr.len || 0.8) * W;
-      const c = L(tr.x || 0, 0, sd * (D / 2 + td / 2 + 0.3));
+      const c = L(tr.x || 0, 0, sd * (f.ext(sd) + td / 2 + 0.3));
       let gMax = -Infinity, gMin = Infinity;
       for (const i of [-0.5, 0, 0.5]) for (const j of [-0.5, 0.5]) {
-        const p = L((tr.x || 0) + i * tl, 0, sd * (D / 2 + 0.3 + (j + 0.5) * td));
+        const p = L((tr.x || 0) + i * tl, 0, sd * (f.ext(sd) + 0.3 + (j + 0.5) * td));
         const h = terrain.height(p.x, p.z); gMax = Math.max(gMax, h); gMin = Math.min(gMin, h);
       }
       const top = Math.max(gMax + 0.15, Math.min(main.yP, gMax + 1.2));
       mesher.col = ONE;
       mesher.box(tr.stone ? 'stone' : 'planks', c.x, gMin - 0.4, c.z, tl, top - gMin + 0.4, td, f.rot, tr.stone ? TILE.stone : TILE.planks);
       if (tr.rail) {                                          // a railing on the open sides
-        const r1 = L(tr.x || 0, 0, sd * (D / 2 + 0.3 + td - 0.05));
+        const r1 = L(tr.x || 0, 0, sd * (f.ext(sd) + 0.3 + td - 0.05));
         mesher.box('planks', r1.x, top, r1.z, tl, 1.0, 0.08, f.rot, TILE.planks);
         for (const ex of [-1, 1]) {
-          const r2 = L((tr.x || 0) + ex * (tl / 2 - 0.04), 0, sd * (D / 2 + 0.3 + td / 2));
+          const r2 = L((tr.x || 0) + ex * (tl / 2 - 0.04), 0, sd * (f.ext(sd) + 0.3 + td / 2));
           mesher.box('planks', r2.x, top, r2.z, 0.08, 1.0, td, f.rot, TILE.planks);
         }
       }
       const n = tr.tables || Math.max(1, Math.floor(tl / 3.2));
       for (let m = 0; m < n; m++) {
-        const x = (tr.x || 0) - tl / 2 + (m + 0.5) * tl / n, p = L(x, 0, sd * (D / 2 + 0.3 + td * 0.55));
+        const x = (tr.x || 0) - tl / 2 + (m + 0.5) * tl / n, p = L(x, 0, sd * (f.ext(sd) + 0.3 + td * 0.55));
         furniture(p.x, top, p.z, f.rot + Math.PI / 2);
       }
     }
@@ -479,7 +489,9 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture 
     // its front is the downhill long side (the terraces of the huts face the valley)
     const pf = L(0, 0, D / 2 + 4), pb = L(0, 0, -D / 2 - 4);
     const fz = terrain.height(pf.x, pf.z) <= terrain.height(pb.x, pb.z) ? 1 : -1;
-    const frame = { ox: b.x, oz: b.z, rot, W, D, fz };
+    // how far the building reaches out on a side (sd: +1 / -1 in the frame), over its wings
+    const ext = (sd) => Math.max(...(lk.wings || [{}]).map((wg) => sd * (wg.z || 0) * D * fz + (wg.across ? (wg.w ?? 1) * W : (wg.d ?? 1) * D) / 2));
+    const frame = { ox: b.x, oz: b.z, rot, W, D, fz, ext };
     let main = null;
     for (const [n, wg] of (lk.wings || [{}]).entries()) {
       const k = hipped({ ...lk, ...wg, ...('hip' in wg ? { gablet: wg.gablet || 0 } : {}) });
