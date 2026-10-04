@@ -22,6 +22,9 @@ export async function buildCards({ base = 'nature/', found, distanceTo }) {
   el.className = 'panel';
   document.body.appendChild(el);
   const close = () => el.classList.remove('show');
+  // Esc or a tap beside the card closes it too
+  addEventListener('keydown', (e) => { if (e.code === 'Escape') close(); });
+  addEventListener('pointerdown', (e) => { if (el.classList.contains('show') && !el.contains(e.target)) close(); }, true);
   function show(it) {
     let h;
     if (it.species) {

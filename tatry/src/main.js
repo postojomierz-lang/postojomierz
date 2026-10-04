@@ -836,6 +836,15 @@ async function main() {
       variants.push({ geo: o.geometry, geoFar: far[o.name] || o.geometry, mat, size: Math.max(size.x, size.y, size.z), hy: bb.max.y, big: o.name.startsWith('boulder'), items: [] });
     });
     const stones = variants.filter((v) => !v.big), boulders = variants.filter((v) => v.big);
+    // the whole stone off the footpath, not only its middle: its edge and a ring around it are tested too
+    // (a 4-8 m boulder set 3 m from the line used to block the path and one walked into it)
+    const offPath = (x, z, rad) => {
+      for (let j = 0; j < 8; j++) {
+        const a = j * Math.PI / 4;
+        if (terrain.maskAt(trailVisWide, x + Math.cos(a) * rad, z + Math.sin(a) * rad) > 0.02) return false;
+      }
+      return rad < 3 || terrain.maskAt(trailVisWide, x, z) <= 0.02 && offPath(x, z, rad * 0.5);
+    };
     const pick = (s) => { const g = s > 2.2 && boulders.length ? boulders : stones; return g[Math.floor(r() * g.length)]; };
     const count = tier(5000, 9000, 16000, 32000);
     const ip = photoRGBA, IW = innerBmp.width;
@@ -866,6 +875,7 @@ async function main() {
       const nrm = terrain.normal(x, z, 3);
       if (nrm.y < 0.55) continue; // no boulders glued to cliffs
       const s = (0.3 + Math.pow(r(), 3) * (d < 8 ? 0.8 : 2.8) * big) * Math.min(1, (nrm.y - 0.45) * 2.5);
+      if (s > 0.8 && !offPath(x, z, s * 0.7 + 0.6)) continue;
       const vr = pick(s);
       // rest on the slope: tilt towards the ground normal, random turn, sink a little
       q.setFromUnitVectors(up, nrm.clone().lerp(up, 0.4).normalize());
@@ -891,6 +901,7 @@ async function main() {
       const nrm = terrain.normal(x, z, 4);
       if (nrm.y > 0.75 || nrm.y < 0.1) continue;
       const s = 2.5 + Math.pow(r(), 2) * 7;
+      if (!offPath(x, z, s * 0.7 + 0.6)) continue;
       const vr = pick(s);
       q.setFromUnitVectors(up, nrm);
       qy.setFromAxisAngle(up, r() * 6.283);
@@ -1226,7 +1237,7 @@ async function main() {
     if (state.mode !== 'walk') return;
     if (state.free) {
       const n = nearestTrail(state.free.x, state.free.z);
-      state.s = n.i * trail.step; state.free = null; state.yawOff = 0;
+      state.s = n.i * trail.step; state.free = null; state.yawOff = 0; state.rev = false;
       $('tpn').classList.remove('show'); tpnT = 0; tpnAt = 0;
     } else {
       const p0 = at(state.s);
@@ -1705,6 +1716,26 @@ async function main() {
   composer.addPass(new RenderPass(scene, camera));
   const ssao = AO ? new SSAOPass(camera, { samples: ULTRA ? 16 : 10 }) : null;
   if (ssao) { composer.addPass(ssao); ssao.combineMat.uniforms.show.value = { show: 1, depth: -1 }[P.get('ao')] || 0; }
+  // fireflies: a lone pixel far brighter than its neighbours (a specular spike on a blade or a stone, or a
+  // NaN) would flicker as a yellow dot once the bloom spreads it; it is brought down to its neighbourhood
+  const despeckle = new ShaderPass({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+      float lum(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+      vec3 ok(vec3 c){ return (c.r == c.r && c.g == c.g && c.b == c.b) ? clamp(c, 0.0, 60.0) : vec3(0.0); }
+      void main(){
+        vec2 px = 1.0 / vec2(textureSize(tDiffuse, 0));
+        vec4 t = texture2D(tDiffuse, vUv);
+        vec3 c = ok(t.rgb);
+        float m = max(max(lum(ok(texture2D(tDiffuse, vUv + vec2(px.x, 0.0)).rgb)), lum(ok(texture2D(tDiffuse, vUv - vec2(px.x, 0.0)).rgb))),
+                      max(lum(ok(texture2D(tDiffuse, vUv + vec2(0.0, px.y)).rgb)), lum(ok(texture2D(tDiffuse, vUv - vec2(0.0, px.y)).rgb))));
+        float l = lum(c), cap = 1.5 * m + 0.4;
+        if (l > cap) c *= cap / l;
+        gl_FragColor = vec4(c, t.a);
+      }`,
+  });
+  composer.addPass(despeckle);
   const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.22, 0.5, 1.1);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -1800,14 +1831,25 @@ async function main() {
     if (FPS_CAP && now - lastFrame < 1000 / FPS_CAP - 3) { requestAnimationFrame(tick); return; }
     lastFrame = now;
     const dt = Math.min(0.1, clock.getDelta());
-    const grade = gradeAt(state.s);
-    // Tobler's hiking function: realistic walking pace on this slope (km/h)
-    const tobler = 6 * Math.exp(-3.5 * Math.abs(grade + 0.05));
     let dir = 0;
     if (keys.has('KeyW') || keys.has('ArrowUp')) dir = 1;
     if (keys.has('KeyS') || keys.has('ArrowDown')) dir = -1;
+    // on the trail W goes where one looks and S steps back: looking back down the trail W walks back. The
+    // figure turns to face the way it walks; the view stays where it is
+    if (dir !== 0 && !state.free && state.mode === 'walk') {
+      const rel = state.yaw + state.yawOff - headingAt(state.s);
+      if (Math.cos(rel) < 0) dir = -dir;
+    }
     if (state.auto && dir === 0) dir = 1;
     if (reveal.active) dir = 0;                         // the discovery's moment: the walk waits
+    if (dir !== 0 && !state.free && (dir < 0) !== !!state.rev) {
+      state.rev = dir < 0;
+      state.yaw += Math.PI; state.yawOff = Math.atan2(Math.sin(state.yawOff - Math.PI), Math.cos(state.yawOff - Math.PI));
+      if (state.auto && !keys.size) state.yawOff = 0;     // walking on by itself: the view turns ahead again
+    }
+    // the slope the way one faces; Tobler's hiking function: realistic walking pace on it (km/h)
+    const grade = gradeAt(state.s) * (state.rev && !state.free ? -1 : 1);
+    const tobler = 6 * Math.exp(-3.5 * Math.abs(grade + 0.05));
     const run = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 2.5 : 1;
     const v = tobler / 3.6 * state.speedMul * run * dir;
     if (state.free && state.mode === 'walk') {
@@ -1825,7 +1867,7 @@ async function main() {
     if (keys.has('KeyE')) state.pitchOff = Math.max(-1.2, state.pitchOff - dt);
 
     const p = state.free && state.mode === 'walk' ? { x: state.free.x, y: drawnHeight(state.free.x, state.free.z), z: state.free.z } : at(state.s);
-    const target = state.free ? state.yaw : headingAt(state.s);
+    const target = state.free ? state.yaw : headingAt(state.s) + (state.rev ? Math.PI : 0);
     let d = target - state.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     state.yaw += d * Math.min(1, dt * 0.7);
     // the figure walks at the pace it moves (seen in the drone view and the flyover)

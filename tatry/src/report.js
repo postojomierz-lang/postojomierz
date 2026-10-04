@@ -100,6 +100,7 @@ export function setupReport({ app, button, screenshot, context }) {
   async function open() {
     ctx = null; shot = null;
     try { ctx = context(); } catch (e) { ctx = { contextError: String(e) }; }
+    try { ctx = { ...ctx, ui: overlays(box) }; } catch (e) { /* only a hint */ }
     try { const s = await screenshot(); shot = s ? await shrink(s) : null; } catch (e) { shot = null; }
     $r('.rp-shot').src = shot || ''; $r('.rp-shot').style.display = shot ? 'block' : 'none';
     $r('.rp-where').textContent = ctx && ctx.where ? `📍 ${ctx.where}` : '';
@@ -127,6 +128,20 @@ export function setupReport({ app, button, screenshot, context }) {
   addEventListener('online', flush);
   setTimeout(flush, 5000);
   return { open };
+}
+
+// what lies over the 3D view or the map when the report is made (the screenshot has only the picture):
+// each visible panel or window on the page, with the start of its text
+function overlays(skip) {
+  const out = [];
+  for (const el of document.body.children) {
+    if (el === skip || /^(SCRIPT|STYLE|CANVAS)$/.test(el.tagName) || el.id === 'app' || el.id === 'map') continue;
+    const st = getComputedStyle(el), r = el.getBoundingClientRect();
+    if (st.display === 'none' || st.visibility === 'hidden' || +st.opacity < 0.1 || r.width < 2 || r.height < 2 || el.hidden) continue;
+    const name = (el.id ? '#' + el.id : el.tagName.toLowerCase()) + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\s+/).join('.') : '');
+    out.push(`${name} [${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}×${Math.round(r.height)}] ${(el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 70)}`);
+  }
+  return out.slice(0, 20);
 }
 
 // the common part of the context: device, screen, version
