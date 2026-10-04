@@ -2,11 +2,16 @@
 // and where they sleep; the plan suggests a route a day from a catalogue of classic Tatra walks, each one
 // measured on the trail graph (time by the PTTK norms, climb, the top, chains and exposed stretches from
 // OpenStreetMap). The weakest member of the group sets the limits; children walk slower. The days go from an
-// easy start, the hardest in the middle, a rest day every fourth day and an easy last day.
+// easy start, the hardest in the middle, a rest day every fourth day and an easy last day. With a start date
+// within the 16-day forecast the plan follows the weather: the valley walks (and the rest days) go to the
+// rainy and stormy days, the summits to the good ones.
+
+import { ICON, WMO, fetchTimeout } from './daylight.js';
 
 const KEY = 'szlakownik-stay';
 
-// classic walks: [name, start [lon, lat], goal [lon, lat], kind] — there and back the same way
+// classic walks: [name, start [lon, lat], goal [lon, lat], kind, via?, end?] — there and back the same way, or
+// with via (points after the goal) a loop back to the start, or with end a traverse to another trailhead
 // kinds: 'dolina' (valley, fine in bad weather), 'hala' (huts and passes), 'szczyt' (summits)
 const KUZ = [19.9806, 49.2700], PAL = [20.1046, 49.2547], KIRY = [19.8691, 49.2717], SIWA = [19.8086, 49.2798];
 const STRAZ = [19.9420, 49.2780], HREB = [20.2250, 49.1588];
@@ -39,6 +44,27 @@ const WALKS = [
   ['Skalnaté pleso', [20.2885, 49.1612], [20.2335, 49.1884], 'hala'],
   ['Téryho chata', HREB, [20.1990, 49.1902], 'hala'],
   ['Zbojnícka chata', HREB, [20.1676, 49.1766], 'hala'],
+  // loops and traverses
+  ['Kasprowy Wierch, zejście przez Halę Gąsienicową (pętla)', KUZ, [19.9816, 49.2318], 'szczyt', [[20.0072, 49.2434]]],
+  ['Dolina Pięciu Stawów i Morskie Oko przez Świstówkę (pętla)', PAL, [20.0487, 49.2136], 'hala', [[20.0713, 49.2014]]],
+  ['Hala Gąsienicowa przez Boczań, powrót Doliną Jaworzynki (pętla)', KUZ, [20.0072, 49.2434], 'hala', [[19.9895, 49.2600]]],
+  ['Rusinowa Polana: z Wierchu Porońca do Palenicy (przejście)', [20.0956, 49.2709], [20.0765, 49.2590], 'hala', [], PAL],
+  ['Sarnia Skała: ze Strążyskiej do Doliny Białego (przejście)', STRAZ, [19.9410, 49.2649], 'szczyt', [], [19.9575, 49.2828]],
+];
+
+// how to get to the trailheads: [point, note]; the nearest within 600 m
+const STARTS = [
+  [KUZ, 'Kuźnice: busy z Zakopanego (rondo Kuźnickie), parking tylko w mieście'],
+  [PAL, 'Palenica Białczańska: busy z Zakopanego (dworzec), parking płatny z rezerwacją internetową TPN'],
+  [KIRY, 'Kiry: busy z Zakopanego, parking płatny'],
+  [SIWA, 'Siwa Polana: busy z Zakopanego, parking płatny'],
+  [STRAZ, 'Strążyska: z centrum Zakopanego pieszo ok. 30 min lub busem'],
+  [[19.9575, 49.2828], 'Dolina Białego: z centrum Zakopanego pieszo ok. 20 min'],
+  [[20.0956, 49.2709], 'Wierch Poroniec: busy z Zakopanego w stronę Morskiego Oka'],
+  [HREB, 'Hrebienok: kolejka ze Starého Smokovca lub pieszo ok. 45 min'],
+  [[20.0632, 49.1176], 'Štrbské Pleso: elektriczka TEŽ, autobusy, parking płatny'],
+  [[20.1742, 49.1396], 'Tatranská Polianka: elektriczka TEŽ'],
+  [[20.2885, 49.1612], 'Tatranská Lomnica: elektriczka TEŽ, kolejka gondolowa do Skalnatého plesa'],
 ];
 
 // where one sleeps: [name, lon, lat]
@@ -71,27 +97,51 @@ function groupLimits(people, noChains) {
 }
 
 const km = (a, b) => Math.hypot((a[0] - b[0]) * 72.7, (a[1] - b[1]) * 111.2);
+const howTo = (p) => { const s = STARTS.find(([q]) => km(p, q) < 0.6); return s ? s[1] : ''; };
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// the daily forecast for the mountains (Hala Gąsienicowa, 1500 m; Open-Meteo gives 16 days): {date: day}
+async function dailyForecast() {
+  const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({
+    latitude: '49.2434', longitude: '20.0072', elevation: '1500', timezone: 'Europe/Warsaw', forecast_days: '16',
+    daily: 'weather_code,temperature_2m_max,precipitation_probability_max,precipitation_sum,wind_gusts_10m_max',
+  });
+  try {
+    const d = (await (await fetchTimeout(url)).json()).daily, out = {};
+    d.time.forEach((t, i) => {
+      const code = d.weather_code[i], rainP = d.precipitation_probability_max[i] ?? 0, rain = d.precipitation_sum[i] ?? 0;
+      const gust = d.wind_gusts_10m_max[i] ?? 0;
+      // bad for the summits: a storm, real rain or a gale on the ridges
+      const why = code >= 95 ? 'burze' : rainP >= 60 && rain >= 3 ? `deszcz ${Math.round(rain)} mm` : gust >= 70 ? `wiatr do ${Math.round(gust)} km/h` : '';
+      out[t] = { code, t: d.temperature_2m_max[i], rainP, bad: !!why, why };
+    });
+    return out;
+  } catch (e) { return null; }
+}
 
 // G: the trail graph; along(path): chains and alpine stretches (main.js hardAlong); onOpen(stops): show a walk
 export function setupStay({ G, along, onOpen, $ }) {
+  let fc = null;                             // the daily forecast, fetched with the first plan
   let measured = null;                       // the catalogue measured on the graph (once)
   function measure() {
     if (measured) return measured;
     measured = [];
-    for (const [name, a, b, kind] of WALKS) {
-      const s = G.snap(a[0], a[1], 400), t = G.snap(b[0], b[1], 400);
-      if (s < 0 || t < 0 || s === t) continue;
-      const path = G.routeVia([s, t, s]);
+    for (const [name, a, b, kind, via = [], end = null] of WALKS) {
+      const snap = (p) => G.snap(p[0], p[1], 400);
+      const stops = [a, b, ...via, end || a].map(snap);
+      if (stops.some((k) => k < 0) || stops[0] === stops[1]) continue;
+      const path = G.routeVia(stops);
       if (!path) continue;
       const sum = G.summary(path), o = along(path);
-      measured.push({ name, kind, start: a, stops: [s, t, s], time: sum.time, up: sum.up, dist: sum.dist, top: sum.maxE,
+      const shape = end ? 'przejście' : via.length ? 'pętla' : 'tam i z powrotem';
+      measured.push({ name, kind, start: a, goal: b, end: end || a, shape, stops, time: sum.time, up: sum.up, dist: sum.dist, top: sum.maxE,
         chains: o.chainM >= 20, alpine: o.alpineM >= 100 ? o.grade : 0 });   // a side path passing by does not count
     }
     return measured;
   }
 
   // the form: people, days, base, chains; kept on the device
-  let st = { people: [{ kid: false, fit: 1 }], days: 5, base: 0, noChains: false };
+  let st = { people: [{ kid: false, fit: 1 }], days: 5, base: 0, noChains: false, from: '' };
   try { st = { ...st, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch (e) { /* private mode */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* full */ } };
   $('st-base').innerHTML = BASES.map(([n], i) => `<option value="${i}">${n}</option>`).join('');
@@ -117,13 +167,22 @@ export function setupStay({ G, along, onOpen, $ }) {
     });
   }
   $('st-add').onclick = () => { st.people.push({ kid: true, age: 8 }); save(); renderPeople(); };
+  const tomorrow = ymd(new Date(Date.now() + 864e5));
+  if (!st.from || st.from < ymd(new Date())) st.from = tomorrow;   // a stay in the past: from tomorrow
+  $('st-from').value = st.from; $('st-from').min = ymd(new Date());
+  $('st-from').onchange = () => { st.from = $('st-from').value || tomorrow; save(); };
   $('st-days').value = st.days; $('st-base').value = st.base; $('st-nochains').checked = st.noChains;
   $('st-days').onchange = () => { st.days = Math.max(1, Math.min(14, +$('st-days').value || 5)); $('st-days').value = st.days; save(); };
   $('st-base').onchange = () => { st.base = +$('st-base').value; save(); };
   $('st-nochains').onchange = () => { st.noChains = $('st-nochains').checked; save(); };
   renderPeople();
 
-  $('st-go').onclick = () => {
+  $('st-go').onclick = async () => {
+    $('st-go').disabled = true;
+    if (!fc) fc = await dailyForecast();
+    $('st-go').disabled = false;
+    const day0 = new Date(st.from + 'T12:00'), dateOf = (d) => new Date(day0.getTime() + d * 864e5);
+    const wx = (d) => fc && fc[ymd(dateOf(d))];
     const lim = groupLimits(st.people, st.noChains), base = BASES[st.base];
     const all = measure();
     const fits = all.filter((w) => w.time / 60 <= lim.h && w.up <= lim.up && w.top <= lim.top && (lim.chains || !w.chains) && w.alpine <= lim.alpine);
@@ -145,26 +204,58 @@ export function setupStay({ G, along, onOpen, $ }) {
       // take an even spread from easy to hard, as many as there are walking days (no repeats while there are enough)
       for (let k = 0; k < walkDays.length; k++) picked.push(pool[Math.min(pool.length - 1, Math.round(k * (pool.length - 1) / Math.max(1, walkDays.length - 1)))]);
     }
-    const uniq = [...new Set(picked)];
+    // no two walks to the same place (a there-and-back and a loop or traverse with the same goal)
+    const uniq = [...new Set(picked)].filter((w, k, arr) => !arr.slice(0, k).some((q) => km(q.goal, w.goal) < 0.3));
+    // and the days left free filled with other walks that fit
+    for (const w of pool) if (uniq.length < walkDays.length && !uniq.some((q) => km(q.goal, w.goal) < 0.3)) uniq.push(w);
     // easy first, the hardest in the middle, easy last
     const asc = uniq.sort((a, b) => a.score - b.score), rest = asc.slice(1);
     const order = [...asc.slice(0, 1), ...rest.filter((w, k) => k % 2 === 0), ...rest.filter((w, k) => k % 2 === 1).reverse()];
     walkDays.forEach((d, k) => { plan[d] = order[k] || null; });
+
+    // the weather: a summit on a stormy, rainy or windy day swaps with a valley walk on a fair day, else with a
+    // fair rest day, else gives way to a valley walk not in the plan yet (days past the forecast count as fair)
+    const bad = (d) => !!(wx(d) && wx(d).bad), fair = (d) => !bad(d), days = [...Array(n).keys()];
+    const moved = new Set();
+    for (const d of days) {
+      const w = plan[d];
+      if (!bad(d) || restDays.has(d) || !w || w.kind === 'dolina') continue;
+      let e = days.find((k) => fair(k) && !restDays.has(k) && plan[k] && plan[k].kind === 'dolina');
+      if (e != null) { [plan[d], plan[e]] = [plan[e], plan[d]]; moved.add(d).add(e); continue; }
+      e = [...restDays].find(fair);
+      if (e != null) { restDays.delete(e); restDays.add(d); plan[e] = w; plan[d] = null; moved.add(d).add(e); continue; }
+      const v = fits.find((x) => x.kind === 'dolina' && !plan.some((q) => q && q.name === x.name));
+      if (v) { plan[d] = { ...v, i: all.indexOf(v) }; moved.add(d); }
+    }
 
     const kids = st.people.filter((p) => p.kid);
     const who = `${st.people.length - kids.length} ${st.people.length - kids.length === 1 ? 'dorosły' : 'dorosłych'}${kids.length ? ` i ${kids.length === 1 ? 'dziecko' : `${kids.length} dzieci`} (${kids.map((k) => `${k.age} l.`).join(', ')})` : ''}`;
     const hm = (m) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, '0')}`;
     let html = `<p class="st-sum">${n} ${n === 1 ? 'dzień' : 'dni'} · ${base[0]} · ${who}. Limity grupy: do ${hm(lim.h * 60)} h marszu, ${lim.up} m podejścia, `
       + `${lim.top} m n.p.m., ${lim.chains ? 'łańcuchy dozwolone' : 'bez łańcuchów'}${lim.pace > 1.02 ? `; czasy wydłużone ×${String(lim.pace).replace('.', ',')} (tempo dzieci)` : ''}.</p>`;
+    const known = days.filter((d) => wx(d)).length;
+    if (fc && known) html += `<p class="src">Prognoza dla gór (1500 m) na ${known === n ? 'wszystkie dni' : `${known} z ${n} dni (dalej jeszcze jej nie ma)`}`
+      + `${moved.size ? '; trasy przestawione tak, by w złą pogodę iść doliną albo odpoczywać' : ''}.</p>`;
+    else if (!fc) html += '<p class="src">Prognoza niedostępna (brak sieci?): plan bez pogody.</p>';
+    else html += '<p class="src">Prognoza sięga 16 dni naprzód: przy tym terminie plan jest jeszcze bez pogody.</p>';
     if (!fits.length) html += '<p>Żadna trasa z katalogu nie mieści się w limitach. Spróbuj z lepszą kondycją albo bez ograniczeń.</p>';
+    const DOW = ['nd', 'pn', 'wt', 'śr', 'cz', 'pt', 'sb'];
+    const head = (d, t) => {
+      const dt = dateOf(d), f = wx(d);
+      const chip = f ? `<span class="wx${f.bad ? ' bad' : ''}" title="${WMO[f.code] || ''}">${ICON(f.code)} ${Math.round(f.t)}° · ${f.rainP}%${f.bad ? ` · ${f.why}` : ''}</span>` : '';
+      return `${chip}<b>${DOW[dt.getDay()]} ${dt.getDate()}.${dt.getMonth() + 1}: ${t}</b>`;
+    };
     html += '<ol class="st-days">' + plan.map((w, d) => {
-      if (restDays.has(d)) return `<li><b>Dzień ${d + 1}: odpoczynek</b><span>Krótki spacer, Gubałówka kolejką, termy. Nogi odpoczną przed dalszymi trasami.</span></li>`;
-      if (!w) return `<li><b>Dzień ${d + 1}: wolny</b><span>Powtórz ulubioną trasę albo odpocznij.</span></li>`;
+      if (restDays.has(d)) return `<li>${head(d, 'odpoczynek')}<span>Krótki spacer, Gubałówka kolejką, termy. Nogi odpoczną przed dalszymi trasami.</span></li>`;
+      if (!w) return `<li>${head(d, 'wolny')}<span>Powtórz ulubioną trasę albo odpocznij.</span></li>`;
       const tags = [w.kind === 'dolina' ? '🌧 dobra na gorszą pogodę' : '', w.chains ? '⛓ łańcuchy' : '', w.alpine ? `⚠ teren T${w.alpine}` : ''].filter(Boolean).join(' · ');
-      return `<li><b>Dzień ${d + 1}: ${w.name}</b><span>${(w.dist / 1000).toFixed(1).replace('.', ',')} km tam i z powrotem · ok. ${hm(w.time * lim.pace)} h marszu · ↗ ${Math.round(w.up)} m · do ${Math.round(w.top)} m n.p.m. · dojazd ok. ${ride(w)} min${tags ? ` · ${tags}` : ''}</span>`
+      const there = howTo(w.start), back = w.shape === 'przejście' ? howTo(w.end) : '';
+      return `<li>${head(d, w.name)}<span>${(w.dist / 1000).toFixed(1).replace('.', ',')} km, ${w.shape} · ok. ${hm(w.time * lim.pace)} h marszu · ↗ ${Math.round(w.up)} m · do ${Math.round(w.top)} m n.p.m.${tags ? ` · ${tags}` : ''}</span>`
+        + `<span class="ride">🚌 dojazd ok. ${ride(w)} min${there ? `. ${there}` : ''}${back ? `. Powrót: ${back}` : ''}</span>`
         + `<button class="chip" data-w="${w.i}">Pokaż trasę</button></li>`;
     }).join('') + '</ol>'
-      + '<p class="src">Plan z katalogu klasycznych tras; czasy wg norm PTTK, bez postojów. Przed każdym wyjściem sprawdź prognozę i komunikat TOPR / HZS; w złą pogodę zamień dzień w górach na trasę dolinną (🌧).</p>';
+      + '<p class="src">Plan z katalogu klasycznych tras; czasy wg norm PTTK, bez postojów. Rozkłady busów i elektriczki: e-podroznik.pl, cp.sk. '
+      + 'Przed każdym wyjściem sprawdź prognozę godzinową na trasie i komunikat TOPR / HZS.</p>';
     $('st-plan').innerHTML = html;
     $('st-plan').querySelectorAll('[data-w]').forEach((b) => { b.onclick = () => onOpen(all[+b.dataset.w].stops); });
   };
