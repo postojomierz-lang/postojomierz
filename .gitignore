@@ -1,2 +1,5 @@
 bug_reports/
 .preview
+
+# dane terenu regionu: w Cloudflare R2 (tatry/tools/upload_r2.py), lokalnie tylko do budowania i testów
+/region/
