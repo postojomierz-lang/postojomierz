@@ -1,12 +1,13 @@
 // Any route of the Polish High Tatras in 3D: the route comes from the planner (stops in the address,
 // #r=lat,lon;lat,lon...), is found again along the trails (planner/graph.js), and only the data
-// around it is loaded from the region (tools/prepare_*.py with AREA=region, served in ../region/):
+// around it is loaded from the region (tools/prepare_*.py with AREA=region, sent to Cloudflare R2 by
+// tools/upload_r2.py and read from REGION_BASE; VITE_REGION_BASE=../region/ at build time reads the local copy):
 // height and photo blocks of 1024 m, the 1 m / 0.5 m tiles near the path, and the lakes, streams,
 // buildings and labels of that area. The result has the same shape as the Rysy data, so the rest of
 // the engine does not care where it came from.
 import { TrailGraph, stepMinutes } from './planner/graph.js';
 
-export const REGION_BASE = '../region/';
+export const REGION_BASE = import.meta.env.VITE_REGION_BASE || 'https://pub-5185677c9bfa4bd98f6768e62de07255.r2.dev/region/';
 const TRAILS = 'data/region/trails.json';
 // the local frame of all the data (tools/prepare.py): centre of the Rysy area
 const LAT0 = (49.168 + 49.214) / 2, LON0 = (20.040 + 20.112) / 2;

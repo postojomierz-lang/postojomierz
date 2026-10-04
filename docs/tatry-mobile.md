@@ -8,11 +8,14 @@ Stan na 3.10.2026. Dla nowej sesji Claude: przeczytaj całość, zanim zaczniesz
 - Decyzja: dane terenu (`region/`, ~550 MB) przenosimy do **Cloudflare R2**; GitHub Pages ma limit 1 GB, a repo ma już ~1,09 GB plików. Aplikacja zostaje na Pages, `ue5/` zostaje w repo (później osobne repo z Git LFS).
 - R2: bucket `szlakownik-dane` (Eastern Europe), publiczny adres `https://pub-5185677c9bfa4bd98f6768e62de07255.r2.dev`, Account ID `a12ee6da38d7f98dfd7914e814534e84`.
 - Właściciel utworzył Account API token (Object Read & Write, tylko ten bucket) i wpisał zmienne środowiska: `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_PUBLIC_URL`. Wartości nigdy nie wypisuj ani nie wklejaj; sprawdzaj tylko, czy są ustawione.
-- CORS bucketu (ustawia właściciel): GET/HEAD z `https://postojomierz-lang.github.io`, `http://localhost:5173`, `http://localhost:8765`.
+- CORS bucketu (ustawiony i sprawdzony 4.10): GET/HEAD z `https://postojomierz-lang.github.io`, `http://localhost:5173`, `http://localhost:8765`; ExposeHeaders `ETag`, `Content-Length`.
+- Zadania 1 i 2 zrobione (4.10): `region/` jest w R2 pod kluczem `region/` (18 220 plików, 551 MB); `REGION_BASE` w `tatry/src/region.js` = `https://pub-…r2.dev/region/` (budowanie z `VITE_REGION_BASE=../region/` czyta lokalną kopię). `sw.js` nie dotyka danych 3D, więc bez zmian.
+- Wysyłka: `python3 tatry/tools/upload_r2.py` (tylko zmienione pliki po MD5/ETag; `--dry-run`, `--delete`). Cache-Control: `meta.json` 5 min, reszta 1 dzień. Bez boto3 (podpis SigV4 w skrypcie, potrzebne tylko `requests`).
+- Test 3D w tym środowisku: Chromium nie przechodzi przez proxy do r2.dev; w Playwright przekieruj zapytania `r2.dev` przez `page.route` + `curl` (prawdziwe nagłówki CORS z R2).
 
 Zadania bieżące (po kolei):
-1. Sprawdzić, czy 5 zmiennych R2 jest widocznych, i wysłać jeden plik testowy do bucketu (S3 API, endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`), odczytać go przez `R2_PUBLIC_URL` (też z nagłówkiem Origin, żeby sprawdzić CORS).
-2. Napisać `tatry/tools/upload_r2.py`: wysyła `region/` (tylko zmienione pliki, poprawne Content-Type, Cache-Control), potem przełączyć `REGION_BASE` w `tatry/src/region.js` (i miejsca używające `../region/`, w tym `sw.js`/offline) na adres R2; test 3D i planera.
+1. ~~Sprawdzić, czy 5 zmiennych R2 jest widocznych, i wysłać jeden plik testowy do bucketu (S3 API, endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`), odczytać go przez `R2_PUBLIC_URL` (też z nagłówkiem Origin, żeby sprawdzić CORS).~~ Zrobione.
+2. ~~Napisać `tatry/tools/upload_r2.py`: wysyła `region/` (tylko zmienione pliki, poprawne Content-Type, Cache-Control), potem przełączyć `REGION_BASE` w `tatry/src/region.js` (i miejsca używające `../region/`, w tym `sw.js`/offline) na adres R2; test 3D i planera.~~ Zrobione (test: Kuźnice → Kasprowy z R2, 453 pliki bez błędów; planer OK).
 3. Usunąć `region/` z publikowanej strony (najlepiej automat GitHub Actions publikujący tylko `rysy/`, `plastic-front/` i pliki z katalogu głównego; właściciel przełącza Settings → Pages → Source na „GitHub Actions”).
 4. Rozszerzenie regionu na zachód (Chochołowska, Wołowiec, Kominiarski; do ~19,68°E) — dane od razu do R2. Roháče w pełnej jakości po wgraniu kafli ZBGIS na gałąź `dane-zbgis` (19,68–19,86°E, 49,16–49,23°N).
 5. Przed produkcją: własna domena w R2 (np. `dane.szlakownik.pl`), bo r2.dev ma limit zapytań i nie cache'uje.
