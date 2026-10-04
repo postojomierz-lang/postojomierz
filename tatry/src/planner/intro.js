@@ -3,7 +3,7 @@
 const KEY = 'szlakownik-intro';
 const SLIDES = [
   ['🏔', 'Witaj w Szlakowniku', 'Planer tras po znakowanych szlakach Tatr, spacer po trasie w 3D, nawigacja GPS z mapą offline i odkrywanie tatrzańskiej przyrody.'],
-  ['🗺', 'Zaplanuj trasę', 'Kliknij na mapie start i cel (możesz dodać punkty pośrednie). Zobaczysz czas przejścia według norm PTTK, profil, zachód słońca i prognozę pogody na szczycie. Przycisk 🌦 pokazuje pogodę nad szczytami i schroniskami.'],
+  ['🗺', 'Zaplanuj trasę', 'Dotknij mapy przy szlaku: start, potem cel. Kolejne dotknięcia dodają punkty, przeciągnięcie linii trasy wstawia punkt pośredni, dotknięcie punktu go usuwa, a punkt można przesunąć. Przycisk ⤢ powiększa mapę, panel przesuniesz też palcem. Zobaczysz czas przejścia według norm PTTK, profil, zachód słońca i prognozę pogody na szczycie. Przycisk 🌦 pokazuje pogodę nad szczytami i schroniskami.'],
   ['🌿', 'Przejdź ją w 3D i odkrywaj', '„Idź w 3D” pokazuje trasę w trójwymiarze, z pogodą z prognozy na godzinę, o której tam będziesz. Podchodząc do roślin, zwierząt, szczytów i stawów, odkrywasz je: karty ze zdjęciem, punkty, odznaki i wyzwania.'],
   ['🧭', 'Na szlaku', 'Nawigacja GPS prowadzi do celu i ostrzega o burzy i silnym wietrze. Przed wyjściem pobierz mapę na offline. W razie wypadku czerwony przycisk SOS: TOPR 985 / 601 100 300, pozycja do wysłania SMS-em.'],
 ];

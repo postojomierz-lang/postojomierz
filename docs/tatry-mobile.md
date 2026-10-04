@@ -93,7 +93,7 @@ Szczegóły każdej funkcji są w `tatry/README.md` (sekcje po polsku). Pozosta�
 - Tabele: `profiles` (z `look` jsonb), `walks`, `peaks`, `groups`, `group_members`, `group_routes`, `messages`, `live_positions`, `discoveries`, `bug_reports`.
 - **Zgłoszenia 🐞:** tabela `bug_reports`, którą anon może wstawiać i czytać przez 60 dni. Odczyt:
   `tools/bug_reports.py` albo REST z kluczem anon (zrzut ekranu w `screenshot` jako data URL, kontekst w `context`).
-  Ostatnie przejrzane zgłoszenie: **nr 49** (A55, Kuźnice → Giewont, 3–4.10). Błędy z 24–48 poprawione w PR 208; pomysły (26, 29, 30, 32, 34, 37–43, 46, 49) czekają na decyzję właściciela.
+  Ostatnie przejrzane zgłoszenie: **nr 49** (A55, Kuźnice → Giewont, 3–4.10). Błędy z 24–48 poprawione w PR 208. Pomysły zrobione: 29 znaki na drzewach (PR 210), 26 ławki/źródła (PR 211; kolejek na Kasprowy nie ma skąd wziąć), 30 i 46 zima/pora pod ⚙️ i fakty marszu w dolnym panelu (PR 209), 32 „Dowiedz się więcej” w karcie i planszy odkrycia, 37/39/41/42 klikalne miejsca z Wikipedią (PR 212), 49 📷 zdjęcie i panorama (PR 213), 40/43 ściany i skały (PR 214–215), 38 planer: punkty pośrednie były, a na telefonie panel ma trzy wysokości (przesuwanie uchwytu, przycisk ⤢ „większa mapa”) i opis we wstępie (PR po 223). Otwarte: 34 prawdziwe modele budynków (duże, na później).
 - **MCP Supabase:** odczyty i zapisy działają (`apply_migration`, `execute_sql`), ALE instrukcje uznane za
   niszczące (`drop …`, także `drop policy if exists`) serwer chce potwierdzić formularzem, którego sesja w chmurze
   nie pokazuje, więc wiszą 60 s i nic się nie wykonuje. Wdrażaj bez `drop` (np. samo `create policy`, gdy polityki

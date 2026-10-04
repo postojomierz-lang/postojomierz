@@ -229,15 +229,19 @@
   .in-dots i { width: 8px; height: 8px; border-radius: 50%; background: #d6d3cc; } .in-dots i.on { background: var(--accent); width: 20px; border-radius: 4px; }
   .in-btns { display: flex; justify-content: space-between; align-items: center; } .in-btns .primary { padding: 9px 18px; font-size: 15px; border-radius: 10px; }
   #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(246,245,241,.9); z-index: 1000; font-size: 15px; }
+  #b-bigmap { display: none; position: absolute; right: 10px; bottom: 28px; z-index: 900; width: 40px; height: 40px; padding: 0; border: 2px solid rgba(0,0,0,.2);
+              border-radius: 8px; background: #fff; font-size: 20px; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,.25); }
   @media (max-width: 760px) {
     #app { flex-direction: column-reverse; }
     #side { width: 100%; height: 50%; border-right: 0; border-top: 1px solid var(--line); border-radius: 14px 14px 0 0;
             box-shadow: 0 -3px 14px rgba(0,0,0,.14); transition: height .2s; }
     #side.tall { height: 88%; }
+    #side.low { height: 22%; }
+    #b-bigmap { display: block; }
     .wx-bar { bottom: 8px; padding: 6px 10px; }
     .wx-hour { margin: 5px 0 2px; }
     .wx-note { font-size: 10px; }
-    #grab { display: flex; justify-content: center; padding: 6px 0 0; cursor: pointer; }
+    #grab { display: flex; justify-content: center; padding: 8px 0 6px; cursor: pointer; touch-action: none; }
     #grab i { width: 38px; height: 4px; border-radius: 2px; background: #cfccc4; }
     header { padding-top: 4px; }
     .brand small { display: none; }
