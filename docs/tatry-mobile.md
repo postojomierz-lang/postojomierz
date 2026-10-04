@@ -63,7 +63,8 @@ Szczegóły każdej funkcji są w `tatry/README.md` (sekcje po polsku). Pozosta�
   - `?lornetka=0`: sceny bez lornetki;
   - `?zima=1|0`, `?pogoda=…`, `?start=YYYY-MM-DDTHH:MM`, `?trawa=0`;
   - `?grupa=demo`: trzy zmyślone osoby z grupy na szlaku.
-- Do testów: `window.__rysy` (stan 3D) i `window.__planner` (mapa, `path`, `stops`).
+  - `?odmaz=0` / `?odmaz=pokaz`: bez odmazywania ścian (porównanie) / ściany objęte odmazywaniem na czerwono.
+- Do testów: `window.__rysy` (stan 3D; `__rysy.pick(x, y)` mówi, jaka siatka jest pod punktem ekranu) i `window.__planner` (mapa, `path`, `stops`).
 - Shadery: każdy fragment używający wspólnych uniformów (`wetK`, `winterK`, …) musi je zadeklarować. Brak deklaracji już raz ukrył skały i łańcuchy, więc sprawdzaj konsolę.
 
 ## 4. Supabase
