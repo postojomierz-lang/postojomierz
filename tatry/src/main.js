@@ -16,6 +16,7 @@ import { Sound } from './sound.js';
 import { buildAnimals } from './animals.js';
 import { buildBuildings, buildingFlats } from './buildings.js';
 import { buildChains } from './chains.js';
+import { buildCross } from './cross.js';
 import { buildTrailMarks } from './trailmarks.js';
 import { buildSigns } from './signs.js';
 import { buildLabels, placeId, CATS } from './labels.js';
@@ -767,6 +768,7 @@ async function main() {
   const steps = buildSteps({ scene, terrain, trail, TH, shade, sections, rockTex: texture(await bitmap('textures/mossy_rock_diff.jpg'), aniso) });
   const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6, ...(RI ? { chainOK: RI.chainAt } : {}),
     maxDistance: tier(120, 160, 220, 300) });
+  const cross = buildCross({ scene, terrain, shade });          // the cross on Wielki Giewont
   status('Wypuszczanie zwierząt…'); await frame();
   // height of the surface actually drawn at (x, z): the 1 m patch near the camera, the 6 m mesh elsewhere
   const drawnHeight = (x, z) => {
@@ -1403,8 +1405,15 @@ async function main() {
     labels.refresh(); renderLabelMenu();
     if (it.species) {
       const sp = it.species, r = RARITY[sp.rarity];
-      if (state.mode === 'walk' && !state.freeCam && P.get('odkrycie') !== '0' && !binoc.active && reveal.ready()) reveal.start(sp, it.pos, r.points);
-      else toast(`${GROUPS[sp.group].icon} Odkryto: <b>${sp.name}</b> <i>${sp.latin}</i><br>${r.name} · +${r.points} pkt`);
+      const can = state.mode === 'walk' && !state.freeCam && P.get('odkrycie') !== '0';
+      if (can && !binoc.active && reveal.ready()) reveal.start(sp, it.pos, r.points);
+      else {
+        // the moment with the camera comes at most every 25 s (and not during a scene with the binoculars):
+        // the find skipped can still be seen with a tap
+        seeLater = can ? { sp, pos: it.pos, pts: r.points } : null;
+        toast(`${GROUPS[sp.group].icon} Odkryto: <b>${sp.name}</b> <i>${sp.latin}</i><br>${r.name} · +${r.points} pkt`
+          + (seeLater ? '<br><button class="t-see">👁 Zobacz</button>' : ''), seeLater ? 7 : 4.5);
+      }
     } else toast(`✓ Odkryto: <b>${it.name}</b> · +${e.pts} pkt`);
     checkChallenges();
   } });
@@ -1455,7 +1464,18 @@ async function main() {
   function resetSession() { sess = { t: 0, fair: true, trace: [[0, 0]], sampled: 0, done: false, up: 0, lastH: null, peaks: new Set() }; }
   resetSession();
   let toastT = 0;
-  function toast(text) { $('toast').innerHTML = text; $('toast').classList.add('show'); toastT = 4.5; }
+  let seeLater = null;          // a find shown only as a notice: its camera moment on a tap (👁 Zobacz)
+  function toast(text, secs = 4.5) {
+    const t = $('toast'); t.innerHTML = text; t.classList.add('show'); toastT = secs;
+    t.style.pointerEvents = t.querySelector('button') ? 'auto' : 'none';
+  }
+  $('toast').addEventListener('click', (e) => {
+    if (!e.target.closest('.t-see') || !seeLater) return;
+    e.stopPropagation();
+    const f = seeLater; seeLater = null;
+    $('toast').classList.remove('show'); $('toast').style.pointerEvents = 'none'; toastT = 0;
+    if (state.mode === 'walk' && !reveal.active) { if (binoc.active) binoc.stop(); reveal.start(f.sp, f.pos, f.pts); }
+  });
   // the ghost: a pale hiker walking your best run of this route
   const ghost = new THREE.Group();
   {
@@ -1465,7 +1485,7 @@ async function main() {
     ghost.add(body, head); ghost.visible = false; scene.add(ghost);
   }
   function journalTick(dt, dir) {
-    if (toastT > 0 && (toastT -= dt) <= 0) $('toast').classList.remove('show');
+    if (toastT > 0 && (toastT -= dt) <= 0) { $('toast').classList.remove('show'); $('toast').style.pointerEvents = 'none'; }
     if (state.speedMul > 1) sess.fair = false;
     if (dir > 0 && !sess.done) {
       sess.t += dt;
@@ -1871,7 +1891,7 @@ async function main() {
       };
     } });
 
-  window.__rysy = { reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { cross, reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
