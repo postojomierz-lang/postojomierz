@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "startup|resume|compact",
+        "hooks": [ { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/handoff-load.sh\"", "timeout": 5 } ] }
+    ],
+    "PreCompact": [
+      { "matcher": "manual",
+        "hooks": [ { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/handoff-precompact.sh\"", "timeout": 5 } ] }
+    ]
+  }
+}
