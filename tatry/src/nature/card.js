@@ -7,7 +7,7 @@ import { placeId } from '../labels.js';
 import { placePoints } from './discover.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const KIND = { peak: 'Szczyt', pass: 'Przełęcz', lake: 'Staw', hut: 'Schronisko', fall: 'Wodospad', trail: 'Szlak' };
+const KIND = { peak: 'Szczyt', pass: 'Przełęcz', lake: 'Staw', hut: 'Schronisko', fall: 'Wodospad', trail: 'Szlak', spring: 'Źródło' };
 
 export async function buildCards({ base = 'nature/', found, distanceTo }) {
   let photos = {};
@@ -41,7 +41,8 @@ export async function buildCards({ base = 'nature/', found, distanceTo }) {
       h = (w && w.i ? `<img src="${esc(w.i)}" alt="${esc(it.name)}" loading="lazy" onerror="this.remove()">` : '')
         + `<h3>${esc(it.name)}</h3><div class="lat">${KIND[it.kind] || ''}${it.ele ? ` · ${it.ele} m n.p.m.` : ''}</div>`
         + (w ? `<p>${esc(w.x)}</p>${more(w.u)}` : '')
-        + `<p class="when">${f ? `Odwiedzone: ${f.date} (+${f.pts} pkt)` : `Jeszcze nieodwiedzone, +${placePoints(it.kind, it.ele)} pkt za dotarcie.`}</p>`
+        + (it.noFind ? `<p>${it.note === 'woda pitna' ? 'Woda pitna według OpenStreetMap.' : 'Źródło. Jakość wody niesprawdzona: przed piciem przegotuj lub przefiltruj.'}</p>`
+          : `<p class="when">${f ? `Odwiedzone: ${f.date} (+${f.pts} pkt)` : `Jeszcze nieodwiedzone, +${placePoints(it.kind, it.ele)} pkt za dotarcie.`}</p>`)
         + (w ? `<div class="credit">${w.i ? `Fot. ${esc(w.a)}, ${esc(w.l)} · <a href="${esc(w.f)}" target="_blank" rel="noopener">Wikimedia Commons</a> · ` : ''}Tekst: Wikipedia, CC BY-SA 4.0</div>` : '');
     }
     el.innerHTML = `<button class="x" aria-label="Zamknij">✕</button>${h}`;

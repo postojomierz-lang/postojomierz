@@ -17,6 +17,7 @@ import { buildAnimals } from './animals.js';
 import { buildBuildings, buildingFlats } from './buildings.js';
 import { buildChains } from './chains.js';
 import { buildCross } from './cross.js';
+import { buildRest } from './rest.js';
 import { buildTrailMarks, planBlazes } from './trailmarks.js';
 import { buildSigns } from './signs.js';
 import { buildLabels, placeId, CATS } from './labels.js';
@@ -777,6 +778,12 @@ async function main() {
   const chains = buildChains({ scene, terrain, trail, TH, shade, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.6, ...(RI ? { chainOK: RI.chainAt } : {}),
     maxDistance: tier(120, 160, 220, 300) });
   const cross = buildCross({ scene, terrain, shade });          // the cross on Wielki Giewont
+  // benches, picnic tables, shelters and springs along the route (OpenStreetMap, tools/prepare_rest.py)
+  let rest = { labels: [], counts: {} };
+  try {
+    const restData = await (await fetch('data/region/rest.json')).json();
+    rest = buildRest({ scene, terrain, shade, trail, data: restData, isPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.3 });
+  } catch (e) { /* no data: none */ }
   status('Wypuszczanie zwierząt…'); await frame();
   // height of the surface actually drawn at (x, z): the 1 m patch near the camera, the 6 m mesh elsewhere
   const drawnHeight = (x, z) => {
@@ -1376,7 +1383,7 @@ async function main() {
   // the plants and animals of the catalogue along this route (src/nature) and what has been discovered
   const found = loadFound();
   const labels = buildLabels({ meta, terrain, camera, container: document.body, blockers: signs.posts.map((p) => p.at),
-    extra: RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }],
+    extra: [...(RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }]), ...rest.labels],
     nature: { spots, found }, onClick: (it) => cards.show(it) });
   const cards = await buildCards({ found, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
   // the plants of the catalogue at their spots: patches of flowers, herbs, ferns and dwarf shrubs
@@ -1914,7 +1921,7 @@ async function main() {
       };
     } });
 
-  window.__rysy = { cross, reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { cross, rest, reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
