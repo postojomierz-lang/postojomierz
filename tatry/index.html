@@ -118,8 +118,8 @@
     #controls .row:first-child button { padding: 6px 5px; }
     #profile { height: 44px; }
   }
-  /* phone upright: the facts in one strip at the top, the controls in a bar above the profile, time of
-     day and weather behind the ⚙ button */
+  /* phone upright: the facts in one strip over the profile at the bottom, the controls in a bar above it,
+     time of day, weather and winter behind the ⚙ button */
   /* frame rate, always on screen */
   #fps { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; pointer-events: none;
          font: 600 12px system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.45); border-radius: 10px; padding: 2px 8px; }
@@ -137,10 +137,18 @@
     #controls .phone-only { display: inline-block; }
     #bottom { left: 8px; right: 8px; bottom: 8px; }
     #place { top: 14%; font-size: 19px; }
-    #fps { top: 78px; }
+    #fps { top: 8px; }
+    /* the facts of the walk sit in the bottom panel, over the profile (src/main.js moves #hud there),
+       so that the top of the screen is all mountains */
+    #bottom #hud { position: static; background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 0 0 4px; }
+    #bottom #hud h1 { display: none; }
+    #bottom #hud .stats { grid-template-columns: repeat(6, auto); justify-content: space-between; align-items: baseline; font-size: 12px; gap: 0 5px; }
+    #bottom #hud .stats dt { font-size: 10px; } #bottom #hud .stats dd { white-space: nowrap; }
   }
   #fc-info { font-size: 12px; line-height: 1.35; margin-top: 6px; max-width: 300px; opacity: .92; }
   #controls label.flow { display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: .9; margin-top: 2px; }
+  /* phone upright: "time flows" and winter behind the ⚙ button too, with the time of day and the weather */
+  @media (max-width: 560px) and (orientation: portrait) { #controls:not(.more) > label.flow { display: none; } }
   /* phones held sideways: little height, the panels scroll instead of running off the screen */
   @media (max-height: 520px) {
     /* the right panel: narrow, every row wraps, scrolls if still too tall; the profile shrinks beside it */
@@ -195,7 +203,7 @@
     <button id="btn-mode" class="grow">🚁 Dron</button>
     <button id="btn-fly" class="grow" title="Przelot nad całą trasą (P)">✈ Przelot</button>
     <button id="btn-free" class="grow" title="Spacer poza szlakiem, do 150 m od niego (G)">🧭 Poza szlak</button>
-    <button class="phone-only" title="Pora dnia i pogoda" onclick="document.getElementById('controls').classList.toggle('more')">⚙</button>
+    <button class="phone-only" title="Pora dnia, pogoda, zima" onclick="document.getElementById('controls').classList.toggle('more')">⚙</button>
   </div>
   <label>Pora dnia <span id="hour-label">10:30</span></label>
   <input id="hour" type="range" min="4.5" max="21.5" step="0.25" value="10.5">

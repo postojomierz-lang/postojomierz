@@ -1298,6 +1298,21 @@ async function main() {
   hiker.visible = false;
 
   // ---------------------------------------------------------------- HUD
+  // a phone held upright: the facts of the walk go down into the bottom panel, over the profile (the top of
+  // the screen stays for the view), and the controls bar sits right above that panel
+  {
+    const upright = matchMedia('(max-width: 560px) and (orientation: portrait)');
+    const place = () => {
+      const hud = $('hud'), bottom = $('bottom');
+      if (upright.matches) { if (hud.parentNode !== bottom) bottom.prepend(hud); }
+      else if (hud.parentNode === bottom) document.body.insertBefore(hud, $('label-menu'));
+      requestAnimationFrame(() => { $('controls').style.bottom = upright.matches ? `${bottom.offsetHeight + 14}px` : ''; });
+    };
+    place();
+    upright.addEventListener('change', place);
+    addEventListener('resize', place);
+    if (window.ResizeObserver) new ResizeObserver(() => { if (upright.matches) $('controls').style.bottom = `${$('bottom').offsetHeight + 14}px`; }).observe($('bottom'));
+  }
   const pc = $('profile'), pg = pc.getContext('2d');
   let pmin = Infinity, pmax = -Infinity;
   for (const v of profile) { pmin = Math.min(pmin, v); pmax = Math.max(pmax, v); }

@@ -142,15 +142,23 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
   }
 
   let pollT = 0;
+  // the labels stay between the panels at the top and the buttons at the bottom (on a phone they cover the
+  // lower half); measured twice a second, as reading the layout every frame costs
+  let boundsT = 0;
+  const bounds = { top: 0, low: innerHeight };
+  function measure(h) {
+    let top = 0, low = h;
+    for (const id of ['hud', 'fps']) { const e = document.getElementById(id); if (e && e.getClientRects().length) { const r = e.getBoundingClientRect(); if (r.bottom < h * 0.4) top = Math.max(top, r.bottom); } }
+    for (const id of ['controls', 'bottom', 'hud']) { const e = document.getElementById(id); if (e && e.getClientRects().length) { const r = e.getBoundingClientRect(); if (r.top > h * 0.4) low = Math.min(low, r.top); } }
+    bounds.top = top; bounds.low = low;
+  }
   // every frame: the figures walk to their latest positions at a hiker's pace, the labels follow them
   function update(dt, from, hikerS = 0) {
     if (demo && trail) demoTick(hikerS);
     else if ((pollT -= dt) <= 0) { pollT = 15; poll(); }
     const w = innerWidth, h = innerHeight;
-    // the labels stay between the top panel and the buttons at the bottom (on a phone they cover the lower half)
-    let top = 0, low = h;
-    for (const id of ['hud']) { const e = document.getElementById(id); if (e && e.offsetParent) top = Math.max(top, e.getBoundingClientRect().bottom); }
-    for (const id of ['controls', 'bottom']) { const e = document.getElementById(id); if (e && e.offsetParent) { const r = e.getBoundingClientRect(); if (r.top > h * 0.4) low = Math.min(low, r.top); } }
+    if ((boundsT -= dt) <= 0) { boundsT = 0.5; measure(h); }
+    const { top, low } = bounds;
     const shown = [];
     for (const m of mates.values()) {
       const dx = m.target.x - m.pos.x, dz = m.target.z - m.pos.z, d = Math.hypot(dx, dz);
@@ -178,9 +186,9 @@ export function buildMates({ scene, camera, ground, terrain, demo = false, trail
       const far = dist > 1200;
       const av = m.avatar.startsWith('data:') ? `<i class="av" style="background-image:url(${m.avatar})"></i>` : `<i class="av">${esc(m.avatar)}</i>`;
       const html = far ? av : `${av}<div><b>${esc(m.name)}</b><small>${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'} · ${ago(m.t)}</small></div>`;
-      if (html !== m.html) { m.el.innerHTML = html; m.html = html; m.el.classList.toggle('far', far); }
+      if (html !== m.html) { m.el.innerHTML = html; m.html = html; m.el.classList.toggle('far', far); m.lw = m.el.offsetWidth; m.lh = m.el.offsetHeight; }
       const half = far ? 14 : 70;                                     // kept on the screen at its edges
-      shown.push({ m, dist, x: Math.max(half, Math.min(w - half, (v.x + 1) / 2 * w)), y: (1 - v.y) / 2 * h, lw: m.el.offsetWidth || 2 * half, lh: m.el.offsetHeight || 36 });
+      shown.push({ m, dist, x: Math.max(half, Math.min(w - half, (v.x + 1) / 2 * w)), y: (1 - v.y) / 2 * h, lw: m.lw || 2 * half, lh: m.lh || 36 });
       m.el.title = m.name;
     }
     // the nearest first; a label that would cover one already placed goes up above it
