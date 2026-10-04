@@ -15,6 +15,7 @@ const KEY = 'szlakownik-stay';
 // kinds: 'dolina' (valley, fine in bad weather), 'hala' (huts and passes), 'szczyt' (summits)
 const KUZ = [19.9806, 49.2700], PAL = [20.1046, 49.2547], KIRY = [19.8691, 49.2717], SIWA = [19.8086, 49.2798];
 const STRAZ = [19.9420, 49.2780], HREB = [20.2250, 49.1588];
+const STRB = [20.0632, 49.1176], LOMN = [20.2704, 49.1665], POLI = [20.1742, 49.1396];
 const WALKS = [
   ['Dolina Kościeliska i Hala Ornak', KIRY, [19.8587, 49.2292], 'dolina'],
   ['Dolina Chochołowska, Polana Chochołowska', SIWA, [19.7878, 49.2363], 'dolina'],
@@ -41,15 +42,21 @@ const WALKS = [
   ['Zamkovského chata', HREB, [20.2197, 49.1740], 'hala'],
   ['Chata pod Soliskom', [20.0632, 49.1176], [20.0410, 49.1441], 'hala'],
   ['Sliezsky dom (Velické pleso)', [20.1742, 49.1396], [20.1572, 49.1561], 'hala'],
-  ['Skalnaté pleso', [20.2885, 49.1612], [20.2335, 49.1884], 'hala'],
+  ['Skalnaté pleso', LOMN, [20.2335, 49.1884], 'hala'],
   ['Téryho chata', HREB, [20.1990, 49.1902], 'hala'],
   ['Zbojnícka chata', HREB, [20.1676, 49.1766], 'hala'],
   // loops and traverses
   ['Kasprowy Wierch, zejście przez Halę Gąsienicową (pętla)', KUZ, [19.9816, 49.2318], 'szczyt', [[20.0072, 49.2434]]],
   ['Dolina Pięciu Stawów i Morskie Oko przez Świstówkę (pętla)', PAL, [20.0487, 49.2136], 'hala', [[20.0713, 49.2014]]],
-  ['Hala Gąsienicowa przez Boczań, powrót Doliną Jaworzynki (pętla)', KUZ, [20.0072, 49.2434], 'hala', [[19.9895, 49.2600]]],
   ['Rusinowa Polana: z Wierchu Porońca do Palenicy (przejście)', [20.0956, 49.2709], [20.0765, 49.2590], 'hala', [], PAL],
   ['Sarnia Skała: ze Strążyskiej do Doliny Białego (przejście)', STRAZ, [19.9410, 49.2649], 'szczyt', [], [19.9575, 49.2828]],
+  // the Slovak side
+  ['Magistrala: Hrebienok, Zamkovského chata, Skalnaté pleso, zejście do Tatranskej Lomnicy (przejście)', HREB, [20.2197, 49.1740], 'hala', [[20.2335, 49.1884]], LOMN],
+  ['Magistrala: ze Štrbského Plesa przez Popradské pleso i Ostrvę do Sliezskiego domu (przejście)', STRB, [20.0794, 49.1549], 'hala', [[20.0914, 49.1502], [20.1323, 49.1515], [20.1572, 49.1561]], POLI],
+  ['Hrebienok, Sliezsky dom, zejście do Tatranskej Polianki (przejście)', HREB, [20.1572, 49.1561], 'hala', [], POLI],
+  ['Chata pod Soliskom, powrót Doliną Furkotną (pętla)', STRB, [20.0410, 49.1441], 'hala', [[20.0370, 49.1325]]],
+  ['Téryho chata, Priečne sedlo, Zbojnícka chata (pętla)', HREB, [20.1990, 49.1902], 'szczyt', [[20.1676, 49.1766]]],
+  ['Rysy od słowackiej strony (Chata pod Rysmi)', STRB, [20.0881, 49.1795], 'szczyt'],
 ];
 
 // how to get to the trailheads: [point, note]; the nearest within 600 m
@@ -64,15 +71,16 @@ const STARTS = [
   [HREB, 'Hrebienok: kolejka ze Starého Smokovca lub pieszo ok. 45 min'],
   [[20.0632, 49.1176], 'Štrbské Pleso: elektriczka TEŽ, autobusy, parking płatny'],
   [[20.1742, 49.1396], 'Tatranská Polianka: elektriczka TEŽ'],
-  [[20.2885, 49.1612], 'Tatranská Lomnica: elektriczka TEŽ, kolejka gondolowa do Skalnatého plesa'],
+  [LOMN, 'Tatranská Lomnica: elektriczka TEŽ, kolejka gondolowa do Skalnatého plesa'],
 ];
 
-// where one sleeps: [name, lon, lat]
+// where one sleeps: [name, lon, lat, Slovak side]
 const BASES = [
-  ['Zakopane', 19.9496, 49.2992], ['Kościelisko', 19.8900, 49.2900], ['Bukowina Tatrzańska', 20.1090, 49.3437],
-  ['Murzasichle', 20.0500, 49.3100], ['Štrbské Pleso', 20.0608, 49.1194], ['Starý Smokovec', 20.2205, 49.1393],
-  ['Tatranská Lomnica', 20.2795, 49.1650], ['Ždiar', 20.2620, 49.2710],
+  ['Zakopane', 19.9496, 49.2992, false], ['Kościelisko', 19.8900, 49.2900, false], ['Bukowina Tatrzańska', 20.1090, 49.3437, false],
+  ['Murzasichle', 20.0500, 49.3100, false], ['Štrbské Pleso', 20.0608, 49.1194, true], ['Starý Smokovec', 20.2205, 49.1393, true],
+  ['Tatranská Lomnica', 20.2795, 49.1650, true], ['Ždiar', 20.2620, 49.2710, true],
 ];
+const slovak = (p) => p[1] < 49.19;            // the trailheads: all the Slovak ones lie south of the main ridge
 
 // the limits of one person: hours of walking (PTTK time, before the pace factor), metres of climb, the top,
 // chains and exposure allowed, and the pace (children walk slower than the norms)
@@ -186,9 +194,10 @@ export function setupStay({ G, along, onOpen, $ }) {
     const lim = groupLimits(st.people, st.noChains), base = BASES[st.base];
     const all = measure();
     const fits = all.filter((w) => w.time / 60 <= lim.h && w.up <= lim.up && w.top <= lim.top && (lim.chains || !w.chains) && w.alpine <= lim.alpine);
-    // the effort of a walk, and the journey from the base (straight line, by bus or car ~35 km/h)
+    // the effort of a walk, and the journey from the base (straight line, by bus or car ~35 km/h; across the
+    // border the road goes round through Łysa Polana)
     const effort = (w) => w.time / 60 + w.up / 400;
-    const ride = (w) => Math.round(10 + km([base[1], base[2]], w.start) * 1.4 / 35 * 60);
+    const ride = (w) => Math.round(10 + km([base[1], base[2]], w.start) * 1.4 / 35 * 60 + (slovak(w.start) !== base[3] ? 40 : 0));
     // the order of the days: rest every fourth day (from 4 days on), the easy ones first and last, the hard in the middle
     const n = st.days, plan = new Array(n).fill(null);
     const restDays = new Set();
@@ -199,13 +208,21 @@ export function setupStay({ G, along, onOpen, $ }) {
     // a fit group skips the shortest strolls when there are enough walks that use its days well
     const cap = lim.h + lim.up / 400, worth = pool.filter((w) => effort(w) >= cap * 0.3);
     if (worth.length >= Math.min(pool.length, walkDays.length)) pool = worth;
+    // the walks near the base (up to 75 min away), with the nearest farther ones when there are too few
+    const near = pool.filter((w) => ride(w) <= 75).length, room = Math.max(near, walkDays.length + 4);
+    pool = [...pool].sort((a, b) => ride(a) - ride(b)).slice(0, room).sort((a, b) => a.score - b.score);
     const picked = [];
     if (pool.length) {
       // take an even spread from easy to hard, as many as there are walking days (no repeats while there are enough)
       for (let k = 0; k < walkDays.length; k++) picked.push(pool[Math.min(pool.length - 1, Math.round(k * (pool.length - 1) / Math.max(1, walkDays.length - 1)))]);
     }
-    // no two walks to the same place (a there-and-back and a loop or traverse with the same goal)
-    const uniq = [...new Set(picked)].filter((w, k, arr) => !arr.slice(0, k).some((q) => km(q.goal, w.goal) < 0.3));
+    // no two walks to the same place: of a there-and-back and a loop or traverse with the same goal, the loop
+    const uniq = [];
+    for (const w of new Set(picked)) {
+      const k = uniq.findIndex((q) => km(q.goal, w.goal) < 0.3);
+      if (k < 0) uniq.push(w);
+      else if (uniq[k].shape === 'tam i z powrotem' && w.shape !== 'tam i z powrotem') uniq[k] = w;
+    }
     // and the days left free filled with other walks that fit
     for (const w of pool) if (uniq.length < walkDays.length && !uniq.some((q) => km(q.goal, w.goal) < 0.3)) uniq.push(w);
     // easy first, the hardest in the middle, easy last
@@ -246,7 +263,7 @@ export function setupStay({ G, along, onOpen, $ }) {
       return `${chip}<b>${DOW[dt.getDay()]} ${dt.getDate()}.${dt.getMonth() + 1}: ${t}</b>`;
     };
     html += '<ol class="st-days">' + plan.map((w, d) => {
-      if (restDays.has(d)) return `<li>${head(d, 'odpoczynek')}<span>Krótki spacer, Gubałówka kolejką, termy. Nogi odpoczną przed dalszymi trasami.</span></li>`;
+      if (restDays.has(d)) return `<li>${head(d, 'odpoczynek')}<span>${base[3] ? 'Krótki spacer, kolejką na Hrebienok albo Skalnaté pleso, termy (np. AquaCity w Popradzie)' : 'Krótki spacer, Gubałówka kolejką, termy'}. Nogi odpoczną przed dalszymi trasami.</span></li>`;
       if (!w) return `<li>${head(d, 'wolny')}<span>Powtórz ulubioną trasę albo odpocznij.</span></li>`;
       const tags = [w.kind === 'dolina' ? '🌧 dobra na gorszą pogodę' : '', w.chains ? '⛓ łańcuchy' : '', w.alpine ? `⚠ teren T${w.alpine}` : ''].filter(Boolean).join(' · ');
       const there = howTo(w.start), back = w.shape === 'przejście' ? howTo(w.end) : '';
