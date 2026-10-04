@@ -11,7 +11,8 @@ const FADE = 12;
 const IGN = 'fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))))';
 
 // one card spruce of unit height (y 0..1), crown radius 0.5 at the bottom; scaled per instance
-function spruceGeometry(seed, cards) {
+// y0: where the crown starts (a share of the height); the trees carrying trail marks keep a bare trunk below
+function spruceGeometry(seed, cards, y0 = 0.07) {
   const r = rng(seed), rows = cards.length;
   const B = { pos: [], nor: [], uv: [], idx: [] }, T = { pos: [], nor: [], uv: [], idx: [] };
   const ASPECT = 0.32;                        // crown width / height of a typical spruce (vertical offsets)
@@ -53,7 +54,7 @@ function spruceGeometry(seed, cards) {
     }
     for (let s = 0; s < SEG; s++) { const a = base + s * 2; B.idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
   };
-  for (let y = 0.07; y < 0.975; y += 0.021 + r() * 0.008) {
+  for (let y = y0; y < 0.975; y += 0.021 + r() * 0.008) {
     const R = 0.5 * Math.pow(1 - y, 0.92) * (0.85 + r() * 0.3) + 0.015;
     const n = 5 + Math.floor(r() * 3), a0 = r() * 6.2832;
     for (let k = 0; k < n; k++) {
@@ -127,8 +128,9 @@ export async function buildTrees3D({ scene, shade, items, radius, base = 'models
 
   const VARIANTS = 3, CAP = 700;
   const variants = [];
-  for (let v = 0; v < VARIANTS; v++) {
-    const g = spruceGeometry(101 + v * 17, meta.cards);
+  // the last one: a spruce with its crown from ~30 % up, for the trees with a trail mark on the trunk (t.bare)
+  for (let v = 0; v <= VARIANTS; v++) {
+    const g = spruceGeometry(101 + v * 17, meta.cards, v === VARIANTS ? 0.3 : 0.07);
     const mk = (geo, mat, dm) => {
       const m = new THREE.InstancedMesh(geo, mat, CAP);
       m.customDepthMaterial = dm; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.count = 0;
@@ -149,12 +151,12 @@ export async function buildTrees3D({ scene, shade, items, radius, base = 'models
     treeFade.cam.value.copy(cam);
     if (Math.hypot(cam.x - last.x, cam.z - last.z) < 4) return;
     last = { x: cam.x, z: cam.z };
-    const counts = new Array(VARIANTS).fill(0);
+    const counts = new Array(VARIANTS + 1).fill(0);
     const r2 = (radius + 2) * (radius + 2);
     for (const list of items) for (const t of list) {
       const dx = t.x - cam.x, dz = t.z - cam.z;
       if (dx * dx + dz * dz > r2) continue;
-      const v = t.row % VARIANTS, V = variants[v];
+      const v = t.bare ? VARIANTS : t.row % VARIANTS, V = variants[v];
       const i = counts[v];
       if (i >= CAP) continue;
       Q.setFromAxisAngle(Y, t.rot);

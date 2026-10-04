@@ -7,7 +7,7 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
   const r = rng(21);
 
   // spruces (and young spruces near the upper tree line): baked impostors of the Poly Haven models
-  // x, y, z, 1 if the ground height includes the canopy, the measured height (lidar) or 0, the species
+  // x, y, z, 1 if the ground height includes the canopy (2: a tree planted for a trail mark, bare trunk below), the measured height (lidar) or 0, the species
   // (0 spruce, 1 dead spruce, 2 stone pine, 3 rowan)
   const n = spruce.length / 6;
   const trees = [], young = [], dead = [], limba = [], rowan = [];
@@ -33,10 +33,10 @@ export function buildForest({ scene, env, spruce, pine, quality, kinds, ground }
     const row = Math.floor(r() * vars.length), v = vars[row];
     const target = real || (isYoung ? 4 + r() * 5 : (1 - 0.35 * high) * (17 + r() * 13));
     const s = target / v.height;
-    const w = v.width * s * (0.9 + r() * 0.2), ty = y - (canopy ? target * 0.4 : 0.3);
+    const w = v.width * s * (0.9 + r() * 0.2), ty = y - (canopy === 1 ? target * 0.4 : 0.3);
     // ty, th, cw: foot, height and crown width of the 3D tree that replaces it near the camera
     list.push({ x, y: ty - v.base * s, z, w, h: v.height * s, row, rot: r() * 6.283, tint: r(), wind: isYoung ? 1.2 : 0.8,
-      ty, th: target, cw: w * 0.9 });
+      ty, th: target, cw: w * 0.9, bare: canopy === 2 });     // canopy 2: a tree carrying a trail mark (trailmarks.js)
   }
   const treeMesh = impostorMesh(kinds.spruce, trees);
   if (dead.length) scene.add(impostorMesh(kinds.deadspruce, dead));

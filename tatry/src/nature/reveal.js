@@ -5,6 +5,7 @@
 // Animals are followed where they really are (the 3D model nearby), plants and the rest at their spot.
 import * as THREE from 'three';
 import { GROUPS, RARITY } from './catalog.js';
+import { wikiSpecies } from './card.js';
 
 const CSS = `
 #rv-bars{position:fixed;inset:0;pointer-events:none;z-index:9000;opacity:0;transition:opacity .5s}
@@ -18,6 +19,7 @@ const CSS = `
 #rv-card{position:fixed;left:50%;bottom:11vh;z-index:9002;width:min(380px,calc(100% - 24px));transform:translate(-50%,40px) scale(.96);opacity:0;transition:all .45s cubic-bezier(.2,.9,.3,1.2);
   background:rgba(20,24,28,.92);color:#fff;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5);font:14px/1.4 system-ui,sans-serif;pointer-events:auto;cursor:pointer}
 #rv-card:not(.on){pointer-events:none;visibility:hidden;transition:opacity .3s,transform .3s,visibility 0s .3s}
+#rv-card .more{display:inline-block;margin:6px 0 0;font-size:13.5px;font-weight:600;color:#8cc4ff;text-decoration:none}
 #rv-card.on{opacity:1;transform:translate(-50%,0) scale(1);visibility:visible}
 #rv-card .ph{position:relative;height:190px;overflow:hidden;background:#111}
 #rv-card .ph::before{content:'';position:absolute;inset:-20px;background:var(--ph) center/cover;filter:blur(16px) brightness(.55)}
@@ -89,7 +91,8 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
       + `<div class="b"><div class="g">${GROUPS[s.group].icon} ${GROUPS[s.group].name}</div>`
       + `<div class="n">${s.name}</div><div class="l">${s.latin}</div>`
       + `<div class="row"><span class="stars">${'★'.repeat(s.rarity)}${'☆'.repeat(4 - s.rarity)}</span><span class="rar">${rar.name}</span><span class="pts">+0</span></div>`
-      + `<div class="bonus"></div><div class="hint">stuknij, by iść dalej</div></div>`;
+      + `<div class="bonus"></div><a class="more" href="${wikiSpecies(s)}" target="_blank" rel="noopener">📖 Dowiedz się więcej ↗</a>`
+      + `<div class="hint">stuknij, by iść dalej</div></div>`;
     card.classList.add('on');
     // the points count up, then fly to the score
     const ptsEl = card.querySelector('.pts');
@@ -140,7 +143,7 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
     cur.phase = 'out'; cur.t = 0;
     card.classList.remove('on'); tag.classList.remove('on');
   }
-  card.addEventListener('click', (e) => { e.stopPropagation(); leave(); });
+  card.addEventListener('click', (e) => { e.stopPropagation(); if (!e.target.closest('a')) leave(); });   // the link opens, the card stays
   addEventListener('keydown', (e) => { if (cur && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.stopPropagation(); leave(); } }, true);
 
   // called every frame after the walk camera is set: overrides it during a reveal; returns the time scale
