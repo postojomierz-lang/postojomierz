@@ -7,9 +7,9 @@
 import * as THREE from 'three';
 import { BY_ID, GROUPS } from './nature/catalog.js';
 
-const ICON = { peak: '▲', pass: '⌒', lake: '≈', hut: '⌂', fall: '⇣', trail: '◆' };
-export const CATS = { peaks: 'Szczyty i przełęcze', water: 'Stawy i wodospady', huts: 'Schroniska', flora: 'Rośliny', fauna: 'Zwierzęta' };
-const catOf = (kind) => ({ peak: 'peaks', pass: 'peaks', trail: 'peaks', lake: 'water', fall: 'water', hut: 'huts', flora: 'flora', fauna: 'fauna' })[kind] || 'peaks';
+const ICON = { peak: '▲', pass: '⌒', lake: '≈', hut: '⌂', fall: '⇣', trail: '◆', spring: '💧' };
+export const CATS = { peaks: 'Szczyty i przełęcze', water: 'Stawy, wodospady, źródła', huts: 'Schroniska', flora: 'Rośliny', fauna: 'Zwierzęta' };
+const catOf = (kind) => ({ peak: 'peaks', pass: 'peaks', trail: 'peaks', lake: 'water', fall: 'water', spring: 'water', hut: 'huts', flora: 'flora', fauna: 'fauna' })[kind] || 'peaks';
 export const placeId = (l) => `${l.kind}:${l.name}`;
 
 // blockers: [{ x, y, z, tx, tz, nx, nz }] signposts (foot of the pole, trail direction and normal); while near, their boards keep the labels off them
@@ -31,7 +31,7 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
         + `<span class="ele">${known ? it.species.latin : g.name.toLowerCase()}</span>`;
       return;
     }
-    const ele = it.ele ? `<span class="ele">${it.ele} m n.p.m.</span>` : '';
+    const ele = it.ele ? `<span class="ele">${it.ele} m n.p.m.</span>` : it.note ? `<span class="ele">${it.note}</span>` : '';
     const done = found[placeId(it)] ? '<span class="ok">✓</span>' : '';
     it.el.firstChild.innerHTML = `<span class="ico">${ICON[it.kind] || '•'}</span><span class="nm">${it.name}</span>${ele}${done}`;
   };
@@ -81,7 +81,7 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
     for (const it of items) {
       const d = camera.position.distanceTo(it.pos);
       if (!cats[it.cat]) { if (it.visible) { it.el.classList.remove('on'); it.visible = false; } continue; }
-      const maxD = it.kind === 'peak' ? 16000 : it.kind === 'pass' ? 4500 : it.kind === 'lake' ? 5000
+      const maxD = it.kind === 'peak' ? 16000 : it.kind === 'pass' ? 4500 : it.kind === 'lake' ? 5000 : it.kind === 'spring' ? 500
         : it.species ? Math.max(it.kind === 'flora' ? 160 : 450, (it.species.far || 0) * 1.6) : 3500;
       let show = d < maxD && !it.hidden && d > 25;
       if (show) {

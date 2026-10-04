@@ -33,6 +33,7 @@ export function buildDiscovery({ items, found, placeId, onFind }) {
     if ((t += dt) < 0.4) return;
     t = 0;
     for (const it of items) {
+      if (it.noFind) continue;                                     // springs: shown, not scored
       const id = it.species ? it.id : placeId(it);
       if (found[id]) continue;
       const r = it.species ? (it.species.far || (it.species.group === 'bird' ? RADIUS.bird : RADIUS[it.kind])) : RADIUS[it.kind] || 50;

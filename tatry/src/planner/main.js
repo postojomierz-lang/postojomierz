@@ -48,7 +48,26 @@ const ob = offIdx && offIdx.bounds;
 const offMap = L.tileLayer('offline/{z}/{x}/{y}.webp', { minZoom: 11, maxNativeZoom: 15, maxZoom: 17,
   ...(ob ? { bounds: [[ob[1], ob[0]], [ob[3], ob[2]]] } : {}),
   attribution: 'Ortofotomapa i rzeźba: GUGiK, ÚGKK SR, GKÚ · mapa offline Tatry' });
-L.control.layers({ 'Mapa topograficzna': topo, 'OpenStreetMap': osm, 'Mapa offline (zdjęcie, poziomice)': offMap }, {}, { position: 'topright' }).addTo(map);
+// water and places to rest along the trails (OpenStreetMap, tools/prepare_rest.py), from zoom 14 on
+const restLayer = L.layerGroup();
+fetch('data/region/rest.json').then((r) => r.json()).then((d) => {
+  const REST = { bench: 'Ławka', table: 'Stół i ławki', shelter: 'Wiata' };
+  const h = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const dot = (lon, lat, o, text) => L.circleMarker([lat, lon], { radius: 5, weight: 1.5, fillOpacity: 0.9, bubblingMouseEvents: false, ...o })
+    .bindPopup(text).addTo(restLayer);
+  for (const [lon, lat, k] of d.r) dot(lon, lat, { color: '#5a3d22', fillColor: '#b98a5a', radius: 4 }, `🪵 ${REST[k]}`);
+  for (const [lon, lat, k, name] of d.w) {
+    dot(lon, lat, { color: '#0d4f8a', fillColor: k === 'pitna' ? '#2a8fe6' : '#9cc9ee' },
+      k === 'pitna' ? `💧 <b>${h(name || 'Woda pitna')}</b><br>woda pitna (OpenStreetMap)` : `💧 <b>${h(name || 'Źródło')}</b><br>jakość wody niesprawdzona: przegotuj lub przefiltruj`);
+  }
+}).catch(() => { /* no data */ });
+let restOn = true;
+const restSync = () => { const show = restOn && map.getZoom() >= 14; if (show && !map.hasLayer(restLayer)) restLayer.addTo(map); if (!show && map.hasLayer(restLayer)) restLayer.remove(); };
+map.on('zoomend', restSync);
+const restToggle = L.layerGroup();          // what the layers control switches (the dots themselves only from zoom 14)
+restToggle.on('add', () => { restOn = true; restSync(); }).on('remove', () => { restOn = false; restSync(); }).addTo(map);
+L.control.layers({ 'Mapa topograficzna': topo, 'OpenStreetMap': osm, 'Mapa offline (zdjęcie, poziomice)': offMap },
+  { '💧 Woda i 🪵 odpoczynek (od zbliżenia 14)': restToggle }, { position: 'topright' }).addTo(map);
 function useOffline(on) {
   if (on && !map.hasLayer(offMap)) { topo.remove(); osm.remove(); offMap.addTo(map); }
   if (!on && map.hasLayer(offMap) && !map.hasLayer(topo)) { offMap.remove(); topo.addTo(map); }
