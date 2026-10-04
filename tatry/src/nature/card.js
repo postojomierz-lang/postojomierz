@@ -11,7 +11,7 @@ import { placePoints } from './discover.js';
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const KIND = { peak: 'Szczyt', pass: 'Przełęcz', lake: 'Staw', hut: 'Schronisko', fall: 'Wodospad', trail: 'Szlak', spring: 'Źródło' };
 
-export async function buildCards({ base = 'nature/', found, distanceTo }) {
+export async function buildCards({ base = 'nature/', found, distanceTo, routeTo }) {
   let photos = {};
   try { photos = await (await fetch(base + 'photos.json')).json(); } catch (e) { /* no photos yet */ }
   let wiki = {};
@@ -45,6 +45,7 @@ export async function buildCards({ base = 'nature/', found, distanceTo }) {
     } else {
       const f = found[placeId(it)], title = wiki[it.name];
       h = `<div class="wk-img"></div><h3>${esc(it.name)}</h3><div class="lat">${KIND[it.kind] || ''}${it.ele ? ` · ${it.ele} m n.p.m.` : ''}</div>`
+        + (routeTo && it.pos ? routeTo(it.pos) : '')
         + (title ? `<p class="wk-text"><i>Wczytuję opis z Wikipedii…</i></p>${more(wikiPage(title))}` : '')
         + (it.noFind ? `<p>${it.note === 'woda pitna' ? 'Woda pitna według OpenStreetMap.' : 'Źródło. Jakość wody niesprawdzona: przed piciem przegotuj lub przefiltruj.'}</p>`
           : `<p class="when">${f ? `Odwiedzone: ${f.date} (+${f.pts} pkt)` : `Jeszcze nieodwiedzone, +${placePoints(it.kind, it.ele)} pkt za dotarcie.`}</p>`)
