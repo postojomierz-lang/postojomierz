@@ -832,7 +832,7 @@ async function main() {
       const mat = new THREE.MeshLambertMaterial({ map: o.material.map, normalMap: o.material.normalMap });
       patchShading(mat, shade);
       if (QUALITY !== 'low') rockDetail(mat);
-      variants.push({ geo: o.geometry, geoFar: far[o.name] || o.geometry, mat, size: Math.max(size.x, size.y, size.z), big: o.name.startsWith('boulder'), items: [] });
+      variants.push({ geo: o.geometry, geoFar: far[o.name] || o.geometry, mat, size: Math.max(size.x, size.y, size.z), hy: bb.max.y, big: o.name.startsWith('boulder'), items: [] });
     });
     const stones = variants.filter((v) => !v.big), boulders = variants.filter((v) => v.big);
     const pick = (s) => { const g = s > 2.2 && boulders.length ? boulders : stones; return g[Math.floor(r() * g.length)]; };
@@ -853,7 +853,9 @@ async function main() {
         // the 1 m map: stones in the scree, more and bigger where the ground is rough (boulder fields),
         // a few on gravel and at the foot of the walls, hardly any on meadows, none in the pines or the forest
         const rough = gc.r / 255;
-        const pAccept = gc.c === 3 ? 0.2 + Math.min(0.8, rough * 3) : gc.c === 8 ? 0.25 : gc.c === 2 ? 0.25 : gc.c === 4 ? 0.03 : 0;
+        // meadows above the trees (the alpine pastures and ridges, ~1550-1800 m and up) are stonier than those below
+        const pAccept = gc.c === 3 ? 0.2 + Math.min(0.8, rough * 3) : gc.c === 8 ? 0.25 : gc.c === 2 ? 0.25
+          : gc.c === 4 ? 0.03 + 0.12 * THREE.MathUtils.smoothstep(terrain.height(x, z), 1550, 1800) : 0;
         if (r() > pAccept) continue;
         if (gc.c === 3) big = 1 + Math.min(2.5, rough * 6);
       } else {
@@ -900,6 +902,47 @@ async function main() {
       dummy.updateMatrix();
       vr.items.push([dummy.matrix.clone(), 0.8 + r() * 0.25]);
       k++;
+    }
+    // outcrops on the passes and summits by the trail: on a grassy pass (Kondracka Przełęcz, Liliowe, Zawrat)
+    // the bedrock breaks through the turf in groups of blocks sunk to their tops, more of them close to the
+    // saddle or the top; the rules above keep almost every stone off a meadow, so they get their own turn
+    {
+      const tops = (meta.labels || []).filter((l) => l.kind === 'pass' || l.kind === 'peak');
+      const nearTrail = (x, z) => {
+        for (let i = 0; i < N; i += 10) if (Math.abs(trail.X[i] - x) < 300 && Math.abs(trail.Z[i] - z) < 300 && Math.hypot(trail.X[i] - x, trail.Z[i] - z) < 300) return true;
+        return false;
+      };
+      const per = tier(45, 60, 80, 100);
+      for (const t of tops) {
+        if (!inner.inside(t.x, t.z) || !nearTrail(t.x, t.z)) continue;
+        if (terrain.height(t.x, t.z) < 1450) continue;                  // forest summits: no bare rock
+        for (let c = 0; c < per; c++) {
+          const d = 5 + Math.pow(r(), 1.8) * 90, a = r() * 6.283;         // most of them close to the saddle or the top
+          const cx = t.x + Math.cos(a) * d, cz = t.z + Math.sin(a) * d;
+          const blocks = 3 + Math.floor(r() * 5), spread = 1.5 + r() * 3.5;
+          for (let b = 0; b < blocks; b++) {
+            const x = cx + (r() - 0.5) * spread * 2, z = cz + (r() - 0.5) * spread * 2;
+            if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 1.5)) continue;
+            const gc = groundClass(x, z);
+            // not in the forest or the water; among the dwarf pine some (the rock breaks through it there too)
+            if (gc && (gc.c === 6 || gc.c === 1 || (gc.c === 5 && r() > 0.5))) continue;
+            const nrm = terrain.normal(x, z, 3);
+            if (nrm.y < 0.5) continue;
+            const s = 1.4 + Math.pow(r(), 1.6) * 3.6;
+            const vr = pick(s);
+            q.setFromUnitVectors(up, nrm.clone().lerp(up, 0.3).normalize());
+            qy.setFromAxisAngle(up, r() * 6.283);
+            dummy.quaternion.copy(q).multiply(qy);
+            const sc = s / vr.size, sy = sc * (0.7 + r() * 0.5);
+            dummy.scale.set(sc * (0.8 + r() * 0.5), sy, sc * (0.8 + r() * 0.5));
+            // sunk by 25-45 % of its own height (a slab is much lower than it is wide): the tops of the
+            // bedrock, not stones lying about
+            dummy.position.set(x, ground(x, z) - vr.hy * sy * (0.25 + r() * 0.2), z);
+            dummy.updateMatrix();
+            vr.items.push([dummy.matrix.clone(), 0.9 + r() * 0.25]);
+          }
+        }
+      }
     }
     // levels of detail: the full rock near the camera (with its shadow), a tenth of the triangles further out, the
     // small stones gone in the distance; re-sorted as the camera moves (a few thousand rocks, cheap)
