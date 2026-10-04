@@ -5,7 +5,8 @@
 
 const LAYERS = 'koszulka termoaktywna (nie bawełna), polar, kurtka przeciwwiatrowa';
 
-// r: { time (min), up, down, maxE, hard (names of difficult stretches), margin (min before sunset, or
+// r: { time (min), up, down, maxE, hard (names of difficult stretches), osm (chains and alpine stretches
+// along the route, main.js hardAlong), margin (min before sunset, or
 // null), early (start before sunrise), date, w (forecast for the walk, or null) }
 export function packList(r) {
   const h = r.time / 60, out = [];
@@ -37,10 +38,19 @@ export function packList(r) {
   if (high || warm) add('slonce', 'Okulary przeciwsłoneczne, krem z filtrem, czapka z daszkiem', high ? 'powyżej lasu nie ma cienia' : 'słońce i ciepło');
   add('zapas', 'Zapasowa koszulka i skarpety', 'przebierzesz się po przepoceniu (wychłodzenie)');
 
-  // the route's hard parts
-  if (r.hard.length || r.maxE >= 2100) {
-    add('kask', 'Kask', r.hard.length ? `trudne odcinki: ${r.hard.join(', ')}` : 'łańcuchy i spadające kamienie wysoko', !!r.hard.length || r.maxE >= 2300);
-    add('rekawice', 'Rękawiczki do łańcuchów', 'łańcuchy są zimne i ostre');
+  // the route's hard parts: chains and exposed alpine stretches from OpenStreetMap (osm), the difficult
+  // stretches of corrections.js (hard), else only a guess from the height
+  const o = r.osm || { chainM: 0, alpineM: 0, chains: new Map(), alpine: new Map(), grade: 0 };
+  const metres = (len) => `ok. ${Math.max(10, Math.round(len / 10) * 10)} m`;
+  const named = (m) => [...m].filter(([n, len]) => n && len >= 5).map(([n]) => n).slice(0, 3);
+  const list = (m, total) => metres(total) + (named(m).length ? ` (${named(m).join(', ')})` : '');
+  const chains = o.chainM >= 5, alpineT = o.alpineM >= 20 ? o.grade : 0;
+  if (chains || alpineT || r.hard.length || r.maxE >= 2100) {
+    const why = [chains && `łańcuchy/klamry ${list(o.chains, o.chainM)}`, alpineT && `teren eksponowany T${alpineT}, ${String(Math.round(o.alpineM / 100) / 10).replace('.', ',')} km${named(o.alpine).length ? ` (${named(o.alpine).join(', ')})` : ''}`,
+      r.hard.length && `trudne odcinki: ${r.hard.join(', ')}`].filter(Boolean);
+    add('kask', 'Kask', why.length ? why.join('; ') : 'wysoko: spadające kamienie', why.length > 0 || r.maxE >= 2300);
+    if (chains || r.hard.length || r.maxE >= 2100) add('rekawice', 'Rękawiczki do łańcuchów', chains ? 'łańcuchy są zimne i ostre' : 'wysoko bywają łańcuchy', chains);
+    if (alpineT >= 4 || r.hard.length) add('ekspozycja', 'Pewny krok i brak lęku wysokości (dzieci tylko z asekuracją)', 'przepaście tuż przy szlaku', true);
   }
 
   // the dark

@@ -49,6 +49,48 @@ const ob = offIdx && offIdx.bounds;
 const offMap = L.tileLayer('offline/{z}/{x}/{y}.webp', { minZoom: 11, maxNativeZoom: 15, maxZoom: 17,
   ...(ob ? { bounds: [[ob[1], ob[0]], [ob[3], ob[2]]] } : {}),
   attribution: 'Ortofotomapa i rzeźba: GUGiK, ÚGKK SR, GKÚ · mapa offline Tatry' });
+// hard passages (OpenStreetMap, tools/prepare_hard.py): chains, staples, ladders and exposed alpine stretches
+// (SAC T4-T6). Their lines, cut into ~8 m steps, go into a 30 m grid; a route vertex within ~25 m of one is on it (OSM draws the chain and the trail as separate lines)
+const HARD = { grid: new Map(), ready: false };
+fetch('data/region/hard.json').then((r) => r.json()).then((d) => {
+  const KX = 72700, KZ = 111200;                    // metres a degree of longitude / latitude here
+  const put = (kind, name, grade, pts) => {
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, z0] = pts[i - 1], [x1, z1] = pts[i];
+      const n = Math.max(1, Math.ceil(Math.hypot((x1 - x0) * KX, (z1 - z0) * KZ) / 8));
+      for (let j = 0; j <= n; j++) {
+        const x = (x0 + (x1 - x0) * j / n) * KX, z = (z0 + (z1 - z0) * j / n) * KZ, key = `${Math.floor(x / 30)},${Math.floor(z / 30)}`;
+        if (!HARD.grid.has(key)) HARD.grid.set(key, []);
+        HARD.grid.get(key).push([x, z, kind, name, grade]);
+      }
+    }
+  };
+  for (const [name, pts] of d.c) put('c', name, 0, pts);
+  for (const [name, grade, pts] of d.a) put('a', name, grade, pts);
+  HARD.ready = true; HARD.KX = KX; HARD.KZ = KZ;
+  if (summary) updateDay();
+}).catch(() => { /* none: the 🎒 list judges by the height */ });
+// the chains and alpine stretches along a route: names (unnamed ones counted) and metres of each
+function hardAlong(p) {
+  const out = { chains: new Map(), alpine: new Map(), grade: 0, chainM: 0, alpineM: 0 };
+  if (!HARD.ready) return out;
+  let prev = null;
+  for (const k of p) {
+    const x = data.v[k][0] * HARD.KX, z = data.v[k][1] * HARD.KZ, cx = Math.floor(x / 30), cz = Math.floor(z / 30);
+    const step = prev ? Math.hypot(x - prev[0], z - prev[1]) : 0;
+    prev = [x, z];
+    let c = null, a = null;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      for (const h of HARD.grid.get(`${cx + i},${cz + j}`) || []) {
+        if ((h[0] - x) ** 2 + (h[1] - z) ** 2 > 625) continue;
+        if (h[2] === 'c') c = c || h; else if (!a || h[4] > a[4]) a = h;
+      }
+    }
+    if (c) { out.chainM += step; out.chains.set(c[3], (out.chains.get(c[3]) || 0) + step); }
+    if (a) { out.alpineM += step; out.alpine.set(a[3], (out.alpine.get(a[3]) || 0) + step); out.grade = Math.max(out.grade, a[4]); }
+  }
+  return out;
+}
 // water and places to rest along the trails (OpenStreetMap, tools/prepare_rest.py), from zoom 14 on
 const restLayer = L.layerGroup();
 fetch('data/region/rest.json').then((r) => r.json()).then((d) => {
@@ -238,7 +280,7 @@ async function updateDay() {
   else html += ` · <span class="ok">zapas ${hm(margin)}</span>`;
   if (sun.sunrise && t0 < sun.sunrise) html += `<br>Wyjście przed wschodem słońca (${hhmm(sun.sunrise)}): czołówka.`;
   $('d-sun').innerHTML = html;
-  const pack = { time: summary.time, up: summary.up, down: summary.down, maxE: summary.maxE, minE: summary.minE, margin, early: !!(sun.sunrise && t0 < sun.sunrise), date: t0, w: null, hard: hardOn(path) };
+  const pack = { time: summary.time, up: summary.up, down: summary.down, maxE: summary.maxE, minE: summary.minE, margin, early: !!(sun.sunrise && t0 < sun.sunrise), date: t0, w: null, hard: hardOn(path), osm: hardAlong(path) };
   renderPack(pack);
   // the forecast for the highest point of the route
   const req = ++dayReq;
