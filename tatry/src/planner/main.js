@@ -148,14 +148,14 @@ for (const ed of data.e) {
   L.polyline(pts, { color: c0, weight: 3.5, opacity: 0.95, interactive: false }).addTo(trails);
   if (ed.c[1]) L.polyline(pts, { color: C[ed.c[1]], weight: 3.5, dashArray: '8 8', interactive: false }).addTo(trails);
 }
-// huts, peaks, passes, lakes and waterfalls, more of them as you zoom in: huts and the high peaks first,
-// all peaks, lakes and waterfalls at 14, passes at 15
+// huts, peaks, passes, lakes, waterfalls, viewpoints and springs, more of them as you zoom in: huts and the
+// high peaks first, all peaks, lakes, waterfalls and viewpoints at 14, passes and springs at 15
 const layersAt = { 12: L.layerGroup(), 14: L.layerGroup(), 15: L.layerGroup() };
 for (const p of data.poi) {
   if (p.k === 'sign') continue;
-  const icon = { hut: '⌂', peak: '▲', lake: '💧', fall: '🌊' }[p.k] || '⌒';
+  const icon = { hut: '⌂', peak: '▲', lake: '💧', fall: '🌊', view: '👁', spring: '🚰' }[p.k] || '⌒';
   const label = `${icon} ${p.n}${p.e ? ' ' + p.e + ' m' : ''}`;
-  const z = p.k === 'hut' || (p.k === 'peak' && p.e >= 2150) ? 12 : p.k === 'pass' ? 15 : 14;
+  const z = p.k === 'hut' || (p.k === 'peak' && p.e >= 2150) ? 12 : p.k === 'pass' || p.k === 'spring' ? 15 : 14;
   L.marker([p.p[1], p.p[0]], { interactive: false, icon: L.divIcon({ className: 'poi' + (p.k === 'hut' ? ' hut' : ''), html: label, iconSize: null, iconAnchor: [4, 8] }) })
     .addTo(layersAt[z]);
 }

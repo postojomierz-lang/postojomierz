@@ -120,7 +120,7 @@ def copernicus(lon, lat):
     return h if h > 100 else float(next(b.sample([(lon, lat)]))[0])
 
 def poi_list(pois):
-    """The points of interest: huts, guideposts, peaks, passes, waterfalls and lakes."""
+    """The points of interest: huts, guideposts, peaks, passes, waterfalls, lakes, viewpoints and springs."""
     P = []
     for el in pois['elements']:
         t = el.get('tags', {})
@@ -130,6 +130,7 @@ def poi_list(pois):
         if not (REGION[0] <= lon <= REGION[2] and REGION[1] <= lat <= REGION[3]): continue
         kind = 'hut' if t.get('tourism') in ('alpine_hut', 'wilderness_hut') else 'sign' if t.get('information') == 'guidepost' else \
                'fall' if t.get('waterway') == 'waterfall' else 'lake' if t.get('natural') == 'water' else \
+               'view' if t.get('tourism') == 'viewpoint' else 'spring' if t.get('natural') == 'spring' else \
                'peak' if t.get('natural') == 'peak' else 'pass'
         if kind == 'lake' and t.get('water') not in (None, 'lake', 'pond'): continue
         name = t.get('name:pl') or t.get('name') or ''
@@ -154,7 +155,10 @@ def main():
     # waterfalls and named lakes (Wielka Siklawa, the stawy and plesá), for the planner's search
     water = overpass(f'[out:json][timeout:180];(node["waterway"="waterfall"]["name"]({s},{w},{n},{e});'
                      f'nwr["natural"="water"]["name"]({s},{w},{n},{e}););out center tags;', 'pois_water_v1')
-    pois = {'elements': pois['elements'] + water['elements']}
+    # and viewpoints and springs
+    views = overpass(f'[out:json][timeout:180];(nw["tourism"="viewpoint"]["name"]({s},{w},{n},{e});'
+                     f'node["natural"="spring"]["name"]({s},{w},{n},{e}););out center tags;', 'pois_views_v1')
+    pois = {'elements': pois['elements'] + water['elements'] + views['elements']}
     if os.environ.get('POI_ONLY'):    # only the points of interest, into the existing trails.json
         path = os.path.join(OUT, 'trails.json')
         out = json.load(open(path))
