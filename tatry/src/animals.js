@@ -271,8 +271,9 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
         play(an, 'Walk', 0.3);
       }
       an.calmT -= dt;
-      // the hiker comes close: flee
-      if (dist < (sp.panic || sp.flee) && an.state !== 'flee') {
+      // the hiker comes close: flee (not for a while after it was cornered at a lake or a wall)
+      an.cornered = Math.max(0, (an.cornered || 0) - dt);
+      if (dist < (sp.panic || sp.flee) && an.state !== 'flee' && !an.cornered) {
         an.state = 'flee'; an.fleeing = sp.slowFlee ? 12 : 6;
         const away = Math.atan2(an.x - cx, an.z - cz) + (r() - 0.5) * 0.8;
         const d = sp.slowFlee ? 60 : 150;
@@ -310,14 +311,13 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
           if (an.state === 'walk') { an.state = 'graze'; an.timer = 5 + r() * 10; play(an, 'Eating'); }
           else an.target = null;
         } else {
-          const want = Math.atan2(dx, dz);
-          let dy = want - an.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-          an.yaw += dy * Math.min(1, dt * (an.state === 'flee' ? 4 : 1.5));
-          const v = (an.state === 'flee' ? sp.run : sp.walk) * an.scale * (Math.abs(dy) > 1 ? 0.3 : 1);
-          const nx = an.x + Math.sin(an.yaw) * v * dt, nz = an.z + Math.cos(an.yaw) * v * dt;
-          // do not walk into lakes or up walls
-          if (terrain.maskAt(masks.lake, nx, nz) > 0 || terrain.normal(nx, nz, 2).y < 0.6) { an.target = an.state === 'flee' ? null : pickTarget(an); }
-          else { an.x = nx; an.z = nz; }
+          // round lakes and walls; no way on: a grazer picks another place, one fleeing stops and looks
+          const v = (an.state === 'flee' ? sp.run : sp.walk) * an.scale;
+          if (!stepTo(an, Math.atan2(dx, dz), v, dt, an.state === 'flee' ? 4 : 1.5, 0.6) && an.stuck > 0.5) {
+            if (an.state === 'walk') an.target = pickTarget(an);
+            else { an.group.home = { x: an.x, z: an.z }; an.state = 'idle'; an.timer = 3 + r() * 3; an.target = null; an.cornered = 6; play(an, 'Idle', 0.3); an.heard = false; }
+            an.stuck = 0;
+          }
         }
       }
       place(an, dist, dt);
@@ -356,15 +356,31 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
   }
 
   // ------------------------------------------------------------------ behaviour beyond grazing
+  // a lake or a wall ahead blocks the way: the first free heading either side of the wanted one (looked at
+  // 2 m ahead), so the animal runs round it; none free: it stops (an.stuck counts the seconds), instead of
+  // turning back and forth and running on the spot
+  const free = (x, z, wall = 0.55) => terrain.maskAt(masks.lake, x, z) <= 0 && terrain.normal(x, z, 2).y >= wall;
+  function stepTo(an, want, v, dt, turn, wall = 0.55) {
+    let dy = want - an.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    const ahead = (y) => free(an.x + Math.sin(y) * (2 + v * dt), an.z + Math.cos(y) * (2 + v * dt), wall);
+    let head = want;
+    if (!ahead(want)) {
+      head = null;
+      for (const o of [0.6, -0.6, 1.2, -1.2, 1.9, -1.9, 2.6, -2.6]) if (ahead(want + o)) { head = want + o; break; }
+      if (head === null) { an.stuck = (an.stuck || 0) + dt; return false; }
+      dy = Math.atan2(Math.sin(head - an.yaw), Math.cos(head - an.yaw));
+      turn = Math.max(turn, 5);
+    }
+    an.yaw += dy * Math.min(1, dt * turn);
+    const sp = v * (Math.abs(dy) > 1.2 ? 0.4 : 1), nx = an.x + Math.sin(an.yaw) * sp * dt, nz = an.z + Math.cos(an.yaw) * sp * dt;
+    if (!free(nx, nz, wall)) { an.stuck = (an.stuck || 0) + dt; return false; }
+    an.x = nx; an.z = nz; an.stuck = 0;
+    return true;
+  }
   const move = (an, tx, tz, speed, dt, turn = 3) => {
     const dx = tx - an.x, dz = tz - an.z, dd = Math.hypot(dx, dz);
     if (dd < 0.05) return dd;
-    const want = Math.atan2(dx, dz);
-    let dy = want - an.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-    an.yaw += dy * Math.min(1, dt * turn);
-    const v = speed * (Math.abs(dy) > 1.2 ? 0.4 : 1), nx = an.x + Math.sin(an.yaw) * v * dt, nz = an.z + Math.cos(an.yaw) * v * dt;
-    if (terrain.maskAt(masks.lake, nx, nz) > 0 || terrain.normal(nx, nz, 2).y < 0.55) { an.yaw += 0.8; return dd; }
-    an.x = nx; an.z = nz;
+    stepTo(an, Math.atan2(dx, dz), speed, dt, turn);
     return dd;
   };
   // returns true when the animal is driven by one of these states this frame
@@ -393,7 +409,8 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
         an.off = an.off || { a: r() * 6.28, d: 1.5 + r() * 1.5 };
         const tx = mum.x + Math.sin(mum.yaw + an.off.a) * an.off.d, tz = mum.z + Math.cos(mum.yaw + an.off.a) * an.off.d;
         const dd = Math.hypot(tx - an.x, tz - an.z);
-        if (dd > 1.2) { play(an, dd > 8 || mum.state === 'flee' || mum.state === 'chase' ? 'Gallop' : 'Walk', 0.3); move(an, tx, tz, dd > 8 ? sp.run : sp.walk * 1.3, dt); }
+        if (dd > 1.2 && !(an.stuck > 0.3)) { play(an, dd > 8 || mum.state === 'flee' || mum.state === 'chase' ? 'Gallop' : 'Walk', 0.3); move(an, tx, tz, dd > 8 ? sp.run : sp.walk * 1.3, dt); }
+        else if (dd > 1.2) { play(an, 'Idle'); an.stuck = Math.max(0, an.stuck - dt * 0.2); }
         else { play(an, mum.state === 'graze' ? 'Eating' : 'Idle'); an.yaw += (mum.yaw - an.yaw) * Math.min(1, dt); }
         return true;
       }
@@ -407,6 +424,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       play(an, 'Gallop', 0.2);
       const dd = move(an, prey.x, prey.z, sp.run * 1.05, dt, 5);
       if (dd < 1.6 && an.canCatch) { kill(prey, an); }
+      else if (an.stuck > 1.5) { an.stuck = 0; endChase(an); }   // the prey got across water or up a wall
       return true;
     }
     if (an.state === 'hunted') {                                // prey running from the nearest hunter
@@ -416,6 +434,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       const away = Math.atan2(an.x - hx, an.z - hz) + Math.sin(performance.now() / 900 + an.scale * 9) * 0.5;
       play(an, 'Gallop', 0.2);
       move(an, an.x + Math.sin(away) * 20, an.z + Math.cos(away) * 20, sp.run * (an.tired ? 0.85 : 1), dt, 4);
+      if (an.stuck > 1.5) { an.stuck = 0; an.state = 'idle'; an.timer = 4; play(an, 'Idle'); an.group.home = { x: an.x, z: an.z }; }   // cornered
       return true;
     }
     if (an.state === 'eat') {                                   // predators at the kill
