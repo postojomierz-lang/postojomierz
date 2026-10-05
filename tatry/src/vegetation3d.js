@@ -120,8 +120,10 @@ export async function buildTrees3D({ scene, shade, items, radius, base = 'models
   const [albedo, normal, bark] = await Promise.all([
     loadTexture(base + 'branch_albedo.webp', true), loadTexture(base + 'branch_normal.webp', false), loadTexture(base + 'bark.jpg', true)]);
   bark.wrapS = bark.wrapT = THREE.RepeatWrapping;
+  // alpha to coverage: the needle edges are smoothed by the multisampling (a plain alpha test left them
+  // sparkling as the view moved, most on ultra)
   const branchMat = patch(new THREE.MeshLambertMaterial({ map: albedo, normalMap: normal, normalScale: new THREE.Vector2(1, -1),
-    alphaTest: 0.5, side: THREE.DoubleSide }), shade, { upNormal: 0.3 });
+    alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide }), shade, { upNormal: 0.3 });
   const trunkMat = patch(new THREE.MeshLambertMaterial({ map: bark }), shade, { wind: 0.2 });
   const branchDepth = patch(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: albedo, alphaTest: 0.5, side: THREE.DoubleSide }), shade, { depth: true });
   const trunkDepth = patch(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), shade, { depth: true, wind: 0.2 });
@@ -275,7 +277,7 @@ export async function buildMugo3D({ scene, shade, items, radius, base = 'models/
   bark.wrapS = bark.wrapT = THREE.RepeatWrapping;
   const o = { fadeR: mugoFade.R, key: 'mugo3d' };
   const needleMat = patch(new THREE.MeshLambertMaterial({ map: albedo, normalMap: normal, normalScale: new THREE.Vector2(1, -1),
-    alphaTest: 0.5, side: THREE.DoubleSide }), shade, { ...o, upNormal: 0.5, wind: 0.8 });
+    alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide }), shade, { ...o, upNormal: 0.5, wind: 0.8 });
   const barkMat = patch(new THREE.MeshLambertMaterial({ map: bark, color: 0x6a5a4a }), shade, { ...o, wind: 0.4 });
   const needleDepth = patch(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: albedo, alphaTest: 0.5, side: THREE.DoubleSide }), shade, { ...o, depth: true, wind: 0.8 });
   const VARIANTS = 4, CAP = 500;

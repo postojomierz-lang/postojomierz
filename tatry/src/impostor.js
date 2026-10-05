@@ -57,9 +57,16 @@ const FRAG_SAMPLE = /* glsl */`
   vec4 impA = mix(texture2D(impAlbedo, vUvA), texture2D(impAlbedo, vUvB), vViewMix);
   if (impA.a < 0.5) discard;
 `;
+// with multisampling: the edge as coverage (alpha to coverage), half a pixel soft, instead of the hard cut
+// that sparkled as the view moved
+const FRAG_SAMPLE_AA = /* glsl */`
+  vec4 impA = mix(texture2D(impAlbedo, vUvA), texture2D(impAlbedo, vUvB), vViewMix);
+  float impCov = clamp((impA.a - 0.5) / max(fwidth(impA.a), 1e-4) + 0.5, 0.0, 1.0);
+  if (impCov <= 0.0) discard;
+`;
 
-export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1, tintAmount = 0.25, brightness = 1, upNormal = 0.2, fade = false }) {
-  const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1, tintAmount = 0.25, brightness = 1, upNormal = 0.2, fade = false, aa = false }) {
+  const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, alphaToCoverage: aa });
   const u = {
     impAlbedo: { value: albedo }, impNormal: { value: normal },
     impViews: { value: views }, impRows: { value: rows }, impTime: shade.time, impWind: { value: wind },
@@ -77,8 +84,8 @@ export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1,
         uniform sampler2D impAlbedo; uniform sampler2D impNormal; uniform float impBright;
         varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix;
         varying vec3 vBR; varying vec3 vBT; varying float vTint; varying float vTerrSh; uniform float winterK;\n` + FADE_F)
-      .replace('#include <map_fragment>', (fade ? FADE_TEST : '') + FRAG_SAMPLE + `
-        diffuseColor.rgb = impA.rgb * impBright * (1.0 + (vTint - 0.5) * ${(tintAmount * 2).toFixed(3)});`)
+      .replace('#include <map_fragment>', (fade ? FADE_TEST : '') + (aa ? FRAG_SAMPLE_AA : FRAG_SAMPLE) + `
+        diffuseColor.rgb = impA.rgb * impBright * (1.0 + (vTint - 0.5) * ${(tintAmount * 2).toFixed(3)});${aa ? '\n        diffuseColor.a = impCov;' : ''}`)
       .replace('#include <normal_fragment_maps>', `
         {
           vec3 nb = mix(texture2D(impNormal, vUvA).xyz, texture2D(impNormal, vUvB).xyz, vViewMix) * 2.0 - 1.0;
@@ -91,7 +98,7 @@ export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1,
         }`)
       .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n reflectedLight.directDiffuse *= vTerrSh;');
   };
-  m.customProgramCacheKey = () => 'impostor' + upNormal + fade;
+  m.customProgramCacheKey = () => 'impostor' + upNormal + fade + aa;
   return m;
 }
 
@@ -151,7 +158,7 @@ export function setImpostors(mesh, items) {
 }
 
 // loads models/impostors.json and the atlases of the listed kinds
-export async function loadImpostorKinds(base, names, shade, options = {}) {
+export async function loadImpostorKinds(base, names, shade, options = {}, aa = false) {
   const index = await (await fetch(base + 'impostors.json')).json();
   const tex = async (url, srgb) => {
     const b = await (await fetch(url)).blob();
@@ -166,7 +173,7 @@ export async function loadImpostorKinds(base, names, shade, options = {}) {
   await Promise.all(names.map(async (name) => {
     const meta = index[name];
     const [albedo, normal] = await Promise.all([tex(`${base}${name}_albedo.webp`, true), tex(`${base}${name}_normal.webp`, false)]);
-    const o = { albedo, normal, views: meta.views, rows: meta.rows, shade, ...(options[name] || {}) };
+    const o = { albedo, normal, views: meta.views, rows: meta.rows, shade, aa, ...(options[name] || {}) };
     kinds[name] = { meta, material: impostorMaterial(o), depth: impostorDepthMaterial(o) };
   }));
   return kinds;
