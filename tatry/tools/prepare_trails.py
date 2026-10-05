@@ -114,8 +114,10 @@ def copernicus(lon, lat):
             name = f'Copernicus_DSM_COG_10_N49_00_E0{e}_00_DEM'
             fetch(f'https://copernicus-dem-30m.s3.amazonaws.com/{name}/{name}.tif', f'cop/{name}.tif')
             _cop.append(rasterio.open(os.path.join(CACHE, 'cop', f'{name}.tif')))
-    src = _cop[0] if lon < 20 else _cop[1]
-    return float(next(src.sample([(lon, lat)]))[0])
+    # right at 20°E the tile on one side gives 0 (it gave the Kriváň trail 0 m heights): then the other one
+    a, b = (_cop[0], _cop[1]) if lon < 20 else (_cop[1], _cop[0])
+    h = float(next(a.sample([(lon, lat)]))[0])
+    return h if h > 100 else float(next(b.sample([(lon, lat)]))[0])
 
 def main():
     os.makedirs(OUT, exist_ok=True)

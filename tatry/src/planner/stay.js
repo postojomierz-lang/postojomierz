@@ -56,6 +56,7 @@ const WALKS = [
   ['Hrebienok, Sliezsky dom, zejście do Tatranskej Polianki (przejście)', HREB, [20.1572, 49.1561], 'hala', [], POLI],
   ['Chata pod Soliskom, powrót Doliną Furkotną (pętla)', STRB, [20.0410, 49.1441], 'hala', [[20.0370, 49.1325]]],
   ['Téryho chata, Priečne sedlo, Zbojnícka chata (pętla)', HREB, [20.1990, 49.1902], 'szczyt', [[20.1676, 49.1766]]],
+  ['Krywań (Kriváň) od Štrbskiego Plesa przez Jamské pleso', STRB, [20.0000, 49.1628], 'szczyt'],
   ['Rysy od słowackiej strony (Chata pod Rysmi)', STRB, [20.0881, 49.1795], 'szczyt'],
 ];
 
