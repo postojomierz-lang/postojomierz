@@ -1,27 +1,25 @@
-// "Skąd? Dokąd?": type a place (a hut, a peak, a pass, a signpost, a usual trailhead or lake), pick it from the
+// "Skąd? Dokąd?": type a place (a hut, a peak, a pass, a signpost, a usual trailhead, a lake or a waterfall), pick it from the
 // suggestions, and the route is planned between them on the marked trails. Polish letters are optional
 // ("lysa polana" finds Łysa Polana). The fields follow the route: points set on the map get the name of
 // the nearest place.
 
 import { NORMS } from './graph.js';
 
-// trailheads and lakes the trail data has no name for (lat, lon)
+// usual trailheads the trail data has no name for (the huts, peaks, passes, signposts, lakes and waterfalls come from it) (lat, lon)
 const EXTRA = [
   ['Palenica Białczańska (parking)', 49.2547, 20.1046, 'start'], ['Łysa Polana', 49.2667, 20.1172, 'start'],
-  ['Wodogrzmoty Mickiewicza', 49.2363, 20.0928, 'start'], ['Morskie Oko (staw)', 49.1972, 20.0716, 'lake'],
-  ['Czarny Staw pod Rysami', 49.1887, 20.0753, 'lake'], ['Zakopane, Kuźnice', 49.2700, 19.9806, 'start'],
+  ['Wodogrzmoty Mickiewicza', 49.2363, 20.0928, 'start'], ['Zakopane, Kuźnice', 49.2700, 19.9806, 'start'],
   ['Brzeziny', 49.2784, 20.0247, 'start'], ['Kiry (Dolina Kościeliska)', 49.2717, 19.8691, 'start'],
   ['Siwa Polana (Dolina Chochołowska)', 49.2798, 19.8086, 'start'], ['Wierch Poroniec', 49.2709, 20.0956, 'start'],
   ['Dolina Strążyska (wejście)', 49.2780, 19.9420, 'start'], ['Dolina Białego (wejście)', 49.2828, 19.9575, 'start'],
-  ['Wielki Staw Polski', 49.2105, 20.0390, 'lake'], ['Smreczyński Staw', 49.2140, 19.8500, 'lake'],
 ];
-const ICON = { hut: '⌂', peak: '▲', pass: '⌒', sign: '⊕', start: '🅿', lake: '💧' };
+const ICON = { hut: '⌂', peak: '▲', pass: '⌒', sign: '⊕', start: '🅿', lake: '💧', fall: '🌊' };
 const fold = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
 
 export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () => {} }) {
   // the places: named POIs (one per name, the hut or peak before a signpost of the same name) and the extras
   const seen = new Set(), places = [];
-  const order = { hut: 0, peak: 1, pass: 2, sign: 3 };
+  const order = { hut: 0, peak: 1, lake: 2, fall: 2, pass: 3, sign: 4 };
   for (const p of [...data.poi].sort((a, b) => order[a.k] - order[b.k])) {
     if (!p.n || seen.has(p.n)) continue;
     seen.add(p.n);
@@ -38,7 +36,7 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
     for (const p of places) {
       if (!words.every((w) => p.f.includes(w))) continue;
       const score = (p.f.startsWith(f) ? 0 : p.f.split(/[\s,(-]+/).some((w) => w.startsWith(words[0])) ? 1 : 2)
-        + ({ start: -0.4, hut: -0.3, lake: -0.2, peak: 0, pass: 0.3, sign: 0.5 }[p.k] || 0);
+        + ({ start: -0.4, hut: -0.3, lake: -0.2, fall: -0.2, peak: 0, pass: 0.3, sign: 0.5 }[p.k] || 0);
       out.push([score, p]);
     }
     // only places a marked trail comes to

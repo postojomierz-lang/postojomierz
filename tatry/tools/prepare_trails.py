@@ -9,7 +9,7 @@ snaps clicks to the nearest vertex). Output edges run between junctions.
 
 Run: python3 tools/prepare_trails.py
 """
-import json, math, os, sys, time, urllib.request, urllib.parse
+import json, math, os, re, sys, time, urllib.request, urllib.parse
 import numpy as np
 from pyproj import Transformer
 
@@ -119,6 +119,31 @@ def copernicus(lon, lat):
     h = float(next(a.sample([(lon, lat)]))[0])
     return h if h > 100 else float(next(b.sample([(lon, lat)]))[0])
 
+def poi_list(pois):
+    """The points of interest: huts, guideposts, peaks, passes, waterfalls and lakes."""
+    P = []
+    for el in pois['elements']:
+        t = el.get('tags', {})
+        if 'lon' in el: lon, lat = el['lon'], el['lat']
+        elif 'center' in el: lon, lat = el['center']['lon'], el['center']['lat']
+        else: continue
+        if not (REGION[0] <= lon <= REGION[2] and REGION[1] <= lat <= REGION[3]): continue
+        kind = 'hut' if t.get('tourism') in ('alpine_hut', 'wilderness_hut') else 'sign' if t.get('information') == 'guidepost' else \
+               'fall' if t.get('waterway') == 'waterfall' else 'lake' if t.get('natural') == 'water' else \
+               'peak' if t.get('natural') == 'peak' else 'pass'
+        if kind == 'lake' and t.get('water') not in (None, 'lake', 'pond'): continue
+        name = t.get('name:pl') or t.get('name') or ''
+        if kind != 'sign' and not name: continue
+        if kind == 'fall':
+            # ice falls (climbing in winter) and a river name are not places to walk to
+            if re.search(r'(?i)ľad|\blad\b', name) or name == 'Poprad': continue
+            name = {'Siklawa': 'Wielka Siklawa'}.get(name, name)    # the usual Polish name
+        ele = t.get('ele')
+        try: ele = round(float(str(ele).replace(',', '.').split()[0])) if ele else None
+        except ValueError: ele = None
+        P.append({'k': kind, 'n': name, 'p': [round(lon, 6), round(lat, 6)], 'e': ele})
+    return P
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     s, w, n, e = REGION[1], REGION[0], REGION[3], REGION[2]
@@ -126,6 +151,18 @@ def main():
     pois = overpass(f'[out:json][timeout:180];(node["tourism"~"alpine_hut|wilderness_hut"]({s},{w},{n},{e});'
                     f'way["tourism"="alpine_hut"]({s},{w},{n},{e});node["information"="guidepost"]({s},{w},{n},{e});'
                     f'node["natural"~"peak|saddle"]["name"]({s},{w},{n},{e}););out center tags;', 'pois_v2')
+    # waterfalls and named lakes (Wielka Siklawa, the stawy and plesá), for the planner's search
+    water = overpass(f'[out:json][timeout:180];(node["waterway"="waterfall"]["name"]({s},{w},{n},{e});'
+                     f'nwr["natural"="water"]["name"]({s},{w},{n},{e}););out center tags;', 'pois_water_v1')
+    pois = {'elements': pois['elements'] + water['elements']}
+    if os.environ.get('POI_ONLY'):    # only the points of interest, into the existing trails.json
+        path = os.path.join(OUT, 'trails.json')
+        out = json.load(open(path))
+        out['poi'] = poi_list(pois)
+        json.dump(out, open(path, 'w'), separators=(',', ':'), ensure_ascii=False)
+        from collections import Counter
+        print('pois', Counter(p['k'] for p in out['poi']))
+        return
     nodes = {el['id']: (el['lon'], el['lat']) for el in routes['elements'] if el['type'] == 'node'}
     ways = {el['id']: el['nodes'] for el in routes['elements'] if el['type'] == 'way'}
     wtags = {el['id']: el.get('tags', {}) for el in routes['elements'] if el['type'] == 'way'}
@@ -206,20 +243,7 @@ def main():
         v[2] = round(h, 1)
         if k % 5000 == 0: print('heights', k, '/', len(V), flush=True)
     print('copernicus fallback for', miss, 'vertices')
-    # points of interest
-    P = []
-    for el in pois['elements']:
-        t = el.get('tags', {})
-        lon, lat = (el['lon'], el['lat']) if 'lon' in el else (el['center']['lon'], el['center']['lat'])
-        if not inside((lon, lat)): continue
-        kind = 'hut' if t.get('tourism') in ('alpine_hut', 'wilderness_hut') else 'sign' if t.get('information') == 'guidepost' else \
-               'peak' if t.get('natural') == 'peak' else 'pass'
-        name = t.get('name:pl') or t.get('name') or ''
-        if kind != 'sign' and not name: continue
-        ele = t.get('ele')
-        try: ele = round(float(str(ele).replace(',', '.').split()[0])) if ele else None
-        except ValueError: ele = None
-        P.append({'k': kind, 'n': name, 'p': [round(lon, 6), round(lat, 6)], 'e': ele})
+    P = poi_list(pois)
     out = {'region': REGION, 'step': STEP, 'colours': COLOURS,
            'v': [[round(v[0], 6), round(v[1], 6), v[2]] for v in V], 'e': edges, 'poi': P,
            'source': 'OpenStreetMap contributors (ODbL); GUGiK NMT; ÚGKK SR DMR 5.0; Copernicus DEM GLO-30'}
