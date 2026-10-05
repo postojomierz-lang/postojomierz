@@ -249,10 +249,13 @@ def merge_chunks():
         c = json.load(open(f))
         blocks += c['blocks']; tiles += c['tiles']; sources |= set(c['sources'])
         for k, lvl in c['lakes'].items(): meta['lakes'][int(k)]['level'] = lvl
+    # a window computed again over chunks already there (e.g. a strip with new lidar) lists the same blocks twice
+    blocks = [list(b) for b in sorted({tuple(b) for b in blocks})]
+    tiles = [list(t) for t in sorted({tuple(t) for t in tiles})]
     nbx = max(b[0] for b in blocks) + 1; nbz = max(b[1] for b in blocks) + 1
     meta['base'] = {'bounds': [rb[0], rb[1], rb[0] + nbx * BM, rb[1] + nbz * BM], 'n': [nbx * BLOCK + 1, nbz * BLOCK + 1],
-                    'step': BASE_STEP, 'block': BLOCK, 'blocks': sorted(blocks)}
-    meta['tiles'] = {'size': TILE, 'origin': rb[:2], 'list': sorted(tiles), 'samples': TILE + 1, 'orthoPx': 512}
+                    'step': BASE_STEP, 'block': BLOCK, 'blocks': blocks}
+    meta['tiles'] = {'size': TILE, 'origin': rb[:2], 'list': tiles, 'samples': TILE + 1, 'orthoPx': 512}
     for src in sorted(sources):
         if src not in meta['sources']: meta['sources'] += '; ' + src
     json.dump(meta, open(os.path.join(DATA, 'meta.json'), 'w'), separators=(',', ':'), ensure_ascii=False)
