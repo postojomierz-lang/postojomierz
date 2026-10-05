@@ -39,6 +39,7 @@ import { loadJournal, saveJournal, routeKey, addWalk, addPeak, ghostAt, fmtClock
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { rng } from './noise.js';
 import { SSAOPass } from './ssao.js';
+import { buildTAA } from './taa.js';
 import { buildTrees3D, buildMugo3D } from './vegetation3d.js';
 import { buildGrass } from './grass.js';
 import { buildWeather } from './weather.js';
@@ -1800,15 +1801,23 @@ async function main() {
   // ---------- post-processing: bloom on sun glints, filmic grade, vignette
   // ambient occlusion (ssao.js): on in ultra, ?ao=1 / ?ao=0 to force it
   const AO = !LITE && (P.has('ao') ? P.get('ao') !== '0' : ULTRA);   // it decodes the logarithmic depth
+  // temporal anti-aliasing (taa.js) on top of the multisampling: high and ultra, ?taa=0 / ?taa=1 to force it
+  const TAA = !LITE && (P.has('taa') ? P.get('taa') !== '0' : QUALITY === 'high' || ULTRA);
+  const DEPTH = AO || TAA;
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: tier(0, 2, 4),
-    depthTexture: AO ? new THREE.DepthTexture(1, 1) : null }));
+    depthTexture: DEPTH ? new THREE.DepthTexture(1, 1) : null }));
   // the second buffer's clone would share the depth texture's source (one GL texture): a feedback loop
-  if (AO) composer.renderTarget2.depthTexture = new THREE.DepthTexture(1, 1);
+  if (DEPTH) composer.renderTarget2.depthTexture = new THREE.DepthTexture(1, 1);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(innerWidth, innerHeight);
+  const taa = TAA ? buildTAA(camera) : null;
+  if (taa) composer.addPass(taa.jitter);
   composer.addPass(new RenderPass(scene, camera));
+  if (taa) composer.addPass(taa.tap);
   const ssao = AO ? new SSAOPass(camera, { samples: ULTRA ? 16 : 10 }) : null;
   if (ssao) { composer.addPass(ssao); ssao.combineMat.uniforms.show.value = { show: 1, depth: -1 }[P.get('ao')] || 0; }
+  // the occlusion's noise changes every frame under the temporal blend, which averages it out
+  if (taa) composer.addPass(taa.resolve);
   // fireflies: a lone pixel far brighter than its neighbours (a specular spike on a blade or a stone, or a
   // NaN) would flicker as a yellow dot once the bloom spreads it; it is brought down to its neighbourhood
   const despeckle = new ShaderPass({
@@ -2110,6 +2119,7 @@ async function main() {
       renderer.render(scene, camera);
     } else {
       renderReflection();
+      if (ssao && taa) ssao.aoMat.uniforms.frame.value = taa.frame % 8;
       composer.render();
     }
     adaptResolution();
@@ -2117,7 +2127,7 @@ async function main() {
   }
   // 📷: a photo or a 180° panorama of the view, rendered once in full quality (photo.js)
   setupPhoto({ button: $('btn-photo'), renderer, composer, camera, grade, name: TITLE,
-    beforeRender: () => { if (!LITE) renderReflection(); },
+    beforeRender: () => { if (!LITE) renderReflection(); if (taa) taa.reset(); },
     restore: () => { sizeRefl(); streams.setPixelRatio(renderer.getPixelRatio(), innerHeight); } });
   // test reports (🐞): a screenshot of the 3D view and where exactly it was taken
   setupReport({ app: '3d', button: $('btn-bug'),
@@ -2147,7 +2157,7 @@ async function main() {
     return rc.intersectObjects(scene.children, true).slice(0, 6).map((h) => ({ name: h.object.name, type: h.object.type, parent: h.object.parent && h.object.parent.name,
       mat: h.object.material && (h.object.material.name || h.object.material.type), dist: Math.round(h.distance), verts: h.object.geometry && h.object.geometry.attributes.position.count }));
   };
-  window.__rysy = { pick, cross, rest, reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
+  window.__rysy = { taa, pick, cross, rest, reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }
 
