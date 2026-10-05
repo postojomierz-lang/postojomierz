@@ -56,6 +56,7 @@ Szczegóły każdej funkcji są w `tatry/README.md` (sekcje po polsku). Pozosta�
   - stopka commitów i PR jak w instrukcjach sesji;
   - bez identyfikatorów modelu w commitach.
 - **Na końcu odpowiedzi proponuj kolejne kroki z niebieskim znacznikiem**: `🔵 *Możliwe kolejne kroki: …*` (kursywa). Aplikacja nie renderuje HTML ani kolorów tekstu, więc `<span style=…>` się nie sprawdza; niebieski daje tylko emoji 🔵.
+- **Podpowiadaj /compact i /clear (raz, w kolejnych krokach).** Właściciel pracuje w jednej sesji. Po zakończonej większej fazie tego samego projektu (kilka PR): `/koncze` + `/compact`. Gdy zaczyna temat niezwiązany z poprzednią pracą (inny projekt, np. `game/`) albo rozmowa utknęła w nieudanych próbach: `/koncze` + `/clear`. Po krótkiej wymianie nic nie podpowiadaj (auto-compact na 400K). Hook startowy wczytuje `HANDOFF.md` także po `/clear`.
 - **Bezpieczeństwo:**
   - nigdy nie proś o wklejanie tokenów ani kluczy do czatu;
   - `SUPABASE_URL` i `SUPABASE_ANON_KEY` są w zmiennych środowiska (ustawia je właściciel), nie pytaj o nie;
