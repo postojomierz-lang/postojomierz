@@ -1,6 +1,8 @@
 # Notes for Claude
 
 - The owner writes in Polish; reply in Polish.
+- End replies with `🔵 **Możliwe kolejne kroki:**` and the steps as a numbered list (1., 2., 3. …, one per line), so the
+  owner can answer with a number; commands to paste (/koncze, /compact …, /clear) each in its own code block; no HTML.
 - Workflow: after a fix or feature is implemented, tested and pushed to the working branch,
   create a pull request to `main` and merge it straight away, without asking first.
   Then share the PR link.
