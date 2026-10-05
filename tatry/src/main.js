@@ -748,7 +748,7 @@ async function main() {
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
     deadspruce: { wind: 0.3, brightness: 1.2, upNormal: 0.2 }, limba: { wind: 0.5, brightness: 0.85, upNormal: 0.3 }, rowan: { wind: 0.9, brightness: 1.0, upNormal: 0.35 },
     mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55, fade: 'mugo' }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
-  });
+  }, QUALITY !== 'low');     // alpha to coverage where the picture is multisampled (mid and up)
   const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds,
     ground: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.02 || terrain.maskAt(lakeMask, x, z) > 0.02 || houses.inside(x, z, 2)
       || terrain.normal(x, z, 3).y < 0.7) ? null : terrain.height(x, z) });
@@ -1965,6 +1965,9 @@ async function main() {
     }
     if (state.auto && dir === 0) dir = 1;
     if (reveal.active) dir = 0;                         // the discovery's moment: the walk waits
+    // a scene with the animals seen through the binoculars (one every 1-2 minutes, 8-10 s): walking by
+    // itself, the hiker stops to watch and goes on when the binoculars come down
+    if (state.auto && !keys.size && binoc.active && !binoc.manual) dir = 0;
     if (dir !== 0 && !state.free && (dir < 0) !== !!state.rev) {
       state.rev = dir < 0;
       state.yaw += Math.PI; state.yawOff = Math.atan2(Math.sin(state.yawOff - Math.PI), Math.cos(state.yawOff - Math.PI));
