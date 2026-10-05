@@ -1915,18 +1915,32 @@ async function main() {
   // where the detail is drawn around (3D trees, grass, the sharp terrain and photo, stones): the camera, but
   // through the binoculars a point towards what they look at, as if one stood zoom times closer to it; so
   // they show the place itself in detail, not a blown-up picture of its far, simplified version
-  const lodTmp = new THREE.Vector3(), lodDir = new THREE.Vector3();
-  function lodPoint() {
+  // Two limits: the point moves only once the view rests (turning the binoculars would otherwise rebuild the
+  // grass, the sharp terrain and photo every frame: the view stuttered) and by 30 m or more; and only while
+  // the view is narrower than the sharp photo window, else a sharp island showed in the middle of a blurred
+  // view, so a wide look keeps the detail around the hiker, the same everywhere
+  const lodTmp = new THREE.Vector3(), lodDir = new THREE.Vector3(), lodPrev = new THREE.Vector3(), lodCur = new THREE.Vector3();
+  let lodFar = false, lodStill = 0;
+  function lodPoint(dt) {
     const z = binoc.active ? binoc.zoom : 1;
-    if (z < 1.6 || state.mode !== 'walk') return camera.position;
     camera.getWorldDirection(lodDir);
+    const turn = lodDir.angleTo(lodPrev) / Math.max(dt, 1e-3);
+    lodPrev.copy(lodDir);
+    lodStill = turn > 0.02 ? 0 : lodStill + dt;
+    if (z < 1.6 || state.mode !== 'walk') { lodFar = false; return camera.position; }
+    if (lodFar && lodStill < 0.3) return lodCur;
     const c = camera.position;
     let D = 2500;
     for (let t = 8; t < 2500; t *= 1.07) {
       const x = c.x + lodDir.x * t, z2 = c.z + lodDir.z * t;
       if (c.y + lodDir.y * t < drawnHeight(x, z2)) { D = t; break; }
     }
-    return lodTmp.copy(c).addScaledVector(lodDir, D * (1 - 1 / z));
+    const wide = 2 * D * Math.tan(camera.fov * Math.PI / 360) * Math.max(1, camera.aspect);
+    if (wide > NEAR_M * 0.8) { lodFar = false; return camera.position; }
+    lodTmp.copy(c).addScaledVector(lodDir, D * (1 - 1 / z));
+    if (!lodFar || lodTmp.distanceTo(lodCur) > 30) lodCur.copy(lodTmp);
+    lodFar = true;
+    return lodCur;
   }
   let liteFrame = 0;
   vegFar.value = tier(1200, 2000, 1e9);
@@ -2056,7 +2070,7 @@ async function main() {
       sunLight.position.copy(light.sunDir.value).multiplyScalar(3000).add(sunLight.target.position);
     }
     forest.update(camera);
-    const lodP = lodPoint();
+    const lodP = lodPoint(dt);
     treeFade.cam.value.copy(lodP);
     if (trees3d) trees3d.update(lodP);
     if (mugo3d) mugo3d.update(lodP);

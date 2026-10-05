@@ -15,6 +15,8 @@ export const placeId = (l) => `${l.kind}:${l.name}`;
 // blockers: [{ x, y, z, tx, tz, nx, nz }] signposts (foot of the pole, trail direction and normal); while near, their boards keep the labels off them
 // nature: { spots: [{ id, x, z, y }], found: { id: date } } (the catalogue's spots and what has been discovered)
 const PANELS = ['hud', 'controls', 'bottom', 'minimap', 'fps', 'place', 'label-menu'];
+// the mountain huts among the buildings OSM names (villas, churches, holiday cottages): seen from afar, like the peaks
+const MAIN_HUT = /^schronisko pttk|murowaniec|kalatówki|^(téryho|zbojnícka|zamkovského|rainerova|bilíkova|skalnatá|žiarska|ťatliakova|krivánska|majláthova|šašinková|gazdíková) chata|^chata (pod|pri) (rysmi|soliskom|zelenom plese)|sliezsky dom$/i;
 
 export function buildLabels({ meta, terrain, camera, container, extra = [], blockers = [], nature = { spots: [], found: {} }, onClick = null }) {
   const layer = document.createElement('div');
@@ -43,6 +45,7 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
     el.innerHTML = '<div class="flag-box"></div><div class="pole"></div>';
     layer.appendChild(el);
     const y = terrain.height(l.x, l.z) + (l.kind === 'lake' ? 1 : 0);
+    if (l.kind === 'hut' && MAIN_HUT.test(l.name) && !/^stare/i.test(l.name)) l = { ...l, main: true, rank: 2.4 };
     const it = { ...l, cat: catOf(l.kind), el, pos: new THREE.Vector3(l.x, y, l.z), visible: false, occl: 1, w: 0, h: 0 };
     render(it);
     if (onClick) el.firstChild.addEventListener('click', (e) => { e.stopPropagation(); onClick(it); });
@@ -83,7 +86,7 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
     for (const it of items) {
       const d = camera.position.distanceTo(it.pos);
       if (!cats[it.cat]) { if (it.visible) { it.el.classList.remove('on'); it.visible = false; } continue; }
-      const maxD = it.kind === 'peak' ? 16000 : it.kind === 'pass' ? 4500 : it.kind === 'lake' ? 5000 : it.kind === 'spring' ? 500
+      const maxD = it.kind === 'peak' ? 16000 : it.kind === 'pass' ? 4500 : it.kind === 'lake' ? 5000 : it.main ? 9000 : it.kind === 'spring' ? 500
         : it.species ? Math.max(it.kind === 'flora' ? 160 : 450, (it.species.far || 0) * 1.6) : 3500;
       let show = d < maxD && !it.hidden && d > 25;
       if (show) {
