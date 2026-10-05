@@ -55,7 +55,7 @@ Szczegóły każdej funkcji są w `tatry/README.md` (sekcje po polsku). Pozosta�
   - potem reset gałęzi: `git fetch origin main && git checkout -B <gałąź> origin/main`, push `--force-with-lease`;
   - stopka commitów i PR jak w instrukcjach sesji;
   - bez identyfikatorów modelu w commitach.
-- **Na końcu odpowiedzi proponuj kolejne kroki „na szaro”**, czyli w cytacie (`> **Możliwe kolejne kroki:** …`).
+- **Na końcu odpowiedzi proponuj kolejne kroki z niebieskim znacznikiem**: `🔵 *Możliwe kolejne kroki: …*` (kursywa). Aplikacja nie renderuje HTML ani kolorów tekstu, więc `<span style=…>` się nie sprawdza; niebieski daje tylko emoji 🔵.
 - **Bezpieczeństwo:**
   - nigdy nie proś o wklejanie tokenów ani kluczy do czatu;
   - `SUPABASE_URL` i `SUPABASE_ANON_KEY` są w zmiennych środowiska (ustawia je właściciel), nie pytaj o nie;
