@@ -15,6 +15,7 @@ import { setupLookEditor } from './lookEditor.js';
 import { setupSearch } from './search.js';
 import { setupRouteDrag } from './routedrag.js';
 import { loadFound, saveFound } from '../nature/discover.js';
+import { setupLibrary } from './library.js';
 import { challenges, settleChallenges } from '../nature/challenges.js';
 import { buildGpsDiscovery } from '../nature/gps.js';
 import { setupOnline } from './online.js';
@@ -540,6 +541,7 @@ function renderJournal() {
 }
 // ---------------------------------------------------------------- profile and badges
 const PR = loadProfile();
+const LIB = setupLibrary({ box: $('lib'), count: $('lib-count') });
 function renderProfile(t) {
   const av = $('p-avatar');
   if (PR.avatar && PR.avatar.startsWith('data:')) { av.textContent = ''; av.style.backgroundImage = `url(${PR.avatar})`; }
@@ -547,6 +549,7 @@ function renderProfile(t) {
   $('p-name').textContent = PR.name || 'Turysta (kliknij ✎)';
   $('p-rank').textContent = `${rank(t.km)} · ${t.km.toFixed(0)} km · ↗ ${Math.round(t.up)} m`;
   const D = loadFound();
+  LIB.render(D);
   // challenges of the day, week, month and year (the same for everybody), bonus points when done
   settleChallenges(D, J, saveFound);
   $('ch-list').innerHTML = challenges(D, J).map((c) => `<div class="ch${c.done ? ' done' : ''}"><small>${c.name} · +${c.bonus} pkt</small><br>`
