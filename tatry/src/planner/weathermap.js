@@ -77,7 +77,9 @@ export function setupWeatherMap({ map, data, G, startDate, hasRoute, esc }) {
     const box = $b('.wx-days'); box.innerHTML = '';
     ['Dziś', 'Jutro', dayDate(2).toLocaleDateString('pl-PL', { weekday: 'short' })].forEach((t, d) => {
       const b = document.createElement('button'); b.textContent = t; b.className = d === day ? 'on' : '';
-      b.onclick = () => { day = d; renderDays(); render(); };
+      // switch the class only: a button rebuilt under the click is detached from the bar, so Leaflet's
+      // disableClickPropagation misses it and the click reaches the map (adds a route point)
+      b.onclick = () => { day = d; box.querySelectorAll('button').forEach((x, k) => { x.className = k === d ? 'on' : ''; }); render(); };
       box.appendChild(b);
     });
   }
