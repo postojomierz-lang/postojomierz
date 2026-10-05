@@ -82,7 +82,7 @@ const BASES = [
 ];
 const slovak = (p) => p[1] < 49.19;            // the trailheads: all the Slovak ones lie south of the main ridge
 
-// the limits of one person: hours of walking (PTTK time, before the pace factor), metres of climb, the top,
+// the limits of one person: hours of walking (at their own pace, the PTTK time times the pace factor), metres of climb, the top,
 // chains and exposure allowed, and the pace (children walk slower than the norms)
 function limits(p) {
   if (p.kid) {
@@ -142,7 +142,7 @@ export function setupStay({ G, along, onOpen, $ }) {
       if (!path) continue;
       const sum = G.summary(path), o = along(path);
       const shape = end ? 'przejście' : via.length ? 'pętla' : 'tam i z powrotem';
-      measured.push({ name, kind, start: a, goal: b, end: end || a, shape, stops, time: sum.time, up: sum.up, dist: sum.dist, top: sum.maxE,
+      measured.push({ name, kind, start: a, goal: b, keys: [b, ...via], end: end || a, shape, stops, time: sum.time, up: sum.up, dist: sum.dist, top: sum.maxE,
         chains: o.chainM >= 20, alpine: o.alpineM >= 100 ? o.grade : 0 });   // a side path passing by does not count
     }
     return measured;
@@ -193,7 +193,7 @@ export function setupStay({ G, along, onOpen, $ }) {
     const wx = (d) => fc && fc[ymd(dateOf(d))];
     const lim = groupLimits(st.people, st.noChains), base = BASES[st.base];
     const all = measure();
-    const fits = all.filter((w) => w.time / 60 <= lim.h && w.up <= lim.up && w.top <= lim.top && (lim.chains || !w.chains) && w.alpine <= lim.alpine);
+    const fits = all.filter((w) => w.time * lim.pace / 60 <= lim.h && w.up <= lim.up && w.top <= lim.top && (lim.chains || !w.chains) && w.alpine <= lim.alpine);
     // the effort of a walk, and the journey from the base (straight line, by bus or car ~35 km/h; across the
     // border the road goes round through Łysa Polana)
     const effort = (w) => w.time / 60 + w.up / 400;
@@ -208,23 +208,29 @@ export function setupStay({ G, along, onOpen, $ }) {
     // a fit group skips the shortest strolls when there are enough walks that use its days well
     const cap = lim.h + lim.up / 400, worth = pool.filter((w) => effort(w) >= cap * 0.3);
     if (worth.length >= Math.min(pool.length, walkDays.length)) pool = worth;
-    // the walks near the base (up to 75 min away), with the nearest farther ones when there are too few
-    const near = pool.filter((w) => ride(w) <= 75).length, room = Math.max(near, walkDays.length + 4);
-    pool = [...pool].sort((a, b) => ride(a) - ride(b)).slice(0, room).sort((a, b) => a.score - b.score);
+    // the walks near the base (up to 75 min away), with the nearest farther ones only when there are too few
+    const byRide = [...pool].sort((a, b) => ride(a) - ride(b));
+    const near = pool.filter((w) => ride(w) <= 75).length;
+    pool = byRide.slice(0, Math.max(near, walkDays.length)).sort((a, b) => a.score - b.score);
     const picked = [];
     if (pool.length) {
       // take an even spread from easy to hard, as many as there are walking days (no repeats while there are enough)
       for (let k = 0; k < walkDays.length; k++) picked.push(pool[Math.min(pool.length - 1, Math.round(k * (pool.length - 1) / Math.max(1, walkDays.length - 1)))]);
     }
-    // no two walks to the same place: of a there-and-back and a loop or traverse with the same goal, the loop
+    // no two walks to the same place (the goal or a point on the way: Morskie Oko and the loop through it);
+    // of a there-and-back and a loop or traverse, the loop
+    const same = (q, w) => q.keys.some((a) => w.keys.some((b) => km(a, b) < 0.3));
     const uniq = [];
     for (const w of new Set(picked)) {
-      const k = uniq.findIndex((q) => km(q.goal, w.goal) < 0.3);
-      if (k < 0) uniq.push(w);
-      else if (uniq[k].shape === 'tam i z powrotem' && w.shape !== 'tam i z powrotem') uniq[k] = w;
+      const clash = uniq.filter((q) => same(q, w));
+      if (!clash.length) uniq.push(w);
+      else if (w.shape !== 'tam i z powrotem' && clash.every((q) => q.shape === 'tam i z powrotem')) {
+        uniq[uniq.indexOf(clash[0])] = w;                   // a loop through two goals replaces both
+        clash.slice(1).forEach((q) => uniq.splice(uniq.indexOf(q), 1));
+      }
     }
-    // and the days left free filled with other walks that fit
-    for (const w of pool) if (uniq.length < walkDays.length && !uniq.some((q) => km(q.goal, w.goal) < 0.3)) uniq.push(w);
+    // and the days left free filled with other walks that fit, the near ones first, then the nearest farther
+    for (const w of [...pool, ...byRide]) if (uniq.length < walkDays.length && !uniq.some((q) => same(q, w))) uniq.push(w);
     // easy first, the hardest in the middle, easy last
     const asc = uniq.sort((a, b) => a.score - b.score), rest = asc.slice(1);
     const order = [...asc.slice(0, 1), ...rest.filter((w, k) => k % 2 === 0), ...rest.filter((w, k) => k % 2 === 1).reverse()];
@@ -249,7 +255,7 @@ export function setupStay({ G, along, onOpen, $ }) {
     const who = `${st.people.length - kids.length} ${st.people.length - kids.length === 1 ? 'dorosły' : 'dorosłych'}${kids.length ? ` i ${kids.length === 1 ? 'dziecko' : `${kids.length} dzieci`} (${kids.map((k) => `${k.age} l.`).join(', ')})` : ''}`;
     const hm = (m) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, '0')}`;
     let html = `<p class="st-sum">${n} ${n === 1 ? 'dzień' : 'dni'} · ${base[0]} · ${who}. Limity grupy: do ${hm(lim.h * 60)} h marszu, ${lim.up} m podejścia, `
-      + `${lim.top} m n.p.m., ${lim.chains ? 'łańcuchy dozwolone' : 'bez łańcuchów'}${lim.pace > 1.02 ? `; czasy wydłużone ×${String(lim.pace).replace('.', ',')} (tempo dzieci)` : ''}.</p>`;
+      + `${lim.top} m n.p.m., ${lim.chains ? 'łańcuchy dozwolone' : 'bez łańcuchów'}${lim.pace > 1.02 ? `; czasy wydłużone ×${String(lim.pace).replace('.', ',')} (${st.people.some((p) => p.kid) ? 'tempo dzieci' : 'tempo grupy'})` : ''}.</p>`;
     const known = days.filter((d) => wx(d)).length;
     if (fc && known) html += `<p class="src">Prognoza dla gór (1500 m) na ${known === n ? 'wszystkie dni' : `${known} z ${n} dni (dalej jeszcze jej nie ma)`}`
       + `${moved.size ? '; trasy przestawione tak, by w złą pogodę iść doliną albo odpoczywać' : ''}.</p>`;
@@ -267,7 +273,7 @@ export function setupStay({ G, along, onOpen, $ }) {
       if (!w) return `<li>${head(d, 'wolny')}<span>Powtórz ulubioną trasę albo odpocznij.</span></li>`;
       const tags = [w.kind === 'dolina' ? '🌧 dobra na gorszą pogodę' : '', w.chains ? '⛓ łańcuchy' : '', w.alpine ? `⚠ teren T${w.alpine}` : ''].filter(Boolean).join(' · ');
       const there = howTo(w.start), back = w.shape === 'przejście' ? howTo(w.end) : '';
-      return `<li>${head(d, w.name)}<span>${(w.dist / 1000).toFixed(1).replace('.', ',')} km, ${w.shape} · ok. ${hm(w.time * lim.pace)} h marszu · ↗ ${Math.round(w.up)} m · do ${Math.round(w.top)} m n.p.m.${tags ? ` · ${tags}` : ''}</span>`
+      return `<li>${head(d, w.name)}<span>${(w.dist / 1000).toFixed(1).replace('.', ',')} km, ${w.shape} · ok. ${hm(w.time * lim.pace)} h marszu${Math.abs(lim.pace - 1) > 0.02 ? ' w tempie grupy' : ''} · ↗ ${Math.round(w.up)} m · do ${Math.round(w.top)} m n.p.m.${tags ? ` · ${tags}` : ''}</span>`
         + `<span class="ride">🚌 dojazd ok. ${ride(w)} min${there ? `. ${there}` : ''}${back ? `. Powrót: ${back}` : ''}</span>`
         + `<button class="chip" data-w="${w.i}">Pokaż trasę</button></li>`;
     }).join('') + '</ol>'

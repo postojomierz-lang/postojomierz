@@ -14,6 +14,8 @@ export const placeId = (l) => `${l.kind}:${l.name}`;
 
 // blockers: [{ x, y, z, tx, tz, nx, nz }] signposts (foot of the pole, trail direction and normal); while near, their boards keep the labels off them
 // nature: { spots: [{ id, x, z, y }], found: { id: date } } (the catalogue's spots and what has been discovered)
+const PANELS = ['hud', 'controls', 'bottom', 'minimap', 'fps', 'place', 'label-menu'];
+
 export function buildLabels({ meta, terrain, camera, container, extra = [], blockers = [], nature = { spots: [], found: {} }, onClick = null }) {
   const layer = document.createElement('div');
   layer.id = 'labels';
@@ -107,6 +109,13 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
         x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
       }
       if (front) placed.push({ x0, x1, y0, y1 });
+    }
+    // the panels and the name of the place: a label under them can be neither read nor clicked
+    for (const id of PANELS) {
+      const e = document.getElementById(id);
+      if (!e || (id === 'place' && !e.classList.contains('show'))) continue;
+      const r = e.getBoundingClientRect();
+      if (r.width && r.height) placed.push({ x0: r.left, x1: r.right, y0: r.top, y1: r.bottom });
     }
     const nBlock = placed.length;
     for (const it of cand) {
