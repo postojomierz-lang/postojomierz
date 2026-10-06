@@ -56,6 +56,7 @@ Szczegóły każdej funkcji są w `tatry/README.md` (sekcje po polsku). Pozosta�
   - stopka commitów i PR jak w instrukcjach sesji;
   - bez identyfikatorów modelu w commitach.
 - **Na końcu odpowiedzi proponuj kolejne kroki z niebieskim znacznikiem**: nagłówek `🔵 **Możliwe kolejne kroki:**`, pod nim kroki numerowane (`1.`, `2.`, `3.` …), każdy w osobnej linii, żeby właściciel mógł odpisać numerem, a polecenia do wklejenia (`/koncze`, `/compact zachowaj: …`, `/clear`) każde w osobnym bloku kodu, żeby dało się je skopiować jednym ruchem. Aplikacja nie renderuje HTML ani kolorów tekstu, więc `<span style=…>` się nie sprawdza; niebieski daje tylko emoji 🔵.
+- **Przed zaproponowaniem `/compact` (albo `/clear`) zapisz HANDOFF.md sam** w tej samej odpowiedzi (jak `/koncze`: commit, push, PR do main, merge) i podaj już tylko linię `/compact …`. Właściciel nie musi wtedy robić `/koncze`, a hook PreCompact (blokuje, gdy HANDOFF.md ma ponad 2 h) nie wyskakuje.
 - **Podpowiadaj /compact i /clear (raz, w kolejnych krokach).** Właściciel pracuje w jednej sesji. Po zakończonej większej fazie tego samego projektu (kilka PR): `/koncze` + `/compact`. Gdy zaczyna temat niezwiązany z poprzednią pracą (inny projekt, np. `game/`) albo rozmowa utknęła w nieudanych próbach: `/koncze` + `/clear`. Po krótkiej wymianie nic nie podpowiadaj (auto-compact na 400K). Hook startowy wczytuje `HANDOFF.md` także po `/clear`.
 - **Bezpieczeństwo:**
   - nigdy nie proś o wklejanie tokenów ani kluczy do czatu;
