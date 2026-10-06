@@ -19,8 +19,9 @@ CACHE = os.path.join(HERE, '.cache')
 OUT = os.path.join(HERE, '..', 'public', 'data', 'region')
 REGION = (19.682, 49.08, 20.31, 49.29)      # lon0, lat0, lon1, lat1: from Dolina Chochołowska to the Slovak High Tatras
 STEP = 10.0                                   # m between vertices
-OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter',
-            'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.osm.jp/api/interpreter']
+# maps.mail.ru first: in 10.2026 the others timed out or answered 504 for this region
+OVERPASS = ['https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass-api.de/api/interpreter',
+            'https://overpass.private.coffee/api/interpreter', 'https://overpass.osm.jp/api/interpreter']
 WCS = ('https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFF'
        '?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage&COVERAGEID=DTM_PL-KRON86-NH_TIFF&FORMAT=image/tiff')
 SAC = {'hiking': 1, 'mountain_hiking': 2, 'demanding_mountain_hiking': 3, 'alpine_hiking': 4,
