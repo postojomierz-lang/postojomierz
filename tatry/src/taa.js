@@ -18,7 +18,7 @@ const RESOLVE = /* glsl */`
   varying vec2 vUv;
   uniform sampler2D tColor, tHistory, tDepth;
   uniform float logFar, reset;
-  uniform vec2 tanFov, texel;
+  uniform vec2 tanFov, texel, jit;
   uniform mat4 camWorld, prevVP;
   float viewW(vec2 uv) { return exp2(texture2D(tDepth, uv).x * logFar) - 1.0; }
   float maxc(vec3 c) { return max(c.r, max(c.g, c.b)); }
@@ -52,12 +52,15 @@ const RESOLVE = /* glsl */`
     for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
       vec2 uv = vUv + vec2(float(x), float(y)) * texel;
       vec3 c = cur(uv);
-      if (x == 0 && y == 0) c0 = c;
+
       m1 += c; m2 += c * c; mn = min(mn, c); mx = max(mx, c);
       float d = viewW(uv);
       if (d < w) { w = d; wuv = uv; }
     }
     m1 /= 9.0; m2 /= 9.0;
+    // the pixel's own colour with the jitter taken out (where its content was drawn this frame), so the
+    // new frame adds no tremble of its own
+    c0 = cur(vUv + jit);
     vec3 sd = sqrt(abs(m2 - m1 * m1));
     // where this point was in the last frame (the camera's move). The output and the history are the still,
     // unjittered picture, so the pixel itself is the point: taking the jitter out here as well shifted the
@@ -83,13 +86,13 @@ const RESOLVE = /* glsl */`
 `;
 
 export function buildTAA(camera) {
-  const S = { depth: null, frame: 0, saved: new THREE.Matrix4(), savedInv: new THREE.Matrix4(), jittered: false,
+  const S = { depth: null, frame: 0, jit: new THREE.Vector2(), saved: new THREE.Matrix4(), savedInv: new THREE.Matrix4(), jittered: false,
     prevVP: new THREE.Matrix4(), prevPos: new THREE.Vector3(), reset: true, w: 0, h: 0 };
   const opts = { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter };
   let histA = new THREE.WebGLRenderTarget(1, 1, opts), histB = new THREE.WebGLRenderTarget(1, 1, opts);
   const mat = new THREE.ShaderMaterial({
     uniforms: { tColor: { value: null }, tHistory: { value: null }, tDepth: { value: null }, logFar: { value: 1 }, reset: { value: 1 },
-      tanFov: { value: new THREE.Vector2(1, 1) }, texel: { value: new THREE.Vector2() },
+      tanFov: { value: new THREE.Vector2(1, 1) }, jit: { value: new THREE.Vector2() }, texel: { value: new THREE.Vector2() },
       camWorld: { value: new THREE.Matrix4() }, prevVP: { value: new THREE.Matrix4() } },
     vertexShader: VERT, fragmentShader: RESOLVE, depthTest: false, depthWrite: false,
   });
@@ -123,6 +126,8 @@ export function buildTAA(camera) {
       camera.projectionMatrix.elements[8] += (2 * jx) / W; camera.projectionMatrix.elements[9] += (2 * jy) / H;
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
       S.jittered = true;
+      const k = window.__taaSign ?? 1;
+      S.jit.set(-k * jx / W, -k * jy / H);              // where the picture moved, in uv
     }
   }
   class Tap extends Pass {
@@ -139,7 +144,7 @@ export function buildTAA(camera) {
       const u = mat.uniforms, ty = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
       u.tColor.value = readBuffer.texture; u.tHistory.value = histA.texture; u.tDepth.value = S.depth;
       u.logFar.value = Math.log2(camera.far + 1); u.tanFov.value.set(ty * camera.aspect, ty);
-      u.texel.value.set(1 / readBuffer.width, 1 / readBuffer.height);
+      u.jit.value.copy(S.jit); u.texel.value.set(1 / readBuffer.width, 1 / readBuffer.height);
       u.camWorld.value.copy(camera.matrixWorld); u.prevVP.value.copy(S.prevVP);
       u.reset.value = S.reset || !S.depth ? 1 : 0;
       renderer.setRenderTarget(histB); quad.render(renderer);
