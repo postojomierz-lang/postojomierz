@@ -170,6 +170,46 @@ function plasterTexture() {
   return t;
 }
 
+// a fence texture: pickets with two rails behind (top half), three rails of round poles (bottom half);
+// 2 m of fence across, transparent between the boards
+function fenceTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#5e4129'; g.fillRect(0, 24, 256, 10); g.fillRect(0, 86, 256, 10);
+  for (let i = 0; i < 13; i++) {
+    const x = i * 256 / 13 + 4, w = 12;
+    g.fillStyle = `rgb(${130 + (i * 37) % 20},${96 + (i * 23) % 14},${64 + (i * 11) % 10})`;
+    g.beginPath(); g.moveTo(x, 10); g.lineTo(x + w / 2, 2); g.lineTo(x + w, 10); g.lineTo(x + w, 118); g.lineTo(x, 118); g.fill();
+    g.fillStyle = 'rgba(40,25,15,0.35)'; g.fillRect(x + w - 3, 10, 3, 108);
+  }
+  for (const y of [150, 190, 228]) {
+    const gr = g.createLinearGradient(0, y, 0, y + 14);
+    gr.addColorStop(0, '#9a7650'); gr.addColorStop(0.5, '#7a5a3a'); gr.addColorStop(1, '#4a3322');
+    g.fillStyle = gr; g.fillRect(0, y, 256, 14);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 4;
+  return t;
+}
+// a notice board: notices and a map of the trails on boards under glass
+function boardTexture() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = '#5a3d26'; g.fillRect(0, 0, 128, 96);
+  g.fillStyle = '#d9cfb4'; g.fillRect(6, 6, 116, 84);
+  g.fillStyle = '#9fbf8a'; g.fillRect(10, 10, 62, 50);
+  g.strokeStyle = '#c0392b'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 54); g.lineTo(30, 38); g.lineTo(46, 30); g.lineTo(66, 16); g.stroke();
+  g.strokeStyle = '#2e6db4'; g.beginPath(); g.moveTo(12, 24); g.lineTo(40, 34); g.lineTo(70, 50); g.stroke();
+  g.fillStyle = '#7a8f6a'; g.beginPath(); g.moveTo(40, 12); g.lineTo(52, 26); g.lineTo(28, 26); g.fill();
+  const notes = [['#f4f1e6', 78, 10, 38, 22], ['#f6e58d', 80, 36, 30, 20], ['#ffffff', 78, 60, 36, 26], ['#f4f1e6', 12, 64, 28, 22], ['#c7ecee', 44, 66, 26, 20]];
+  for (const [col, x, y, w, h] of notes) {
+    g.fillStyle = col; g.fillRect(x, y, w, h);
+    g.fillStyle = 'rgba(40,40,40,0.55)';
+    for (let l = y + 4; l < y + h - 2; l += 4) g.fillRect(x + 3, l, w - 6 - ((l * 7) % 9), 1);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+
 class Mesher {
   constructor() { this.parts = {}; this.col = [1, 1, 1]; }
   list(k) { return this.parts[k] || (this.parts[k] = { pos: [], nor: [], uv: [], col: [], idx: [] }); }
@@ -244,7 +284,8 @@ export function buildingFlats(meta, terrain) {
   });
 }
 
-export async function buildBuildings({ scene, meta, terrain, shade, loadTexture }) {
+// free(x, z): no footpath or lake there; yard(x, z): ground a fence may stand on (not a road or paving)
+export async function buildBuildings({ scene, meta, terrain, shade, loadTexture, free = () => true, yard = () => true }) {
   const list = meta.buildings || [];
   const tex = async (name, srgb, rep = true) => {
     const t = await loadTexture(`textures/${name}.jpg`, srgb);
@@ -266,11 +307,14 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture 
     plaster: mat(plasterTexture(), null, 0xf2efe8),
     roof: mat(rfD, rfN, 0x9a8c80, THREE.DoubleSide), window: mat(windowTexture(), null), door: mat(doorTexture(), null),
     trim: mat(null, null, 0x3b2819),
+    fence: mat(fenceTexture(), null, 0xffffff), board: mat(boardTexture(), null),
   };
+  M.fence.alphaTest = 0.5;
   const mesher = new Mesher();
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const ONE = [1, 1, 1];
   const rects = [];
+  let owner = -1;                                     // the building whose blocks are being made
 
   // one block of a building (the whole of a simple one, a wing, a dormer): walls on a plinth, a stone ground
   // floor, the roof (gable, half-hipped or hipped), gables, fascia, chimneys, windows. f: its frame (centre
@@ -293,7 +337,7 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture 
     }
     const floors = Math.max(1, k.floors), wallH = k.floorH * floors, yW = yP + wallH;
     const wallKind = k.wall, baseH = Math.min(k.base || 0, floors) * k.floorH;
-    rects.push({ x: f.ox, z: f.oz, w: W + 2 * k.eave, d: D + 2 * k.eave, c, s });
+    rects.push({ x: f.ox, z: f.oz, w: W + 2 * k.eave, d: D + 2 * k.eave, c, s, o: owner });
 
     mesher.col = ONE;
     if (yP > y0) mesher.box('stone', f.ox, y0, f.oz, W + 0.1, yP - y0, D + 0.1, f.rot, TILE.stone);
@@ -485,9 +529,139 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture 
     for (const w of [-0.65, 0.65]) { put(0, w, 0.42, 1.8, 0.05, 0.3); for (const u of [-0.7, 0.7]) put(u, w, 0, 0.08, 0.42, 0.2); }
   }
 
+  // is (x, z) within m of a building other than `self` (incl. its eaves)?
+  function nearOther(x, z, m, self) {
+    for (const r of rects) {
+      if (r.o === self) continue;
+      const dx = x - r.x, dz = z - r.z, u = dx * r.c - dz * r.s, v = dx * r.s + dz * r.c;
+      if (Math.abs(u) < r.w / 2 + m && Math.abs(v) < r.d / 2 + m) return true;
+    }
+    return false;
+  }
+  // a fence around the rectangle ±hw × ±hd of a frame (L: local to world), in sections of ~2 m that follow
+  // the ground; a section is left out over a footpath, a road or paving, near another building, or where the
+  // ground drops too steeply; a gate gap on the front (z = gz) at x = gx. type: 0 pickets (sztachety), 1 rails
+  function fence(L, rot, hw, hd, type, gz, gx, self, keep) {
+    const H = type ? 1.15 : 1.05, v0 = type ? 0 : 0.53, v1 = type ? 0.47 : 1;
+    const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]];
+    for (let e = 0; e < 4; e++) {
+      const [ax, az] = corners[e], [bx, bz] = corners[(e + 1) % 4];
+      const len = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(len / 2.2));
+      const out = V(az === bz ? 0 : Math.sign(ax), 0, az === bz ? Math.sign(az) : 0);
+      const ow = L(out.x, 0, out.z), o0 = L(0, 0, 0), on = V(ow.x - o0.x, 0, ow.z - o0.z);
+      let prev = false;
+      for (let i = 0; i < n; i++) {
+        const t0 = i / n, t1 = (i + 1) / n;
+        const x0 = ax + (bx - ax) * t0, z0 = az + (bz - az) * t0, x1 = ax + (bx - ax) * t1, z1 = az + (bz - az) * t1;
+        const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+        if (gz != null && Math.abs(mz - gz) < 0.01 && Math.abs(mx - gx) < 1.6) { prev = false; continue; }   // the gate
+        const p0 = L(x0, 0, z0), p1 = L(x1, 0, z1), pm = L(mx, 0, mz);
+        const h0 = terrain.height(p0.x, p0.z), h1 = terrain.height(p1.x, p1.z);
+        if (!keep(pm.x, pm.z) || !keep(p0.x, p0.z) || !keep(p1.x, p1.z) || !free(p0.x, p0.z) || !free(p1.x, p1.z) || Math.abs(h1 - h0) > 1.4 || nearOther(pm.x, pm.z, 0.6, self)) { prev = false; continue; }
+        mesher.col = [0.95, 0.85, 0.72];
+        const u0 = (i * len / n) / 2, u1 = ((i + 1) * len / n) / 2;
+        mesher.poly('fence', [V(p0.x, h0 - 0.05, p0.z), V(p1.x, h1 - 0.05, p1.z), V(p1.x, h1 + H, p1.z), V(p0.x, h0 + H, p0.z)],
+          [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], on);
+        mesher.col = [0.8, 0.72, 0.62];
+        if (!prev) mesher.box('planks', p0.x, h0 - 0.3, p0.z, 0.13, H + 0.4, 0.13, rot, 1);
+        mesher.box('planks', p1.x, h1 - 0.3, p1.z, 0.13, H + 0.4, 0.13, rot, 1);
+        prev = true;
+      }
+    }
+  }
+  // a bench of planks with a backrest (along rot; the backrest on the side bs of its local z)
+  function bench(x, z, rot, bs) {
+    const y = terrain.height(x, z), c = Math.cos(rot), s = Math.sin(rot), P = (u, w) => [x + u * c + w * s, z - u * s + w * c];
+    mesher.col = [0.9, 0.78, 0.64];
+    const put = (u, w, yy, sx, sy, sz) => { const [px, pz] = P(u, w); mesher.box('planks', px, y + yy, pz, sx, sy, sz, rot, 1.5); };
+    put(0, 0, 0.42, 1.7, 0.06, 0.4);
+    put(0, bs * 0.2, 0.55, 1.7, 0.32, 0.05);
+    for (const u of [-0.7, 0.7]) { put(u, 0, -0.2, 0.08, 0.62, 0.36); put(u, bs * 0.2, 0.4, 0.07, 0.5, 0.06); }
+  }
+  // a notice board under a little roof on two posts (the hut's news, the map of the trails)
+  function board(x, z, rot) {
+    const y = terrain.height(x, z), c = Math.cos(rot), s = Math.sin(rot), P = (u, yy, w) => V(x + u * c + w * s, y + yy, z - u * s + w * c);
+    mesher.col = [0.8, 0.7, 0.6];
+    for (const u of [-0.8, 0.8]) { const p = P(u, 0, 0); mesher.box('planks', p.x, y - 0.4, p.z, 0.14, 2.6, 0.14, rot, 1); }
+    mesher.box('planks', x, y + 0.95, z, 1.5, 1.1, 0.06, rot, 1);
+    for (const w of [-1, 1]) {
+      mesher.col = ONE;
+      const Q = [P(-0.7, 1.0, w * 0.035), P(0.7, 1.0, w * 0.035), P(0.7, 2.0, w * 0.035), P(-0.7, 2.0, w * 0.035)];
+      mesher.poly('board', Q, [[0, 0], [1, 0], [1, 1], [0, 1]], V(w * s, 0, w * c));
+      mesher.col = [0.7, 0.62, 0.55];
+      const R = [P(-0.95, 2.2, 0), P(0.95, 2.2, 0), P(0.95, 2.05, w * 0.42), P(-0.95, 2.05, w * 0.42)];
+      mesher.poly('planks', R, [[0, 0], [1, 0], [1, 0.3], [0, 0.3]], V(0, 1, 0));
+    }
+  }
+  // the ground of a w × d spot is level enough (and free) for something to stand on
+  function flat(x, z, rot, w, d, self) {
+    const c = Math.cos(rot), s = Math.sin(rot);
+    let lo = Infinity, hi = -Infinity;
+    for (const i of [-0.5, 0, 0.5]) for (const j of [-0.5, 0, 0.5]) {
+      const px = x + i * w * c + j * d * s, pz = z - i * w * s + j * d * c;
+      if (!free(px, pz)) return null;
+      const h = terrain.height(px, pz); lo = Math.min(lo, h); hi = Math.max(hi, h);
+    }
+    return hi - lo < 0.9 && !nearOther(x, z, Math.max(w, d) / 2 + 1.5, self) ? { lo, hi } : null;
+  }
+  // a shelter (wiata): four posts, a shingle roof, a table with benches under it
+  function shelter(x, z, rot, g, k) {
+    const c = Math.cos(rot), s = Math.sin(rot), y = g.hi + 2.2;
+    mesher.col = [0.8, 0.7, 0.6];
+    for (const [u, w] of [[-1.8, -1.3], [1.8, -1.3], [1.8, 1.3], [-1.8, 1.3]]) {
+      mesher.box('planks', x + u * c + w * s, g.lo - 0.4, z - u * s + w * c, 0.18, y - g.lo + 0.45, 0.18, rot, 1);
+    }
+    const sub = { ox: x, oz: z, rot, W: 4.2, D: 3.2, fz: 1 };
+    block(sub, { ...k, wall: 'planks', wallTint: [0.85, 0.75, 0.62], floors: 1, floorH: 0.01, base: 0, pitch: 35, hip: 0, gablet: 0, eave: 0.35, gable: 0.3,
+      chimney: 0, windows: 0, plinth: 0 }, { yP: y, windows: false });
+    furniture(x, terrain.height(x, z), z, rot);
+  }
+
+  // what stands around a building: the huts get benches by the door, a notice board and a shelter with a
+  // table; the houses of the villages a wooden fence round the garden (pickets or rails) with a gate and often
+  // a bench by the door; the shepherds' huts sometimes a pen of rails
+  function surroundings({ b, bi, lk, frame, main, hut }) {
+    const { W, D, fz, rot } = frame, h = Math.abs(Math.sin(b.x * 3.17 + b.z * 1.71) * 9301.7) % 1;
+    const c = Math.cos(rot), s = Math.sin(rot), L = (x, y, z) => V(b.x + x * c + z * s, y, b.z - x * s + z * c);
+    // the door is on the main wing (its own frame, maybe turned across the building)
+    const ML = main.L, m0 = ML(0, 0, 0), m1 = ML(1, 0, 0), mrot = Math.atan2(m0.z - m1.z, m1.x - m0.x);
+    const d = main.doorAt, sd = d ? Math.sign(d.z) || 1 : fz, dx = d ? d.x : 0, wallZ = d ? d.z : fz * D / 2;
+    const ok = (p) => free(p.x, p.z) && !nearOther(p.x, p.z, 0.3, bi);
+    const trySpot = (u, w) => { const p = L(u, 0, w); return ok(p) ? p : null; };
+    const benchBy = (u) => { const p = ML(dx + u, 0, wallZ + sd * 0.45); if (ok(p)) bench(p.x, p.z, mrot, -sd); };
+    const big = lk.wall === 'plaster';
+    if (hut) {
+      const terraceFront = lk.terrace && (lk.terrace.side || 1) === 1;
+      if (!terraceFront) { benchBy(-1.7); benchBy(1.7); }
+      for (const [u, w] of [[W / 2 + 2.5, sd * (D / 2 + 3)], [-W / 2 - 2.5, sd * (D / 2 + 3)], [W / 2 + 3, 0], [-W / 2 - 3, 0]]) {
+        const p = trySpot(u, w);
+        if (p && flat(p.x, p.z, rot, 2, 1, bi)) { board(p.x, p.z, rot); break; }
+      }
+      for (let n = 0; n < 16; n++) {
+        const a = n * 2.4 + h * 6.28, r = Math.max(W, D) / 2 + 7 + (n % 4) * 2.5;
+        const x = b.x + Math.cos(a) * r, z = b.z + Math.sin(a) * r, g = flat(x, z, rot, 5, 4, bi);
+        if (g) { shelter(x, z, rot, g, lk); break; }
+      }
+    } else if (b.style === 'szalas') {
+      if (h < 0.5) {
+        const side = h < 0.25 ? 1 : -1, pw = 4 + h * 6, p = L(side * (W / 2 + pw / 2 + 0.6), 0, 0);
+        fence((x, y, z) => V(p.x + x * c + z * s, y, p.z - x * s + z * c), rot, pw / 2, Math.max(2.5, D / 2 + 1), 1, null, 0, bi, () => true);
+      }
+    } else if (b.style === 'house') {
+      if (big) { benchBy(-2); if (h > 0.5) benchBy(2); return; }
+      if (h < 0.55) benchBy(h < 0.3 ? -1.6 : 1.6);
+      if (h > 0.2 && W * D < 220 && (b.floors || 1) <= 2) {                // family houses, not the hotels
+        const m = 3 + ((h * 13.7) % 1) * 4;                           // the garden, 3-7 m beyond the walls
+        fence(L, rot, W / 2 + m, D / 2 + m, (h * 7.9) % 1 < 0.6 ? 0 : 1, fz * (D / 2 + m), dx, bi, yard);
+      }
+    }
+  }
+
   // the outbuildings of a hut (within 90 m, unnamed, not plastered) take its wall and roof colours
   const huts = list.filter((b) => HUTS.some(([re]) => re.test(b.name || ''))).map((b) => ({ b, lk: lookOf(b) }));
-  for (const b of list) {
+  const todo = [];
+  for (const [bi, b] of list.entries()) {
+    owner = bi;
     const lk = lookOf(b);
     if (!b.name && lk.wall !== 'plaster') {
       const h = huts.find((u) => Math.hypot(u.b.x - b.x, u.b.z - b.z) < 90);
@@ -511,7 +685,10 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture 
       if (n === 0) main = r;
     }
     extras(b, frame, lk, main);
+    todo.push({ b, bi, lk, frame, main, hut: HUTS.some(([re]) => re.test(b.name || '')) });
   }
+  owner = -1;
+  for (const t of todo) surroundings(t);
   const group = new THREE.Group();
   for (const [k, g] of Object.entries(mesher.geometries())) {
     const m = new THREE.Mesh(g, M[k]);
