@@ -464,15 +464,13 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               // trodden fringe: grass worn brown at the edge of the path
               float fringe = smoothstep(0.08, 0.3, tr) * (1.0 - wTrail);
               nearCol = mix(nearCol, nearCol * vec3(0.86, 0.8, 0.7), fringe * 0.6);
-              // asphalt (the roads up the valleys): dark grey, fine grain, patched and cracked here and there,
-              // the edges crumbling into the gravel shoulder
+              // asphalt (the roads up the valleys): dark grey, a fine grain, darker patches of newer tar
               if (asph > 0.05 && wTrail > 0.01) {
-                float g1 = vnoise(w.xz * 9.0), g2 = vnoise(w.xz * 0.35), crack = smoothstep(0.47, 0.5, vnoise(w.xz * vec2(0.6, 2.2))) * smoothstep(0.53, 0.5, vnoise(w.xz * vec2(0.6, 2.2)));
-                vec3 ac = vec3(0.21, 0.21, 0.22) * (0.85 + 0.25 * g1) * (0.9 + 0.2 * g2);
-                ac = mix(ac, vec3(0.13), smoothstep(0.62, 0.7, g2) * 0.6);               // patches of newer tar
-                ac *= 1.0 - crack * 0.45;
+                float g1 = vnoise(w.xz * 9.0), g2 = vnoise(w.xz * 0.35), g3 = vnoise(w.xz * 2.1);
+                vec3 ac = vec3(0.13, 0.125, 0.115) * (0.85 + 0.25 * g1) * (0.9 + 0.2 * g2) * (0.95 + 0.1 * g3);
+                ac = mix(ac, vec3(0.075, 0.075, 0.08), smoothstep(0.62, 0.7, g2) * 0.7);   // patches of newer tar
                 float body = smoothstep(0.35, 0.75, wTrail);
-                nearCol = mix(nearCol, ac * (0.6 + 0.4 * ls / max(lt, 0.05)), asph * body);
+                nearCol = mix(nearCol, ac, asph * body);
                 tn = normalize(mix(tn, N, asph * body * 0.8));
               }
               // granite paving: irregular blocks of different sizes set in soil, some missing (gravel

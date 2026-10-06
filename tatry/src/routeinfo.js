@@ -8,7 +8,7 @@ function surfaceOf(t, ele) {
   const s = t.surface, h = t.highway;
   // asphalt: the roads up the valleys (Palenica - Morskie Oko, Kuźnice) wide, the footways narrower
   if (['asphalt', 'paved', 'concrete'].includes(s) || (!s && ['tertiary', 'secondary', 'unclassified', 'residential'].includes(h)))
-    return { width: ['tertiary', 'secondary', 'unclassified'].includes(h) ? 5.0 : h === 'footway' ? 2.4 : 3.6, paved: 0, wear: 1, asphalt: s === 'concrete' ? 0.7 : 1 };
+    return { width: ['tertiary', 'secondary', 'unclassified', 'pedestrian'].includes(h) ? 5.0 : h === 'footway' ? 2.4 : 3.6, paved: 0, wear: 1, asphalt: s === 'concrete' ? 0.7 : 1 };
   if (h === 'service' || h === 'pedestrian') return { width: 3.4, paved: 0, wear: 1 };
   if (h === 'track' || ['gravel', 'compacted', 'fine_gravel'].includes(s)) return { width: 2.8, paved: 0, wear: 1 };
   if (['cobblestone', 'unhewn_cobblestone', 'sett', 'paving_stones'].includes(s) || h === 'steps') return { width: 2.0, paved: 1, wear: 1 };
