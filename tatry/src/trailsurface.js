@@ -34,11 +34,12 @@ export function makeTrailWindow({ trail, px = 1024, size = 256, sections = secti
   const rect = { value: new THREE.Vector4(0, 0, 0, 0) };
   const N = trail.X.length, step = trail.step;
   // width with a little natural variation
-  const W = new Float32Array(N), P = new Float32Array(N), E = new Float32Array(N);
+  const W = new Float32Array(N), P = new Float32Array(N), E = new Float32Array(N), A = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const s = i * step, sec = sections(s);
     W[i] = sec.width * (1 + 0.12 * Math.sin(s / 7.3) + 0.08 * Math.sin(s / 2.9 + 1.3));
-    P[i] = sec.paved; E[i] = sec.wear;
+    P[i] = sec.paved; E[i] = sec.wear; A[i] = sec.asphalt || 0;
+    if (A[i] > 0.5) W[i] = sec.width * (1 + 0.02 * Math.sin(s / 7.3));       // a road keeps its width
   }
   let c = null;
   function update(cx, cz) {
@@ -48,14 +49,14 @@ export function makeTrailWindow({ trail, px = 1024, size = 256, sections = secti
     g.globalCompositeOperation = 'source-over';
     g.fillStyle = '#000'; g.fillRect(0, 0, px, px);
     g.lineCap = 'round'; g.lineJoin = 'round';
-    // three layers: worn fringe, path, trodden middle; blending keeps G/R = paved
+    // three layers: worn fringe, path, trodden middle; blending keeps G/R = paved, B/R = asphalt
     const layers = [[1.0, 0.3], [0, 0.55], [-0.45, 0.8]];
     for (const [extra, alpha] of layers) {
       for (let i = 0; i < N - 1; i++) {
         const x = trail.X[i], z = trail.Z[i];
         if (x < x0 - 4 || z < z0 - 4 || x > x0 + size + 4 || z > z0 + size + 4) continue;
         const w = extra < 0 ? W[i] * (1 + extra) : W[i] + extra;
-        g.strokeStyle = `rgba(255,${Math.round(P[i] * 255)},0,${(alpha * E[i]).toFixed(3)})`;
+        g.strokeStyle = `rgba(255,${Math.round(P[i] * 255)},${Math.round(A[i] * 255)},${(alpha * E[i]).toFixed(3)})`;
         g.lineWidth = Math.max(1, w * k);
         g.beginPath(); g.moveTo((x - x0) * k, (z - z0) * k); g.lineTo((trail.X[i + 1] - x0) * k, (trail.Z[i + 1] - z0) * k); g.stroke();
       }

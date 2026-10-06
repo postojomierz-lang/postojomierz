@@ -33,7 +33,7 @@ import { buildReveal } from './nature/reveal.js';
 import { GROUPS, RARITY, BY_ID } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
-import { routeFromHash, routePath, loadRegionArea, REGION_BASE, toLocal } from './region.js';
+import { routeFromHash, routePath, loadRegionArea, REGION_BASE, toLocal, toLonLat, trailGraph, MAX_KM } from './region.js';
 import { routeInfo } from './routeinfo.js';
 import { loadJournal, saveJournal, routeKey, addWalk, addPeak, ghostAt, fmtClock } from './journal.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -460,7 +460,15 @@ async function main() {
     const z0 = Math.max(IB[1], Math.min(IB[3] - PATCH, Math.round(cz / 10) * 10 - PATCH / 2));
     const n = Math.round(PATCH / PSTEP);
     const g = gridGeometry(x0, z0, x0 + PATCH, z0 + PATCH, n, n, (x, z) => terrain.height(x, z), 6);
-    if (patchMesh) { patchMesh.geometry.dispose(); patchMesh.geometry = g; patchMesh.visible = true; }
+    if (patchMesh) {
+      // the same grid moved: new heights and normals into the buffers already on the GPU (no new buffers,
+      // the shared index stays)
+      const og = patchMesh.geometry;
+      og.attributes.position.array.set(g.attributes.position.array); og.attributes.position.needsUpdate = true;
+      og.attributes.normal.array.set(g.attributes.normal.array); og.attributes.normal.needsUpdate = true;
+      og.userData = g.userData; og.computeBoundingSphere(); og.computeBoundingBox();
+      patchMesh.visible = true;
+    }
     else { patchMesh = new THREE.Mesh(g, patchMat); patchMesh.receiveShadow = true; scene.add(patchMesh); }
     near.patch.value.set(x0, z0, x0 + PATCH, z0 + PATCH);
     patchC = { x: cx, z: cz };
@@ -576,7 +584,8 @@ async function main() {
   }
 
   // ---------- streams and waterfalls
-  const streams = buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol: water.uniforms.skyCol, quality: QUALITY });
+  const streams = buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol: water.uniforms.skyCol, quality: QUALITY,
+    onPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.3 });
   streams.setPixelRatio(renderer.getPixelRatio(), innerHeight);
 
   // ---------- trail heights (smoothed, never under the rendered surface)
@@ -989,6 +998,44 @@ async function main() {
             vr.items.push([dummy.matrix.clone(), 0.9 + r() * 0.25]);
           }
         }
+      }
+    }
+    // the shores of the mountain lakes: a ring of granite, boulders and stones half in the water, half on the
+    // bank (the moraines dam the tarns; the ice and the waves keep the turf off the rim)
+    {
+      const shore = (x, z) => {
+        for (const d of [2.5, 6]) for (let j = 0; j < 8; j++) {
+          const a = j * Math.PI / 4;
+          if (terrain.maskAt(lakeMask, x + Math.cos(a) * d, z + Math.sin(a) * d) > 0.3) return d;
+        }
+        return 0;
+      };
+      const want = tier(500, 900, 1600, 2600);
+      k = 0; guard = 0;
+      while (k < want && guard++ < want * 40) {
+        const i = Math.floor(r() * N), d = 3 + r() * 250, a = r() * 6.28;
+        const x = trail.X[i] + Math.cos(a) * d, z = trail.Z[i] + Math.sin(a) * d;
+        if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.6 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 14)) continue;
+        if (terrain.height(x, z) < 1350) continue;                       // the tarns, not the ponds of the valleys
+        const sd = shore(x, z);
+        if (!sd) continue;
+        const gc = groundClass(x, z);
+        if (gc && (gc.c === 6 || gc.c === 2)) continue;
+        const nrm = terrain.normal(x, z, 3);
+        if (nrm.y < 0.5) continue;
+        // bigger ones a step back from the water, small ones at its edge
+        const s = (sd > 4 ? 0.6 + Math.pow(r(), 2) * 2.4 : 0.3 + Math.pow(r(), 2) * 1.1);
+        if (s > 0.8 && !offPath(x, z, s * 0.7 + 0.6)) continue;
+        const vr = pick(s);
+        q.setFromUnitVectors(up, nrm.clone().lerp(up, 0.5).normalize());
+        qy.setFromAxisAngle(up, r() * 6.283);
+        dummy.quaternion.copy(q).multiply(qy);
+        const sc = s / vr.size;
+        dummy.scale.set(sc * (0.8 + r() * 0.4), sc * (0.6 + r() * 0.4), sc * (0.8 + r() * 0.4));
+        dummy.position.set(x, ground(x, z) - s * 0.2, z);
+        dummy.updateMatrix();
+        vr.items.push([dummy.matrix.clone(), 0.85 + r() * 0.25]);
+        k++;
       }
     }
     // levels of detail: the full rock near the camera (with its shadow), a tenth of the triangles further out, the
@@ -1507,12 +1554,21 @@ async function main() {
       boards: [{ dest: 'Rysy', toS: LENGTH }, { dest: 'Czarny Staw', toS: sCzarny }] },
     { s: LENGTH - 6, title: 'Rysy', ele: 2499, side: -1, boards: [{ dest: 'Morskie Oko', toS: 0 }] },
   ] });
+  // the peaks the planner knows (OpenStreetMap) that the region's labels lack: the small rocky tops above the
+  // valleys (Sarnia Skała, Suchy Wierch, Igła, Łomik…) left out when the labels were made
+  function poiPeaks() {
+    if (!route) return [];
+    const have = (meta.labels || []).filter((l) => l.kind === 'peak' || l.kind === 'pass');
+    return route.pois.filter((p) => (p.k === 'peak' || p.k === 'pass') && p.n && inner.inside(p.xz[0], p.xz[1])
+      && !have.some((l) => l.name === p.n && Math.hypot(l.x - p.xz[0], l.z - p.xz[1]) < 500))
+      .map((p) => ({ kind: p.k, name: p.n, x: p.xz[0], z: p.xz[1], ele: p.e || undefined, rank: p.k === 'peak' ? 1.3 + Math.max(0, ((p.e || 0) - 1000) / 1500) : 1.2 }));
+  }
   // map labels (peaks, passes, lakes, huts, waterfalls) plus the Polish summit of Rysy
   const top = at(LENGTH);
   // the plants and animals of the catalogue along this route (src/nature) and what has been discovered
   const found = loadFound();
   const labels = buildLabels({ meta, terrain, camera, container: document.body, blockers: signs.posts.map((p) => p.at),
-    extra: [...(RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }]), ...rest.labels],
+    extra: [...(RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }]), ...rest.labels, ...poiPeaks()],
     nature: { spots, found }, onClick: (it) => cards.show(it) });
   // a peak or a place clicked: how far, how long, how hard and how many calories from where one is now
   // (along the trail when it lies on it, else in a straight line)
@@ -1524,7 +1580,10 @@ async function main() {
     const hNow = state.free ? drawnHeight(me.x, me.z) : profile[Math.min(N - 1, i0)];
     if (Math.sqrt(bd) > 150) {
       const km = Math.hypot(pos.x - me.x, pos.z - me.z) / 1000, dh = Math.round(pos.y - hNow);
-      return `<div class="rt"><b>Poza tą trasą</b> · ${km.toFixed(1)} km w linii prostej · ${dh >= 0 ? '↗' : '↘'} ${Math.abs(dh)} m różnicy wysokości</div>`;
+      const id = 'rt' + (++rtSeq);
+      netRoute(me, pos, id);
+      return `<div class="rt" id="${id}"><b>Poza tą trasą</b> · ${km.toFixed(1)} km w linii prostej · ${dh >= 0 ? '↗' : '↘'} ${Math.abs(dh)} m różnicy wysokości`
+        + '<br><small>Liczę drogę szlakami…</small></div>';
     }
     const k = j >= i0 ? 1 : -1;
     let up = 0, down = 0, min = 0, steep = 0;
@@ -1543,6 +1602,31 @@ async function main() {
     const t = Math.round(min);
     return `<div class="rt"><b>${k > 0 ? 'Przed tobą' : 'Za tobą (z powrotem)'}</b> · ${km.toFixed(1)} km szlakiem · ok. ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} h (normy PTTK)<br>`
       + `↗ ${Math.round(up)} m · ↘ ${Math.round(down)} m · trudność: ${hard} · ok. ${kcal} kcal <small>(osoba 75 kg)</small></div>`;
+  }
+  // a place off this route: the way to it along the marked trails of the whole network (as the planner
+  // finds it), filled into the card when the network has loaded
+  let rtSeq = 0;
+  async function netRoute(me, pos, id) {
+    let html;
+    try {
+      const G = await trailGraph(), [lo0, la0] = toLonLat(me.x, me.z), [lo1, la1] = toLonLat(pos.x, pos.z);
+      const a = G.snap(lo0, la0, 600), b = G.snap(lo1, la1, 400), path = a >= 0 && b >= 0 ? G.route(a, b) : null;
+      if (b < 0) html = '<b>Nie prowadzi tam znakowany szlak.</b>';
+      else if (!path) html = '<b>Brak połączenia szlakami stąd.</b>';
+      else {
+        const S = G.summary(path), km = S.dist / 1000, t = Math.round(S.time);
+        const [vx, vz] = toLocal(G.data.v[b][0], G.data.v[b][1]), off = Math.hypot(vx - pos.x, vz - pos.z);
+        const hard = S.maxE > 2200 ? 'trudna' : S.up > 600 ? 'średnia' : 'łatwa';
+        const kcal = Math.round((75 * 0.55 * km + 0.9 * S.up + 0.15 * S.down) / 10) * 10;
+        html = `<b>Szlakami</b> · ${km.toFixed(1)} km · ok. ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} h (normy PTTK)`
+          + `<br>↗ ${Math.round(S.up)} m · ↘ ${Math.round(S.down)} m · trudność: ${hard} · ok. ${kcal} kcal <small>(osoba 75 kg)</small>`
+          + (off > 80 ? `<br><small>Szlak kończy się ${Math.round(off)} m od celu.</small>` : '');
+      }
+    } catch (e) { html = null; }
+    const el = document.getElementById(id), sm = el && el.querySelector('small:last-child');
+    if (!el) return;
+    if (html) el.innerHTML = el.innerHTML.replace(/<br><small>Liczę drogę szlakami…<\/small>$/, '') + '<br>' + html;
+    else if (sm) sm.remove();
   }
   const cards = await buildCards({ found, routeTo, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
   // the plants of the catalogue at their spots: patches of flowers, herbs, ferns and dwarf shrubs
@@ -2166,6 +2250,7 @@ async function main() {
     return rc.intersectObjects(scene.children, true).slice(0, 6).map((h) => ({ name: h.object.name, type: h.object.type, parent: h.object.parent && h.object.parent.name,
       mat: h.object.material && (h.object.material.name || h.object.material.type), dist: Math.round(h.distance), verts: h.object.geometry && h.object.geometry.attributes.position.count }));
   };
+  if (route && route.summary.cut) toast(`Trasa ma ${route.summary.cut.total.toFixed(0)} km: widok 3D pokazuje jej pierwsze ${MAX_KM} km. Dalszą część otwórz osobno z planera.`, 9);
   window.__rysy = { taa, pick, cross, rest, reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }

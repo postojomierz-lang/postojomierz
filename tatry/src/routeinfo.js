@@ -6,7 +6,10 @@
 // surface of the path from the tags of a way: width (m), paved 0..1 (granite paving), wear 0..1
 function surfaceOf(t, ele) {
   const s = t.surface, h = t.highway;
-  if (['asphalt', 'paved', 'concrete'].includes(s) || h === 'service' || h === 'pedestrian') return { width: 3.4, paved: 0, wear: 1 };
+  // asphalt: the roads up the valleys (Palenica - Morskie Oko, Kuźnice) wide, the footways narrower
+  if (['asphalt', 'paved', 'concrete'].includes(s) || (!s && ['tertiary', 'secondary', 'unclassified', 'residential'].includes(h)))
+    return { width: ['tertiary', 'secondary', 'unclassified', 'pedestrian'].includes(h) ? 5.0 : h === 'footway' ? 2.4 : 3.6, paved: 0, wear: 1, asphalt: s === 'concrete' ? 0.7 : 1 };
+  if (h === 'service' || h === 'pedestrian') return { width: 3.4, paved: 0, wear: 1 };
   if (h === 'track' || ['gravel', 'compacted', 'fine_gravel'].includes(s)) return { width: 2.8, paved: 0, wear: 1 };
   if (['cobblestone', 'unhewn_cobblestone', 'sett', 'paving_stones'].includes(s) || h === 'steps') return { width: 2.0, paved: 1, wear: 1 };
   if (t.sac >= 3 || s === 'rock' || s === 'stone') return { width: 1.0, paved: 0, wear: 0.45 };
@@ -33,18 +36,18 @@ export function routeInfo({ route, trail, TH, meta, pois }) {
     while (k < cum.length - 2 && cum[k + 1] < s) k++;
     vAt[i] = k;
   }
-  const W = new Float32Array(N), P = new Float32Array(N), E = new Float32Array(N), SAC = new Uint8Array(N);
+  const W = new Float32Array(N), P = new Float32Array(N), E = new Float32Array(N), A = new Float32Array(N), SAC = new Uint8Array(N);
   const colour = new Array(N);
   for (let i = 0; i < N; i++) {
     const t = route.info[vAt[i]];
     const sf = surfaceOf(t, TH[i]);
-    W[i] = sf.width; P[i] = sf.paved; E[i] = sf.wear; SAC[i] = t.sac; colour[i] = t.colour;
+    W[i] = sf.width; P[i] = sf.paved; E[i] = sf.wear; A[i] = sf.asphalt || 0; SAC[i] = t.sac; colour[i] = t.colour;
   }
   // soften changes over ~20 m either way
   const soft = (a) => { const o = new Float32Array(N); for (let i = 0; i < N; i++) { let s = 0, n = 0; for (let k = Math.max(0, i - 20); k <= Math.min(N - 1, i + 20); k += 2) { s += a[k]; n++; } o[i] = s / n; } return o; };
-  const Ws = soft(W), Ps = soft(P), Es = soft(E);
+  const Ws = soft(W), Ps = soft(P), Es = soft(E), As = soft(A);
   const idx = (s) => Math.max(0, Math.min(N - 1, Math.round(s / step)));
-  const sectionAt = (s) => { const i = idx(s); return { width: Ws[i], paved: Ps[i], wear: Es[i] }; };
+  const sectionAt = (s) => { const i = idx(s); return { width: Ws[i], paved: Ps[i], wear: Es[i], asphalt: As[i] }; };
 
   // nearest point of the route to (x, z): { s, d }
   const nearest = (x, z) => {

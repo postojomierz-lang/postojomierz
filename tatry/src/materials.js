@@ -402,7 +402,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
             }
             // the path: the sharp window around the camera where there is one (R = path, G = R * paved),
             // with a ragged, trodden edge; the coarse whole-area mask elsewhere
-            float tr = texture2D(trailMap, uv).r, paved = 0.0;
+            float tr = texture2D(trailMap, uv).r, paved = 0.0, asph = 0.0;
             float wTrail = smoothstep(0.2, 0.75, tr);
             {
               vec2 tuv = (w.xz - trailRect.xy) / (trailRect.zw - trailRect.xy);
@@ -413,6 +413,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
                 float edge = 0.22 + 0.5 * (vnoise(w.xz * 1.3) * 0.6 + vnoise(w.xz * 4.7) * 0.4);
                 wTrail = mix(wTrail, smoothstep(edge - 0.07, edge + 0.07, tn4.r), k);
                 paved = tn4.r > 0.02 ? clamp(tn4.g / tn4.r, 0.0, 1.0) * k : 0.0;
+                asph = tn4.r > 0.02 ? clamp(tn4.b / tn4.r, 0.0, 1.0) * k : 0.0;
                 tr = mix(tr, tn4.r, k);
               }
             }
@@ -463,6 +464,15 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               // trodden fringe: grass worn brown at the edge of the path
               float fringe = smoothstep(0.08, 0.3, tr) * (1.0 - wTrail);
               nearCol = mix(nearCol, nearCol * vec3(0.86, 0.8, 0.7), fringe * 0.6);
+              // asphalt (the roads up the valleys): dark grey, a fine grain, darker patches of newer tar
+              if (asph > 0.05 && wTrail > 0.01) {
+                float g1 = vnoise(w.xz * 9.0), g2 = vnoise(w.xz * 0.35), g3 = vnoise(w.xz * 2.1);
+                vec3 ac = vec3(0.13, 0.125, 0.115) * (0.85 + 0.25 * g1) * (0.9 + 0.2 * g2) * (0.95 + 0.1 * g3);
+                ac = mix(ac, vec3(0.075, 0.075, 0.08), smoothstep(0.62, 0.7, g2) * 0.7);   // patches of newer tar
+                float body = smoothstep(0.35, 0.75, wTrail);
+                nearCol = mix(nearCol, ac, asph * body);
+                tn = normalize(mix(tn, N, asph * body * 0.8));
+              }
               // granite paving: irregular blocks of different sizes set in soil, some missing (gravel
               // and dirt there), dirty and mossy from the photo; each block tilted a little
               if (paved > 0.05 && wTrail > 0.01) {

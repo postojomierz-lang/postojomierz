@@ -647,7 +647,8 @@ function updateGo() {
   const note = $('go-note');
   $('go').disabled = !path;
   note.hidden = !path;
-  if (path) note.textContent = summary.dist > 14000 ? 'Długa trasa: wczytanie widoku 3D potrwa dłużej (duży obszar terenu).' : 'Widok 3D wczytuje teren wokół trasy (kilkanaście MB).';
+  if (path) note.textContent = summary.dist > 25000 ? `Trasa ma ${Math.round(summary.dist / 1000)} km: widok 3D pokaże jej pierwsze 25 km (dłuższej nie da się wczytać). Dalszą część zaplanuj osobno.`
+    : summary.dist > 14000 ? 'Długa trasa: wczytanie widoku 3D potrwa dłużej (duży obszar terenu).' : 'Widok 3D wczytuje teren wokół trasy (kilkanaście MB).';
 }
 $('go').onclick = () => {
   // the start time goes along: the 3D view shows the forecast's weather for the hour one is at each place

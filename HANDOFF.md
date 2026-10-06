@@ -1,10 +1,9 @@
 # HANDOFF (6.10.2026)
 - Cel: Szlakownik (tatry/) — widok 3D z R2 i planer; jeden adres: https://postojomierz-lang.github.io/postojomierz/rysy/ (otwiera planer).
-- Stan: PR 242–253 scalone (253: mail.ru pierwszy serwer Overpass), nic w toku. Wyszukiwarka z wodospadami/stawami/punktami widokowymi/źródłami, rysy/ → planer, zgł. 64–67 i 70 poprawione, Biblioteka odkryć w Dzienniku, alpha-to-coverage, TAA na high/ultra (bez drżenia, lekkie wyostrzenie), postój „Idź sam” na scenę zwierząt.
-- Konwencje: po polsku; odpowiedź kończy `🔵 **Możliwe kolejne kroki:**` z krokami numerowanymi 1., 2., 3.; polecenia w osobnych blokach kodu, bez HTML; po zmianie PR do main i od razu merge; przed propozycją /compact lub /clear Claude sam aktualizuje HANDOFF.md (hook blokuje dopiero przy notatce starszej niż 2 h).
-- Decyzje: mid/low bez post-processingu (MSAA + alpha-to-coverage); kierunek przesunięcia TAA potwierdzony pomiarem (drżenie 0,30→0,13); sceny zwierząt co 1–2 min, 8–10 s; Overpass działa tylko z maps.mail.ru.
-- Zmienione pliki (i PR): prepare_trails.py, planner/search.js, planner/main.js, planner/library.js, planer.html, index.html (242–247); vegetation3d.js, impostor.js, main.js, taa.js (248–250); HANDOFF.md, CLAUDE.md, .claude/hooks/handoff-precompact.sh (251–252).
-- Zgłoszenia: ostatnie przejrzane nr 70 (python3 tatry/tools/bug_reports.py --since 70).
-- Następny krok: właściciel ocenia na ultra ostrość i spokój obrazu (siła wyostrzenia: amount 0.35 w tatry/src/taa.js); ~7.10 za zgodą usunąć stary region/ z R2.
-- Testy: python3 -m http.server 8765 w root + Playwright --no-proxy-server; 3D w kontenerze bardzo wolne (q=high ~1 kl/s).
-- Komendy: cd tatry && npm run build; POI_ONLY=1 python3 tatry/tools/prepare_trails.py; python3 tatry/tools/upload_r2.py --prefix region2/ [--dry-run]
+- Stan: PR 242–257 scalone, nic w toku. 254/255 obejścia (płoty, ławki, tablice, wiaty, kosze, studnie, kapliczki, stogi; kamienie ≥14 m od budynków). 256 modele zwierząt ponawiane po 503. 257 zgł. 71–80: kamienie na brzegach stawów, czas dojścia szlakami w karcie szczytu (trailGraph w region.js), TAA (tłumienie rozbłysków, historia przy zmianie rozdzielczości, wyostrzenie 0.45), szybsza przebudowa siatki 1 m, potoki w korycie/pod ścieżką, limit 25 km w 3D, szczyty z OSM w 3D, asfalt (kanał B maski szlaku).
+- Konwencje: po polsku; odpowiedź kończy `🔵 **Możliwe kolejne kroki:**` z krokami numerowanymi; polecenia w osobnych blokach kodu, bez HTML; po zmianie PR do main i od razu merge; przed /compact lub /clear Claude sam aktualizuje HANDOFF.md.
+- Decyzje: mid/low bez post-processingu; drogowskazy PTTK już są (signs.js); asfalt dla surface asphalt/paved/concrete i dróg tertiary/unclassified/pedestrian (5 m); trasy >25 km w 3D przycinane (MAX_KM w region.js).
+- Zgłoszenia: ostatnie przejrzane nr 80 (python3 tatry/tools/bug_reports.py --since 80).
+- Następny krok: właściciel ocenia na ultra rozbłyski/ostrość (ff i amount w taa.js), asfalt Palenica–Morskie Oko, potoki, przycięcia przy ×30 (jeśli zostają: przebudowa siatki 1 m w kawałkach w kolejnych klatkach); ~7.10 za zgodą usunąć stary region/ z R2.
+- Testy: python3 -m http.server 8765 w root (run_in_background, timeout 2 h) + Playwright --no-proxy-server, ?odkrycie=0 wyłącza animacje odkryć; skrypty w scratchpadzie: yard.mjs, card72.mjs, rep73.mjs, asf.mjs.
+- Komendy: cd tatry && npm run build; python3 tatry/tools/upload_r2.py --prefix region2/ [--dry-run]
