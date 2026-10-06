@@ -61,8 +61,17 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
   const loader = new GLTFLoader();
   const proto = {};
   const files = {};
+  // a model that will not load (the server busy for a moment: 503) is tried again; if it still fails, that
+  // species stays out and the walk goes on without it
+  const load = async (url) => {
+    for (let t = 0; t < 3; t++) {
+      try { return await loader.loadAsync(url); } catch (e) { console.warn(url, e); await new Promise((r) => setTimeout(r, 1500 * (t + 1))); }
+    }
+    return null;
+  };
   await Promise.all(Object.entries(SPECIES).map(async ([k, s]) => {
-    const g = await (files[s.file] || (files[s.file] = loader.loadAsync(`models/animals/${s.file}.glb`)));
+    const g = await (files[s.file] || (files[s.file] = load(`models/animals/${s.file}.glb`)));
+    if (!g) return;
     g.scene.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = true; o.receiveShadow = true;
@@ -210,6 +219,7 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
   for (const g of groups) spawn(g);
   function spawnOne(g, kind) {
     const p = proto[kind], sp = SPECIES[kind];
+    if (!p) return null;
     const obj = SkeletonUtils.clone(p.scene);
     const mixer = new THREE.AnimationMixer(obj);
     const acts = {};
@@ -598,7 +608,8 @@ export async function buildAnimals({ scene, terrain, groundAt, trail, land, boun
       const pack = roll < 0.7 ? ['wolf', 'wolf', 'wolf'] : ['bear'];
       const g = { kinds: pack, home: at, habitat: dry };
       groups.push(g);
-      hunters = pack.map((k) => { const an = spawnOne(g, k); an.x = at.x + (r() - 0.5) * 6; an.z = at.z + (r() - 0.5) * 6; return an; });
+      hunters = pack.map((k) => { const an = spawnOne(g, k); if (!an) return null; an.x = at.x + (r() - 0.5) * 6; an.z = at.z + (r() - 0.5) * 6; return an; }).filter(Boolean);
+      if (!hunters.length) return;
     }
     const herd = animals.filter((a) => a.group === target.group && !a.gone && a.state !== 'dead');
     const wolves = hunters[0].kind === 'wolf';
