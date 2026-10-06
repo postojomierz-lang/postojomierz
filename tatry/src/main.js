@@ -609,8 +609,17 @@ async function main() {
 
   // ---------- vegetation and boulders
   status('Budowanie schronisk i szałasów…'); await frame();
+  const photoRGBA = pixels(innerBmp), PHW = innerBmp.width, PHH = innerBmp.height;   // decoded once, used below too
+  // a fence stands on a garden, not across a road, a yard or a car park (grey in the photo)
+  const notPaved = (x, z) => {
+    const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * PHW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * PHH);
+    if (u < 0 || v < 0 || u >= PHW || v >= PHH) return true;
+    const o = (v * PHW + u) * 4, R = photoRGBA[o], G = photoRGBA[o + 1], B = photoRGBA[o + 2];
+    return !(Math.max(R, G, B) - Math.min(R, G, B) < 18 && R + G + B > 240);
+  };
   const houses = await buildBuildings({ scene, meta, terrain, shade,
-    loadTexture: async (url, srgb) => { const t = texture(await bitmap(url), aniso); if (!srgb) t.colorSpace = THREE.NoColorSpace; return t; } });
+    loadTexture: async (url, srgb) => { const t = texture(await bitmap(url), aniso); if (!srgb) t.colorSpace = THREE.NoColorSpace; return t; },
+    free: (x, z) => terrain.maskAt(trailVisWide, x, z) <= 0.02 && terrain.maskAt(lakeMask, x, z) <= 0.02, yard: notPaved });
 
   status('Sadzenie lasu i kosodrzewiny…'); await frame();
   const land = pixels(landBmp), LW = landBmp.width, LH = landBmp.height;
@@ -619,7 +628,6 @@ async function main() {
   // which tree: 0 spruce, 1 dead spruce (bark beetle; grey-brown crown in the photo), 2 stone pine (limba:
   // the upper tree line, more likely higher up and for lone trees among the dwarf pine), 3 rowan (small trees
   // at the forest edge and among the dwarf pine, 1250-1700 m)
-  const photoRGBA = pixels(innerBmp), PHW = innerBmp.width, PHH = innerBmp.height;   // decoded once, used below too
   const hash = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };
   const species = (x, z, h, real) => {
     const q = hash(x, z);
@@ -841,7 +849,7 @@ async function main() {
   if (WINTER && grass) for (const f of grass.fields) f.mesh.visible = false;      // under the snow
   if (WINTER) for (const m of Object.values(cover.meshes)) m.visible = false;
   const deadwood = await buildDeadwood({ scene, terrain, trail, shade, quality: QUALITY, isForest: sound.isForest,
-    free: (x, z) => terrain.maskAt(clearing, x, z) === 0 && terrain.maskAt(lakeMask, x, z) < 0.02 && !houses.inside(x, z, 3) });
+    free: (x, z) => terrain.maskAt(clearing, x, z) === 0 && terrain.maskAt(lakeMask, x, z) < 0.02 && !houses.inside(x, z, 10) });
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
   const rocks = { update() {} };
@@ -880,7 +888,8 @@ async function main() {
       const i = Math.floor(r() * N);
       const d = 2.5 + Math.pow(r(), 2.6) * 220, a = r() * 6.28;
       const x = trail.X[i] + Math.cos(a) * d, z = trail.Z[i] + Math.sin(a) * d;
-      if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 1.5)) continue;
+      // none in the gardens and yards round the houses
+      if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 14)) continue;
       const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * IW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * IW);
       const o = (v * IW + u) * 4, R = ip[o], G = ip[o + 1], B = ip[o + 2];
       const gc = groundClass(x, z);
@@ -960,7 +969,7 @@ async function main() {
           const blocks = 3 + Math.floor(r() * 5), spread = 1.5 + r() * 3.5;
           for (let b = 0; b < blocks; b++) {
             const x = cx + (r() - 0.5) * spread * 2, z = cz + (r() - 0.5) * spread * 2;
-            if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 1.5)) continue;
+            if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 14)) continue;
             const gc = groundClass(x, z);
             // not in the forest or the water; among the dwarf pine some (the rock breaks through it there too)
             if (gc && (gc.c === 6 || gc.c === 1 || (gc.c === 5 && r() > 0.5))) continue;
