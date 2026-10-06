@@ -33,7 +33,7 @@ import { buildReveal } from './nature/reveal.js';
 import { GROUPS, RARITY, BY_ID } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
-import { routeFromHash, routePath, loadRegionArea, REGION_BASE, toLocal, toLonLat, trailGraph } from './region.js';
+import { routeFromHash, routePath, loadRegionArea, REGION_BASE, toLocal, toLonLat, trailGraph, MAX_KM } from './region.js';
 import { routeInfo } from './routeinfo.js';
 import { loadJournal, saveJournal, routeKey, addWalk, addPeak, ghostAt, fmtClock } from './journal.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -460,7 +460,15 @@ async function main() {
     const z0 = Math.max(IB[1], Math.min(IB[3] - PATCH, Math.round(cz / 10) * 10 - PATCH / 2));
     const n = Math.round(PATCH / PSTEP);
     const g = gridGeometry(x0, z0, x0 + PATCH, z0 + PATCH, n, n, (x, z) => terrain.height(x, z), 6);
-    if (patchMesh) { patchMesh.geometry.dispose(); patchMesh.geometry = g; patchMesh.visible = true; }
+    if (patchMesh) {
+      // the same grid moved: new heights and normals into the buffers already on the GPU (no new buffers,
+      // the shared index stays)
+      const og = patchMesh.geometry;
+      og.attributes.position.array.set(g.attributes.position.array); og.attributes.position.needsUpdate = true;
+      og.attributes.normal.array.set(g.attributes.normal.array); og.attributes.normal.needsUpdate = true;
+      og.userData = g.userData; og.computeBoundingSphere(); og.computeBoundingBox();
+      patchMesh.visible = true;
+    }
     else { patchMesh = new THREE.Mesh(g, patchMat); patchMesh.receiveShadow = true; scene.add(patchMesh); }
     near.patch.value.set(x0, z0, x0 + PATCH, z0 + PATCH);
     patchC = { x: cx, z: cz };
@@ -576,7 +584,8 @@ async function main() {
   }
 
   // ---------- streams and waterfalls
-  const streams = buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol: water.uniforms.skyCol, quality: QUALITY });
+  const streams = buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol: water.uniforms.skyCol, quality: QUALITY,
+    onPath: (x, z) => terrain.maskAt(trailVisWide, x, z) > 0.3 });
   streams.setPixelRatio(renderer.getPixelRatio(), innerHeight);
 
   // ---------- trail heights (smoothed, never under the rendered surface)
@@ -1001,7 +1010,7 @@ async function main() {
         }
         return 0;
       };
-      const want = tier(300, 600, 1100, 2000);
+      const want = tier(500, 900, 1600, 2600);
       k = 0; guard = 0;
       while (k < want && guard++ < want * 40) {
         const i = Math.floor(r() * N), d = 3 + r() * 250, a = r() * 6.28;
@@ -1545,12 +1554,21 @@ async function main() {
       boards: [{ dest: 'Rysy', toS: LENGTH }, { dest: 'Czarny Staw', toS: sCzarny }] },
     { s: LENGTH - 6, title: 'Rysy', ele: 2499, side: -1, boards: [{ dest: 'Morskie Oko', toS: 0 }] },
   ] });
+  // the peaks the planner knows (OpenStreetMap) that the region's labels lack: the small rocky tops above the
+  // valleys (Sarnia Skała, Suchy Wierch, Igła, Łomik…) left out when the labels were made
+  function poiPeaks() {
+    if (!route) return [];
+    const have = (meta.labels || []).filter((l) => l.kind === 'peak' || l.kind === 'pass');
+    return route.pois.filter((p) => (p.k === 'peak' || p.k === 'pass') && p.n && inner.inside(p.xz[0], p.xz[1])
+      && !have.some((l) => l.name === p.n && Math.hypot(l.x - p.xz[0], l.z - p.xz[1]) < 500))
+      .map((p) => ({ kind: p.k, name: p.n, x: p.xz[0], z: p.xz[1], ele: p.e || undefined, rank: p.k === 'peak' ? 1.3 + Math.max(0, ((p.e || 0) - 1000) / 1500) : 1.2 }));
+  }
   // map labels (peaks, passes, lakes, huts, waterfalls) plus the Polish summit of Rysy
   const top = at(LENGTH);
   // the plants and animals of the catalogue along this route (src/nature) and what has been discovered
   const found = loadFound();
   const labels = buildLabels({ meta, terrain, camera, container: document.body, blockers: signs.posts.map((p) => p.at),
-    extra: [...(RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }]), ...rest.labels],
+    extra: [...(RI ? [] : [{ kind: 'peak', name: 'Rysy (wierzchołek polski)', x: top.x, z: top.z, ele: 2499, rank: 5 }]), ...rest.labels, ...poiPeaks()],
     nature: { spots, found }, onClick: (it) => cards.show(it) });
   // a peak or a place clicked: how far, how long, how hard and how many calories from where one is now
   // (along the trail when it lies on it, else in a straight line)
@@ -2232,6 +2250,7 @@ async function main() {
     return rc.intersectObjects(scene.children, true).slice(0, 6).map((h) => ({ name: h.object.name, type: h.object.type, parent: h.object.parent && h.object.parent.name,
       mat: h.object.material && (h.object.material.name || h.object.material.type), dist: Math.round(h.distance), verts: h.object.geometry && h.object.geometry.attributes.position.count }));
   };
+  if (route && route.summary.cut) toast(`Trasa ma ${route.summary.cut.total.toFixed(0)} km: widok 3D pokazuje jej pierwsze ${MAX_KM} km. Dalszą część otwórz osobno z planera.`, 9);
   window.__rysy = { taa, pick, cross, rest, reveal, binoc, fishFx, mates, weather: weatherFx, fc, spots, groundClass, grass, cards, flowers, birds, wildlife, composer, ssao, trees3d, mugo3d, sky, scene, state, LENGTH, env, applyEnv, toggleMode, camera, renderer, forest, cover, streams, sound, wildlife, houses, chains, blazes, signs, steps, deadwood, labels, terrain, trail, EYE, TH, ground, at, headingAt };
   tick();
 }

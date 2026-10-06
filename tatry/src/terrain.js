@@ -179,6 +179,9 @@ export class Terrain {
 }
 
 // Regular grid mesh; heights from fn. Optional skirt hides cracks at the border.
+// the index of a grid (and its skirt) depends only on its size: made once and shared (the 1 m patch around the
+// camera is rebuilt every 90 m; building ~2 million indices each time stalled a fast walk)
+const INDEX = new Map();
 export function gridGeometry(x0, z0, x1, z1, nx, nz, fn, skirt = 0) {
   const verts = (nx + 1) * (nz + 1);
   const extra = skirt ? 2 * (nx + nz) * 2 : 0;
@@ -194,8 +197,8 @@ export function gridGeometry(x0, z0, x1, z1, nx, nz, fn, skirt = 0) {
       pos[k++] = x; pos[k++] = y; pos[k++] = z;
     }
   }
-  const idx = [];
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+  const key = `${nx},${nz},${skirt ? 1 : 0}`, cached = INDEX.get(key), idx = cached ? null : [];
+  if (!cached) for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1;
     idx.push(a, c, b, b, c, d);
   }
@@ -211,15 +214,35 @@ export function gridGeometry(x0, z0, x1, z1, nx, nz, fn, skirt = 0) {
     for (let n = 0; n < border.length; n++) {
       const s = border[n];
       pos[v * 3] = pos[s * 3]; pos[v * 3 + 1] = pos[s * 3 + 1] - skirt; pos[v * 3 + 2] = pos[s * 3 + 2];
-      if (n > 0) { const a = border[n - 1], b = s, c = v - 1, d = v; idx.push(a, b, c, b, d, c); }
+      if (n > 0 && idx) { const a = border[n - 1], b = s, c = v - 1, d = v; idx.push(a, b, c, b, d, c); }
       v++;
     }
     void first;
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setIndex(idx);
-  g.computeVertexNormals();
+  let index = cached;
+  if (!index) { index = new THREE.BufferAttribute(verts + extra > 65535 ? new Uint32Array(idx) : new Uint16Array(idx), 1); INDEX.set(key, index); }
+  g.setIndex(index);
+  // normals from the height differences of the grid (central differences): the same as averaging the faces,
+  // a fraction of the work; the skirt takes the normal of the edge vertex it hangs from
+  const nor = new Float32Array(pos.length), W = nx + 1, sx = (x1 - x0) / nx, sz = (z1 - z0) / nz;
+  for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
+    const a = j * W + i;
+    const hx = (heights[j * W + Math.min(nx, i + 1)] - heights[j * W + Math.max(0, i - 1)]) / (sx * (Math.min(nx, i + 1) - Math.max(0, i - 1)));
+    const hz = (heights[Math.min(nz, j + 1) * W + i] - heights[Math.max(0, j - 1) * W + i]) / (sz * (Math.min(nz, j + 1) - Math.max(0, j - 1)));
+    const l = Math.hypot(hx, 1, hz);
+    nor[a * 3] = -hx / l; nor[a * 3 + 1] = 1 / l; nor[a * 3 + 2] = -hz / l;
+  }
+  if (skirt) {
+    let v = verts;
+    const edge = (s) => { nor[v * 3] = nor[s * 3]; nor[v * 3 + 1] = nor[s * 3 + 1]; nor[v * 3 + 2] = nor[s * 3 + 2]; v++; };
+    for (let i = 0; i <= nx; i++) edge(i);
+    for (let j = 1; j <= nz; j++) edge(j * W + nx);
+    for (let i = nx - 1; i >= 0; i--) edge(nz * W + i);
+    for (let j = nz - 1; j >= 0; j--) edge(j * W);
+  }
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   g.userData = { heights, nx, nz, x0, z0, x1, z1 };
   return g;
 }

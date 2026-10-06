@@ -24,15 +24,23 @@ export function routeFromHash(hash = location.hash) {
   return m[1].split(';').map((p) => p.split(',').map(Number)).filter((p) => p.length === 2 && p.every(isFinite));
 }
 
+export const MAX_KM = 25;
 // path along the trails through the stops, with what the engine needs per vertex
 export async function routePath(stops) {
-  const data = await (await fetch(TRAILS)).json();
-  const G = new TrailGraph(data);
+  const G = await trailGraph(), data = G.data;
   const vs = stops.map(([lat, lon]) => G.snap(lon, lat, 300)).filter((v) => v >= 0);
   if (vs.length < 2) throw new Error('Trasa poza siecią szlaków');
-  const path = G.routeVia(vs);
+  let path = G.routeVia(vs);
   if (!path) throw new Error('Nie da się połączyć punktów trasy szlakami');
+  // a very long route (a whole crossing of the range) would never finish loading: the 3D walk takes its
+  // first MAX_KM, the planner keeps the whole of it
+  let cut = null, d = 0;
+  for (let k = 1; k < path.length; k++) {
+    d += G.dist(path[k - 1], path[k]);
+    if (d > MAX_KM * 1000) { cut = { total: G.summary(path).dist / 1000 }; path = path.slice(0, k); break; }
+  }
   const summary = G.summary(path);
+  if (cut) summary.cut = cut;
   // per vertex: local position, the edge it runs on (colour, surface, difficulty, names)
   const pts = [], info = [];
   for (let k = 0; k < path.length; k++) {

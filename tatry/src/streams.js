@@ -14,7 +14,7 @@ float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
 float fbm2(vec2 p){ float s=0.0,a=0.5; for(int i=0;i<4;i++){ s+=a*vnoise(p); p=p*2.03+17.1; a*=0.5; } return s; }
 `;
 
-export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, quality }) {
+export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, quality, onPath = () => false }) {
   const pos = [], uv = [], foamA = [], idx = [];
   const falls = meta.waterfalls || [];
   const nearFall = (x, z) => {
@@ -37,6 +37,8 @@ export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, qu
   }
 
   function ribbon(pts, s) {
+    // drawn against the flow in OpenStreetMap now and then: the water level would stay at the bottom end's
+    if (terrain.height(pts[0][0], pts[0][1]) < terrain.height(pts[pts.length - 1][0], pts[pts.length - 1][1]) - 3) pts = pts.slice().reverse();
     const n = pts.length, w0 = s.width;
     const tx = new Float32Array(n), tz = new Float32Array(n), level = new Float32Array(n);
     for (let i = 0; i < n; i++) {
@@ -54,7 +56,7 @@ export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, qu
     for (let i = 0; i < n; i++) {
       let a = 0, c = 0;
       for (let k = -2; k <= 2; k++) { const j = i + k; if (j >= 0 && j < n) { a += level[j]; c++; } }
-      sm[i] = a / c;
+      sm[i] = Math.min(a / c, level[i]);         // the average must not lift it out of its bed at a step
     }
     let dist = 0;
     const base = pos.length / 3;
@@ -65,7 +67,11 @@ export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, qu
       let foam = smooth(0.18, 0.7, drop);
       if (df < 35) foam = Math.max(foam, 1 - df / 45);
       const w = w0 * (1 + 0.8 * foam) * (0.85 + 0.3 * Math.sin(dist * 0.13 + w0));
-      const [x, z] = pts[i], nx = -tz[i], nz = tx[i], y = sm[i] + 0.12;
+      const [x, z] = pts[i], nx = -tz[i], nz = tx[i];
+      // never above the ground at its own edges (a bed on a slope, a bank cut away); where it crosses a
+      // footpath it runs in a culvert under it
+      let y = Math.min(sm[i], terrain.height(x + nx * w / 2, z + nz * w / 2), terrain.height(x - nx * w / 2, z - nz * w / 2)) + 0.12;
+      if (onPath(x, z)) y -= 0.6;
       pos.push(x + nx * w / 2, y, z + nz * w / 2, x - nx * w / 2, y, z - nz * w / 2);
       uv.push(-1, dist, 1, dist);
       foamA.push(foam, foam);

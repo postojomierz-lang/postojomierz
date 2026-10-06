@@ -103,7 +103,7 @@ export function buildTAA(camera) {
   });
   // out to the screen a little sharper (the blend softens a touch): an unsharp mask held within the
   // neighbours' range, so no bright or dark rims; the history itself stays unsharpened
-  const copy = new THREE.ShaderMaterial({ uniforms: { t: { value: null }, texel: { value: new THREE.Vector2() }, amount: { value: 0.25 } }, vertexShader: VERT,
+  const copy = new THREE.ShaderMaterial({ uniforms: { t: { value: null }, texel: { value: new THREE.Vector2() }, amount: { value: 0.45 } }, vertexShader: VERT,
     fragmentShader: `varying vec2 vUv; uniform sampler2D t; uniform vec2 texel; uniform float amount;
       void main(){
         vec3 c = texture2D(t, vUv).rgb;
