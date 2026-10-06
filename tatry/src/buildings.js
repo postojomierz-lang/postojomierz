@@ -210,6 +210,20 @@ function boardTexture() {
   return t;
 }
 
+// straw for the haystacks: streaks of yellow and grey-brown, running down the slope of the stack
+function hayTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#a68a52'; g.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 900; i++) {
+    const x = Math.random() * 128, y = Math.random() * 128, l = 6 + Math.random() * 14, v = Math.random();
+    g.strokeStyle = v < 0.5 ? `rgba(205,180,110,0.7)` : v < 0.8 ? `rgba(120,98,60,0.6)` : `rgba(90,80,60,0.5)`;
+    g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 3, y + l); g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+  return t;
+}
+
 class Mesher {
   constructor() { this.parts = {}; this.col = [1, 1, 1]; }
   list(k) { return this.parts[k] || (this.parts[k] = { pos: [], nor: [], uv: [], col: [], idx: [] }); }
@@ -307,7 +321,8 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
     plaster: mat(plasterTexture(), null, 0xf2efe8),
     roof: mat(rfD, rfN, 0x9a8c80, THREE.DoubleSide), window: mat(windowTexture(), null), door: mat(doorTexture(), null),
     trim: mat(null, null, 0x3b2819),
-    fence: mat(fenceTexture(), null, 0xffffff), board: mat(boardTexture(), null),
+    fence: mat(fenceTexture(), null, 0xffffff), board: mat(boardTexture(), null), hay: mat(hayTexture(), null),
+    bin: mat(null, null, 0x3d5a3a),
   };
   M.fence.alphaTest = 0.5;
   const mesher = new Mesher();
@@ -617,6 +632,68 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
     furniture(x, terrain.height(x, z), z, rot);
   }
 
+  // a ring of n sides from (r0 at y0) to (r1 at y1) round (x, z); r1 = 0 closes it to a point
+  function ring(kind, x, z, y0, y1, r0, r1, n, tile) {
+    for (let i = 0; i < n; i++) {
+      const a0 = i / n * 6.2832, a1 = (i + 1) / n * 6.2832, c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+      const u0 = i / n * 6.28 * r0 / tile, u1 = (i + 1) / n * 6.28 * r0 / tile, v = Math.hypot(y1 - y0, r1 - r0) / tile;
+      const P = [V(x + c0 * r0, y0, z + s0 * r0), V(x + c1 * r0, y0, z + s1 * r0), V(x + c1 * r1, y1, z + s1 * r1), V(x + c0 * r1, y1, z + s0 * r1)];
+      const out = V((c0 + c1) / 2, (r0 - r1) / Math.max(0.1, y1 - y0), (s0 + s1) / 2);
+      if (r1 > 0) mesher.poly(kind, P, [[u0, 0], [u1, 0], [u1, v], [u0, v]], out);
+      else mesher.poly(kind, [P[0], P[1], P[2]], [[u0, 0], [u1, 0], [(u0 + u1) / 2, v]], out);
+    }
+  }
+  // a haystack on its pole, the Podhale way (a stóg: a fat cone round a pole, the pole's tip out of the top)
+  function haystack(x, z, sz) {
+    const y = terrain.height(x, z) - 0.15, H = 2.6 * sz, R = 1.3 * sz;
+    mesher.col = [1, 0.95, 0.85];
+    ring('hay', x, z, y, y + H * 0.3, R * 0.9, R, 9, 1.5);
+    ring('hay', x, z, y + H * 0.3, y + H, R, 0, 9, 1.5);
+    mesher.col = [0.75, 0.68, 0.6];
+    mesher.box('planks', x, y + H - 0.3, z, 0.1, 0.9, 0.1, 0, 1);
+  }
+  // a wooden well: a log box, two posts, a little shingle roof, the crank's roller
+  function well(x, z, rot, k) {
+    const y = terrain.height(x, z), c = Math.cos(rot), s = Math.sin(rot);
+    mesher.col = [0.85, 0.75, 0.62];
+    mesher.box('logs', x, y - 0.3, z, 1.2, 1.1, 1.2, rot, TILE.logs);
+    for (const u of [-0.55, 0.55]) mesher.box('planks', x + u * c, y + 0.7, z - u * s, 0.12, 1.5, 0.12, rot, 1);
+    mesher.box('trim', x, y + 1.45, z, 1.2, 0.14, 0.14, rot, 1);
+    block({ ox: x, oz: z, rot, W: 1.5, D: 1.3, fz: 1 }, { ...k, wall: 'planks', wallTint: [0.85, 0.75, 0.62], floors: 1, floorH: 0.01, base: 0, pitch: 45,
+      hip: 0, gablet: 0, eave: 0.25, gable: 0.2, chimney: 0, windows: 0, plinth: 0 }, { yP: y + 2.15, windows: false });
+  }
+  // a wayside shrine: a whitewashed pillar, a niche under a little roof, a cross on top
+  function shrine(x, z, rot, k) {
+    const y = terrain.height(x, z);
+    mesher.col = ONE;
+    mesher.box('stone', x, y - 0.4, z, 0.8, 0.6, 0.8, rot, TILE.stone);
+    mesher.box('plaster', x, y + 0.2, z, 0.6, 1.9, 0.6, rot, TILE.plaster);
+    const c = Math.cos(rot), s = Math.sin(rot);
+    mesher.col = [0.3, 0.45, 0.75];
+    mesher.box('trim', x + 0.31 * s, y + 1.45, z + 0.31 * c, 0.34, 0.45, 0.02, rot, 1);       // the niche, blue inside
+    block({ ox: x, oz: z, rot, W: 0.9, D: 0.9, fz: 1 }, { ...k, wall: 'plaster', wallTint: WHITE, floors: 1, floorH: 0.01, base: 0, pitch: 45,
+      hip: 1, gablet: 0, eave: 0.12, gable: 0.12, chimney: 0, windows: 0, plinth: 0 }, { yP: y + 2.1, windows: false });
+    mesher.col = ONE;
+    mesher.box('trim', x, y + 2.5, z, 0.05, 0.55, 0.05, rot, 1);
+    mesher.box('trim', x, y + 2.84, z, 0.3, 0.05, 0.05, rot, 1);
+  }
+  // a litter bin on a post
+  function bin(x, z, rot) {
+    const y = terrain.height(x, z);
+    mesher.col = ONE;
+    mesher.box('bin', x, y + 0.35, z, 0.45, 0.6, 0.45, rot, 1);
+    mesher.box('trim', x, y - 0.2, z, 0.08, 0.6, 0.08, rot, 1);
+  }
+  // a spot r_min..r_max from the building's centre, level and free (a few tries round it)
+  function spotNear(b, bi, r0, r1, w, d, seed) {
+    for (let n = 0; n < 12; n++) {
+      const a = seed * 6.28 + n * 2.4, r = r0 + ((n * 0.37 + seed) % 1) * (r1 - r0);
+      const x = b.x + Math.cos(a) * r, z = b.z + Math.sin(a) * r;
+      if (flat(x, z, 0, w, d, bi)) return { x, z };
+    }
+    return null;
+  }
+
   // what stands around a building: the huts get benches by the door, a notice board and a shelter with a
   // table; the houses of the villages a wooden fence round the garden (pickets or rails) with a gate and often
   // a bench by the door; the shepherds' huts sometimes a pen of rails
@@ -635,7 +712,12 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
       if (!terraceFront) { benchBy(-1.7); benchBy(1.7); }
       for (const [u, w] of [[W / 2 + 2.5, sd * (D / 2 + 3)], [-W / 2 - 2.5, sd * (D / 2 + 3)], [W / 2 + 3, 0], [-W / 2 - 3, 0]]) {
         const p = trySpot(u, w);
-        if (p && flat(p.x, p.z, rot, 2, 1, bi)) { board(p.x, p.z, rot); break; }
+        if (p && flat(p.x, p.z, rot, 2, 1, bi)) {
+          board(p.x, p.z, rot);
+          const q = trySpot(u + (u > 0 ? 1.6 : -1.6), w);
+          if (q) bin(q.x, q.z, rot);
+          break;
+        }
       }
       for (let n = 0; n < 16; n++) {
         const a = n * 2.4 + h * 6.28, r = Math.max(W, D) / 2 + 7 + (n % 4) * 2.5;
@@ -647,12 +729,34 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
         const side = h < 0.25 ? 1 : -1, pw = 4 + h * 6, p = L(side * (W / 2 + pw / 2 + 0.6), 0, 0);
         fence((x, y, z) => V(p.x + x * c + z * s, y, p.z - x * s + z * c), rot, pw / 2, Math.max(2.5, D / 2 + 1), 1, null, 0, bi, () => true);
       }
+      // hay for the winter on the meadow beside it
+      for (let n = 0; n < (h > 0.6 ? 2 : h > 0.3 ? 1 : 0); n++) {
+        const q = spotNear(b, bi, Math.max(W, D) / 2 + 5, Math.max(W, D) / 2 + 16, 3, 3, (h * 5.3 + n * 0.41) % 1);
+        if (q) haystack(q.x, q.z, 0.85 + ((h * 11 + n) % 1) * 0.3);
+      }
     } else if (b.style === 'house') {
       if (big) { benchBy(-2); if (h > 0.5) benchBy(2); return; }
       if (h < 0.55) benchBy(h < 0.3 ? -1.6 : 1.6);
       if (h > 0.2 && W * D < 220 && (b.floors || 1) <= 2) {                // family houses, not the hotels
         const m = 3 + ((h * 13.7) % 1) * 4;                           // the garden, 3-7 m beyond the walls
         fence(L, rot, W / 2 + m, D / 2 + m, (h * 7.9) % 1 < 0.6 ? 0 : 1, fz * (D / 2 + m), dx, bi, yard);
+        // a well in the garden behind the house
+        const h3 = (h * 31.7) % 1;
+        if (h3 < 0.15 && m > 3.5) {
+          const p = L((h3 - 0.075) * W * 5, 0, -fz * (D / 2 + m / 2 + 0.2));
+          if (yard(p.x, p.z) && flat(p.x, p.z, rot, 1.4, 1.4, bi)) well(p.x, p.z, rot, lk);
+        }
+        // a wayside shrine by the gate, now and then
+        if (h3 > 0.9) {
+          const p = L(dx + 2.6, 0, fz * (D / 2 + m + 1.2));
+          if (flat(p.x, p.z, rot, 1, 1, bi)) shrine(p.x, p.z, rot, lk);
+        }
+      }
+      // haystacks on the meadows at the edge of the village
+      const h4 = (h * 53.1) % 1;
+      if (h4 < 0.12) {
+        const q = spotNear(b, bi, Math.max(W, D) / 2 + 12, Math.max(W, D) / 2 + 30, 3, 3, h4 * 8);
+        if (q && yard(q.x, q.z)) haystack(q.x, q.z, 0.9 + h4 * 2);
       }
     }
   }
