@@ -126,8 +126,7 @@ export function buildTAA(camera) {
       camera.projectionMatrix.elements[8] += (2 * jx) / W; camera.projectionMatrix.elements[9] += (2 * jy) / H;
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
       S.jittered = true;
-      const k = window.__taaSign ?? 1;
-      S.jit.set(-k * jx / W, -k * jy / H);              // where the picture moved, in uv
+      S.jit.set(-jx / W, -jy / H);                      // where the picture moved, in uv
     }
   }
   class Tap extends Pass {
