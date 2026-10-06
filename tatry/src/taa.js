@@ -17,7 +17,7 @@ const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(positi
 const RESOLVE = /* glsl */`
   varying vec2 vUv;
   uniform sampler2D tColor, tHistory, tDepth;
-  uniform float logFar, reset;
+  uniform float logFar, reset, ff;
   uniform vec2 tanFov, texel, jit;
   uniform mat4 camWorld, prevVP;
   float viewW(vec2 uv) { return exp2(texture2D(tDepth, uv).x * logFar) - 1.0; }
@@ -47,13 +47,14 @@ const RESOLVE = /* glsl */`
   }
   void main() {
     // the 3x3 around the pixel: its spread (mean and deviation) and the nearest depth (edges move with the front)
-    vec3 m1 = vec3(0.0), m2 = vec3(0.0), mn = vec3(1e9), mx = vec3(-1e9), c0 = vec3(0.0);
+    vec3 m1 = vec3(0.0), m2 = vec3(0.0), mn = vec3(1e9), mx = vec3(-1e9), c0 = vec3(0.0), nmn = vec3(1e9), nmx = vec3(-1e9);
     float w = 1e9; vec2 wuv = vUv;
     for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
       vec2 uv = vUv + vec2(float(x), float(y)) * texel;
       vec3 c = cur(uv);
 
       m1 += c; m2 += c * c; mn = min(mn, c); mx = max(mx, c);
+      if (x != 0 || y != 0) { nmn = min(nmn, c); nmx = max(nmx, c); }
       float d = viewW(uv);
       if (d < w) { w = d; wuv = uv; }
     }
@@ -61,6 +62,10 @@ const RESOLVE = /* glsl */`
     // the pixel's own colour with the jitter taken out (where its content was drawn this frame), so the
     // new frame adds no tremble of its own
     c0 = cur(vUv + jit);
+    // fireflies: a lone pixel far brighter (or darker) than all eight around it (a glint on a wet stone, a blade
+    // of grass catching the sun, the noise of the shading) is held near their range; it would flash for a frame
+    // and then the sharpening would ring it
+    c0 = mix(c0, clamp(c0, nmn - 0.25 * (nmx - nmn), nmx + 0.25 * (nmx - nmn)), ff);
     vec3 sd = sqrt(abs(m2 - m1 * m1));
     // where this point was in the last frame (the camera's move). The output and the history are the still,
     // unjittered picture, so the pixel itself is the point: taking the jitter out here as well shifted the
@@ -91,14 +96,14 @@ export function buildTAA(camera) {
   const opts = { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter };
   let histA = new THREE.WebGLRenderTarget(1, 1, opts), histB = new THREE.WebGLRenderTarget(1, 1, opts);
   const mat = new THREE.ShaderMaterial({
-    uniforms: { tColor: { value: null }, tHistory: { value: null }, tDepth: { value: null }, logFar: { value: 1 }, reset: { value: 1 },
+    uniforms: { tColor: { value: null }, tHistory: { value: null }, tDepth: { value: null }, logFar: { value: 1 }, reset: { value: 1 }, ff: { value: 1 },
       tanFov: { value: new THREE.Vector2(1, 1) }, jit: { value: new THREE.Vector2() }, texel: { value: new THREE.Vector2() },
       camWorld: { value: new THREE.Matrix4() }, prevVP: { value: new THREE.Matrix4() } },
     vertexShader: VERT, fragmentShader: RESOLVE, depthTest: false, depthWrite: false,
   });
   // out to the screen a little sharper (the blend softens a touch): an unsharp mask held within the
   // neighbours' range, so no bright or dark rims; the history itself stays unsharpened
-  const copy = new THREE.ShaderMaterial({ uniforms: { t: { value: null }, texel: { value: new THREE.Vector2() }, amount: { value: 0.35 } }, vertexShader: VERT,
+  const copy = new THREE.ShaderMaterial({ uniforms: { t: { value: null }, texel: { value: new THREE.Vector2() }, amount: { value: 0.25 } }, vertexShader: VERT,
     fragmentShader: `varying vec2 vUv; uniform sampler2D t; uniform vec2 texel; uniform float amount;
       void main(){
         vec3 c = texture2D(t, vUv).rgb;
@@ -134,14 +139,23 @@ export function buildTAA(camera) {
     render(renderer, writeBuffer, readBuffer) { unjitter(); S.depth = readBuffer.depthTexture; }
   }
   class Resolve extends Pass {
+    // a new size (ultra's resolution follows the frame rate): the old history is read once more at its own
+    // size (it is sampled by uv), instead of starting afresh with a frame of raw jitter and noise
     setSize(w, h) {
       if (w === S.w && h === S.h) return;
-      S.w = w; S.h = h; histA.setSize(w, h); histB.setSize(w, h); S.reset = true;
+      const first = !S.w;
+      S.w = w; S.h = h;
+      if (S.carry) S.carry.dispose();
+      S.carry = first ? null : histA;
+      if (first) histA.dispose();
+      histB.dispose();
+      histA = new THREE.WebGLRenderTarget(w, h, opts); histB = new THREE.WebGLRenderTarget(w, h, opts);
+      if (first) S.reset = true;
     }
     render(renderer, writeBuffer, readBuffer) {
       unjitter();
       const u = mat.uniforms, ty = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
-      u.tColor.value = readBuffer.texture; u.tHistory.value = histA.texture; u.tDepth.value = S.depth;
+      u.tColor.value = readBuffer.texture; u.tHistory.value = (S.carry || histA).texture; u.tDepth.value = S.depth;
       u.logFar.value = Math.log2(camera.far + 1); u.tanFov.value.set(ty * camera.aspect, ty);
       u.jit.value.copy(S.jit); u.texel.value.set(1 / readBuffer.width, 1 / readBuffer.height);
       u.camWorld.value.copy(camera.matrixWorld); u.prevVP.value.copy(S.prevVP);
@@ -150,10 +164,11 @@ export function buildTAA(camera) {
       copy.uniforms.t.value = histB.texture; copy.uniforms.texel.value.copy(u.texel.value);
       renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer); copyQuad.render(renderer);
       [histA, histB] = [histB, histA];
+      if (S.carry) { S.carry.dispose(); S.carry = null; }
       S.prevVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       S.prevPos.copy(camera.position);
       S.reset = false;
     }
   }
-  return { jitter: new Jitter(), tap: new Tap(), resolve: new Resolve(), reset: () => { S.reset = true; }, get frame() { return S.frame; } };
+  return { jitter: new Jitter(), tap: new Tap(), resolve: new Resolve(), reset: () => { S.reset = true; }, get frame() { return S.frame; }, uniforms: mat.uniforms, sharpen: copy.uniforms.amount };
 }

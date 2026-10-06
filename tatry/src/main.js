@@ -33,7 +33,7 @@ import { buildReveal } from './nature/reveal.js';
 import { GROUPS, RARITY, BY_ID } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
-import { routeFromHash, routePath, loadRegionArea, REGION_BASE, toLocal } from './region.js';
+import { routeFromHash, routePath, loadRegionArea, REGION_BASE, toLocal, toLonLat, trailGraph } from './region.js';
 import { routeInfo } from './routeinfo.js';
 import { loadJournal, saveJournal, routeKey, addWalk, addPeak, ghostAt, fmtClock } from './journal.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -991,6 +991,44 @@ async function main() {
         }
       }
     }
+    // the shores of the mountain lakes: a ring of granite, boulders and stones half in the water, half on the
+    // bank (the moraines dam the tarns; the ice and the waves keep the turf off the rim)
+    {
+      const shore = (x, z) => {
+        for (const d of [2.5, 6]) for (let j = 0; j < 8; j++) {
+          const a = j * Math.PI / 4;
+          if (terrain.maskAt(lakeMask, x + Math.cos(a) * d, z + Math.sin(a) * d) > 0.3) return d;
+        }
+        return 0;
+      };
+      const want = tier(300, 600, 1100, 2000);
+      k = 0; guard = 0;
+      while (k < want && guard++ < want * 40) {
+        const i = Math.floor(r() * N), d = 3 + r() * 250, a = r() * 6.28;
+        const x = trail.X[i] + Math.cos(a) * d, z = trail.Z[i] + Math.sin(a) * d;
+        if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.6 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 14)) continue;
+        if (terrain.height(x, z) < 1350) continue;                       // the tarns, not the ponds of the valleys
+        const sd = shore(x, z);
+        if (!sd) continue;
+        const gc = groundClass(x, z);
+        if (gc && (gc.c === 6 || gc.c === 2)) continue;
+        const nrm = terrain.normal(x, z, 3);
+        if (nrm.y < 0.5) continue;
+        // bigger ones a step back from the water, small ones at its edge
+        const s = (sd > 4 ? 0.6 + Math.pow(r(), 2) * 2.4 : 0.3 + Math.pow(r(), 2) * 1.1);
+        if (s > 0.8 && !offPath(x, z, s * 0.7 + 0.6)) continue;
+        const vr = pick(s);
+        q.setFromUnitVectors(up, nrm.clone().lerp(up, 0.5).normalize());
+        qy.setFromAxisAngle(up, r() * 6.283);
+        dummy.quaternion.copy(q).multiply(qy);
+        const sc = s / vr.size;
+        dummy.scale.set(sc * (0.8 + r() * 0.4), sc * (0.6 + r() * 0.4), sc * (0.8 + r() * 0.4));
+        dummy.position.set(x, ground(x, z) - s * 0.2, z);
+        dummy.updateMatrix();
+        vr.items.push([dummy.matrix.clone(), 0.85 + r() * 0.25]);
+        k++;
+      }
+    }
     // levels of detail: the full rock near the camera (with its shadow), a tenth of the triangles further out, the
     // small stones gone in the distance; re-sorted as the camera moves (a few thousand rocks, cheap)
     const NEAR = tier(25, 40, 60, 90), FAR_S = tier(260, 400, 700, 1200), FAR_B = tier(600, 900, 1400, 2500);
@@ -1524,7 +1562,10 @@ async function main() {
     const hNow = state.free ? drawnHeight(me.x, me.z) : profile[Math.min(N - 1, i0)];
     if (Math.sqrt(bd) > 150) {
       const km = Math.hypot(pos.x - me.x, pos.z - me.z) / 1000, dh = Math.round(pos.y - hNow);
-      return `<div class="rt"><b>Poza tą trasą</b> · ${km.toFixed(1)} km w linii prostej · ${dh >= 0 ? '↗' : '↘'} ${Math.abs(dh)} m różnicy wysokości</div>`;
+      const id = 'rt' + (++rtSeq);
+      netRoute(me, pos, id);
+      return `<div class="rt" id="${id}"><b>Poza tą trasą</b> · ${km.toFixed(1)} km w linii prostej · ${dh >= 0 ? '↗' : '↘'} ${Math.abs(dh)} m różnicy wysokości`
+        + '<br><small>Liczę drogę szlakami…</small></div>';
     }
     const k = j >= i0 ? 1 : -1;
     let up = 0, down = 0, min = 0, steep = 0;
@@ -1543,6 +1584,31 @@ async function main() {
     const t = Math.round(min);
     return `<div class="rt"><b>${k > 0 ? 'Przed tobą' : 'Za tobą (z powrotem)'}</b> · ${km.toFixed(1)} km szlakiem · ok. ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} h (normy PTTK)<br>`
       + `↗ ${Math.round(up)} m · ↘ ${Math.round(down)} m · trudność: ${hard} · ok. ${kcal} kcal <small>(osoba 75 kg)</small></div>`;
+  }
+  // a place off this route: the way to it along the marked trails of the whole network (as the planner
+  // finds it), filled into the card when the network has loaded
+  let rtSeq = 0;
+  async function netRoute(me, pos, id) {
+    let html;
+    try {
+      const G = await trailGraph(), [lo0, la0] = toLonLat(me.x, me.z), [lo1, la1] = toLonLat(pos.x, pos.z);
+      const a = G.snap(lo0, la0, 600), b = G.snap(lo1, la1, 400), path = a >= 0 && b >= 0 ? G.route(a, b) : null;
+      if (b < 0) html = '<b>Nie prowadzi tam znakowany szlak.</b>';
+      else if (!path) html = '<b>Brak połączenia szlakami stąd.</b>';
+      else {
+        const S = G.summary(path), km = S.dist / 1000, t = Math.round(S.time);
+        const [vx, vz] = toLocal(G.data.v[b][0], G.data.v[b][1]), off = Math.hypot(vx - pos.x, vz - pos.z);
+        const hard = S.maxE > 2200 ? 'trudna' : S.up > 600 ? 'średnia' : 'łatwa';
+        const kcal = Math.round((75 * 0.55 * km + 0.9 * S.up + 0.15 * S.down) / 10) * 10;
+        html = `<b>Szlakami</b> · ${km.toFixed(1)} km · ok. ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} h (normy PTTK)`
+          + `<br>↗ ${Math.round(S.up)} m · ↘ ${Math.round(S.down)} m · trudność: ${hard} · ok. ${kcal} kcal <small>(osoba 75 kg)</small>`
+          + (off > 80 ? `<br><small>Szlak kończy się ${Math.round(off)} m od celu.</small>` : '');
+      }
+    } catch (e) { html = null; }
+    const el = document.getElementById(id), sm = el && el.querySelector('small:last-child');
+    if (!el) return;
+    if (html) el.innerHTML = el.innerHTML.replace(/<br><small>Liczę drogę szlakami…<\/small>$/, '') + '<br>' + html;
+    else if (sm) sm.remove();
   }
   const cards = await buildCards({ found, routeTo, distanceTo: (p) => (state.mode === 'walk' ? camera.position : hiker.position).distanceTo(p) });
   // the plants of the catalogue at their spots: patches of flowers, herbs, ferns and dwarf shrubs

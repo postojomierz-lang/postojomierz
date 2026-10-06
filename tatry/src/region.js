@@ -13,6 +13,10 @@ const TRAILS = 'data/region/trails.json';
 const LAT0 = (49.168 + 49.214) / 2, LON0 = (20.040 + 20.112) / 2;
 const MX = 111320 * Math.cos(LAT0 * Math.PI / 180), MZ = 110574;
 export const toLocal = (lon, lat) => [(lon - LON0) * MX, -(lat - LAT0) * MZ];
+export const toLonLat = (x, z) => [LON0 + x / MX, LAT0 - z / MZ];
+// the trail network of the planner (loaded once, when first needed)
+let graph = null;
+export const trailGraph = () => graph || (graph = fetch(TRAILS).then((r) => r.json()).then((d) => new TrailGraph(d)));
 
 export function routeFromHash(hash = location.hash) {
   const m = hash.match(/r=([^&]+)/);
