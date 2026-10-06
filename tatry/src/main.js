@@ -303,6 +303,7 @@ async function main() {
     g.beginPath(); trailPts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
   });
   const terrain = new Terrain(inner, outer, trailWide, lakeMask, { size: TS, origin: TO, grids: tileGrids }, base.mask);
+  terrain.setShores(meta.lakes);
   terrain.setFlats(buildingFlats(meta, terrain));   // level terraces under the huts before the meshes are built
   // what the route carries along its length: surface, trail colour, difficulty, places, signposts
   const TH0 = new Float32Array(N);

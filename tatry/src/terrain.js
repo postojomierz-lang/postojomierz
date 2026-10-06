@@ -41,6 +41,7 @@ function cr(p0, p1, p2, p3, t) {
   return p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
 }
 
+const SHORE = 10;   // metres of the sill round a lake (setShores)
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export class Terrain {
@@ -96,6 +97,48 @@ export class Terrain {
     }
     this.flats = flats.length ? { cells, C } : null;
   }
+  // Lake shores: where the ground just outside a lake drops below its water (an outlet gully, the lip of a
+  // waterfall, a polygon a little off the laser data) the flat water ended in the air as a straight edge;
+  // a sill at the water level, fading out over SHORE m, holds it. Ring segments kept in 64 m cells.
+  setShores(lakes) {
+    const C = 64, cells = new Map(), B = SHORE;
+    for (const l of lakes) {
+      const r = l.ring;
+      for (let i = 0; i + 1 < r.length; i++) {
+        const [ax, az] = r[i], [bx, bz] = r[i + 1];
+        for (let cx = Math.floor((Math.min(ax, bx) - B) / C); cx <= Math.floor((Math.max(ax, bx) + B) / C); cx++) {
+          for (let cz = Math.floor((Math.min(az, bz) - B) / C); cz <= Math.floor((Math.max(az, bz) + B) / C); cz++) {
+            const k = cx * 100003 + cz;
+            let s = cells.get(k); if (!s) cells.set(k, s = []);
+            s.push([l, i]);
+          }
+        }
+      }
+    }
+    this.shores = lakes.length ? { cells, C } : null;
+  }
+  shoreAt(x, z, h) {
+    const S = this.shores, l = S.cells.get(Math.floor(x / S.C) * 100003 + Math.floor(z / S.C));
+    if (!l) return h;
+    let best = SHORE, lake = null;
+    for (const [L, i] of l) {
+      if (h >= L.level + 0.25) continue;
+      const [ax, az] = L.ring[i], [bx, bz] = L.ring[i + 1], dx = bx - ax, dz = bz - az;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+      const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+      if (d < best) { best = d; lake = L; }
+    }
+    if (!lake) return h;
+    // inside the lake the bed stays under the water
+    const r = lake.ring;
+    let inside = false;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      if ((r[i][1] > z) !== (r[j][1] > z) && x < (r[j][0] - r[i][0]) * (z - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) inside = !inside;
+    }
+    if (inside) return h;
+    const k = 1 - smooth(SHORE * 0.3, SHORE, best);
+    return h + (lake.level + 0.25 - h) * k;
+  }
   flatten(x, z, h) {
     const F = this.flats, l = F.cells.get(Math.floor(x / F.C) * 100003 + Math.floor(z / F.C));
     if (!l) return h;
@@ -144,6 +187,7 @@ export class Terrain {
   // Full height: 1 m tile if there is one, otherwise the grids plus micro relief.
   height(x, z) {
     let h = this.rawHeight(x, z);
+    if (this.shores) h = this.shoreAt(x, z, h);
     if (this.flats) h = this.flatten(x, z, h);
     return this.bench ? this.benchAt(x, z, h) : h;
   }
