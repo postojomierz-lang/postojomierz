@@ -279,7 +279,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // crossed a wall, the big triangles of the coarser one rose through it as wedges with the top-down photo
         // drawn out into green streaks on them. The finer meshes' skirts hide the seams.
         if (vWorld.x > holeRect.x + 1.0 && vWorld.x < holeRect.z - 1.0 && vWorld.z > holeRect.y + 1.0 && vWorld.z < holeRect.w - 1.0) discard;`)
-      .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0;
+      .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0; float asphK = 0.0;
       {
         vec2 uv = (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy);
         vec3 sat = texture2D(satMap, uv).rgb;
@@ -303,7 +303,27 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // which the sun lights head-on while the photo (taken from above) already shows them bright
         // bright photos (light granite scree on the Slovak 2025 photo) are not lifted, or they burn out to white
         float satL = dot(sat, vec3(0.3, 0.55, 0.15));
-        sat = sat * mix(1.55 - 0.3 * smoothstep(0.35, 0.75, slope), 1.0, smoothstep(0.38, 0.72, satL)) + 0.01;
+        // dark green (dwarf pine, spruce forest) keeps its depth: lifted like the meadows it went the same smooth
+        // green as the grass beside it, where photos show dark fields of pine; a clumpy texture of its own
+        // (bushes and crowns, a few metres) reads from afar
+        float dkG = clamp((sat.g - sat.b) * 7.0, 0.0, 1.0) * (1.0 - smoothstep(0.1, 0.24, satL));
+        float lift = mix(1.55 - 0.3 * smoothstep(0.35, 0.75, slope), 1.0, smoothstep(0.38, 0.72, satL));
+        sat = sat * mix(lift, 1.08, dkG * 0.75) + 0.01;
+        sat *= 1.0 - dkG * 0.35 * smoothstep(0.35, 0.75, vnoise(vWorld.xz * 0.22) * 0.6 + vnoise(vWorld.xz * 0.9) * 0.4);
+        // meadows a little less vivid (the Western Tatras' halls went a bright lawn green): towards grey-green
+        float lawn = clamp((sat.g - max(sat.r, sat.b)) * 6.0, 0.0, 1.0) * (1.0 - dkG);
+        sat = mix(sat, vec3(dot(sat, vec3(0.3, 0.55, 0.15))) * vec3(0.98, 1.02, 0.96), lawn * 0.2);
+        // the high rock is warm grey granite: the photo's cold blue-cyan cast and the green of the grass on its
+        // ledges (lifted above into a camouflage of green patches on the walls) turned towards the stone's grey,
+        // from ~30° up above the dwarf pine
+        {
+          float hiRock = smoothstep(1550.0, 1750.0, vWorld.y) * smoothstep(0.13, 0.32, slope);
+          float Ls = dot(sat, vec3(0.3, 0.55, 0.15));
+          // and the pale scree and slabs of any slope up there: greys with a mint cast in the photo
+          float chroma = max(max(sat.r, sat.g), sat.b) - min(min(sat.r, sat.g), sat.b);
+          float grey = (1.0 - smoothstep(0.05, 0.14, chroma)) * smoothstep(1500.0, 1700.0, vWorld.y);
+          sat = mix(sat, ROCK * vec3(1.1, 1.0, 0.9) * Ls, max(hiRock * 0.75, grey * 0.7));
+        }
         // relief normal: from the 4 m heights past the 1 m patch; the panorama keeps its mesh normals
         vec3 Nr = N;
         if (detail > 0.5) Nr = normalize(mix(N, hNormal(vWorld.xz, 4.0), smoothstep(60.0, 200.0, dist)));
@@ -315,7 +335,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // blurred level instead, as blurred as the photo is drawn out there) and its colour turned to granite
         // (its brightness kept); the fine detail comes from the granite texture, laid on from three sides
         float stretch = 1.0 / max(min(N.y, Nr.y), 0.12);
-        float smear = smoothstep(1.55, 3.0, stretch) * min(desmear, 1.0);   // ~50° .. 70°
+        float smear = smoothstep(1.3, 2.4, stretch) * min(desmear, 1.0);   // ~40° .. 65°
         if (smear > 0.0) {
           const vec3 LW = vec3(0.3, 0.55, 0.15);
           vec2 tsz = vec2(textureSize(satMap, 0));
@@ -472,6 +492,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
                 float body = smoothstep(0.35, 0.75, wTrail);
                 nearCol = mix(nearCol, ac, asph * body);
                 tn = normalize(mix(tn, N, asph * body * 0.8));
+                asphK = asph * body;
               }
               // granite paving: irregular blocks of different sizes set in soil, some missing (gravel
               // and dirt there), dirty and mossy from the photo; each block tilted a little
@@ -499,6 +520,9 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               col = mix(col, nearCol, near);
               // tn is already a world normal here; exaggerate its tilt on rock faces
               detN = normalize(Nr + (tn - N) * (1.0 + 0.8 * wCliff));
+              // a road is smooth: the normal of the 4 m heights, not the mesh's (the bumps of the 1 m laser data
+              // on a 2.5 m grid lit the asphalt in stripes across it)
+              if (asphK > 0.0) detN = normalize(mix(detN, hNormal(vWorld.xz, 4.0), asphK * 0.9));
               detW = near * 0.9;
             }
           }
@@ -533,6 +557,16 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // soft shoulder for very light ground (granite scree, limestone): keeps texture instead of white
         { float cl = dot(col, vec3(0.3, 0.55, 0.15)); col *= 1.0 / (1.0 + max(cl - 0.42, 0.0) * 1.6); }
         // weather: wet ground is darker; fresh snow settles above the snow line on the gentler slopes
+        // up high, whatever path the colour took (photo, far procedural granite, close textures): no cold
+        // cyan or mint cast on the stone, which is a warm grey
+        {
+          float hiC = smoothstep(1500.0, 1700.0, vWorld.y);
+          float lumC = dot(col, vec3(0.3, 0.55, 0.15));
+          float chromaC = max(max(col.r, col.g), col.b) - min(min(col.r, col.g), col.b);
+          float cool = clamp((min(col.g, col.b) - col.r) / max(lumC, 0.02) * 4.0, 0.0, 1.0);
+          float greyC = 1.0 - smoothstep(0.03, 0.09, chromaC / max(lumC, 0.05) * 0.3);
+          col = mix(col, vec3(lumC) * vec3(1.08, 1.0, 0.9), hiC * max(cool * 0.8, greyC * 0.5));
+        }
         col *= 1.0 - 0.3 * wetK;
         if (snowK > 0.0) {
           float sy = vWorld.y + (vnoise(vWorld.xz / 60.0) - 0.5) * 120.0;
@@ -586,6 +620,8 @@ export function waterMaterial() {
       skyCol: { value: new THREE.Color(0.5, 0.65, 0.85) },
       reflMap: { value: null }, reflMat: { value: new THREE.Matrix4() }, reflLevel: { value: -1e4 }, reflOn: { value: 0 },
       skyEnv: { value: null }, skyEnvOn: { value: 0 },
+      // metres to the shore (0..60 in the red channel) over shoreRect (x0, z0, x1, z1): shallows by the shore
+      shoreMap: { value: null }, shoreRect: { value: new THREE.Vector4(0, 0, 0, 0) },
     }]),
     fog: true,
     vertexShader: /* glsl */`
@@ -608,6 +644,7 @@ export function waterMaterial() {
       uniform sampler2D reflMap; uniform mat4 reflMat; uniform float reflLevel; uniform float reflOn;
       uniform float windK; uniform float rainK; uniform float winterK;
       uniform samplerCube skyEnv; uniform float skyEnvOn;
+      uniform sampler2D shoreMap; uniform vec4 shoreRect;
       varying vec3 vWorld;
       ${NOISE}
       // rain: rings spreading from where the drops fall, one drop per cell every second or so
@@ -632,23 +669,35 @@ export function waterMaterial() {
         // the wind: stronger waves moving faster downwind, gusts darkening patches of the surface
         float w = clamp(windK, 0.3, 2.6);
         vec2 drift = vec2(0.8, 0.6) * (0.3 + 0.7 * w);
-        float amp = 0.12 + 0.35 * w;
-        float h0 = fbm2(p*0.35 + time*vec2(0.05,0.03)*drift) + 0.5*fbm2(p*1.3 - time*vec2(0.04,-0.06)*drift);
-        float hx = fbm2((p+vec2(e,0))*0.35 + time*vec2(0.05,0.03)*drift) + 0.5*fbm2((p+vec2(e,0))*1.3 - time*vec2(0.04,-0.06)*drift);
-        float hz = fbm2((p+vec2(0,e))*0.35 + time*vec2(0.05,0.03)*drift) + 0.5*fbm2((p+vec2(0,e))*1.3 - time*vec2(0.04,-0.06)*drift);
+        // waves fade with distance (far away they only shimmered like gravel), the small ones sooner;
+        // close up a finer ripple, not a cloth of big regular waves
+        float dist = length(cameraPosition - vWorld);
+        float amp = (0.08 + 0.3 * w) / (1.0 + dist / 150.0);
+        float fine = 0.5 / (1.0 + dist / 40.0);
+        float h0 = fbm2(p*0.5 + time*vec2(0.05,0.03)*drift) + fine*fbm2(p*1.6 - time*vec2(0.04,-0.06)*drift);
+        float hx = fbm2((p+vec2(e,0))*0.5 + time*vec2(0.05,0.03)*drift) + fine*fbm2((p+vec2(e,0))*1.6 - time*vec2(0.04,-0.06)*drift);
+        float hz = fbm2((p+vec2(0,e))*0.5 + time*vec2(0.05,0.03)*drift) + fine*fbm2((p+vec2(0,e))*1.6 - time*vec2(0.04,-0.06)*drift);
         float gust = smoothstep(0.45, 0.75, fbm2(p * 0.02 - time * 0.08 * drift));
         vec3 N = normalize(vec3(-(hx-h0)*amp*(1.0 + gust*w*0.8), 1.0, -(hz-h0)*amp*(1.0 + gust*w*0.8)));
         if (rainK > 0.01) { vec2 rr = rainRings(p, time); N = normalize(N + vec3(rr.x, 0.0, rr.y) * 0.25 * rainK); }
         vec3 V = normalize(cameraPosition - vWorld);
         float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
-        vec3 deep = vec3(0.004, 0.03, 0.035) * (ambCol + sunCol * 0.4);
+        // a deep navy lake, turquoise over the pale granite gravel of the shallows by the shore
+        vec3 deep = vec3(0.008, 0.03, 0.068) * (ambCol + sunCol * 0.5) * 1.6;
+        if (shoreRect.z > shoreRect.x) {
+          float sd = texture2D(shoreMap, (vWorld.xz - shoreRect.xy) / (shoreRect.zw - shoreRect.xy)).r * 60.0;
+          float sh = 1.0 - smoothstep(1.5, 12.0, sd);
+          deep = mix(deep, vec3(0.035, 0.12, 0.115) * (ambCol + sunCol * max(sunDir.y, 0.0)) * 1.4, sh * 0.6);
+        }
         vec3 R = reflect(-V, N);
         float spec = pow(max(dot(R, sunDir), 0.0), 220.0) * 6.0;
         // the sky as it is now (the environment cube taken from the live sky), else a flat sky colour
         vec3 refl = skyEnvOn > 0.5 ? textureCube(skyEnv, vec3(R.x, max(R.y, 0.02), R.z)).rgb * 0.85 : skyCol;
+        // without the mirror (phones): the dark walls of the cirque round the lake fill the low part of the
+        // reflection, not a bright horizon that turned the whole lake silver
+        if (reflOn < 0.5) refl = mix(vec3(0.16, 0.17, 0.17) * (ambCol * 1.4 + sunCol * 0.35), refl, smoothstep(0.04, 0.32, R.y));
         if (reflOn > 0.5 && abs(vWorld.y - reflLevel) < 0.6) {
           vec4 pc = reflMat * vec4(vWorld, 1.0);
-          float dist = length(cameraPosition - vWorld);
           // ripples bend the mirror image, less so far away (they are too small to see there)
           vec2 ruv = pc.xy / pc.w + N.xz * (0.035 / (1.0 + dist * 0.004));
           vec3 m = texture2D(reflMap, clamp(ruv, 0.001, 0.999)).rgb;

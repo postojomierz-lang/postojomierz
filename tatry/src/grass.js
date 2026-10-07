@@ -122,7 +122,7 @@ function grassMaterial(uniforms, shade) {
 export function buildGrass({ scene, terrain, shade, quality, photo, bounds, groundClass, masks, blocked = () => false }) {
   const t = (low, mid, high, ultra) => ({ low, mid, high, ultra })[quality] ?? high;
   // [field size (m), blades per m², blade width, blade height, segments, hole]
-  const INNER = { size: t(16, 22, 30, 38), per: t(10, 22, 55, 75), w: 0.05, h: 0.32, seg: t(3, 3, 4, 4), blades: 5 };   // tufts per m²
+  const INNER = { size: t(16, 22, 30, 38), per: t(15, 26, 55, 75), w: t(0.04, 0.045, 0.05, 0.05), h: 0.32, seg: t(3, 3, 4, 4), blades: 5 };   // tufts per m²
   const OUTER = quality === 'low' ? null : { size: t(0, 56, 90, 120), per: t(0, 1.5, 2.5, 3.5), w: 0.06, h: 0.38, seg: 2, blades: 4 };
   const WIN = Math.ceil((OUTER ? OUTER.size : INNER.size) + 32);      // the data window (1 m texels)
 
@@ -190,12 +190,17 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
       data[o] = y;
       // terrain shadow on a 4 m grid is plenty (it is soft), copied in between
       data[o + 1] = (i % 4 === 0 && j % 4 === 0) ? shadowAt(x, y, z) : data[((j - j % 4) * WIN + (i - i % 4)) * 4 + 1];
-      data[o + 2] = y > 1850 ? Math.max(0.45, 1 - (y - 1850) / 500) : 1;      // alpine sward: shorter
+      // mountain meadows: a short, dense sward (the tall blades of the valleys read as lettuce up there)
+      data[o + 2] = y > 1350 ? Math.max(0.4, 0.85 - (y - 1350) / 900) : 1;
       // ground colour from the photo
       const u = Math.floor((x - bx0) / (bx1 - bx0) * photo.w), v = Math.floor((z - bz0) / (bz1 - bz0) * photo.h);
       let r = 90, g = 110, b = 60;
       if (u >= 0 && v >= 0 && u < photo.w && v < photo.h) { const p = (v * photo.w + u) * 4; r = photo.d[p]; g = photo.d[p + 1]; b = photo.d[p + 2]; }
-      cols[o] = r; cols[o + 1] = g; cols[o + 2] = b;
+      // late-summer straw in tufts up high: patches of fawn among the green
+      if (y > 1300) {        // (the density below still reads the photo's own green)
+        const hsh = Math.sin(Math.floor(x / 3) * 12.9898 + Math.floor(z / 3) * 78.233) * 43758.5453, f = (hsh - Math.floor(hsh)) * 0.35 * Math.min(1, (y - 1300) / 300);
+        cols[o] = r + (150 - r) * f; cols[o + 1] = g + (138 - g) * f; cols[o + 2] = b + (88 - b) * f;
+      } else { cols[o] = r; cols[o + 1] = g; cols[o + 2] = b; }
       // density
       // the class map, raised where the photo shows grass (the map's 'dwarf pine' and 'forest' include the
       // meadow patches between the clumps and trees; grassy scree is common too)
@@ -214,7 +219,10 @@ export function buildGrass({ scene, terrain, shade, quality, photo, bounds, grou
         else {
           const path = terrain.maskAt(masks.path, x, z);           // the sharp path mask (1.3 m texels)
           if (path > 0.3) dens = 0;
-          else if (terrain.maskAt(masks.pathSide, x, z) > 0) dens *= 0.7;        // trodden fringe
+          else if (terrain.maskAt(masks.pathSide, x, z) > 0) {
+            // trodden fringe; a road's asphalt or a paved path (wider than the path mask) shows grey on the photo
+            dens *= exg < 0.02 && Math.abs(r - g) < 18 && Math.abs(g - b) < 22 ? 0 : 0.7;
+          }
           const n = terrain.normal(x, z, 1.5);
           // Tatra grass holds on steep slopes too (bare rock is the class map's job); only very steep ground thins
           if (n.y < 0.5) dens *= Math.max(0, (n.y - 0.3) / 0.2);
