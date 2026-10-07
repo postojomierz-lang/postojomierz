@@ -209,10 +209,20 @@ function update() {
   path = null; summary = null;
   $('summary').hidden = true;
   if (stops.length >= 2) {
+    G.setDate(startDate());
     path = G.routeVia(stops);
     if (!path) msg('Nie da się połączyć tych punktów szlakami.');
     else {
       summary = G.summary(path);
+      // the trails closed on the day: around them (said when it costs time), or through them with a warning
+      summary.avoided = [];
+      if (G.closed && !summary.closed.length) {
+        const keep = G.closed; G.closed = null;
+        const free = G.routeVia(stops);
+        G.closed = keep;
+        const fs = free && G.summary(free);         // with the closures back on: its closed trails
+        if (fs && fs.time < summary.time - 2) summary.avoided = fs.closed;
+      }
       for (const sec of summary.sections) {
         const pts = path.slice(sec.start, sec.end + 1).map(ll);
         L.polyline(pts, { color: '#000', weight: 9, opacity: 0.35, interactive: false }).addTo(routeLayer);
@@ -249,6 +259,9 @@ function showSummary() {
     if (last && last.colour === sec.colour) { last.to = sec.to; last.names.push(sec.name); }
     else merged.push({ ...sec, names: [sec.name] });
   }
+  const season = S.closed.length ? `⚠ Ta trasa idzie szlakami zamkniętymi w tym terminie (zamknięcie sezonowe TPN/TANAP): ${S.closed.join(', ')}. Innej drogi szlakami nie ma.`
+    : S.avoided && S.avoided.length ? `ⓘ Omija szlaki zamknięte w tym terminie (zamknięcie sezonowe TPN/TANAP): ${S.avoided.join(', ')}.` : '';
+  if (season) { const li = document.createElement('li'); li.className = 'season'; li.textContent = season; ul.appendChild(li); }
   for (const sec of merged) {
     const parts = sec.names.filter(Boolean).map((n) => n.split(/\s+[-–]\s+/));
     if (parts.length) sec.name = parts.length === 1 || parts[0].length < 2 ? sec.names.filter(Boolean)[0]
@@ -353,8 +366,8 @@ function winterCard(t0, topEle, freeze) {
     + `<li>Czas przejścia w śniegu bywa dwa razy dłuższy niż według norm, a dzień jest krótki.</li></ul>`;
   box.hidden = false;
 }
-$('d-day').onchange = updateDay;
-$('d-time').onchange = updateDay;
+// another day can open or close trails (seasonal closures): then the route is planned again
+$('d-day').onchange = $('d-time').onchange = () => { if (G.setDate(startDate()) && stops.length >= 2) update(); else updateDay(); };
 
 // ---------------------------------------------------------------- elevation profile
 const cv = $('profile');
@@ -402,8 +415,11 @@ $('b-loc').onclick = () => {
   msg('Szukam lokalizacji…');
   navigator.geolocation.getCurrentPosition((p) => {
     const v = G.snap(p.coords.longitude, p.coords.latitude, 1500);
-    if (v < 0) { msg('Jesteś poza obszarem planera (polskie Tatry Wysokie) albo daleko od szlaku.'); return; }
-    msg(''); setStops([v, ...stops.slice(stops.length && stops[0] === v ? 1 : 0)]);
+    if (v < 0) { msg('Jesteś poza obszarem planera (Tatry) albo dalej niż 1,5 km od szlaku.'); return; }
+    // the start goes onto the nearest trail: said how far it is when that is not where you stand
+    const [la, lo] = ll(v), d = Math.hypot((lo - p.coords.longitude) * G.mx, (la - p.coords.latitude) * G.mz);
+    setStops([v, ...stops.slice(stops.length && stops[0] === v ? 1 : 0)]);
+    msg(d > 150 ? `Najbliższy szlak jest ${Math.round(d / 10) * 10} m od Ciebie: tam zaczyna się trasa.` : '');
     map.setView(ll(v), 15);
   }, (e) => msg('Nie udało się ustalić lokalizacji: ' + e.message), { enableHighAccuracy: true, timeout: 15000 });
 };
