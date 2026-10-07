@@ -281,7 +281,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // crossed a wall, the big triangles of the coarser one rose through it as wedges with the top-down photo
         // drawn out into green streaks on them. The finer meshes' skirts hide the seams.
         if (vWorld.x > holeRect.x + 1.0 && vWorld.x < holeRect.z - 1.0 && vWorld.z > holeRect.y + 1.0 && vWorld.z < holeRect.w - 1.0) discard;`)
-      .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0; float asphK = 0.0;
+      .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0; float asphK = 0.0; float pathK = 0.0;
       {
         vec2 uv = (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy);
         vec3 sat = texture2D(satMap, uv).rgb;
@@ -438,6 +438,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
                 asph = tn4.r > 0.02 ? clamp(tn4.b / tn4.r, 0.0, 1.0) * k : 0.0;
                 tr = mix(tr, tn4.r, k);
               }
+              pathK = wTrail * near;
             }
             for (int i = 0; i < 6; i++) wT[i] *= 1.0 - wTrail;
             wT[3] = wTrail;
@@ -552,8 +553,8 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           col = mix(col, paint, far * 0.92);
           fl *= 1.0 - far * 0.7;               // the ribs would re-draw the patches at this distance
         }
-        // not on a road: one cut across a slope took the slope's ribs as stripes across the asphalt
-        col *= clamp(1.0 + fl * 1.1 * (1.0 - asphK), 0.45, 1.5);
+        // not on a road or a path: one cut across a slope took the slope's ribs as stripes across it
+        col *= clamp(1.0 + fl * 1.1 * (1.0 - max(asphK, pathK)), 0.45, 1.5);
         // soft shoulder for very light ground (granite scree, limestone): keeps texture instead of white
         { float cl = dot(col, vec3(0.3, 0.55, 0.15)); col *= 1.0 / (1.0 + max(cl - 0.42, 0.0) * 1.6); }
         // weather: wet ground is darker; fresh snow settles above the snow line on the gentler slopes
