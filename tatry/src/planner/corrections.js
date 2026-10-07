@@ -6,7 +6,7 @@
 // Zawrat - Kozia Przełęcz 1:20 + Kozia Przełęcz - Kozi Wierch 1:30, Kozi Wierch - Skrajny Granat 1:35, Skrajny Granat - Krzyżne 2:15.
 export const CORRECTIONS = [
   { name: 'Priečne sedlo (Zbojnícka chata → Téryho chata)', a: [20.167602, 49.176634], b: [20.198974, 49.190216], factor: 1.33, oneway: true },
-  { name: 'Orla Perć: Zawrat → Kozi Wierch', a: [20.01639, 49.219091], b: [20.028705, 49.218317], factor: 2.24, oneway: true },
+  { name: 'Orla Perć: Zawrat → Kozi Wierch', a: [20.01639, 49.219091], b: [20.028705, 49.218317], factor: 2.2, oneway: true },
   { name: 'Orla Perć: Kozi Wierch → Skrajny Granat', a: [20.028705, 49.218317], b: [20.033293, 49.226945], factor: 1.7 },
   { name: 'Orla Perć: Skrajny Granat → Krzyżne', a: [20.033293, 49.226945], b: [20.047278, 49.228652], factor: 2.27 },
 ];
