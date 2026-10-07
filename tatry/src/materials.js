@@ -489,7 +489,10 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               nearCol = mix(nearCol, nearCol * vec3(0.86, 0.8, 0.7), fringe * 0.6);
               // asphalt (the roads up the valleys): dark grey, a fine grain, darker patches of newer tar
               if (asph > 0.05 && wTrail > 0.01) {
-                float g1 = vnoise(w.xz * 9.0), g2 = vnoise(w.xz * 0.35), g3 = vnoise(w.xz * 2.1);
+                // the fine grain fades out before a pixel spans its period (aliased, it drew moiré stripes and a grid)
+                float px = length(fwidth(w.xz));
+                float g1 = mix(0.5, vnoise(w.xz * 9.0), 1.0 - smoothstep(0.03, 0.08, px));
+                float g3 = mix(0.5, vnoise(w.xz * 2.1), 1.0 - smoothstep(0.15, 0.35, px)), g2 = vnoise(w.xz * 0.35);
                 vec3 ac = vec3(0.13, 0.125, 0.115) * (0.85 + 0.25 * g1) * (0.9 + 0.2 * g2) * (0.95 + 0.1 * g3);
                 ac = mix(ac, vec3(0.075, 0.075, 0.08), smoothstep(0.62, 0.7, g2) * 0.7);   // patches of newer tar
                 float body = smoothstep(0.35, 0.75, wTrail);
