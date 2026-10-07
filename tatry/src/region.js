@@ -28,6 +28,9 @@ export const MAX_KM = 25;
 // path along the trails through the stops, with what the engine needs per vertex
 export async function routePath(stops) {
   const G = await trailGraph(), data = G.data;
+  // the same way as the planner: around the trails closed on the day of the walk (?start=, else today)
+  const st = new Date(new URLSearchParams(location.search).get('start') || Date.now());
+  G.setDate(isNaN(st) ? new Date() : st);
   const vs = stops.map(([lat, lon]) => G.snap(lon, lat, 300)).filter((v) => v >= 0);
   if (vs.length < 2) throw new Error('Trasa poza siecią szlaków');
   let path = G.routeVia(vs);

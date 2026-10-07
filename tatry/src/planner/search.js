@@ -39,15 +39,28 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
         + ({ start: -0.4, hut: -0.3, lake: -0.2, fall: -0.2, view: -0.1, spring: 0.1, peak: 0, pass: 0.3, sign: 0.5 }[p.k] || 0);
       out.push([score, p]);
     }
-    // only places a marked trail comes to
+    // only places a marked trail comes to (a summit or a pass with no trail: the nearest trail point, said so)
     const res = [];
     for (const [, p] of out.sort((a, b) => a[0] - b[0] || a[1].n.length - b[1].n.length)) {
-      if (p.v === undefined) p.v = G.snap(p.lon, p.lat, 800);
+      if (p.v === undefined) reach(p);
       if (p.v >= 0) res.push(p);
       if (res.length >= 8) break;
     }
     return res;
   }
+  // a summit or a pass counts as reached by a trail within 120 m and 40 m of height of it (the trail to
+  // Gerlach's foot ended 780 m away and 684 m lower, still named "Gerlach"); other places within 800 m
+  function reach(p) {
+    p.v = G.snap(p.lon, p.lat, 800);
+    p.below = null;
+    if (p.v < 0 || (p.k !== 'peak' && p.k !== 'pass')) return;
+    const ok = G.near(p.lon, p.lat, 120).filter(([v]) => p.e == null || Math.abs(p.e - G.H[v]) <= 40);
+    if (ok.length) return;
+    const [lat, lon] = ll(p.v), d = Math.hypot((lon - p.lon) * G.mx, (lat - p.lat) * G.mz);
+    p.below = { d: Math.round(d / 10) * 10, h: p.e != null ? Math.round((p.e - G.H[p.v]) / 10) * 10 : null };
+  }
+  const nearest = (b) => `najbliżej ${b.d} m${b.h > 0 ? `, ${b.h} m niżej` : ''}`;
+  const belowText = (p) => `${p.k === 'pass' ? 'na przełęcz' : 'na szczyt'} nie prowadzi szlak · ${nearest(p.below)}`;
 
   const list = $('q-list');
   let active = null, items = [], sel = -1;
@@ -55,7 +68,7 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
     active = input;
     items = find(input.value);
     sel = -1;
-    list.innerHTML = items.map((p, i) => `<li data-i="${i}"><span class="k">${ICON[p.k] || '·'}</span>${p.n}${p.e ? ` <small>${p.e} m</small>` : ''}</li>`).join('')
+    list.innerHTML = items.map((p, i) => `<li data-i="${i}"><span class="k">${ICON[p.k] || '·'}</span>${p.n}${p.e ? ` <small>${p.e} m</small>` : ''}${p.below ? `<small class="nb">${belowText(p)}</small>` : ''}</li>`).join('')
       || (input.value.trim().length >= 2 ? '<li class="none">Nie znam takiego miejsca. Spróbuj inaczej albo kliknij na mapie.</li>' : '');
     list.hidden = !list.innerHTML;
     // under the field
@@ -74,11 +87,12 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
   function pick(p) {
     list.hidden = true;
     if (!p) return;
-    let v = p.v !== undefined ? p.v : G.snap(p.lon, p.lat, 800);
+    if (p.v === undefined) reach(p);
+    let v = p.v;
     // a place with several trails close by (a summit reached from two sides): the point of the trail that
     // gives the quickest route from the other end, plus a minute per 6 m off the place itself (the summit, not a point below it)
     const s0 = getStops(), other = active.id === 'q-from' ? (s0.length >= 2 ? s0[s0.length - 1] : -1) : (s0.length ? s0[0] : +$('q-from').dataset.v);
-    if (v >= 0 && other >= 0 && !Number.isNaN(other)) {
+    if (v >= 0 && !p.below && other >= 0 && !Number.isNaN(other)) {
       const cand = G.near(p.lon, p.lat, 150);
       if (cand.length > 1) {
         const T = G.times(other);
@@ -90,7 +104,8 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
       }
     }
     if (v < 0) { active.value = ''; active.placeholder = 'Tam nie dochodzi znakowany szlak'; return; }
-    active.value = p.n; active.dataset.v = v;
+    // no trail to the top: the field says where the route really ends
+    active.value = p.below ? `pod: ${p.n} (${nearest(p.below)})` : p.n; active.dataset.v = v;
     const s = getStops().slice();
     if (active.id === 'q-from') { if (s.length) s[0] = v; else s.push(v); }
     else if (s.length >= 2) s[s.length - 1] = v;

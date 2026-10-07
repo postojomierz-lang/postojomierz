@@ -120,6 +120,50 @@ def copernicus(lon, lat):
     h = float(next(a.sample([(lon, lat)]))[0])
     return h if h > 100 else float(next(b.sample([(lon, lat)]))[0])
 
+# ---------------------------------------------------------------- closed trails
+def closed_relation(t):
+    """Trails not to be walked: closed (access=no; Monkova dolina after a landslide), only proposed or given
+    up, or no longer kept by the Slovak club (KST "trasu neeviduje")."""
+    return (t.get('state') in ('proposed', 'disused', 'abandoned') or t.get('access') == 'no'
+            or 'neeviduje' in (t.get('note', '') + t.get('description', '')).lower())
+
+def closed_way(t):
+    return (t.get('access') in ('no', 'private') or t.get('foot') in ('no', 'private')) and \
+        t.get('foot') not in ('yes', 'designated', 'permissive')
+
+MONTHS = {m: i + 1 for i, m in enumerate('Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split())}
+def season_closure(t):
+    """A seasonal closure as [from, to] (month * 100 + day): TANAP closes the trails above the huts in winter,
+    TPN a few in the Western Tatras. OSM keeps the old TANAP end (31 May); the rules now say 15 June."""
+    for k in ('access:conditional', 'foot:conditional'):
+        m = re.search(r'no\s*@\s*\(?\s*([A-Z][a-z]{2})\s*(\d{1,2})\s*-\s*([A-Z][a-z]{2})\s*(\d{1,2})', t.get(k, ''))
+        if m and m.group(1) in MONTHS and m.group(3) in MONTHS:
+            a, b = MONTHS[m.group(1)] * 100 + int(m.group(2)), MONTHS[m.group(3)] * 100 + int(m.group(4))
+            return [a, 615 if (a, b) == (1101, 531) else b]
+    return None
+
+def old_heights():
+    """The heights of the trails.json already written, by position: the Slovak lidar (ZBGIS_EXTRA) is not
+    always at hand, and a run that only changes which trails are kept should not lose it. REHEIGHT=1 skips it."""
+    path = os.path.join(OUT, 'trails.json')
+    if os.environ.get('REHEIGHT') or not os.path.exists(path): return lambda lon, lat: None
+    V = json.load(open(path))['v']
+    exact = {(v[0], v[1]): v[2] for v in V}
+    cell = 0.0002; grid = {}
+    for v in V: grid.setdefault((int(v[0] // cell), int(v[1] // cell)), []).append(v)
+    def h(lon, lat):
+        r = exact.get((round(lon, 6), round(lat, 6)))
+        if r is not None: return r
+        best, bd = None, 6.0          # a vertex moved along its trail (a junction gone): the nearest one
+        ci, cj = int(lon // cell), int(lat // cell)
+        for di in (-1, 0, 1):
+            for dj in (-1, 0, 1):
+                for v in grid.get((ci + di, cj + dj), []):
+                    d = math.hypot((v[0] - lon) * MX, (v[1] - lat) * MZ)
+                    if d < bd: bd, best = d, v[2]
+        return best
+    return h
+
 def poi_list(pois):
     """The points of interest: huts, guideposts, peaks, passes, waterfalls, lakes, viewpoints and springs."""
     P = []
@@ -174,13 +218,18 @@ def main():
     wtags = {el['id']: el.get('tags', {}) for el in routes['elements'] if el['type'] == 'way'}
     # colours and names per way (a way may carry several trails)
     wcol, wname = {}, {}
+    skipped = []
     for r in (el for el in routes['elements'] if el['type'] == 'relation'):
+        if closed_relation(r.get('tags', {})): skipped.append(r.get('tags', {}).get('name', r['id'])); continue
         c = colour_of(r.get('tags', {}))
         nm = r.get('tags', {}).get('name', '')
         for m in r['members']:
             if m['type'] != 'way' or m['ref'] not in ways: continue
             if c: wcol.setdefault(m['ref'], set()).add(c)
             if nm: wname.setdefault(m['ref'], set()).add(nm)
+    print('trails left out (closed, proposed, not kept by KST):', skipped)
+    # ways closed to walkers (a private road, a track with access=no) unless walking is allowed on them
+    for wid in [w for w in wcol if closed_way(wtags.get(w, {}))]: del wcol[wid]
     inside = lambda p: REGION[0] <= p[0] <= REGION[2] and REGION[1] <= p[1] <= REGION[3]
     # junctions: nodes shared by several ways, and way ends
     use = {}
@@ -232,6 +281,8 @@ def main():
         # surface and difficulty for the 3D path: s = surface, d = SAC scale 1..6, h = highway class
         edges.append({'v': seq, 'c': sorted(wcol.get(wid, [])), 'n': sorted(wname.get(wid, []))[:2],
                       's': t.get('surface', ''), 'd': SAC.get(t.get('sac_scale', ''), 0), 'h': t.get('highway', '')})
+        z = season_closure(t)
+        if z: edges[-1]['z'] = z
     print('vertices', len(V))
     # fetch the 1 km DTM chunks under the trails in parallel first
     import concurrent.futures as cf
@@ -241,14 +292,17 @@ def main():
         try: fetch(f'{WCS}&SUBSET=x({k[0]},{k[0] + 1000})&SUBSET=y({k[1]},{k[1] + 1000})', f'dtm/{k[0]}_{k[1]}.tif')
         except Exception as e: print('chunk failed', k, e)
     with cf.ThreadPoolExecutor(4) as ex: list(ex.map(pre, keys))
-    miss = 0
+    miss, kept = 0, 0
+    old = old_heights()
     for k, v in enumerate(V):
+        h = old(v[0], v[1])
+        if h is not None: v[2] = h; kept += 1; continue
         h = gugik(v[0], v[1])
         if h is None: h = zbgis(v[0], v[1])
         if h is None: h = copernicus(v[0], v[1]); miss += 1
         v[2] = round(h, 1)
         if k % 5000 == 0: print('heights', k, '/', len(V), flush=True)
-    print('copernicus fallback for', miss, 'vertices')
+    print('heights kept from the previous trails.json for', kept, 'vertices; copernicus fallback for', miss)
     P = poi_list(pois)
     out = {'region': REGION, 'step': STEP, 'colours': COLOURS,
            'v': [[round(v[0], 6), round(v[1], 6), v[2]] for v in V], 'e': edges, 'poi': P,

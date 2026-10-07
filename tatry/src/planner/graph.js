@@ -18,6 +18,9 @@ export function stepMinutes(dist, dh) {
 
 import { CORRECTIONS, LINKS } from './corrections.js';
 
+const CLOSE_OK = 200;   // m of a closed trail allowed next to a stop (route)
+const COLOUR_NAME = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny' };
+
 export class TrailGraph {
   constructor(data) {
     this.data = data;
@@ -111,6 +114,18 @@ export class TrailGraph {
       this.corrected.push({ name: c.name, from: s, to: t, steps: p.length - 1 });
     }
   }
+  // seasonal closures (prepare_trails.py: the edge's z = [from, to], month * 100 + day): on the day of the walk
+  // the quickest way avoids them; true when the set of closed trails changed
+  setDate(date) {
+    const md = date ? (date.getMonth() + 1) * 100 + date.getDate() : 0;
+    const shut = (z) => !!md && (z[0] <= z[1] ? md >= z[0] && md <= z[1] : md >= z[0] || md <= z[1]);
+    const closed = this.data.e.map((e) => (e.z && shut(e.z) ? 1 : 0));
+    const key = closed.join('');
+    if (key === this.closedKey) return false;
+    this.closedKey = key;
+    this.closed = closed.some(Boolean) ? closed : null;
+    return true;
+  }
   snapAny(lon, lat, maxM) {
     const V = this.data.v; let best = -1, bd = maxM;
     for (let i = 0; i < V.length; i++) { const d = Math.hypot((V[i][0] - lon) * this.mx, (V[i][1] - lat) * this.mz); if (d < bd) { bd = d; best = i; } }
@@ -180,12 +195,34 @@ export class TrailGraph {
     while (heap.length) {
       const [d, u] = pop();
       if (d > dist[u]) continue;
-      for (const [v, w] of this.adj[u]) { const nd = d + w; if (nd < dist[v]) { dist[v] = nd; push([nd, v]); } }
+      for (const [v, w, ei] of this.adj[u]) { if (this.closed && this.closed[ei]) continue; const nd = d + w; if (nd < dist[v]) { dist[v] = nd; push([nd, v]); } }
     }
     return dist;
   }
   // quickest path from vertex s to t: list of vertices, or null
+  // (around the trails closed on the day; through them only when there is no other way, summary.closed says so)
+  // A stop may lie on a closed trail itself (a hut's point on the closed way to the next valley): the first
+  // and last CLOSE_OK m around it stay open, the way to the nearest junction.
   route(s, t) {
+    if (this.closed) {
+      const ok = new Set([...this.around(s, CLOSE_OK), ...this.around(t, CLOSE_OK)]);
+      const p = this.search(s, t, this.closed, ok);
+      if (p) return p;
+    }
+    return this.search(s, t, null);
+  }
+  around(s, maxM) {
+    const seen = new Map([[s, 0]]), st = [s];
+    while (st.length) {
+      const u = st.pop(), du = seen.get(u);
+      for (const [v] of this.adj[u]) {
+        const d = du + this.dist(u, v);
+        if (d <= maxM && !(seen.get(v) <= d)) { seen.set(v, d); st.push(v); }
+      }
+    }
+    return seen.keys();
+  }
+  search(s, t, closed, ok = null) {
     const n = this.data.v.length;
     const dist = new Float64Array(n).fill(Infinity), prev = new Int32Array(n).fill(-1);
     const heap = [[0, s]];
@@ -203,7 +240,8 @@ export class TrailGraph {
       const [d, u] = pop();
       if (u === t) break;
       if (d > dist[u]) continue;
-      for (const [v, w] of this.adj[u]) {
+      for (const [v, w, ei] of this.adj[u]) {
+        if (closed && closed[ei] && !(ok.has(u) && ok.has(v))) continue;
         const nd = d + w;
         if (nd < dist[v]) { dist[v] = nd; prev[v] = u; push([nd, v]); }
       }
@@ -229,7 +267,7 @@ export class TrailGraph {
     let dist = 0, up = 0, down = 0, time = 0, maxE = -Infinity, minE = Infinity;
     const H = this.H;
     const profile = [[0, H[path[0]]]];
-    const sections = [];
+    const sections = [], closed = new Map();     // closed trail name -> metres on it
     for (let k = 1; k < path.length; k++) {
       const a = path[k - 1], b = path[k];
       const d = this.dist(a, b), dh = H[b] - H[a];
@@ -240,13 +278,14 @@ export class TrailGraph {
       // which edge carries this step: the one listed on the adjacency
       const ei = (this.adj[a].find((x) => x[0] === b) || [0, 0, this.edgeOf[b]])[2];
       const e = this.data.e[ei];
+      if (this.closed && this.closed[ei]) { const nm = e.n[0] || 'szlak ' + (COLOUR_NAME[e.c[0]] || ''); closed.set(nm, (closed.get(nm) || 0) + d); }
       const colour = e.c[0] || 'none', name = e.n[0] || '';
       const last = sections[sections.length - 1];
       if (last && last.colour === colour && (last.name === name || !name || !last.name)) { last.to = dist; last.end = k; if (!last.name) last.name = name; }
       else sections.push({ colour, colours: e.c, name, from: dist - d, to: dist, start: k - 1, end: k });
     }
     for (const k of path) { maxE = Math.max(maxE, H[k]); minE = Math.min(minE, H[k]); }
-    return { dist, up, down, time, maxE, minE, profile, sections };
+    return { dist, up, down, time, maxE, minE, profile, sections, closed: [...closed].filter(([, m]) => m > CLOSE_OK).map(([n]) => n) };
   }
   // match a GPS track (GPX points) onto the network: snap points ~150 m apart and route between them
   matchTrack(points) {
