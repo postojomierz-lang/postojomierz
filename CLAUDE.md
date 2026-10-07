@@ -1,6 +1,7 @@
 # Notes for Claude
 
-- The owner writes in Polish; reply in Polish.
+- The owner writes in Polish; ALWAYS reply in Polish: every message, including short status lines while working
+  ("czekam na render", "zapisane na gałęzi"), never in English.
 - End replies with `🔵 **Możliwe kolejne kroki:**` and the steps as a numbered list (1., 2., 3. …, one per line), so the
   owner can answer with a number; commands to paste (/koncze, /compact …, /clear) each in its own code block; no HTML.
 - Before proposing `/compact` (or `/clear`), update `HANDOFF.md` yourself in the same reply (as `/koncze` does: commit, push,

@@ -286,6 +286,33 @@ async function main() {
       g.beginPath(); l.ring.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.closePath(); g.fill(); g.stroke();
     }
   });
+  // metres to the shore of the lakes (two-pass chamfer over their polygons): R inside (the turquoise
+  // shallows, water), G outside (the band of pale granite gravel along the shore, terrain); 0..60 m
+  const shoreTex = (() => {
+    const N = 1024, fill = drawMask(N, IB, (g) => {
+      g.fillStyle = 'rgb(255,0,0)';
+      for (const l of meta.lakes) { g.beginPath(); l.ring.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.closePath(); g.fill(); }
+    }).data;
+    const px = (IB[2] - IB[0]) / N, d1 = px, d2 = px * Math.SQRT2;
+    const chamfer = (inside) => {
+      const D = new Float32Array(N * N);
+      for (let i = 0; i < N * N; i++) D[i] = (fill[i] > 127) === inside ? 1e6 : 0;
+      for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+        const k = j * N + i; if (!D[k]) continue;
+        D[k] = Math.min(D[k], D[k - 1] + d1, D[k - N] + d1, D[k - N - 1] + d2, D[k - N + 1] + d2);
+      }
+      for (let j = N - 2; j > 0; j--) for (let i = N - 2; i > 0; i--) {
+        const k = j * N + i; if (!D[k]) continue;
+        D[k] = Math.min(D[k], D[k + 1] + d1, D[k + N] + d1, D[k + N + 1] + d2, D[k + N - 1] + d2);
+      }
+      return D;
+    };
+    const In = chamfer(true), Out = chamfer(false), out = new Uint8Array(N * N * 4);
+    for (let i = 0; i < N * N; i++) { out[i * 4] = Math.min(255, In[i] / 60 * 255); out[i * 4 + 1] = Math.min(255, Out[i] / 60 * 255); }
+    const t = new THREE.DataTexture(out, N, N);
+    t.magFilter = t.minFilter = THREE.LinearFilter; t.needsUpdate = true;
+    return t;
+  })();
   // keeps boulders off the footpath itself
   const trailVisWide = drawMask(2048, IB, (g) => {
     g.strokeStyle = 'rgb(255,0,0)'; g.lineWidth = 3.5;
@@ -450,9 +477,10 @@ async function main() {
   const near = {
     map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: { value: new THREE.Vector4(0, 0, 0, 0) },
     trail: trailWin.map, trailRect: trailWin.rect, cls: { value: clsTex },
+    shore: { value: shoreTex }, shoreRect: { value: new THREE.Vector4(IB[0], IB[1], IB[2], IB[3]) },
   };
   const noNear = { map: { value: nearTex }, rect: { value: new THREE.Vector4(0, 0, 0, 0) }, patch: near.patch,
-    trail: trailWin.map, trailRect: { value: new THREE.Vector4(0, 0, 0, 0) }, cls: { value: clsTex } };
+    trail: trailWin.map, trailRect: { value: new THREE.Vector4(0, 0, 0, 0) }, cls: { value: clsTex }, shore: near.shore, shoreRect: near.shoreRect };
   const step = tier(16, 8, 6, 4.5) * Math.sqrt(AREA_K);
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
@@ -533,30 +561,8 @@ async function main() {
 
   // ---------- lakes
   const water = waterMaterial();
-  // metres to the shore inside the lakes (two-pass chamfer over the lake polygons): the turquoise shallows
-  {
-    const N = 1024, fill = drawMask(N, IB, (g) => {
-      g.fillStyle = 'rgb(255,0,0)';
-      for (const l of meta.lakes) { g.beginPath(); l.ring.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.closePath(); g.fill(); }
-    }).data;
-    const px = (IB[2] - IB[0]) / N, D = new Float32Array(N * N);
-    for (let i = 0; i < N * N; i++) D[i] = fill[i] > 127 ? 1e6 : 0;
-    const d1 = px, d2 = px * Math.SQRT2;
-    for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
-      const k = j * N + i; if (!D[k]) continue;
-      D[k] = Math.min(D[k], D[k - 1] + d1, D[k - N] + d1, D[k - N - 1] + d2, D[k - N + 1] + d2);
-    }
-    for (let j = N - 2; j > 0; j--) for (let i = N - 2; i > 0; i--) {
-      const k = j * N + i; if (!D[k]) continue;
-      D[k] = Math.min(D[k], D[k + 1] + d1, D[k + N] + d1, D[k + N + 1] + d2, D[k + N - 1] + d2);
-    }
-    const out = new Uint8Array(N * N * 4);
-    for (let i = 0; i < N * N; i++) out[i * 4] = Math.min(255, D[i] / 60 * 255);
-    const shoreTex = new THREE.DataTexture(out, N, N);
-    shoreTex.magFilter = shoreTex.minFilter = THREE.LinearFilter; shoreTex.needsUpdate = true;
-    water.uniforms.shoreMap.value = shoreTex;
-    water.uniforms.shoreRect.value.set(IB[0], IB[1], IB[2], IB[3]);
-  }
+  water.uniforms.shoreMap.value = shoreTex;
+  water.uniforms.shoreRect.value.set(IB[0], IB[1], IB[2], IB[3]);
   // the live sky photographed into a small cube now and then (on a change of hour or weather, and every
   // few seconds as the clouds drift): the lakes reflect it, and the light from the sky and the ground
   // (the hemisphere light) takes its colours: orange at sunset, grey in a storm, blue at dusk

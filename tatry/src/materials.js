@@ -171,6 +171,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
   const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const u = {
     nearMap: near.map, nearRect: near.rect, clsNear: near.cls, trailNear: near.trail, trailRect: near.trailRect, holeRect: hole || { value: new THREE.Vector4(0, 0, 0, 0) },
+    shoreMap: near.shore || { value: null }, shoreRect: near.shoreRect || { value: new THREE.Vector4(0, 0, 0, 0) },
     texD: { value: textures.diff }, texN: { value: textures.nor },
     texMean: { value: textures.mean }, texScale: { value: textures.scale },
     satMap: { value: map }, trailMap: { value: trailMap },
@@ -186,6 +187,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
       .replace('#include <common>', `#include <common>
         varying vec3 vWorld; varying vec3 vWN; uniform vec4 holeRect;
         uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail; uniform float desmear;
+        uniform sampler2D shoreMap; uniform vec4 shoreRect;
         uniform sampler2D nearMap; uniform vec4 nearRect; uniform sampler2D clsNear; uniform sampler2D trailNear; uniform vec4 trailRect;
         uniform sampler2DArray texD; uniform sampler2DArray texN; uniform vec3 texMean[6]; uniform float texScale[6];
         ${NOISE}
@@ -279,7 +281,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // crossed a wall, the big triangles of the coarser one rose through it as wedges with the top-down photo
         // drawn out into green streaks on them. The finer meshes' skirts hide the seams.
         if (vWorld.x > holeRect.x + 1.0 && vWorld.x < holeRect.z - 1.0 && vWorld.z > holeRect.y + 1.0 && vWorld.z < holeRect.w - 1.0) discard;`)
-      .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0; float asphK = 0.0;
+      .replace('#include <map_fragment>', `vec3 detN = vec3(0.0, 1.0, 0.0); float detW = 0.0; float asphK = 0.0; float pathK = 0.0;
       {
         vec2 uv = (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy);
         vec3 sat = texture2D(satMap, uv).rgb;
@@ -436,6 +438,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
                 asph = tn4.r > 0.02 ? clamp(tn4.b / tn4.r, 0.0, 1.0) * k : 0.0;
                 tr = mix(tr, tn4.r, k);
               }
+              pathK = wTrail * near;
             }
             for (int i = 0; i < 6; i++) wT[i] *= 1.0 - wTrail;
             wT[3] = wTrail;
@@ -486,7 +489,10 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               nearCol = mix(nearCol, nearCol * vec3(0.86, 0.8, 0.7), fringe * 0.6);
               // asphalt (the roads up the valleys): dark grey, a fine grain, darker patches of newer tar
               if (asph > 0.05 && wTrail > 0.01) {
-                float g1 = vnoise(w.xz * 9.0), g2 = vnoise(w.xz * 0.35), g3 = vnoise(w.xz * 2.1);
+                // the fine grain fades out before a pixel spans its period (aliased, it drew moiré stripes and a grid)
+                float px = length(fwidth(w.xz));
+                float g1 = mix(0.5, vnoise(w.xz * 9.0), 1.0 - smoothstep(0.03, 0.08, px));
+                float g3 = mix(0.5, vnoise(w.xz * 2.1), 1.0 - smoothstep(0.15, 0.35, px)), g2 = vnoise(w.xz * 0.35);
                 vec3 ac = vec3(0.13, 0.125, 0.115) * (0.85 + 0.25 * g1) * (0.9 + 0.2 * g2) * (0.95 + 0.1 * g3);
                 ac = mix(ac, vec3(0.075, 0.075, 0.08), smoothstep(0.62, 0.7, g2) * 0.7);   // patches of newer tar
                 float body = smoothstep(0.35, 0.75, wTrail);
@@ -520,9 +526,6 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               col = mix(col, nearCol, near);
               // tn is already a world normal here; exaggerate its tilt on rock faces
               detN = normalize(Nr + (tn - N) * (1.0 + 0.8 * wCliff));
-              // a road is smooth: the normal of the 4 m heights, not the mesh's (the bumps of the 1 m laser data
-              // on a 2.5 m grid lit the asphalt in stripes across it)
-              if (asphK > 0.0) detN = normalize(mix(detN, hNormal(vWorld.xz, 4.0), asphK * 0.9));
               detW = near * 0.9;
             }
           }
@@ -553,7 +556,8 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           col = mix(col, paint, far * 0.92);
           fl *= 1.0 - far * 0.7;               // the ribs would re-draw the patches at this distance
         }
-        col *= clamp(1.0 + fl * 1.1, 0.45, 1.5);
+        // not on a road or a path: one cut across a slope took the slope's ribs as stripes across it
+        col *= clamp(1.0 + fl * 1.1 * (1.0 - max(asphK, pathK)), 0.45, 1.5);
         // soft shoulder for very light ground (granite scree, limestone): keeps texture instead of white
         { float cl = dot(col, vec3(0.3, 0.55, 0.15)); col *= 1.0 / (1.0 + max(cl - 0.42, 0.0) * 1.6); }
         // weather: wet ground is darker; fresh snow settles above the snow line on the gentler slopes
@@ -566,6 +570,21 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float cool = clamp((min(col.g, col.b) - col.r) / max(lumC, 0.02) * 4.0, 0.0, 1.0);
           float greyC = 1.0 - smoothstep(0.03, 0.09, chromaC / max(lumC, 0.05) * 0.3);
           col = mix(col, vec3(lumC) * vec3(1.08, 1.0, 0.9), hiC * max(cool * 0.8, greyC * 0.5));
+          // scree: the pale cones of broken granite under the walls, lighter than the walls themselves
+          col *= 1.0 + 0.16 * hiC * greyC * smoothstep(0.06, 0.18, slope) * (1.0 - smoothstep(0.3, 0.45, slope));
+        }
+        // mountain lakes: a band of pale granite gravel and stones along the water, a few metres wide
+        if (shoreRect.z > shoreRect.x) {
+          vec2 suv = (vWorld.xz - shoreRect.xy) / (shoreRect.zw - shoreRect.xy);
+          vec2 sd = texture2D(shoreMap, suv).rg * 60.0;
+          float band = (1.0 - smoothstep(0.8, 4.5 + 2.0 * vnoise(vWorld.xz * 0.15), sd.g)) * (1.0 - smoothstep(0.0, 2.0, sd.r));
+          band *= smoothstep(1250.0, 1400.0, vWorld.y) * (1.0 - smoothstep(0.55, 0.8, slope));
+          if (band > 0.0) {
+            vec2 cell = vor(vWorld.xz * 2.2);
+            float stone = smoothstep(0.02, 0.12, cell.x);                       // the gaps between pebbles darker
+            vec3 gravel = vec3(0.4, 0.39, 0.36) * (0.75 + 0.45 * cell.y) * (0.6 + 0.4 * stone);
+            col = mix(col, gravel, band * 0.85);
+          }
         }
         col *= 1.0 - 0.3 * wetK;
         if (snowK > 0.0) {
@@ -594,6 +613,9 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         if (desmear > 1.5) diffuseColor.rgb = mix(col, vec3(1.0, 0.0, 0.0), smear * 0.8);   // ?odmaz=pokaz: where it works
         if (detW <= 0.0) { detN = Nr; detW = 1.0; }
         else { detN = normalize(mix(Nr, detN, detW)); detW = 1.0; }
+        // a road is smooth: only the normal of the 4 m heights (any share of the mesh's, whose 1 m laser
+        // bumps sit on a 2.5 m grid, lit the asphalt in stripes across it)
+        if (asphK > 0.0) detN = normalize(mix(detN, hNormal(vWorld.xz, 4.0), smoothstep(0.0, 0.6, asphK)));
       }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         if (detW > 0.0) {
