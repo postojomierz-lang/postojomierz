@@ -171,7 +171,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
   const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const u = {
     nearMap: near.map, nearRect: near.rect, clsNear: near.cls, trailNear: near.trail, trailRect: near.trailRect, holeRect: hole || { value: new THREE.Vector4(0, 0, 0, 0) },
-    dbgMode: { value: 0 }, shoreMap: near.shore || { value: null }, shoreRect: near.shoreRect || { value: new THREE.Vector4(0, 0, 0, 0) },
+    shoreMap: near.shore || { value: null }, shoreRect: near.shoreRect || { value: new THREE.Vector4(0, 0, 0, 0) },
     texD: { value: textures.diff }, texN: { value: textures.nor },
     texMean: { value: textures.mean }, texScale: { value: textures.scale },
     satMap: { value: map }, trailMap: { value: trailMap },
@@ -187,7 +187,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
       .replace('#include <common>', `#include <common>
         varying vec3 vWorld; varying vec3 vWN; uniform vec4 holeRect;
         uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail; uniform float desmear;
-        uniform sampler2D shoreMap; uniform vec4 shoreRect; uniform int dbgMode;
+        uniform sampler2D shoreMap; uniform vec4 shoreRect;
         uniform sampler2D nearMap; uniform vec4 nearRect; uniform sampler2D clsNear; uniform sampler2D trailNear; uniform vec4 trailRect;
         uniform sampler2DArray texD; uniform sampler2DArray texN; uniform vec3 texMean[6]; uniform float texScale[6];
         ${NOISE}
@@ -552,7 +552,8 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           col = mix(col, paint, far * 0.92);
           fl *= 1.0 - far * 0.7;               // the ribs would re-draw the patches at this distance
         }
-        col *= clamp(1.0 + fl * 1.1, 0.45, 1.5);
+        // not on a road: one cut across a slope took the slope's ribs as stripes across the asphalt
+        col *= clamp(1.0 + fl * 1.1 * (1.0 - asphK), 0.45, 1.5);
         // soft shoulder for very light ground (granite scree, limestone): keeps texture instead of white
         { float cl = dot(col, vec3(0.3, 0.55, 0.15)); col *= 1.0 / (1.0 + max(cl - 0.42, 0.0) * 1.6); }
         // weather: wet ground is darker; fresh snow settles above the snow line on the gentler slopes
@@ -623,11 +624,6 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float ao = mix(1.0, terrainAO(vWorld), ${aoStrength.toFixed(2)});
           reflectedLight.directDiffuse *= tsh * mix(1.0, ao, 0.35);
           reflectedLight.indirectDiffuse *= ao;
-          if (dbgMode == 1) { reflectedLight.directDiffuse = normal * 0.5 + 0.5; reflectedLight.indirectDiffuse = vec3(0.0); }
-          if (dbgMode == 2) { reflectedLight.directDiffuse = vec3(ao - 0.6) * 2.0; reflectedLight.indirectDiffuse = vec3(0.0); }
-          if (dbgMode == 3) { reflectedLight.directDiffuse = vec3(tsh); reflectedLight.indirectDiffuse = vec3(0.0); }
-          if (dbgMode == 4) { reflectedLight.directDiffuse = diffuseColor.rgb * 3.0; reflectedLight.indirectDiffuse = vec3(0.0); }
-          if (dbgMode == 5) { reflectedLight.directDiffuse = vec3(fract(vWorld.y * 2.0)); reflectedLight.indirectDiffuse = vec3(0.0); }
         }`);
   };
   m.customProgramCacheKey = () => 'terrain' + (detail ? 1 : 0);
