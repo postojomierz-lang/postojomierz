@@ -348,10 +348,21 @@ async function main() {
   // the Sky shader is made for exposure ~0.5 without the scene's bloom and grade: here it burnt out to
   // white. Scale its radiance down (skyGain, lower towards the horizon glow) so the blue survives
   sky.material.uniforms.skyGain = { value: 0.4 };
+  // a fine day's sky (weather blue: 1 clear, less in haze, 0 overcast): a deep blue zenith over a pale
+  // horizon, not the milky grey-blue the scattering model gives at this gain
+  sky.material.uniforms.skyBlue = { value: 1 };
   sky.material.fragmentShader = sky.material.fragmentShader
-    .replace('uniform vec3 up;', 'uniform vec3 up;\nuniform float skyGain;')
+    .replace('uniform vec3 up;', 'uniform vec3 up;\nuniform float skyGain;\nuniform float skyBlue;')
     .replace('gl_FragColor = vec4( retColor, 1.0 );', `
       vec3 outC = retColor * skyGain;
+      {
+        float dayB = smoothstep(0.1, 0.3, vSunDirection.y) * skyBlue;
+        float upB = pow(clamp(direction.y, 0.0, 1.0), 0.5);
+        float lumB = dot(outC, vec3(0.3, 0.55, 0.15));
+        vec3 satC = mix(vec3(lumB), outC, 1.0 + 0.6 * upB);
+        satC *= mix(vec3(1.0), vec3(0.62, 0.72, 1.0), upB * 0.55);
+        outC = mix(outC, max(satC, 0.0), dayB);
+      }
       // sunrise and sunset: a warm glow along the horizon under the sun, after sunset the afterglow and,
       // opposite the sun, the pink Belt of Venus over the blue shadow of the Earth; stars at night
       {
@@ -522,6 +533,30 @@ async function main() {
 
   // ---------- lakes
   const water = waterMaterial();
+  // metres to the shore inside the lakes (two-pass chamfer over the lake polygons): the turquoise shallows
+  {
+    const N = 1024, fill = drawMask(N, IB, (g) => {
+      g.fillStyle = 'rgb(255,0,0)';
+      for (const l of meta.lakes) { g.beginPath(); l.ring.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); g.closePath(); g.fill(); }
+    }).data;
+    const px = (IB[2] - IB[0]) / N, D = new Float32Array(N * N);
+    for (let i = 0; i < N * N; i++) D[i] = fill[i] > 127 ? 1e6 : 0;
+    const d1 = px, d2 = px * Math.SQRT2;
+    for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+      const k = j * N + i; if (!D[k]) continue;
+      D[k] = Math.min(D[k], D[k - 1] + d1, D[k - N] + d1, D[k - N - 1] + d2, D[k - N + 1] + d2);
+    }
+    for (let j = N - 2; j > 0; j--) for (let i = N - 2; i > 0; i--) {
+      const k = j * N + i; if (!D[k]) continue;
+      D[k] = Math.min(D[k], D[k + 1] + d1, D[k + N] + d1, D[k + N + 1] + d2, D[k + N - 1] + d2);
+    }
+    const out = new Uint8Array(N * N * 4);
+    for (let i = 0; i < N * N; i++) out[i * 4] = Math.min(255, D[i] / 60 * 255);
+    const shoreTex = new THREE.DataTexture(out, N, N);
+    shoreTex.magFilter = shoreTex.minFilter = THREE.LinearFilter; shoreTex.needsUpdate = true;
+    water.uniforms.shoreMap.value = shoreTex;
+    water.uniforms.shoreRect.value.set(IB[0], IB[1], IB[2], IB[3]);
+  }
   // the live sky photographed into a small cube now and then (on a change of hour or weather, and every
   // few seconds as the clouds drift): the lakes reflect it, and the light from the sky and the ground
   // (the hemisphere light) takes its colours: orange at sunset, grey in a storm, blue at dusk
@@ -763,7 +798,7 @@ async function main() {
     } });
   for (const b of blazeSites) if (b.tree) spruce.push(b.x, terrain.height(b.x, b.z), b.z, 2, 17 + hash(b.x, b.z) * 9, 0);
   const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba', 'rowan'], shade, {
-    spruce: { wind: 0.6, brightness: 1.15, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
+    spruce: { wind: 0.6, brightness: 1.0, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
     deadspruce: { wind: 0.3, brightness: 1.2, upNormal: 0.2 }, limba: { wind: 0.5, brightness: 0.85, upNormal: 0.3 }, rowan: { wind: 0.9, brightness: 1.0, upNormal: 0.35 },
     mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55, fade: 'mugo' }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
@@ -1091,7 +1126,7 @@ async function main() {
   // wind: grass and tree sway (and the wind's sound); rain / snow: how much falls; wet: dark wet rock;
   // snowCover: fresh snow on the ground above the snow line; flat: an overcast, grey sky
   const WEATHER = {
-    clear: { fog: 2.6e-5, turb: 1.4, ray: 3.2, sun: 1, amb: 1, fogMix: 0, cloud: 0.45, wind: 1 },
+    clear: { fog: 2.0e-5, turb: 1.2, ray: 3.2, sun: 1, amb: 1, fogMix: 0, cloud: 0.45, wind: 1 },
     haze: { fog: 5.5e-5, turb: 8, ray: 2.2, sun: 0.8, amb: 1.1, fogMix: 0.25, cloud: 0.2, wind: 0.8 },
     mist: { fog: 1.1e-3, turb: 12, ray: 3, sun: 0.35, amb: 1.35, fogMix: 0.85, cloud: 0.95, wind: 0.5, wet: 0.4 },
     cloudy: { fog: 3.5e-5, turb: 16, ray: 0.6, sun: 0.35, amb: 1.4, fogMix: 0.6, cloud: 0.88, wind: 1.2, flat: true },
@@ -1121,6 +1156,7 @@ async function main() {
     const low = Math.pow(1 - THREE.MathUtils.smoothstep(e, 0.03, 0.45), 0.8);
     const u = sky.material.uniforms;
     u.turbidity.value = w.turb; u.rayleigh.value = w.ray;
+    u.skyBlue.value = w.flat ? 0 : Math.max(0, 1 - w.fogMix * 2) * (w.blue ?? 1);
     // a tight sun halo: a wide one washes out half the sky when looking towards the sun
     u.mieCoefficient.value = 0.0018 + 0.004 * low; u.mieDirectionalG.value = 0.9;
     u.sunPosition.value.copy(dir);

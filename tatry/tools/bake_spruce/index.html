@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Bakes the spruce impostors from the 3D spruce (src/vegetation3d.js), so the far forest has the same
+     dense, conical trees as the near one. Driven by bake.mjs (Playwright); see there. -->
+<script type="importmap">{ "imports": { "three": "/tatry/node_modules/three/build/three.module.js" } }</script>
+<canvas id="c"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { spruceGeometry } from '/tatry/src/vegetation3d.js';
+
+const VIEWS = 8, CW = 512, CH = 1024;            // cell size (packed at half that)
+const W = 0.5, H = 1;                            // image: width 0.5 of the height (impostors.json variants)
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), alpha: true, preserveDrawingBuffer: true, antialias: false });
+renderer.setSize(CW, CH, false); renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const load = (url, srgb) => new Promise((res) => new THREE.TextureLoader().load(url, (t) => { t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.flipY = true; res(t); }));
+const meta = await (await fetch('/tatry/public/models/branch.json')).json();
+const albedo = await load('/tatry/public/models/branch_albedo.webp', true);
+const bark = await load('/tatry/public/models/bark.jpg', true);
+
+// albedo: unlit colour with alpha; normal: camera-space normal (x right, y up, z towards the camera) * 0.5 + 0.5
+const branchA = new THREE.MeshBasicMaterial({ map: albedo, alphaTest: 0.5, side: THREE.DoubleSide });
+const trunkA = new THREE.MeshBasicMaterial({ map: bark });
+const normalMat = (map) => new THREE.ShaderMaterial({
+  uniforms: { map: { value: map } }, side: THREE.DoubleSide,
+  vertexShader: 'varying vec3 vN; varying vec2 vUv; void main(){ vUv = uv; vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D map; varying vec3 vN; varying vec2 vUv; void main(){
+    ${map ? 'if (texture2D(map, vUv).a < 0.5) discard;' : ''}
+    vec3 n = normalize(vN); if (!gl_FrontFacing) n = -n; if (n.z < 0.0) n = -n;
+    gl_FragColor = vec4(n * 0.5 + 0.5, 1.0); }`,
+});
+const branchN = normalMat(albedo), trunkN = normalMat(null);
+
+window.bake = async (v, seed, crownWidth) => {
+  const g = spruceGeometry(seed, meta.cards, 0.07);
+  const scene = new THREE.Scene();
+  const b = new THREE.Mesh(g.branches, branchA), t = new THREE.Mesh(g.trunk, trunkA);
+  for (const m of [b, t]) { m.scale.set(crownWidth, 1, crownWidth); scene.add(m); }
+  const cam = new THREE.OrthographicCamera(-W / 2, W / 2, H, 0, 0.01, 20);
+  const out = {};
+  for (const kind of ['albedo', 'normal']) {
+    b.material = kind === 'albedo' ? branchA : branchN; t.material = kind === 'albedo' ? trunkA : trunkN;
+    const views = [];
+    for (let k = 0; k < VIEWS; k++) {
+      const a = k / VIEWS * Math.PI * 2;
+      cam.position.set(Math.sin(a) * 5, 0, Math.cos(a) * 5); cam.lookAt(0, 0, 0);
+      renderer.setClearColor(0x000000, 0); renderer.clear();
+      renderer.render(scene, cam);
+      views.push(renderer.domElement.toDataURL('image/png'));
+    }
+    out[kind] = views;
+  }
+  return out;
+};
+window.ready = true;
+</script>

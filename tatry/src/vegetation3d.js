@@ -12,7 +12,7 @@ const IGN = 'fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00
 
 // one card spruce of unit height (y 0..1), crown radius 0.5 at the bottom; scaled per instance
 // y0: where the crown starts (a share of the height); the trees carrying trail marks keep a bare trunk below
-function spruceGeometry(seed, cards, y0 = 0.07) {
+export function spruceGeometry(seed, cards, y0 = 0.07) {
   const r = rng(seed), rows = cards.length;
   const B = { pos: [], nor: [], uv: [], idx: [] }, T = { pos: [], nor: [], uv: [], idx: [] };
   const ASPECT = 0.32;                        // crown width / height of a typical spruce (vertical offsets)
