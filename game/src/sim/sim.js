@@ -112,11 +112,22 @@ export class Sim {
     const [w, h] = this.footprint(type, cx, cy, rot), z = t.zone;
     if (cx < z.x || cy < z.y || cx + w > z.x + z.w || cy + h > z.y + z.h) return 'Must be inside your deployment zone';
     const cells = this.cellsOf(type, cx, cy, rot);
-    for (const c of cells) if (this.map.grid[c] !== T_OPEN || this.occ[c]) return 'Space is taken';
+    // say what is in the way: the ground itself, something built there, or a unit standing there
+    for (const c of cells) {
+      const g = this.map.grid[c];
+      if (g === T_WATER) return 'Cannot build in water';
+      if (g === T_RUIN) return 'Cannot build on rubble';
+      if (g === T_EDGE) return 'Off the edge of the table';
+      if (g !== T_OPEN) return 'Blocked by an obstacle';
+    }
+    for (const c of cells) if (this.occ[c]) {
+      const o = this.byId.get(this.occ[c]);
+      return o && o.wreck ? 'Blocked by a wreck' : o ? `Taken by ${o.team === teamId ? 'your' : 'a'} ${o.def.name}` : 'Space is taken';
+    }
     for (const e of this.ents) {
       if (e.dead || e.def.static || e.y > 0.5) continue;
       const r = e.def.radius;
-      if (cells.some(c => { const x = c % this.W, y = (c / this.W) | 0; return e.x + r > x && e.x - r < x + 1 && e.z + r > y && e.z - r < y + 1; })) return 'Space is taken';
+      if (cells.some(c => { const x = c % this.W, y = (c / this.W) | 0; return e.x + r > x && e.x - r < x + 1 && e.z + r > y && e.z - r < y + 1; })) return `Too close to ${e.team === teamId ? 'your' : 'a'} ${e.def.name}`;
     }
     return null;
   }
