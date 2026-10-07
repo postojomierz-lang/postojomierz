@@ -344,6 +344,15 @@ async function main() {
     for (let i = 0; i < N; i++) { const sec = sections(i * trail.step); half[i] = sec.width / 2 + 0.2; str[i] = Math.min(1, sec.paved * 1.6); }
     terrain.setBench({ X: trail.X, Z: trail.Z, H: smoothArr(TH0, 2), half, str });
   }
+  // a road (wider than a footpath): the trees stand 3 m beyond its edge, so their crowns do not hang over it
+  const roadSide = drawMask(2048, IB, (g) => {
+    g.strokeStyle = 'rgb(255,0,0)'; g.lineCap = 'round';
+    for (let i = 1; i < N; i++) {
+      const w = sections(i * trail.step).width;
+      if (w < 3) continue;
+      g.lineWidth = w + 6; g.beginPath(); g.moveTo(trail.X[i - 1], trail.Z[i - 1]); g.lineTo(trail.X[i], trail.Z[i]); g.stroke();
+    }
+  });
 
   // ---------- renderer / scene
   // phones ('low', 'mid'): the light way of drawing: no logarithmic depth (it writes the depth per pixel,
@@ -708,7 +717,7 @@ async function main() {
     for (let t = 0; t < tries; t++) {
       if (r() > (c === 30 ? density * 0.3 : density)) continue;
       const x = IB[0] + (i + r()) * px, z = IB[1] + (j + r()) * pz;
-      if (terrain.maskAt(c === 10 ? pathSide : trailVisWide, x, z) > 0.02 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
+      if (terrain.maskAt(c === 10 ? pathSide : trailVisWide, x, z) > 0.02 || terrain.maskAt(roadSide, x, z) > 0 || terrain.maskAt(lakeMask, x, z) > 0.05) continue;
       if (houses.inside(x, z, c === 10 ? 6 : 2)) continue;
       if (c === 10 && terrain.maskAt(clearing, x, z) > 0) continue;
       if (c === 10 && tileTrees.has(Math.floor((x - TO[0]) / TS) + ',' + Math.floor((z - TO[1]) / TS))) continue;
@@ -731,7 +740,7 @@ async function main() {
       const x = x0 + a[k] / 65535 * TS, z = z0 + a[k + 1] / 65535 * TS, th = a[k + 2] / 100;
       const gc = groundClass(x, z);
       if (gc && (gc.c === 1 || gc.c === 2 || gc.c === 7)) continue;          // water, rock faces, snow: not a tree
-      if (terrain.maskAt(pathSide, x, z) > 0 || terrain.maskAt(lakeMask, x, z) > 0.05 || houses.inside(x, z, 2)) continue;
+      if (terrain.maskAt(pathSide, x, z) > 0 || terrain.maskAt(roadSide, x, z) > 0 || terrain.maskAt(lakeMask, x, z) > 0.05 || houses.inside(x, z, 2)) continue;
       if (terrain.normal(x, z, 3).y < 0.6) continue;
       const h = terrain.height(x, z);
       realTrees.push(x, h, z, 0, th, species(x, z, h, th));
