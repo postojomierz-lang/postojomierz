@@ -18,6 +18,7 @@ export function stepMinutes(dist, dh) {
 
 import { CORRECTIONS, LINKS } from './corrections.js';
 
+const ROADS = new Set(['primary', 'secondary', 'tertiary']);
 const CLOSE_OK = 200;   // m of a closed trail allowed next to a stop (route)
 const COLOUR_NAME = { red: 'czerwony', blue: 'niebieski', green: 'zielony', yellow: 'żółty', black: 'czarny' };
 
@@ -48,6 +49,9 @@ export class TrailGraph {
         if (k) this.link(e.v[k - 1], a, ei);
       }
     });
+    // roads with traffic (a voivodeship road by Kiry on Szlak Maryjny): the route keeps to a trail beside
+    // them when there is one; the time shown stays the walking time
+    this.pen = Float32Array.from(data.e, (e) => (ROADS.has(e.h) ? 1.3 : 1));
     this.heal();
     this.mainPart();
     this.applyCorrections();
@@ -195,7 +199,7 @@ export class TrailGraph {
     while (heap.length) {
       const [d, u] = pop();
       if (d > dist[u]) continue;
-      for (const [v, w, ei] of this.adj[u]) { if (this.closed && this.closed[ei]) continue; const nd = d + w; if (nd < dist[v]) { dist[v] = nd; push([nd, v]); } }
+      for (const [v, w, ei] of this.adj[u]) { if (this.closed && this.closed[ei]) continue; const nd = d + w * this.pen[ei]; if (nd < dist[v]) { dist[v] = nd; push([nd, v]); } }
     }
     return dist;
   }
@@ -242,7 +246,7 @@ export class TrailGraph {
       if (d > dist[u]) continue;
       for (const [v, w, ei] of this.adj[u]) {
         if (closed && closed[ei] && !(ok.has(u) && ok.has(v))) continue;
-        const nd = d + w;
+        const nd = d + w * this.pen[ei];
         if (nd < dist[v]) { dist[v] = nd; prev[v] = u; push([nd, v]); }
       }
     }

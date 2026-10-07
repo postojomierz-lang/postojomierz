@@ -20,7 +20,8 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
   // the places: named POIs (one per name, the hut or peak before a signpost of the same name) and the extras
   const seen = new Set(), places = [];
   const order = { hut: 0, peak: 1, lake: 2, fall: 2, view: 2, spring: 3, pass: 3, sign: 4 };
-  for (const p of [...data.poi].sort((a, b) => order[a.k] - order[b.k])) {
+  // (two summits of one name, as Świnica's 2291 m and 2302 m: the higher one, the main summit)
+  for (const p of [...data.poi].sort((a, b) => order[a.k] - order[b.k] || (b.e || 0) - (a.e || 0))) {
     if (!p.n || seen.has(p.n)) continue;
     seen.add(p.n);
     places.push({ n: p.n, k: p.k, e: p.e, lat: p.p[1], lon: p.p[0] });
@@ -35,15 +36,18 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
     const out = [];
     for (const p of places) {
       if (!words.every((w) => p.f.includes(w))) continue;
-      const score = (p.f.startsWith(f) ? 0 : p.f.split(/[\s,(-]+/).some((w) => w.startsWith(words[0])) ? 1 : 2)
-        + ({ start: -0.4, hut: -0.3, lake: -0.2, fall: -0.2, view: -0.1, spring: 0.1, peak: 0, pass: 0.3, sign: 0.5 }[p.k] || 0);
+      if (p.v === undefined) reach(p);
+      if (p.v < 0) continue;
+      // the very name first ("Zawrat", not Zawratowa Turnia), places a trail does not reach last
+      const score = (p.f === f ? -1 : p.f.startsWith(f) ? 0 : p.f.split(/[\s,(-]+/).some((w) => w.startsWith(words[0])) ? 1 : 2)
+        + ({ start: -0.4, hut: -0.3, peak: -0.1, lake: 0, fall: -0.2, view: -0.1, spring: 0.1, pass: 0.3, sign: 0.5 }[p.k] || 0)
+        + (p.below ? 1.5 : 0);
       out.push([score, p]);
     }
     // only places a marked trail comes to (a summit or a pass with no trail: the nearest trail point, said so)
     const res = [];
     for (const [, p] of out.sort((a, b) => a[0] - b[0] || a[1].n.length - b[1].n.length)) {
-      if (p.v === undefined) reach(p);
-      if (p.v >= 0) res.push(p);
+      res.push(p);
       if (res.length >= 8) break;
     }
     return res;
@@ -55,7 +59,8 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
     p.below = null;
     if (p.v < 0 || (p.k !== 'peak' && p.k !== 'pass')) return;
     const ok = G.near(p.lon, p.lat, 120).filter(([v]) => p.e == null || Math.abs(p.e - G.H[v]) <= 40);
-    if (ok.length) return;
+    // the trail's point nearest the summit's height, not merely the nearest (on a side path below it)
+    if (ok.length) { if (p.e != null) p.v = ok.reduce((a, b) => (Math.abs(p.e - G.H[b[0]]) + b[1] / 10 < Math.abs(p.e - G.H[a[0]]) + a[1] / 10 ? b : a))[0]; return; }
     const [lat, lon] = ll(p.v), d = Math.hypot((lon - p.lon) * G.mx, (lat - p.lat) * G.mz);
     p.below = { d: Math.round(d / 10) * 10, h: p.e != null ? Math.round((p.e - G.H[p.v]) / 10) * 10 : null };
   }
@@ -93,8 +98,11 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
     // gives the quickest route from the other end, plus a minute per 6 m off the place itself (the summit, not a point below it)
     const s0 = getStops(), other = active.id === 'q-from' ? (s0.length >= 2 ? s0[s0.length - 1] : -1) : (s0.length ? s0[0] : +$('q-from').dataset.v);
     if (v >= 0 && !p.below && other >= 0 && !Number.isNaN(other)) {
-      const cand = G.near(p.lon, p.lat, 150);
-      if (cand.length > 1) {
+      // only the points close to the summit's height when the trail has some (the last stretch of Orla Perć,
+      // slowed by its correction, let the route stop 40 m below Kozi Wierch)
+      const all = G.near(p.lon, p.lat, 150), top = p.e != null ? all.filter(([c]) => p.e - G.H[c] <= 25) : [];
+      const cand = top.length ? top : all;
+      if (cand.length && (cand.length > 1 || cand[0][0] !== v)) {
         const T = G.times(other);
         let best = Infinity;
         // the rest of the way to the place itself counts as walked, climb included (a flat minute per 6 m let
