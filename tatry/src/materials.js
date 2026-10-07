@@ -319,7 +319,10 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         {
           float hiRock = smoothstep(1550.0, 1750.0, vWorld.y) * smoothstep(0.13, 0.32, slope);
           float Ls = dot(sat, vec3(0.3, 0.55, 0.15));
-          sat = mix(sat, ROCK * vec3(1.04, 1.0, 0.96) * Ls, hiRock * 0.65);
+          // and the pale scree and slabs of any slope up there: greys with a mint cast in the photo
+          float chroma = max(max(sat.r, sat.g), sat.b) - min(min(sat.r, sat.g), sat.b);
+          float grey = (1.0 - smoothstep(0.05, 0.14, chroma)) * smoothstep(1500.0, 1700.0, vWorld.y);
+          sat = mix(sat, ROCK * vec3(1.1, 1.0, 0.9) * Ls, max(hiRock * 0.75, grey * 0.7));
         }
         // relief normal: from the 4 m heights past the 1 m patch; the panorama keeps its mesh normals
         vec3 Nr = N;
@@ -554,6 +557,16 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // soft shoulder for very light ground (granite scree, limestone): keeps texture instead of white
         { float cl = dot(col, vec3(0.3, 0.55, 0.15)); col *= 1.0 / (1.0 + max(cl - 0.42, 0.0) * 1.6); }
         // weather: wet ground is darker; fresh snow settles above the snow line on the gentler slopes
+        // up high, whatever path the colour took (photo, far procedural granite, close textures): no cold
+        // cyan or mint cast on the stone, which is a warm grey
+        {
+          float hiC = smoothstep(1500.0, 1700.0, vWorld.y);
+          float lumC = dot(col, vec3(0.3, 0.55, 0.15));
+          float chromaC = max(max(col.r, col.g), col.b) - min(min(col.r, col.g), col.b);
+          float cool = clamp((min(col.g, col.b) - col.r) / max(lumC, 0.02) * 4.0, 0.0, 1.0);
+          float greyC = 1.0 - smoothstep(0.03, 0.09, chromaC / max(lumC, 0.05) * 0.3);
+          col = mix(col, vec3(lumC) * vec3(1.08, 1.0, 0.9), hiC * max(cool * 0.8, greyC * 0.5));
+        }
         col *= 1.0 - 0.3 * wetK;
         if (snowK > 0.0) {
           float sy = vWorld.y + (vnoise(vWorld.xz / 60.0) - 0.5) * 120.0;
@@ -673,8 +686,8 @@ export function waterMaterial() {
         vec3 deep = vec3(0.008, 0.03, 0.068) * (ambCol + sunCol * 0.5) * 1.6;
         if (shoreRect.z > shoreRect.x) {
           float sd = texture2D(shoreMap, (vWorld.xz - shoreRect.xy) / (shoreRect.zw - shoreRect.xy)).r * 60.0;
-          float sh = 1.0 - smoothstep(3.0, 22.0, sd);
-          deep = mix(deep, vec3(0.05, 0.2, 0.19) * (ambCol + sunCol * max(sunDir.y, 0.0)) * 1.5, sh * 0.85);
+          float sh = 1.0 - smoothstep(1.5, 12.0, sd);
+          deep = mix(deep, vec3(0.035, 0.12, 0.115) * (ambCol + sunCol * max(sunDir.y, 0.0)) * 1.4, sh * 0.6);
         }
         vec3 R = reflect(-V, N);
         float spec = pow(max(dot(R, sunDir), 0.0), 220.0) * 6.0;

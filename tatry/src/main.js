@@ -575,7 +575,8 @@ async function main() {
     function tint() {
       if (!st.ok) return;
       const hue = (c, target, k) => { const l = lum(c); if (l < 1e-4) return; const L = lum(target); target.lerp(c.clone().multiplyScalar(L / l), k); };
-      hue(up, hemi.color, 0.6);
+      // half way to white: a camera (and the eye) sees shaded granite grey, not the cyan of the deep blue zenith
+      hue(up.clone().lerp(new THREE.Color(1, 1, 1), 0.45), hemi.color, 0.45);
       hue(side.clone().lerp(new THREE.Color(0.35, 0.33, 0.28), 0.5), hemi.groundColor, 0.4);
     }
     function update(dt) {
@@ -1163,7 +1164,7 @@ async function main() {
     light.sunDir.value.copy(dir.y < 0.02 ? dir.clone().setY(0.02).normalize() : dir);
     const sc = new THREE.Color(1, 0.96, 0.88).lerp(new THREE.Color(1, 0.62, 0.3), low).lerp(new THREE.Color(1, 0.4, 0.15), low * low * 0.6);
     light.sunCol.value.copy(sc).multiplyScalar(w.sun * THREE.MathUtils.smoothstep(e, -0.03, 0.1));
-    const amb = new THREE.Color(0.32, 0.38, 0.5).lerp(new THREE.Color(0.3, 0.3, 0.42), low * 0.7);
+    const amb = new THREE.Color(0.34, 0.38, 0.46).lerp(new THREE.Color(0.3, 0.3, 0.42), low * 0.7);
     // twilight: after the sun has set the sky still lights the slopes, blue, fading into the night
     const twi = THREE.MathUtils.smoothstep(e, -0.2, 0.02) * (1 - day);
     amb.lerp(new THREE.Color(0.22, 0.28, 0.5), twi);
