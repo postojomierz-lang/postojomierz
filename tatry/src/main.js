@@ -344,6 +344,29 @@ async function main() {
     for (let i = 0; i < N; i++) { const sec = sections(i * trail.step); half[i] = sec.width / 2 + 0.2; str[i] = Math.min(1, sec.paved * 1.6); }
     terrain.setBench({ X: trail.X, Z: trail.Z, H: smoothArr(TH0, 2), half, str });
   }
+  // on the asphalt itself (to 0.3 m past its edge): no grass. The trail's segments of the roads in 16 m cells
+  const roadCells = new Map(), roadHalf = new Float32Array(N);
+  for (let i = 1; i < N; i++) {
+    const sec = sections(i * trail.step);
+    if (!(sec.asphalt > 0)) continue;
+    roadHalf[i] = sec.width / 2 + 0.3;
+    const k = Math.floor(trail.X[i] / 16) + ',' + Math.floor(trail.Z[i] / 16);
+    if (!roadCells.has(k)) roadCells.set(k, []);
+    roadCells.get(k).push(i);
+  }
+  const onRoad = (x, z) => {
+    if (!roadCells.size) return false;
+    const cx = Math.floor(x / 16), cz = Math.floor(z / 16);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const l = roadCells.get((cx + dx) + ',' + (cz + dz));
+      if (l) for (const i of l) {
+        const ax = trail.X[i - 1], az = trail.Z[i - 1], bx = trail.X[i] - ax, bz = trail.Z[i] - az;
+        const t = Math.max(0, Math.min(1, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz || 1)));
+        if (Math.hypot(x - ax - bx * t, z - az - bz * t) < roadHalf[i]) return true;
+      }
+    }
+    return false;
+  };
   // a road (wider than a footpath): the trees stand 3 m beyond its edge, so their crowns do not hang over it
   const roadSide = drawMask(2048, IB, (g) => {
     g.strokeStyle = 'rgb(255,0,0)'; g.lineCap = 'round';
@@ -906,7 +929,7 @@ async function main() {
     groundClass, grass: P.get('trawa') === '0' });
   // blade grass (?trawa=0: the old grass clumps instead)
   const grass = P.get('trawa') !== '0' ? buildGrass({ scene, terrain, shade, quality: QUALITY, photo: photoPx, bounds: IB, groundClass,
-    masks: { path: trailVis, pathSide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.5) }) : null;
+    masks: { path: trailVis, pathSide, lake: lakeMask }, blocked: (x, z) => houses.inside(x, z, 0.5) || onRoad(x, z) }) : null;
   if (WINTER && grass) for (const f of grass.fields) f.mesh.visible = false;      // under the snow
   if (WINTER) for (const m of Object.values(cover.meshes)) m.visible = false;
   const deadwood = await buildDeadwood({ scene, terrain, trail, shade, quality: QUALITY, isForest: sound.isForest,
