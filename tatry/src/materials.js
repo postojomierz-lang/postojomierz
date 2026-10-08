@@ -245,16 +245,17 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         float dnDbg = 0.0;
         vec3 desnow(vec3 c, float sl) {
           float L = dot(c, vec3(0.3, 0.55, 0.15));
-          // (the Slovak photo's snow is cream- or mint-white: a low saturation, not none; vivid green is not touched)
+          // (the Slovak photo's snow is cream- or mint-white: a low saturation, not none; vivid green is not touched;
+          // in the coarse whole-region photo it is blurred to a mid grey, L ~0.3)
           float mx = max(max(c.r, c.g), c.b), sat0 = (mx - min(min(c.r, c.g), c.b)) / max(mx, 0.02);
-          float k = smoothstep(0.34, 0.5, L) * (1.0 - smoothstep(0.38, 0.5, sat0))
+          float k = smoothstep(0.25, 0.4, L) * (1.0 - smoothstep(0.42, 0.55, sat0))
             * (1.0 - winterK) * (1.0 - snowK)
             * smoothstep(1300.0, 1450.0, vWorld.y) * (1.0 - limeAt(vWorld.xz));   // not gravel roads below, nor pale limestone
           dnDbg = max(dnDbg, k);
           if (k <= 0.0) return c;
           float up = max(smoothstep(2050.0, 2300.0, vWorld.y), smoothstep(0.35, 0.6, sl));   // meadows to ~2100 m
           vec3 tgt = mix(vec3(0.17, 0.2, 0.11), vec3(0.27, 0.265, 0.25), up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
-          return mix(c, tgt, k * 0.95);
+          return mix(c, tgt, k);
         }
         // relief normal from the 4 m height texture: sharper ridges and gullies than the mesh normals
         vec3 hNormal(vec2 p, float e) {
