@@ -33,9 +33,20 @@ float cl_n(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
 const float CLOUD_Y = 3400.0;
 float cloudDensity(vec2 p, float t){
   p += vec2(7.0, 3.0) * t;                         // wind ~8 m/s from the west
-  float n = cl_n(p / 2600.0) * 0.55 + cl_n(p / 1100.0 + 3.1) * 0.3 + cl_n(p / 420.0 + 7.7) * 0.15;
+  // a warped domain and two finer octaves: billowy cumulus edges instead of soft cotton-wool blobs
+  vec2 q = p + vec2(cl_n(p / 900.0), cl_n(p / 900.0 + 5.3)) * 260.0;
+  float n = cl_n(q / 2600.0) * 0.5 + cl_n(q / 1100.0 + 3.1) * 0.27 + cl_n(q / 420.0 + 7.7) * 0.13
+    + cl_n(q / 180.0 + 1.3) * 0.07 + cl_n(q / 70.0 + 9.1) * 0.03;
   float c = clamp(cloudCover, 0.0, 1.0);
-  return smoothstep(0.78 - c * 0.6, 0.9 - c * 0.6, n);
+  return smoothstep(0.8 - c * 0.6, 0.86 - c * 0.6, n);
+}
+// the shadows on the ground: the same clouds without the fine octaves (every terrain pixel pays for them)
+float cloudDensityLo(vec2 p, float t){
+  p += vec2(7.0, 3.0) * t;
+  vec2 q = p + vec2(cl_n(p / 900.0), cl_n(p / 900.0 + 5.3)) * 260.0;
+  float n = cl_n(q / 2600.0) * 0.5 + cl_n(q / 1100.0 + 3.1) * 0.27 + cl_n(q / 420.0 + 7.7) * 0.13 + 0.05;
+  float c = clamp(cloudCover, 0.0, 1.0);
+  return smoothstep(0.78 - c * 0.6, 0.88 - c * 0.6, n);
 }
 `;
 
@@ -122,7 +133,7 @@ float terrainShadow(vec3 wp){
 float cloudShadow(vec3 wp){
   if (cloudCover < 0.02 || sunDir.y <= 0.02) return 1.0;
   vec2 p = wp.xz + sunDir.xz / sunDir.y * (CLOUD_Y - wp.y);
-  return 1.0 - 0.62 * cloudDensity(p, time);
+  return 1.0 - 0.62 * cloudDensityLo(p, time);
 }
 float terrainAO(vec3 wp){
   vec2 p = wp.xz;
@@ -496,6 +507,9 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               vec3 byRatio = baseC * (tc / max(tm, vec3(0.02)));
               vec3 photo = tc * (ls / max(lt, 0.02));
               vec3 nearCol = mix(byRatio, photo, 0.45 + 0.35 * wTrail);
+              // the trail itself: worn stone and gravel, light beige-grey; through a meadow it took the photo's
+              // dark green brightness and read as a faint greenish band (Hala Kondratowa)
+              nearCol = mix(nearCol, tc / max(lt, 0.02) * 0.3 * vec3(1.03, 1.0, 0.9), wTrail * 0.65);
               // walls: the granite texture once more at ~9x its scale, as blocks and cracks of 20-40 m
               // that the fine texture (averaged away past ~80 m) and the blurred photo lack
               if (wCliff > 0.05) {
@@ -664,6 +678,14 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
   return m;
 }
 
+// a lake's own water: deep navy in the granite cirques, emerald where the name says so (Zielony Staw, Zelené pleso),
+// olive-brown and calm in the forest below ~1400 m (Smreczyński Staw, Štrbské pleso: humic water, sheltered)
+export function lakeTint(name, level) {
+  if (/Zielon|Zelen/i.test(name || '')) return [0.012, 0.06, 0.04, 0.8];
+  if (level < 1400) return [0.03, 0.034, 0.02, 0.5];
+  return [0.008, 0.03, 0.068, 1];
+}
+
 // Lakes: deep green-blue, mirror reflection of the mountains (planar, for the lake nearest to the
 // camera; others reflect the sky colour), fresnel, rippling sun glint.
 export function waterMaterial() {
@@ -681,7 +703,10 @@ export function waterMaterial() {
       #include <fog_pars_vertex>
       #include <logdepthbuf_pars_vertex>
       varying vec3 vWorld;
+      // per lake: the colour of its deep water (rgb) and how rough it gets in the wind (w)
+      attribute vec4 aLake; varying vec4 vLake;
       void main(){
+        vLake = aLake;
         vec4 wp = modelMatrix * vec4(position,1.0); vWorld = wp.xyz;
         vec4 mvPosition = viewMatrix * wp;
         gl_Position = projectionMatrix * mvPosition;
@@ -697,7 +722,7 @@ export function waterMaterial() {
       uniform float windK; uniform float rainK; uniform float winterK;
       uniform samplerCube skyEnv; uniform float skyEnvOn;
       uniform sampler2D shoreMap; uniform vec4 shoreRect;
-      varying vec3 vWorld;
+      varying vec3 vWorld; varying vec4 vLake;
       ${NOISE}
       // rain: rings spreading from where the drops fall, one drop per cell every second or so
       vec2 rainRings(vec2 p, float t) {
@@ -724,7 +749,7 @@ export function waterMaterial() {
         // waves fade with distance (far away they only shimmered like gravel), the small ones sooner;
         // close up a finer ripple, not a cloth of big regular waves
         float dist = length(cameraPosition - vWorld);
-        float amp = (0.08 + 0.3 * w) / (1.0 + dist / 150.0);
+        float amp = (0.08 + 0.3 * w) / (1.0 + dist / 150.0) * vLake.w;
         float fine = 0.5 / (1.0 + dist / 40.0);
         float h0 = fbm2(p*0.5 + time*vec2(0.05,0.03)*drift) + fine*fbm2(p*1.6 - time*vec2(0.04,-0.06)*drift);
         float hx = fbm2((p+vec2(e,0))*0.5 + time*vec2(0.05,0.03)*drift) + fine*fbm2((p+vec2(e,0))*1.6 - time*vec2(0.04,-0.06)*drift);
@@ -735,7 +760,7 @@ export function waterMaterial() {
         vec3 V = normalize(cameraPosition - vWorld);
         float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
         // a deep navy lake, turquoise over the pale granite gravel of the shallows by the shore
-        vec3 deep = vec3(0.008, 0.03, 0.068) * (ambCol + sunCol * 0.5) * 1.6;
+        vec3 deep = vLake.rgb * (ambCol + sunCol * 0.5) * 1.6;
         if (shoreRect.z > shoreRect.x) {
           float sd = texture2D(shoreMap, (vWorld.xz - shoreRect.xy) / (shoreRect.zw - shoreRect.xy)).r * 60.0;
           float sh = 1.0 - smoothstep(1.5, 12.0, sd);
