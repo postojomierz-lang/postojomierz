@@ -92,6 +92,13 @@ const HUTS = [
   [/Hala Kondratowa/, { wall: 'logs', wallTint: HONEY, base: 0, plinth: 1.2, floors: 1, floorH: 3.0, pitch: 60, gablet: 0.3, roofTint: DARK_ROOF,
     eave: 1.0, chimney: 3, windows: 2.0, dormers: [{ n: 1, w: 7, side: 1 }, { n: 1, w: 5, side: -1 }],
     terrace: { side: 1, d: 4, len: 0.6, tables: 3, rail: true, stone: true } }],
+  // Hotel Patria (1970s): two huge A-frames, their gables to the lake, the steep dark roofs reaching almost to the ground
+  [/^(Hotel )?Patria$/, { wall: 'plaster', wallTint: CREAM, plinth: 0.8, floors: 1, floorH: 3.2, pitch: 10, hip: 1, roofTint: DARK_ROOF, eave: 1.2, windows: 2.6,
+    dormers: [{ n: 6, w: 2.4, side: 0 }], wings: [{ x: 0, z: 0, w: 0.3, d: 0.5, floors: 2 }, { x: -0.28, z: 0, w: 0.42, d: 1, across: true, pitch: 52, hip: 0, eave: 1.5 },
+    { x: 0.28, z: 0, w: 0.42, d: 1, across: true, pitch: 52, hip: 0, eave: 1.5 }] }],
+  // the summit and middle stations of the Lomnica cable cars and their observatories: grey masonry, flat roofs
+  [/Stanica Lomnick|Observat[óo]rium Lomnick|Stanica Skalnat|Observat[óo]rium Skalnat/, { wall: 'stone', plinth: 0.5, floorH: 3, pitch: 4, hip: 1, roofTint: GREY_ROOF, eave: 0.4, chimney: 1, windows: 3,
+    terrace: { side: 1, d: 3, len: 0.6, rail: true, stone: true } }],
 ];
 // large or public buildings in the villages and towns: plastered, hipped roofs
 const PUBLIC = /hotel|kostol|kościół|kaplic|kaplnk|klasztor|plebania|škol|szkoł|úrad|urząd|sanat|kúpe|dom seniorov|centrum|ośrodek|zotavov|ústav|múzeum|muzeum|stanica|observat|resort|residence|grand|apartm|penzi|pensjonat|willa|vila|villa|internat|hala /i;
@@ -451,20 +458,23 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
       const o = f.fz * (D / 2 + 0.05);
       pane('door', L(-0.45, yP, o), L(0.45, yP, o), L(0.45, yP + 1.6, o), L(-0.45, yP + 1.6, o), f.fz > 0);
     }
-    return { L, yP, yW, tan, R, doorAt, wallH };
+    return { L, yP, yW, tan, R, doorAt, wallH, fr: f };
   }
 
   // the parts around a hut: dormers, a balcony, a porch over the door, a terrace with tables and benches, a woodpile
   function extras(b, f, k, main) {
     const { W, D, fz } = f, { L } = main;
+    // dormers and balconies belong to the main wing (its roof and walls, not the whole building's outline:
+    // on a hut of several wings they would hang in the air beside it)
+    const M = main.fr;
     // dormers on the roof (a small block across the ridge, a window in its gable)
     for (const dm of k.dormers ? [].concat(k.dormers) : []) {
-      const sides = dm.side === 0 ? [-1, 1] : [fz * (dm.side || 1)];
+      const sides = dm.side === 0 ? [-1, 1] : [M.fz * (dm.side || 1)];
       for (const sd of sides) for (let n = 0; n < dm.n; n++) {
-        const x = (dm.x || 0) * W - W / 2 + (n + 0.5) * W / dm.n, dw = dm.w || 2.2, dl = Math.max(3.2, dw * 0.7);
-        const zf = sd * (D / 2 - 0.3), p = L(x, 0, zf - sd * dl / 2);
+        const x = (dm.x || 0) * M.W - M.W / 2 + (n + 0.5) * M.W / dm.n, dw = dm.w || 2.2, dl = Math.max(3.2, dw * 0.7);
+        const zf = sd * (M.D / 2 - 0.3), p = L(x, 0, zf - sd * dl / 2);
         // the dormer's ridge points out of the roof (its +x towards this side)
-        const sub = { ox: p.x, oz: p.z, rot: f.rot - sd * Math.PI / 2, W: dl, D: dw, fz: 1 };
+        const sub = { ox: p.x, oz: p.z, rot: M.rot - sd * Math.PI / 2, W: dl, D: dw, fz: 1 };
         const dk = { ...k, floors: 1, floorH: 2.0, base: 0, pitch: dm.pitch || 40, hip: 0, gablet: 0, eave: 0.3, gable: 0.4, chimney: 0, windows: 0 };
         const r = block(sub, dk, { yP: main.yW - 0.1, windows: false });
         mesher.col = ONE;
@@ -478,15 +488,15 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
     }
     // a wooden balcony along the front (or back) at a floor
     for (const bl of k.balcony ? [].concat(k.balcony) : []) {
-      const sd = fz * (bl.side || 1), len = (bl.len || 0.7) * W, y = main.yP + (bl.floor || 1) * k.floorH;
-      const p = L(bl.x || 0, 0, sd * (D / 2 + 0.6));
+      const sd = M.fz * (bl.side || 1), len = (bl.len || 0.7) * M.W, y = main.yP + (bl.floor || 1) * k.floorH;
+      const p = L(bl.x || 0, 0, sd * (M.D / 2 + 0.6));
       mesher.col = k.wall === 'plaster' ? ONE : k.wallTint;
-      mesher.box('planks', p.x, y - 0.12, p.z, len, 0.12, 1.2, f.rot, TILE.planks);
-      const q = L(bl.x || 0, 0, sd * (D / 2 + 1.17));
-      mesher.box('planks', q.x, y, q.z, len, 1.0, 0.06, f.rot, TILE.planks);
+      mesher.box('planks', p.x, y - 0.12, p.z, len, 0.12, 1.2, M.rot, TILE.planks);
+      const q = L(bl.x || 0, 0, sd * (M.D / 2 + 1.17));
+      mesher.box('planks', q.x, y, q.z, len, 1.0, 0.06, M.rot, TILE.planks);
       for (const ex of [-1, 1]) {
-        const r = L((bl.x || 0) + ex * len / 2, 0, sd * (D / 2 + 0.6));
-        mesher.box('planks', r.x, y, r.z, 0.06, 1.0, 1.2, f.rot, TILE.planks);
+        const r = L((bl.x || 0) + ex * len / 2, 0, sd * (M.D / 2 + 0.6));
+        mesher.box('planks', r.x, y, r.z, 0.06, 1.0, 1.2, M.rot, TILE.planks);
       }
     }
     // a porch over the door: two posts and a small gable roof
