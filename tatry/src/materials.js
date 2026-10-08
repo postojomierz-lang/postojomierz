@@ -326,7 +326,6 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // which the sun lights head-on while the photo (taken from above) already shows them bright
         // bright photos (light granite scree on the Slovak 2025 photo) are not lifted, or they burn out to white
         float satL = dot(sat, vec3(0.3, 0.55, 0.15));
-        }
         // dark green (dwarf pine, spruce forest) keeps its depth: lifted like the meadows it went the same smooth
         // green as the grass beside it, where photos show dark fields of pine; a clumpy texture of its own
         // (bushes and crowns, a few metres) reads from afar
