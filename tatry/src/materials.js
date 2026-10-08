@@ -334,6 +334,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         vec3 N = normalize(vWN);
         float slope = 1.0 - N.y;
         sat = desnow(sat, slope);
+        vec3 dbgSat = sat;
         // the rock's colour: Tatra granite (grey, a little warm) or the pale grey limestone and dolomite of the
         // northern belt (Giewont, Czerwone Wierchy, the Belianske Tatry), lighter and cooler
         float lime = limeAt(vWorld.xz);
@@ -657,7 +658,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           col = mix(col, snowC, clamp(wsn, 0.0, 0.96));
         }
         diffuseColor.rgb = col;
-        if (desmear > 1.5) diffuseColor.rgb = mix(col, vec3(1.0, 0.0, 0.0), dnDbg * 0.8);   // ?odmaz=pokaz: where it works
+        if (desmear > 1.5) diffuseColor.rgb = dbgSat * 1.55;   // ?odmaz=pokaz: where it works
         if (detW <= 0.0) { detN = Nr; detW = 1.0; }
         else { detN = normalize(mix(Nr, detN, detW)); detW = 1.0; }
         // a road is smooth: only the normal of the 4 m heights (any share of the mesh's, whose 1 m laser
