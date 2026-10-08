@@ -61,7 +61,11 @@ const FRAG_SAMPLE = /* glsl */`
 // dwarf pine: its baked bushes fill their atlas cells to the edges, so the card cut them off in straight
 // lines (rectangles on the slope). Keep only a dome over the card's base: a rounded bush
 const DOME = /* glsl */`
-  if (length(vec2(vIn.x * 2.0, vIn.y)) > 1.0) discard;
+  {
+    vec2 cq = floor(vIn * vec2(28.0, 14.0));
+    float rag = fract(sin(dot(cq, vec2(12.9898, 78.233))) * 43758.5453);   // a ragged edge of twigs
+    if (length(vec2(vIn.x * 2.15, vIn.y * 1.05)) > 0.84 + 0.16 * rag) discard;
+  }
 `;
 // with multisampling: the edge as coverage (alpha to coverage), half a pixel soft, instead of the hard cut
 // that sparkled as the view moved

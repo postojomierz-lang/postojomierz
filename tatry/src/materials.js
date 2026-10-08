@@ -3,10 +3,10 @@ import { limeTexture } from './geology.js';
 
 // aerial perspective: the scene's exp² fog (weather: haze, mist, rain) plus a constant thin haze of the air
 // itself, linear in the distance. Exp² alone left ridges 3-10 km away as saturated as the near slopes
-// (0.6 % of fog at 4 km); photos show them already blue-grey (~15 % at 3.5 km, ~40 % at 10 km)
+// (0.6 % of fog at 4 km); photos show them already blue-grey (~22 % at 3.5 km, ~50 % at 10 km)
 THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
   'float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );',
-  `float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth - 5.0e-5 * vFogDepth );`);
+  `float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth - 7.0e-5 * vFogDepth );`);
 
 // Shared lighting uniforms, updated by the time-of-day / weather code.
 export const light = {
@@ -228,6 +228,19 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           return c;
         }
         ${HEIGHTS}
+        // summer snow on the photo: the Slovak 2025 images keep white patches of old snow and pale scree on whole
+        // slopes (under Lomnica the meadows went white). Bright and colourless: towards the meadow lower down,
+        // grey rock up high and on steep ground (not in winter, when the snow is meant). c: the photo as sampled
+        vec3 desnow(vec3 c, float sl) {
+          float L = dot(c, vec3(0.3, 0.55, 0.15));
+          float ch = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+          float k = smoothstep(0.5, 0.68, L) * (1.0 - smoothstep(0.04, 0.1, ch)) * (1.0 - winterK) * (1.0 - snowK);
+          if (k <= 0.0) return c;
+          float up = max(smoothstep(1850.0, 2150.0, vWorld.y), smoothstep(0.25, 0.5, sl));
+          vec3 rk = mix(vec3(0.27, 0.265, 0.25), vec3(0.34, 0.34, 0.33), limeAt(vWorld.xz));
+          vec3 tgt = mix(vec3(0.17, 0.2, 0.11), rk, up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
+          return mix(c, tgt, k * 0.85);
+        }
         // relief normal from the 4 m height texture: sharper ridges and gullies than the mesh normals
         vec3 hNormal(vec2 p, float e) {
           float hx = hAt(p + vec2(e, 0.0)) - hAt(p - vec2(e, 0.0));
@@ -304,6 +317,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         sat = sharpen(satMap, uv, sat, detail > 0.5 ? 0.9 * smoothstep(150.0, 600.0, dist) : 0.8);
         vec3 N = normalize(vWN);
         float slope = 1.0 - N.y;
+        sat = desnow(sat, slope);
         // the rock's colour: Tatra granite (grey, a little warm) or the pale grey limestone and dolomite of the
         // northern belt (Giewont, Czerwone Wierchy, the Belianske Tatry), lighter and cooler
         float lime = limeAt(vWorld.xz);
@@ -312,18 +326,6 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // which the sun lights head-on while the photo (taken from above) already shows them bright
         // bright photos (light granite scree on the Slovak 2025 photo) are not lifted, or they burn out to white
         float satL = dot(sat, vec3(0.3, 0.55, 0.15));
-        // summer snow on the photo: the Slovak 2025 images keep white patches of old snow and pale scree on whole
-        // slopes (under Lomnica the meadows went white). Bright and colourless: towards the meadow lower down,
-        // grey rock up high and on steep ground (not in winter, when the snow is meant)
-        {
-          float ch0 = max(max(sat.r, sat.g), sat.b) - min(min(sat.r, sat.g), sat.b);
-          float snowy = smoothstep(0.55, 0.72, satL) * (1.0 - smoothstep(0.04, 0.1, ch0)) * (1.0 - winterK) * (1.0 - snowK);
-          if (snowy > 0.0) {
-            float up = max(smoothstep(1850.0, 2150.0, vWorld.y), smoothstep(0.25, 0.5, slope));
-            vec3 tgt = mix(vec3(0.27, 0.3, 0.17), ROCK * 0.42, up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
-            sat = mix(sat, tgt, snowy * 0.85);
-            satL = dot(sat, vec3(0.3, 0.55, 0.15));
-          }
         }
         // dark green (dwarf pine, spruce forest) keeps its depth: lifted like the meadows it went the same smooth
         // green as the grass beside it, where photos show dark fields of pine; a clumpy texture of its own
@@ -383,7 +385,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         vec3 col = sat;
         if (detail > 0.5) {
           float mid = 1.0 - smoothstep(1500.0, 6000.0, dist);
-          vec3 satBlur = textureLod(satMap, uv, 1.5).rgb * 1.55 + 0.01;
+          vec3 satBlur = desnow(textureLod(satMap, uv, 1.5).rgb, slope) * 1.55 + 0.01;
           float green = clamp((satBlur.g - max(satBlur.r, satBlur.b)) * 14.0, 0.0, 1.0);
           vec3 w = vWorld;
           // far/mid range: procedural granite on steep ground so cliffs are not smeared by the top-down photo
@@ -392,7 +394,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float t2 = vnoise(w.zy * 1.6) * an.x + vnoise(w.xz * 1.6) * an.y + vnoise(w.xy * 1.6) * an.z;
           float strata = 0.88 + 0.12 * sin(w.y * 0.7 + t1 * 9.0);
           // its brightness from the photo blurred as much as the photo is drawn out on the wall (de-smearing, above)
-          vec3 satWall = smear > 0.0 ? mix(satBlur, textureLod(satMap, uv, 1.5 + 1.6 * log2(stretch)).rgb * 1.55 + 0.01, smear) : satBlur;
+          vec3 satWall = smear > 0.0 ? mix(satBlur, desnow(textureLod(satMap, uv, 1.5 + 1.6 * log2(stretch)).rgb, slope) * 1.55 + 0.01, smear) : satBlur;
           float glum = dot(satWall, vec3(0.3, 0.45, 0.25));
           // limestone is pale: the photo's shade and trees on the wall made it dark green-grey
           glum = mix(glum, max(glum, 0.36), lime);
@@ -478,7 +480,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
             if (wsum > 0.0) {
               tc /= wsum; tm /= wsum; tn = normalize(tn);
               // top-down photos smear on walls: there, take their colour from a blurred level
-              vec3 satLow = textureLod(satMap, uv, 3.0).rgb * (1.55 - 0.3 * smoothstep(0.35, 0.75, slope)) + 0.01;
+              vec3 satLow = desnow(textureLod(satMap, uv, 3.0).rgb, slope) * (1.55 - 0.3 * smoothstep(0.35, 0.75, slope)) + 0.01;
               satLow = mix(satLow, ROCK * dot(satLow, vec3(0.3, 0.55, 0.15)), smear * 0.9);   // its green smears too
               vec3 baseC = mix(col, satLow * (0.8 + 0.4 * nBig), wCliff * 0.85);
               // the top-down photo smears green and white streaks down the walls: keep only its
@@ -561,7 +563,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           // patches (snow fields, shadows). Paint the far mountains by height and slope instead
           // (forest, dwarf pine, alpine meadow, grey granite and scree) and keep only the photo's
           // broad colour, taken from a blurred level
-          vec3 satB = textureLod(satMap, uv, 4.0).rgb * 1.5;
+          vec3 satB = desnow(textureLod(satMap, uv, 4.0).rgb, slope) * 1.5;
           float y = vWorld.y + (vnoise(vWorld.xz / 400.0) - 0.5) * 160.0;
           // limestone crags show bare on gentler (mesh-smoothed) slopes: Giewont's ridge was a green dome
           float st = smoothstep(mix(0.28, 0.16, lime), mix(0.62, 0.4, lime), slope);
