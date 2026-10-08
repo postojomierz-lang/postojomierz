@@ -229,12 +229,14 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         }
         ${HEIGHTS}
         // summer snow on the photo: the Slovak 2025 images keep white patches of old snow and pale scree on whole
-        // slopes (under Lomnica the meadows went white). Bright and colourless: towards the meadow lower down,
+        // slopes (under Lomnica the meadows went white). Bright and pale: towards the meadow lower down,
         // grey rock up high and on steep ground (not in winter, when the snow is meant). c: the photo as sampled
         vec3 desnow(vec3 c, float sl) {
           float L = dot(c, vec3(0.3, 0.55, 0.15));
-          float ch = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
-          float k = smoothstep(0.34, 0.5, L) * (1.0 - smoothstep(0.04, 0.1, ch)) * (1.0 - winterK) * (1.0 - snowK);
+          // (the Slovak photo's snow is warm, cream-white: a low saturation, not none; nothing green)
+          float mx = max(max(c.r, c.g), c.b), sat0 = (mx - min(min(c.r, c.g), c.b)) / max(mx, 0.02);
+          float k = smoothstep(0.34, 0.5, L) * (1.0 - smoothstep(0.38, 0.5, sat0)) * (1.0 - smoothstep(0.0, 0.03, c.g - max(c.r, c.b)))
+            * (1.0 - winterK) * (1.0 - snowK);
           if (k <= 0.0) return c;
           float up = max(smoothstep(1850.0, 2150.0, vWorld.y), smoothstep(0.25, 0.5, sl));
           vec3 rk = mix(vec3(0.27, 0.265, 0.25), vec3(0.34, 0.34, 0.33), limeAt(vWorld.xz));
