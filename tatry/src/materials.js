@@ -254,7 +254,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           dnDbg = max(dnDbg, k);
           if (k <= 0.0) return c;
           float up = max(smoothstep(2050.0, 2300.0, vWorld.y), smoothstep(0.35, 0.6, sl));   // meadows to ~2100 m
-          vec3 tgt = mix(vec3(0.17, 0.2, 0.11), vec3(0.27, 0.265, 0.25), up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
+          vec3 tgt = mix(vec3(0.085, 0.11, 0.05), vec3(0.22, 0.215, 0.2), up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
           return mix(c, tgt, k);
         }
         // relief normal from the 4 m height texture: sharper ridges and gullies than the mesh normals
