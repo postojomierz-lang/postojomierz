@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && vite build -c vite.planer.config.js",
+    "build": "vite build && vite build -c vite.planer.config.js && vite build -c vite.figure.config.js",
     "data": "python3 tools/prepare.py"
   },
   "dependencies": {

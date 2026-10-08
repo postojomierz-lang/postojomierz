@@ -70,6 +70,14 @@ async function flush() {
   setQueue(left);
 }
 
+// a group member's photo reported as unfit (planner/online.js): the photo goes as the report's picture
+export async function reportPhoto({ userId, name, photo }) {
+  if (!URL_) return;
+  const row = { app: 'planer', description: `Zgłoszone zdjęcie użytkownika „${name}” (${userId}): do sprawdzenia`,
+    context: { kind: 'photo', user: userId, where: 'grupa' }, screenshot: photo };
+  try { await post(row); } catch (e) { setQueue([...queued(), row]); }
+}
+
 // app: '3d' | 'planer'; screenshot(): a data URL (or null); context(): what to attach
 export function setupReport({ app, button, screenshot, context }) {
   if (!document.getElementById('rp-css')) { const s = document.createElement('style'); s.id = 'rp-css'; s.textContent = CSS; document.head.appendChild(s); }

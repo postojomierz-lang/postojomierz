@@ -18,7 +18,7 @@ import { loadFound, saveFound } from '../nature/discover.js';
 import { setupLibrary } from './library.js';
 import { challenges, settleChallenges } from '../nature/challenges.js';
 import { buildGpsDiscovery } from '../nature/gps.js';
-import { setupOnline } from './online.js';
+import { setupOnline, avatarHtml } from './online.js';
 import { setupTabs } from './tabs.js';
 import { setupWeatherMap } from './weathermap.js';
 import { setupNavWeather } from './navweather.js';
@@ -649,7 +649,7 @@ async function renderRanking() {
   try {
     const rows = await ONLINE.leaderboard($('lb-period').value, $('lb-mode').value);
     box.innerHTML = rows && rows.length ? rows.map((r) => `<li class="${r.me ? 'me' : ''}">`
-      + `${r.avatar && r.avatar.startsWith('data:') ? `<i class="av" style="background-image:url(${r.avatar})"></i>` : `<i class="av">${esc(r.avatar || '🥾')}</i>`} `
+      + `${avatarHtml(r.avatar, esc, null, !r.me)} `
       + `${esc(r.name)} · <b>${r.points}</b> pkt · ${r.species} gat.</li>`).join('') : '<li class="empty">Jeszcze nikogo w tym okresie.</li>';
   } catch (e) { box.innerHTML = `<li class="empty">Ranking niedostępny (${esc(e.message || e)}).</li>`; }
 }

@@ -14,6 +14,7 @@ const CSS = `
 #look-ed .main{flex:1;display:flex;min-height:0}
 #look-ed .prev{width:38%;min-width:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--bg,#f2f2f2);padding:8px}
 #look-ed .prev .fig svg{height:min(46dvh,400px);width:auto;display:block}
+#look-ed .prev .fig3d{width:100%;height:min(46dvh,400px)}#look-ed .prev .fig3d[hidden]{display:none}
 #look-ed .prev .face svg{width:56px;height:56px;display:block}
 #look-ed .prev small{color:var(--muted,#777);font-size:11px;text-align:center}
 #look-ed .side{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -38,7 +39,7 @@ const CSS = `
 #look-ed footer{background:var(--panel,#fff);display:flex;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid var(--line,#ddd);flex-wrap:wrap}
 #look-ed footer label{flex:1;font-size:13px;display:flex;gap:6px;align-items:center;min-width:180px}
 @media (max-width:560px){#look-ed .box{border-radius:0;height:100dvh}#look-ed .main{flex-direction:column}#look-ed .prev{width:auto;flex-direction:row;padding:6px}
-  #look-ed .prev .fig svg{height:150px}}
+  #look-ed .prev .fig svg{height:150px}#look-ed .prev .fig3d{width:120px;height:170px}}
 `;
 
 const TABS = [
@@ -55,7 +56,7 @@ export function setupLookEditor({ PR, saveProfile, onSaved = () => {} }) {
   const el = document.createElement('div'); el.id = 'look-ed'; el.hidden = true;
   el.innerHTML = `<div class="box" role="dialog" aria-label="Wygląd postaci">
     <header><b>🧍 Wygląd postaci</b><button class="rnd" title="Losuj">🎲 Losuj</button><button class="x" aria-label="Zamknij">✕</button></header>
-    <div class="main"><div class="prev"><div class="fig"></div><div><div class="face"></div><small>tak Cię widać<br>w grupie i na szlaku</small></div></div>
+    <div class="main"><div class="prev"><div class="fig3d" hidden></div><div class="fig"></div><div><div class="face"></div><small>tak Cię widać<br>w grupie i na szlaku</small></div></div>
       <div class="side"><nav></nav><div class="opts"></div></div></div>
     <footer><label><input type="checkbox" class="useface"> twarz postaci jako mój awatar</label><button class="cancel">Anuluj</button><button class="primary save">Zapisz</button></footer></div>`;
   document.body.appendChild(el);
@@ -70,13 +71,28 @@ export function setupLookEditor({ PR, saveProfile, onSaved = () => {} }) {
     if (key === 'gear') return GEAR.map(([k, n]) => { const it = lock(shopItem(k)); return it ? `<button class="lock" data-buy="${it.id}">🔒 ${n} · ${it.price} 🪙</button>` : `<button class="${L[k] ? 'on' : ''}" data-k="${k}" data-v="toggle">${L[k] ? '✓ ' : ''}${n}</button>`; }).join('');
     return OPTIONS[key].map(([v, n]) => { const it = lock(shopItem(key, v)); return it ? `<button class="lock" data-buy="${it.id}">🔒 ${n} · ${it.price} 🪙</button>` : `<button class="${L[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}">${n}</button>`; }).join('');
   }
+  // the figure: turning in 3D (rysy/figura.js, three.js, loaded at the first opening), the drawing until then
+  // or without it (offline, no WebGL)
+  let fig3d = null, loading = null;
+  function drawFig() {
+    if (fig3d) fig3d.update(L);
+    else $e('.fig').innerHTML = figureSvg(L);
+  }
+  function load3d() {
+    if (fig3d || loading) return;
+    loading = import(/* @vite-ignore */ new URL('figura.js', location.href).href).then((m) => {
+      if (el.hidden) { loading = null; return; }
+      fig3d = m.mountFigure($e('.fig3d'), L);
+      $e('.fig3d').hidden = false; $e('.fig').hidden = true;
+    }).catch(() => { loading = null; });
+  }
   function render() {
     $e('nav').innerHTML = TABS.map(([n], i) => `<button class="${i === tab ? 'on' : ''}" data-t="${i}">${n}</button>`).join('');
-    if (TABS[tab][1][0][0] === 'shop') { $e('.opts').innerHTML = shopHtml(); $e('.fig').innerHTML = figureSvg(L); $e('.face').innerHTML = faceSvg(L); return; }
+    if (TABS[tab][1][0][0] === 'shop') { $e('.opts').innerHTML = shopHtml(); drawFig(); $e('.face').innerHTML = faceSvg(L); return; }
     $e('.opts').innerHTML = TABS[tab][1]
       .filter(([k]) => !(k === 'helmetColor' && !L.helmet) && !(k === 'packColor' && L.pack === 'none' && L.hat !== 'beanie' && L.hat !== 'band'))
       .map(([k, n]) => `<div class="grp"><small>${n}</small><div class="chips">${chips(k)}</div></div>`).join('');
-    $e('.fig').innerHTML = figureSvg(L);
+    drawFig();
     $e('.face').innerHTML = faceSvg(L);
   }
   // the coins: the points from the discoveries minus the extras bought
@@ -128,7 +144,11 @@ export function setupLookEditor({ PR, saveProfile, onSaved = () => {} }) {
     // the face as the avatar: suggested unless a photo is already set
     $e('.useface').checked = !(PR.avatar && PR.avatar.startsWith('data:image/jpeg'));
     render(); el.hidden = false;
+    load3d();
   }
-  function close() { el.hidden = true; }
+  function close() {
+    el.hidden = true;
+    if (fig3d) { fig3d.dispose(); fig3d = null; loading = null; $e('.fig3d').hidden = true; $e('.fig').hidden = false; }
+  }
   return { open };
 }

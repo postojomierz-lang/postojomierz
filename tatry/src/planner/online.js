@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js';
 import { loadFound, saveFound, score } from '../nature/discover.js';
 import { BY_ID, RARITY } from '../nature/catalog.js';
 import { clearLocalData } from './localdata.js';
+import { reportPhoto } from '../report.js';
 
 const SB_URL = __SUPABASE_URL__, SB_KEY = __SUPABASE_KEY__;
 const sb = SB_URL && SB_KEY ? createClient(SB_URL, SB_KEY, {
@@ -37,7 +38,17 @@ function cleanUrl(keys) {
   history.replaceState(null, '', u.pathname + u.search + u.hash);
 }
 
-const avatarHtml = (a, esc) => a && a.startsWith('data:') ? `<i class="av" style="background-image:url(${a})"></i>` : `<i class="av">${esc(a || '🥾')}</i>`;
+// an avatar: an emoji, the face from the look editor (SVG) or a photo (JPEG). Only a well-formed image goes into
+// the page; a photo someone reported is hidden on this device (uid: whose it is); noPhoto: the public ranking,
+// where strangers see each other, shows no photos at all
+const HIDE = 'szlakownik-hidden-photos';
+const hiddenPhotos = () => { try { return new Set(JSON.parse(localStorage.getItem(HIDE) || '[]')); } catch (e) { return new Set(); } };
+export const isPhoto = (a) => /^data:image\/jpeg;base64,/.test(a || '');
+const goodImg = (a) => /^data:image\/(jpeg|png|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(a || '');
+export function avatarHtml(a, esc, uid = null, noPhoto = false) {
+  const show = goodImg(a) && !(isPhoto(a) && (noPhoto || (uid && hiddenPhotos().has(uid))));
+  return show ? `<i class="av" style="background-image:url(${a})"></i>` : `<i class="av">${esc(a && !a.startsWith('data:') ? a : '🥾')}</i>`;
+}
 const ago = (t) => {
   const m = Math.round((Date.now() - Date.parse(t)) / 60000);
   return m < 1 ? 'teraz' : m < 60 ? `${m} min temu` : `${Math.floor(m / 60)} h ${m % 60} min temu`;
@@ -334,8 +345,20 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
       members = new Map(rows.map((r) => [r.user_id, { role: r.role, ...(profs.find((p) => p.id === r.user_id) || { name: 'Turysta' }) }]));
     } catch (e) { /* offline: names come later */ }
     $('g-members').innerHTML = [...members.entries()].map(([id, m]) =>
-      `<span class="mem">${avatarHtml(m.avatar, esc)}${esc(m.name)}${m.role === 'owner' ? ' ★' : ''}${id === user.id ? ' (Ty)' : ''}</span>`).join('');
+      `<span class="mem">${avatarHtml(m.avatar, esc, id)}${esc(m.name)}${m.role === 'owner' ? ' ★' : ''}${id === user.id ? ' (Ty)' : ''}`
+      + `${id !== user.id && isPhoto(m.avatar) && !hiddenPhotos().has(id) ? `<button class="rep" data-rep="${esc(id)}" title="Zgłoś nieodpowiednie zdjęcie">🚩</button>` : ''}</span>`).join('');
   }
+  // reporting a photo: hidden here at once, and sent (the photo itself) for a check to the reports table
+  $('g-members').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-rep]');
+    if (!b) return;
+    const id = b.dataset.rep, m = members.get(id);
+    if (!m || !confirm(`Zgłosić zdjęcie użytkownika „${m.name}” jako nieodpowiednie? Zniknie u Ciebie od razu, a zgłoszenie sprawdzimy.`)) return;
+    const h = hiddenPhotos(); h.add(id);
+    try { localStorage.setItem(HIDE, JSON.stringify([...h])); } catch (err) { /* private mode: hidden until reload */ }
+    reportPhoto({ userId: id, name: m.name, photo: m.avatar }).catch(() => {});
+    loadMembers();
+  });
   const who = (id) => members.get(id) || { name: 'Turysta', avatar: '🥾' };
 
   // routes planned together
@@ -360,7 +383,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     ul.innerHTML = rows.length ? '' : '<li><span class="empty">Brak wyjść. Wyznacz trasę i kliknij „Zaproponuj wyjście”.</span></li>';
     for (const r of rows) {
       const ans = rs.filter((x) => x.route_id === r.id), mineA = (ans.find((x) => x.user_id === user.id) || {}).status;
-      const faces = (st) => ans.filter((x) => x.status === st).map((x) => `<span title="${esc(who(x.user_id).name)}">${avatarHtml(who(x.user_id).avatar, esc)}</span>`).join('');
+      const faces = (st) => ans.filter((x) => x.status === st).map((x) => `<span title="${esc(who(x.user_id).name)}">${avatarHtml(who(x.user_id).avatar, esc, x.user_id)}</span>`).join('');
       const nYes = ans.filter((x) => x.status === 'yes').length, nMaybe = ans.filter((x) => x.status === 'maybe').length;
       const li = document.createElement('li');
       li.className = 'trip' + (rank(r) === 2 ? ' past' : '');
@@ -500,7 +523,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     el.dataset.id = m.id;
     const t = new Date(m.created_at);
     const when = t.toDateString() === new Date().toDateString() ? t.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : t.toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
-    el.innerHTML = `${avatarHtml(u.avatar, esc)}<div><small><b>${esc(u.name)}</b> ${when}</small><p>${esc(m.body)}</p></div>`;
+    el.innerHTML = `${avatarHtml(u.avatar, esc, m.user_id)}<div><small><b>${esc(u.name)}</b> ${when}</small><p>${esc(m.body)}</p></div>`;
     const empty = log.querySelector('.empty'); if (empty) empty.remove();
     const atEnd = log.scrollTop + log.clientHeight > log.scrollHeight - 30;
     log.appendChild(el);
@@ -520,7 +543,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
   function mateIcon(m, stale) {
     const u = who(m.user_id);
     return L.divIcon({ className: 'mate' + (stale ? ' stale' : ''), iconSize: null, iconAnchor: [15, 15],
-      html: `${avatarHtml(u.avatar, esc)}<span>${esc(u.name)}</span>` });
+      html: `${avatarHtml(u.avatar, esc, m.user_id)}<span>${esc(u.name)}</span>` });
   }
   function showMate(m) {
     if (!user || m.user_id === user.id) return;          // me: the navigation's own marker
