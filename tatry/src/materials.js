@@ -569,12 +569,13 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           // limestone crags show bare on gentler (mesh-smoothed) slopes: Giewont's ridge was a green dome
           float st = smoothstep(mix(0.28, 0.16, lime), mix(0.62, 0.4, lime), slope);
           vec3 forestC = vec3(0.10, 0.15, 0.08), mugoC = vec3(0.16, 0.21, 0.10), meadowC = vec3(0.30, 0.33, 0.18);
-          vec3 rockC = mix(vec3(0.47, 0.46, 0.44), vec3(0.62, 0.62, 0.6), lime) * (0.85 + 0.3 * vnoise(vWorld.xz / 90.0));
-          vec3 screeC = mix(vec3(0.55, 0.54, 0.51), vec3(0.64, 0.64, 0.62), lime);
+          vec3 rockC = mix(vec3(0.36, 0.355, 0.34), vec3(0.62, 0.62, 0.6), lime) * (0.85 + 0.3 * vnoise(vWorld.xz / 90.0));
+          // granite scree in the sun is mid grey (photos: ~137 of 255); 0.55 lit up whole Slovak ridges white from afar
+          vec3 screeC = mix(vec3(0.39, 0.385, 0.37), vec3(0.64, 0.64, 0.62), lime);
           vec3 veg = mix(forestC, mugoC, smoothstep(1450.0, 1600.0, y));
           veg = mix(veg, meadowC, smoothstep(1750.0, 1950.0, y));
           vec3 bare = mix(screeC, rockC, st);
-          float rocky = max(st, smoothstep(1950.0, 2250.0, y));
+          float rocky = max(st, smoothstep(2050.0, 2350.0, y));   // the alpine meadows reach ~2100 m (under Lomnica too)
           vec3 paint = mix(veg, bare, rocky);
           // the photo still decides between green and bare where it is sure (broad scale only)
           float g = clamp((satB.g - max(satB.r, satB.b)) * 8.0, 0.0, 1.0);
