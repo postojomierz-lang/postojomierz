@@ -7,9 +7,9 @@
 import * as THREE from 'three';
 import { BY_ID, GROUPS } from './nature/catalog.js';
 
-const ICON = { peak: '▲', pass: '⌒', lake: '≈', hut: '⌂', fall: '⇣', trail: '◆', spring: '💧' };
-export const CATS = { peaks: 'Szczyty i przełęcze', water: 'Stawy, wodospady, źródła', huts: 'Schroniska', flora: 'Rośliny', fauna: 'Zwierzęta' };
-const catOf = (kind) => ({ peak: 'peaks', pass: 'peaks', trail: 'peaks', lake: 'water', fall: 'water', spring: 'water', hut: 'huts', flora: 'flora', fauna: 'fauna' })[kind] || 'peaks';
+const ICON = { peak: '▲', pass: '⌒', lake: '≈', hut: '⌂', hotel: '🏨', fall: '⇣', trail: '◆', spring: '💧' };
+export const CATS = { peaks: 'Szczyty i przełęcze', water: 'Stawy, wodospady, źródła', huts: 'Schroniska i hotele', flora: 'Rośliny', fauna: 'Zwierzęta' };
+const catOf = (kind) => ({ peak: 'peaks', pass: 'peaks', trail: 'peaks', lake: 'water', fall: 'water', spring: 'water', hut: 'huts', hotel: 'huts', flora: 'flora', fauna: 'fauna' })[kind] || 'peaks';
 export const placeId = (l) => `${l.kind}:${l.name}`;
 
 // blockers: [{ x, y, z, tx, tz, nx, nz }] signposts (foot of the pole, trail direction and normal); while near, their boards keep the labels off them
@@ -17,6 +17,9 @@ export const placeId = (l) => `${l.kind}:${l.name}`;
 const PANELS = ['hud', 'controls', 'bottom', 'minimap', 'fps', 'place', 'label-menu'];
 // the mountain huts among the buildings OSM names (villas, churches, holiday cottages): seen from afar, like the peaks
 const MAIN_HUT = /^schronisko pttk|murowaniec|kalatówki|^(téryho|zbojnícka|zamkovského|rainerova|bilíkova|skalnatá|žiarska|ťatliakova|krivánska|majláthova|šašinková|gazdíková) chata|^chata (pod|pri) (rysmi|soliskom|zelenom plese)|sliezsky dom$/i;
+
+// hotels, guest houses and resorts among them (the planner's search finds the same ones, planner/hotels.js)
+const HOTEL = /hotel|^patria$|resort|grand|penzi[oó]n|pensjonat|ubytov|residence/i;
 
 export function buildLabels({ meta, terrain, camera, container, extra = [], blockers = [], nature = { spots: [], found: {} }, onClick = null }) {
   const layer = document.createElement('div');
@@ -46,6 +49,7 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
     layer.appendChild(el);
     const y = terrain.height(l.x, l.z) + (l.kind === 'lake' ? 1 : 0);
     if (l.kind === 'hut' && MAIN_HUT.test(l.name) && !/^stare/i.test(l.name)) l = { ...l, main: true, rank: 2.4 };
+    else if (l.kind === 'hut' && HOTEL.test(l.name)) l = { ...l, kind: 'hotel' };
     const it = { ...l, cat: catOf(l.kind), el, pos: new THREE.Vector3(l.x, y, l.z), visible: false, occl: 1, w: 0, h: 0 };
     render(it);
     if (onClick) el.firstChild.addEventListener('click', (e) => { e.stopPropagation(); onClick(it); });
