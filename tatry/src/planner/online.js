@@ -40,7 +40,7 @@ function cleanUrl(keys) {
 
 // an avatar: an emoji, the face from the look editor (SVG) or a photo (JPEG). Only a well-formed image goes into
 // the page; a photo someone reported is hidden on this device (uid: whose it is); noPhoto: the public ranking,
-// where strangers see each other, shows no photos at all
+// where strangers see each other, shows no photos at all, nor anywhere one hidden after reports (photo_hidden)
 const HIDE = 'szlakownik-hidden-photos';
 const hiddenPhotos = () => { try { return new Set(JSON.parse(localStorage.getItem(HIDE) || '[]')); } catch (e) { return new Set(); } };
 export const isPhoto = (a) => /^data:image\/jpeg;base64,/.test(a || '');
@@ -162,8 +162,9 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
   const ok = ({ data, error }) => { if (error) throw error; return data; };
 
   async function syncProfile() {
-    const s = ok(await sb.from('profiles').select('name,avatar,km,ascent,peaks,updated_at').eq('id', user.id).maybeSingle());
+    const s = ok(await sb.from('profiles').select('name,avatar,km,ascent,peaks,updated_at,photo_hidden').eq('id', user.id).maybeSingle());
     if (!s) return;
+    if (s.photo_hidden && isPhoto(s.avatar)) msg('Twoje zdjęcie zostało ukryte po zgłoszeniach w grupie: inni widzą emoji. Wybierz inne zdjęcie albo twarz postaci.');
     const serverT = Date.parse(s.updated_at) || 0;
     const newer = serverT > (PR.updatedAt || 0);
     if (newer) {
@@ -341,12 +342,12 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
   async function loadMembers() {
     try {
       const rows = ok(await sb.from('group_members').select('user_id,role').eq('group_id', gid));
-      const profs = ok(await sb.from('profiles').select('id,name,avatar').in('id', rows.map((r) => r.user_id)));
+      const profs = ok(await sb.from('profiles').select('id,name,avatar,photo_hidden').in('id', rows.map((r) => r.user_id)));
       members = new Map(rows.map((r) => [r.user_id, { role: r.role, ...(profs.find((p) => p.id === r.user_id) || { name: 'Turysta' }) }]));
     } catch (e) { /* offline: names come later */ }
     $('g-members').innerHTML = [...members.entries()].map(([id, m]) =>
-      `<span class="mem">${avatarHtml(m.avatar, esc, id)}${esc(m.name)}${m.role === 'owner' ? ' ★' : ''}${id === user.id ? ' (Ty)' : ''}`
-      + `${id !== user.id && isPhoto(m.avatar) && !hiddenPhotos().has(id) ? `<button class="rep" data-rep="${esc(id)}" title="Zgłoś nieodpowiednie zdjęcie">🚩</button>` : ''}</span>`).join('');
+      `<span class="mem">${avatarHtml(m.avatar, esc, id, m.photo_hidden)}${esc(m.name)}${m.role === 'owner' ? ' ★' : ''}${id === user.id ? ' (Ty)' : ''}`
+      + `${id !== user.id && isPhoto(m.avatar) && !m.photo_hidden && !hiddenPhotos().has(id) ? `<button class="rep" data-rep="${esc(id)}" title="Zgłoś nieodpowiednie zdjęcie">🚩</button>` : ''}</span>`).join('');
   }
   // reporting a photo: hidden here at once, and sent (the photo itself) for a check to the reports table
   $('g-members').addEventListener('click', async (e) => {
@@ -356,6 +357,9 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     if (!m || !confirm(`Zgłosić zdjęcie użytkownika „${m.name}” jako nieodpowiednie? Zniknie u Ciebie od razu, a zgłoszenie sprawdzimy.`)) return;
     const h = hiddenPhotos(); h.add(id);
     try { localStorage.setItem(HIDE, JSON.stringify([...h])); } catch (err) { /* private mode: hidden until reload */ }
+    // in the database (hidden for the whole group after two reports, or at once by the group's owner), and
+    // with the photo itself to the reports for a look
+    sb.rpc('report_photo', { target: id }).then(() => {}, () => {});
     reportPhoto({ userId: id, name: m.name, photo: m.avatar }).catch(() => {});
     loadMembers();
   });
@@ -383,7 +387,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     ul.innerHTML = rows.length ? '' : '<li><span class="empty">Brak wyjść. Wyznacz trasę i kliknij „Zaproponuj wyjście”.</span></li>';
     for (const r of rows) {
       const ans = rs.filter((x) => x.route_id === r.id), mineA = (ans.find((x) => x.user_id === user.id) || {}).status;
-      const faces = (st) => ans.filter((x) => x.status === st).map((x) => `<span title="${esc(who(x.user_id).name)}">${avatarHtml(who(x.user_id).avatar, esc, x.user_id)}</span>`).join('');
+      const faces = (st) => ans.filter((x) => x.status === st).map((x) => `<span title="${esc(who(x.user_id).name)}">${avatarHtml(who(x.user_id).avatar, esc, x.user_id, who(x.user_id).photo_hidden)}</span>`).join('');
       const nYes = ans.filter((x) => x.status === 'yes').length, nMaybe = ans.filter((x) => x.status === 'maybe').length;
       const li = document.createElement('li');
       li.className = 'trip' + (rank(r) === 2 ? ' past' : '');
@@ -523,7 +527,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
     el.dataset.id = m.id;
     const t = new Date(m.created_at);
     const when = t.toDateString() === new Date().toDateString() ? t.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : t.toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
-    el.innerHTML = `${avatarHtml(u.avatar, esc, m.user_id)}<div><small><b>${esc(u.name)}</b> ${when}</small><p>${esc(m.body)}</p></div>`;
+    el.innerHTML = `${avatarHtml(u.avatar, esc, m.user_id, u.photo_hidden)}<div><small><b>${esc(u.name)}</b> ${when}</small><p>${esc(m.body)}</p></div>`;
     const empty = log.querySelector('.empty'); if (empty) empty.remove();
     const atEnd = log.scrollTop + log.clientHeight > log.scrollHeight - 30;
     log.appendChild(el);
@@ -543,7 +547,7 @@ export function setupOnline({ $, map, J, PR, loadJournal, saveJournal, saveProfi
   function mateIcon(m, stale) {
     const u = who(m.user_id);
     return L.divIcon({ className: 'mate' + (stale ? ' stale' : ''), iconSize: null, iconAnchor: [15, 15],
-      html: `${avatarHtml(u.avatar, esc, m.user_id)}<span>${esc(u.name)}</span>` });
+      html: `${avatarHtml(u.avatar, esc, m.user_id, u.photo_hidden)}<span>${esc(u.name)}</span>` });
   }
   function showMate(m) {
     if (!user || m.user_id === user.id) return;          // me: the navigation's own marker
