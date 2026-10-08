@@ -233,9 +233,9 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // grey rock up high and on steep ground (not in winter, when the snow is meant). c: the photo as sampled
         vec3 desnow(vec3 c, float sl) {
           float L = dot(c, vec3(0.3, 0.55, 0.15));
-          // (the Slovak photo's snow is warm, cream-white: a low saturation, not none; nothing green)
+          // (the Slovak photo's snow is cream- or mint-white: a low saturation, not none; no vivid green)
           float mx = max(max(c.r, c.g), c.b), sat0 = (mx - min(min(c.r, c.g), c.b)) / max(mx, 0.02);
-          float k = smoothstep(0.34, 0.5, L) * (1.0 - smoothstep(0.38, 0.5, sat0)) * (1.0 - smoothstep(0.0, 0.03, c.g - max(c.r, c.b)))
+          float k = smoothstep(0.34, 0.5, L) * (1.0 - smoothstep(0.38, 0.5, sat0)) * (1.0 - smoothstep(0.06, 0.12, c.g - max(c.r, c.b)))
             * (1.0 - winterK) * (1.0 - snowK)
             * smoothstep(1300.0, 1450.0, vWorld.y) * (1.0 - limeAt(vWorld.xz));   // not gravel roads below, nor pale limestone
           if (k <= 0.0) return c;
