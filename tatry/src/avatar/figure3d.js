@@ -91,12 +91,24 @@ export function buildFigure(look) {
   if (L.hair === 'ponytail') { const t = mesh(new THREE.CylinderGeometry(0.03, 0.015, 0.2, 6), hair, 0, -0.04, -HS[2] - 0.06); t.rotation.x = 0.4; head.add(t); }
   if (L.hair === 'bun') head.add(mesh(new THREE.SphereGeometry(0.05, 8, 6), hair, 0, top * 0.75, -HS[2] * 0.6));
   if (L.hair === 'braid') for (let i = 0; i < 5; i++) head.add(mesh(new THREE.SphereGeometry(0.026, 6, 4), hair, 0, -0.04 - i * 0.045, -HS[2] - 0.02));
-  // beard
+  // beard: a shell over the jaw and the chin (stubble: a hair-tinted skin, thin), a full beard with its
+  // chin pointing down, a moustache of two strands, a goatee
   if (L.beard !== 'none') {
-    const bm = L.beard === 'stubble' ? mat(HAIR_COLORS[L.hairColor][0], { transparent: true, opacity: 0.45 }) : hair;
-    if (L.beard === 'full' || L.beard === 'stubble') { const b = mesh(new THREE.SphereGeometry(1, 12, 6, Math.PI * 0.15, Math.PI * 0.7, Math.PI * 0.5, Math.PI * 0.45), bm); b.scale.set(HS[0] * 1.04, HS[1] * (L.beard === 'full' ? 1.15 : 1.02), HS[2] * 1.05); b.rotation.y = Math.PI; head.add(b); }
-    if (L.beard === 'goatee') head.add(mesh(new THREE.SphereGeometry(0.03, 6, 4), hair, 0, -HS[1] * 0.85, HS[2] * 0.8));
-    if (L.beard !== 'stubble') head.add(mesh(new THREE.BoxGeometry(0.07, 0.015, 0.02), hair, 0, -0.045, HS[2] * 0.95));
+    const jaw = (k, m) => {
+      const g = new THREE.SphereGeometry(1, 16, 8, Math.PI / 2 - 1.35, 2.7, Math.PI * 0.56, Math.PI * 0.4);
+      const o = mesh(g, m); o.scale.set(HS[0] * k, HS[1] * k, HS[2] * k); return o;
+    };
+    if (L.beard === 'stubble') head.add(jaw(1.012, mat('#' + new THREE.Color(SKIN[L.skin]).lerp(new THREE.Color(HAIR_COLORS[L.hairColor][0]), 0.5).getHexString())));
+    if (L.beard === 'full') {
+      head.add(jaw(1.07, hair));
+      const chin = mesh(new THREE.ConeGeometry(0.055, 0.08, 10), hair, 0, -HS[1] * 0.98, HS[2] * 0.5);
+      chin.rotation.x = Math.PI - 0.35; head.add(chin);
+    }
+    if (L.beard === 'goatee') { const c = mesh(new THREE.ConeGeometry(0.026, 0.06, 8), hair, 0, -HS[1] * 0.95, HS[2] * 0.72); c.rotation.x = Math.PI - 0.3; head.add(c); }
+    if (L.beard !== 'stubble') for (const sd of [-1, 1]) {
+      const m = mesh(new THREE.CapsuleGeometry(0.008, 0.03, 2, 6), hair, sd * 0.019, -0.042, HS[2] * 0.96);
+      m.rotation.z = sd * 1.2; head.add(m);
+    }
   }
   if (L.glasses !== 'none') {
     const gm = mat(L.glasses === 'sun' ? '#0e1318' : '#2a2a2a');
