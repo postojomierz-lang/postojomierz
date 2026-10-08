@@ -24,7 +24,7 @@ const VERT_BB = /* glsl */`
   uniform float impViews, impRows, impTime, impWind, impFar;
   uniform vec3 impCam;
   varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix;
-  varying vec3 vBR; varying vec3 vBT; varying float vTint;
+  varying vec3 vBR; varying vec3 vBT; varying float vTint; varying vec2 vIn;
 `;
 
 function billboard() {
@@ -46,6 +46,7 @@ function billboard() {
     vViewMix = f - k0;
     vec2 cell = vec2(1.0 / impViews, 1.0 / impRows);
     vec2 inCell = vec2(position.x + 0.5, 1.0 - position.y);
+    vIn = position.xy;
     if (distance(ipos.xz, impCam.xz) > impFar) bbWorld = ipos;     // too far: a zero-size card, nothing drawn
     vUvA = (vec2(k0, aImp.x) + inCell) * cell;
     vUvB = (vec2(k1, aImp.x) + inCell) * cell;
@@ -56,6 +57,15 @@ function billboard() {
 const FRAG_SAMPLE = /* glsl */`
   vec4 impA = mix(texture2D(impAlbedo, vUvA), texture2D(impAlbedo, vUvB), vViewMix);
   if (impA.a < 0.5) discard;
+`;
+// dwarf pine: its baked bushes fill their atlas cells to the edges, so the card cut them off in straight
+// lines (rectangles on the slope). Keep only a dome over the card's base: a rounded bush
+const DOME = /* glsl */`
+  {
+    vec2 cq = floor(vIn * vec2(28.0, 14.0));
+    float rag = fract(sin(dot(cq, vec2(12.9898, 78.233))) * 43758.5453);   // a ragged edge of twigs
+    if (length(vec2(vIn.x * 2.15, vIn.y * 1.05)) > 0.84 + 0.16 * rag) discard;
+  }
 `;
 // with multisampling: the edge as coverage (alpha to coverage), half a pixel soft, instead of the hard cut
 // that sparkled as the view moved
@@ -83,8 +93,8 @@ export function impostorMaterial({ albedo, normal, views, rows, shade, wind = 1,
       .replace('#include <common>', `#include <common>
         uniform sampler2D impAlbedo; uniform sampler2D impNormal; uniform float impBright;
         varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix;
-        varying vec3 vBR; varying vec3 vBT; varying float vTint; varying float vTerrSh; uniform float winterK;\n` + FADE_F)
-      .replace('#include <map_fragment>', (fade ? FADE_TEST : '') + (aa ? FRAG_SAMPLE_AA : FRAG_SAMPLE) + `
+        varying vec3 vBR; varying vec3 vBT; varying float vTint; varying float vTerrSh; uniform float winterK; varying vec2 vIn;\n` + FADE_F)
+      .replace('#include <map_fragment>', (fade ? FADE_TEST : '') + (aa ? FRAG_SAMPLE_AA : FRAG_SAMPLE) + (fade === 'mugo' ? DOME : '') + `
         diffuseColor.rgb = impA.rgb * impBright * (1.0 + (vTint - 0.5) * ${(tintAmount * 2).toFixed(3)});${aa ? '\n        diffuseColor.a = impCov;' : ''}`)
       .replace('#include <normal_fragment_maps>', `
         {
@@ -115,8 +125,8 @@ export function impostorDepthMaterial({ albedo, views, rows, shade, wind = 1, fa
       .replace('#include <project_vertex>', 'vec4 mvPosition = viewMatrix * vec4(bbWorld, 1.0);\ngl_Position = projectionMatrix * mvPosition;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform sampler2D impAlbedo; varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix;\n` + FADE_F)
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + (fade ? FADE_TEST : '') + FRAG_SAMPLE);
+        uniform sampler2D impAlbedo; varying vec2 vUvA; varying vec2 vUvB; varying float vViewMix; varying vec2 vIn;\n` + FADE_F)
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + (fade ? FADE_TEST : '') + FRAG_SAMPLE + (fade === 'mugo' ? DOME : ''));
   };
   m.customProgramCacheKey = () => 'impostor-depth' + fade;
   return m;

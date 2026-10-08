@@ -840,7 +840,7 @@ async function main() {
     spruce: { wind: 0.6, brightness: 1.0, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
     deadspruce: { wind: 0.3, brightness: 1.2, upNormal: 0.2 }, limba: { wind: 0.5, brightness: 0.85, upNormal: 0.3 }, rowan: { wind: 0.9, brightness: 1.0, upNormal: 0.35 },
-    mugo: { wind: 0.4, brightness: 2.1, upNormal: 0.55, fade: 'mugo' }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
+    mugo: { wind: 0.4, brightness: 0.9, upNormal: 0.55, fade: 'mugo' }, herb: { wind: 2.0, brightness: 1.05, upNormal: 0.6 },
   }, QUALITY !== 'low');     // alpha to coverage where the picture is multisampled (mid and up)
   const forest = buildForest({ scene, env: shade, spruce, pine, quality: QUALITY, kinds,
     ground: (x, z) => (terrain.maskAt(trailVisWide, x, z) > 0.02 || terrain.maskAt(lakeMask, x, z) > 0.02 || houses.inside(x, z, 2)
@@ -950,7 +950,8 @@ async function main() {
       const bb = o.geometry.boundingBox, size = new THREE.Vector3(); bb.getSize(size);
       const mat = new THREE.MeshLambertMaterial({ map: o.material.map, normalMap: o.material.normalMap });
       patchShading(mat, shade);
-      if (QUALITY !== 'low') rockDetail(mat);
+      // low: no detail shader, and the bare map under the strong sky light read as smooth white lumps
+      if (QUALITY !== 'low') rockDetail(mat); else mat.color.setScalar(0.6);
       variants.push({ geo: o.geometry, geoFar: far[o.name] || o.geometry, mat, size: Math.max(size.x, size.y, size.z), hy: bb.max.y, big: o.name.startsWith('boulder'), items: [] });
     });
     const stones = variants.filter((v) => !v.big), boulders = variants.filter((v) => v.big);
@@ -973,7 +974,7 @@ async function main() {
       const d = 2.5 + Math.pow(r(), 2.6) * 220, a = r() * 6.28;
       const x = trail.X[i] + Math.cos(a) * d, z = trail.Z[i] + Math.sin(a) * d;
       // none in the gardens and yards round the houses
-      if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 14)) continue;
+      if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || terrain.maskAt(pathSide, x, z) > 0 || houses.inside(x, z, 14)) continue;
       const u = Math.floor((x - IB[0]) / (IB[2] - IB[0]) * IW), v = Math.floor((z - IB[1]) / (IB[3] - IB[1]) * IW);
       const o = (v * IW + u) * 4, R = ip[o], G = ip[o + 1], B = ip[o + 2];
       const gc = groundClass(x, z);
@@ -1053,7 +1054,7 @@ async function main() {
           const blocks = 3 + Math.floor(r() * 5), spread = 1.5 + r() * 3.5;
           for (let b = 0; b < blocks; b++) {
             const x = cx + (r() - 0.5) * spread * 2, z = cz + (r() - 0.5) * spread * 2;
-            if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 14)) continue;
+            if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.02 || terrain.maskAt(trailVisWide, x, z) > 0.02 || terrain.maskAt(pathSide, x, z) > 0 || houses.inside(x, z, 14)) continue;
             const gc = groundClass(x, z);
             // not in the forest or the water; among the dwarf pine some (the rock breaks through it there too)
             if (gc && (gc.c === 6 || gc.c === 1 || (gc.c === 5 && r() > 0.5))) continue;
@@ -1090,7 +1091,7 @@ async function main() {
       while (k < want && guard++ < want * 40) {
         const i = Math.floor(r() * N), d = 3 + r() * 250, a = r() * 6.28;
         const x = trail.X[i] + Math.cos(a) * d, z = trail.Z[i] + Math.sin(a) * d;
-        if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.6 || terrain.maskAt(trailVisWide, x, z) > 0.02 || houses.inside(x, z, 14)) continue;
+        if (!inner.inside(x, z) || terrain.maskAt(lakeMask, x, z) > 0.6 || terrain.maskAt(trailVisWide, x, z) > 0.02 || terrain.maskAt(pathSide, x, z) > 0 || houses.inside(x, z, 14)) continue;
         if (terrain.height(x, z) < 1350) continue;                       // the tarns, not the ponds of the valleys
         const sd = shore(x, z);
         if (!sd) continue;
@@ -1165,7 +1166,7 @@ async function main() {
   // wind: grass and tree sway (and the wind's sound); rain / snow: how much falls; wet: dark wet rock;
   // snowCover: fresh snow on the ground above the snow line; flat: an overcast, grey sky
   const WEATHER = {
-    clear: { fog: 2.0e-5, turb: 1.2, ray: 3.2, sun: 1, amb: 1, fogMix: 0, cloud: 0.45, wind: 1 },
+    clear: { fog: 2.0e-5, turb: 1.2, ray: 3.2, sun: 1, amb: 1, fogMix: 0, cloud: 0.25, wind: 1 },
     haze: { fog: 5.5e-5, turb: 8, ray: 2.2, sun: 0.8, amb: 1.1, fogMix: 0.25, cloud: 0.2, wind: 0.8 },
     mist: { fog: 1.1e-3, turb: 12, ray: 3, sun: 0.35, amb: 1.35, fogMix: 0.85, cloud: 0.95, wind: 0.5, wet: 0.4 },
     cloudy: { fog: 3.5e-5, turb: 16, ray: 0.6, sun: 0.35, amb: 1.4, fogMix: 0.6, cloud: 0.88, wind: 1.2, flat: true },
@@ -2372,4 +2373,14 @@ function mergeGeos(geos) {
   return out;
 }
 
-main().catch((e) => { console.error(e); status('Błąd: ' + e.message); });
+main().catch((e) => {
+  console.error(e);
+  // a route the 3D view cannot walk: say why on the screen and lead back to the planner to correct it
+  const why = { 'Trasa poza siecią szlaków': 'Punkt trasy leży dalej niż 300 m od znakowanego szlaku.',
+    'Nie da się połączyć punktów trasy szlakami': 'Szlaki nie łączą punktów tej trasy.' }[e.message];
+  status('Błąd: ' + e.message + (why ? '. ' + why : ''));
+  const a = document.createElement('a');
+  a.href = 'planer.html' + location.hash; a.textContent = '← Popraw trasę w planerze';
+  a.style.cssText = 'display:block;margin-top:12px;color:#9cf';
+  $('loading-text').after(a);
+});
