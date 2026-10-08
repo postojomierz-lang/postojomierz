@@ -242,12 +242,18 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // summer snow on the photo: the Slovak 2025 images keep white patches of old snow and pale scree on whole
         // slopes (under Lomnica the meadows went white). Bright and pale: towards the meadow lower down,
         // grey rock up high and on steep ground (not in winter, when the snow is meant). c: the photo as sampled
-        vec3 desnow(vec3 c, float sl) {
+        float snowiness(vec3 c) {
           float L = dot(c, vec3(0.3, 0.55, 0.15));
           // (the Slovak photo's snow is cream- or mint-white: a low saturation, not none; vivid green is not touched;
           // in the coarse whole-region photo it is blurred to a mid grey, L ~0.3)
           float mx = max(max(c.r, c.g), c.b), sat0 = (mx - min(min(c.r, c.g), c.b)) / max(mx, 0.02);
-          float k = smoothstep(0.2, 0.35, L) * (1.0 - smoothstep(0.5, 0.7, sat0))
+          return smoothstep(0.2, 0.35, L) * (1.0 - smoothstep(0.5, 0.7, sat0));
+        }
+        // cb: the photo blurred around the point. The edge between dark mugo and snow is a cream-yellow blend
+        // (and the sharpening rings it brighter), too saturated to pass as snow: inside a snowy neighbourhood
+        // it goes too, only the dark mugo itself stays
+        vec3 desnow(vec3 c, vec3 cb, float sl) {
+          float k = max(snowiness(c), snowiness(cb) * smoothstep(0.07, 0.15, dot(c, vec3(0.3, 0.55, 0.15))))
             * (1.0 - winterK) * (1.0 - snowK)
             * smoothstep(1300.0, 1450.0, vWorld.y) * (1.0 - limeAt(vWorld.xz));   // not gravel roads below, nor pale limestone
           if (k <= 0.0) return c;
@@ -255,6 +261,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           vec3 tgt = mix(vec3(0.085, 0.11, 0.05), vec3(0.22, 0.215, 0.2), up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
           return mix(c, tgt, k);
         }
+        vec3 desnow(vec3 c, float sl) { return desnow(c, c, sl); }
         // relief normal from the 4 m height texture: sharper ridges and gullies than the mesh normals
         vec3 hNormal(vec2 p, float e) {
           float hx = hAt(p + vec2(e, 0.0)) - hAt(p - vec2(e, 0.0));
@@ -331,7 +338,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         sat = sharpen(satMap, uv, sat, detail > 0.5 ? 0.9 * smoothstep(150.0, 600.0, dist) : 0.8);
         vec3 N = normalize(vWN);
         float slope = 1.0 - N.y;
-        sat = desnow(sat, slope);
+        sat = desnow(sat, textureLod(satMap, uv, 3.0).rgb, slope);
         // the rock's colour: Tatra granite (grey, a little warm) or the pale grey limestone and dolomite of the
         // northern belt (Giewont, Czerwone Wierchy, the Belianske Tatry), lighter and cooler
         float lime = limeAt(vWorld.xz);
