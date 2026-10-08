@@ -239,7 +239,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
             * (1.0 - winterK) * (1.0 - snowK)
             * smoothstep(1300.0, 1450.0, vWorld.y) * (1.0 - limeAt(vWorld.xz));   // not gravel roads below, nor pale limestone
           if (k <= 0.0) return c;
-          float up = max(smoothstep(1850.0, 2150.0, vWorld.y), smoothstep(0.25, 0.5, sl));
+          float up = max(smoothstep(2050.0, 2300.0, vWorld.y), smoothstep(0.35, 0.6, sl));   // meadows to ~2100 m
           vec3 tgt = mix(vec3(0.17, 0.2, 0.11), vec3(0.27, 0.265, 0.25), up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
           return mix(c, tgt, k * 0.85);
         }
