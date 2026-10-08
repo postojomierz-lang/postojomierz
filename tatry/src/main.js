@@ -7,7 +7,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { terrainMaterial, waterMaterial, light, makeEnv, patchShading, rockDetail, CLOUDS } from './materials.js';
+import { terrainMaterial, waterMaterial, lakeTint, light, makeEnv, patchShading, rockDetail, CLOUDS } from './materials.js';
 import { buildForest } from './vegetation.js';
 import { loadImpostorKinds, vegFar, treeFade } from './impostor.js';
 import { buildGroundCover } from './groundcover.js';
@@ -455,7 +455,7 @@ async function main() {
         float d = cloudDensity(cp, time);
         float dl = cloudDensity(cp + vSunDirection.xz * 380.0, time);      // thicker towards the sun: darker underside
         float fade = smoothstep(0.015, 0.12, direction.y) * exp(-tc / 60000.0);
-        float lit = clamp(1.0 - (dl - d) * 1.4 - d * 0.35, 0.35, 1.0);
+        float lit = clamp(1.0 - (dl - d) * 1.8 - d * 0.5, 0.3, 1.0);           // a flatter, darker base
         float day = smoothstep(-0.12, 0.12, vSunDirection.y);             // (vSunfade stays ~1: our sunPosition is a unit vector)
         day = max(day, 0.55 * smoothstep(-0.12, -0.01, vSunDirection.y) * smoothstep(0.1, 0.0, vSunDirection.y));   // afterglow
         vec3 sunTint = mix(vec3(1.0, 0.62, 0.38), vec3(1.0, 0.98, 0.95), smoothstep(0.02, 0.35, vSunDirection.y));
@@ -650,6 +650,8 @@ async function main() {
     const shape = new THREE.Shape(l.ring.map(([x, z]) => new THREE.Vector2(x, -z)));
     const g = new THREE.ShapeGeometry(shape);
     g.rotateX(-Math.PI / 2);
+    const tint = lakeTint(l.name, l.level);
+    g.setAttribute('aLake', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 4).map((_, i) => tint[i % 4]), 4));
     const m = new THREE.Mesh(g, water);
     lakeMeshes.push(m);
     lakeInfo.push({ level: l.level, cx: l.ring.reduce((a, q) => a + q[0], 0) / l.ring.length, cz: l.ring.reduce((a, q) => a + q[1], 0) / l.ring.length,
