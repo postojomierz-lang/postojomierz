@@ -232,6 +232,8 @@
   #st-people button { border: 0; background: none; cursor: pointer; color: #8a3a2a; }
   #tab-stay .st-row { display: flex; gap: 14px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
   #st-go { margin: 6px 0 10px; width: 100%; }
+  .st-how { font-size: 12.5px; color: #5b6368; margin: 0 0 8px; } .st-how summary { cursor: pointer; }
+  #st-again { margin: 0 0 6px; }
   #st-plan .st-sum { background: #f3f1ea; border-radius: 8px; padding: 8px 10px; }
   #st-plan .st-days { padding-left: 0; list-style: none; }
   #st-plan .st-days li { padding: 8px 0; border-top: 1px solid rgba(0,0,0,.08); }
@@ -383,7 +385,15 @@
         <label>Dni <input id="st-days" type="number" min="1" max="14" value="5"></label>
         <label>Nocleg <select id="st-base"></select></label></div>
       <label class="st-row"><input type="checkbox" id="st-nochains"> bez łańcuchów i ekspozycji</label>
+      <label class="st-row"><input type="checkbox" id="st-travel"> dzień przyjazdu i wyjazdu bez trasy</label>
       <button id="st-go" class="primary">Ułóż plan</button>
+      <details class="st-how"><summary>Jak układany jest plan?</summary>
+        <p>Trasy pochodzą z katalogu klasycznych wycieczek tatrzańskich, każda zmierzona na szlakach (czas wg norm PTTK, podejście, najwyższy punkt, łańcuchy).
+        Najsłabsza osoba w grupie wyznacza limity: czas marszu, podejście, wysokość; dzieci idą wolniej, więc czasy są wydłużone.
+        Wybierane są trasy blisko noclegu (do ok. 75 min dojazdu), równo od łatwych do trudnych, bez dwóch wycieczek w to samo miejsce.
+        Kolejność: łatwy początek, najtrudniejsze w środku, co czwarty dzień odpoczynek, łatwy koniec.
+        Gdy termin mieści się w 16-dniowej prognozie, w deszcz i burzę idzie się doliną albo odpoczywa, a szczyty trafiają na pogodne dni.
+        „Ułóż inaczej” losuje nowy plan, w miarę możliwości z innych tras.</p></details>
       <div id="st-plan"></div>
     </div>
     <div class="tab" id="tab-journal">

@@ -150,7 +150,7 @@ export function setupStay({ G, along, onOpen, $ }) {
   }
 
   // the form: people, days, base, chains; kept on the device
-  let st = { people: [{ kid: false, fit: 1 }], days: 5, base: 0, noChains: false, from: '' };
+  let st = { people: [{ kid: false, fit: 1 }], days: 5, base: 0, noChains: false, travel: true, from: '' };
   try { st = { ...st, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch (e) { /* private mode */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* full */ } };
   $('st-base').innerHTML = BASES.map(([n], i) => `<option value="${i}">${n}</option>`).join('');
@@ -184,9 +184,14 @@ export function setupStay({ G, along, onOpen, $ }) {
   $('st-days').onchange = () => { st.days = Math.max(1, Math.min(14, +$('st-days').value || 5)); $('st-days').value = st.days; save(); };
   $('st-base').onchange = () => { st.base = +$('st-base').value; save(); };
   $('st-nochains').onchange = () => { st.noChains = $('st-nochains').checked; save(); };
+  $('st-travel').checked = st.travel;
+  $('st-travel').onchange = () => { st.travel = $('st-travel').checked; save(); };
   renderPeople();
 
-  $('st-go').onclick = async () => {
+  // "Ułóż inaczej": the walks of the plans already shown are avoided while there are others that fit
+  const used = new Set();
+  $('st-go').onclick = () => { used.clear(); build(false); };
+  async function build(again) {
     $('st-go').disabled = true;
     if (!fc) fc = await dailyForecast();
     $('st-go').disabled = false;
@@ -199,11 +204,13 @@ export function setupStay({ G, along, onOpen, $ }) {
     // border the road goes round through Łysa Polana)
     const effort = (w) => w.time / 60 + w.up / 400;
     const ride = (w) => Math.round(10 + km([base[1], base[2]], w.start) * 1.4 / 35 * 60 + (slovak(w.start) !== base[3] ? 40 : 0));
-    // the order of the days: rest every fourth day (from 4 days on), the easy ones first and last, the hard in the middle
+    // the order of the days: the day of arrival and of departure without a walk (if so chosen), rest every
+    // fourth day (from 4 days on), the easy ones first and last, the hard in the middle
     const n = st.days, plan = new Array(n).fill(null);
+    const travel = new Set(st.travel && n >= 3 ? [0, n - 1] : []), t0 = travel.size ? 1 : 0;
     const restDays = new Set();
-    if (n >= 4) for (let d = 3; d < n - 1; d += 4) restDays.add(d);
-    const walkDays = [...Array(n).keys()].filter((d) => !restDays.has(d));
+    if (n - travel.size >= 4) for (let d = 3 + t0; d < n - 1 - t0; d += 4) restDays.add(d);
+    const walkDays = [...Array(n).keys()].filter((d) => !restDays.has(d) && !travel.has(d));
     // the walks, the farther ones counted a little harder; the most effort fitting, spread out
     let pool = fits.map((w) => ({ ...w, i: all.indexOf(w), score: effort(w) + ride(w) / 90 })).sort((a, b) => a.score - b.score);
     // a fit group skips the shortest strolls when there are enough walks that use its days well
@@ -213,6 +220,13 @@ export function setupStay({ G, along, onOpen, $ }) {
     const byRide = [...pool].sort((a, b) => ride(a) - ride(b));
     const near = pool.filter((w) => ride(w) <= 75).length;
     pool = byRide.slice(0, Math.max(near, walkDays.length)).sort((a, b) => a.score - b.score);
+    // again: other walks first (all of them once the catalogue is used up), and a little chance in the choice
+    if (again) {
+      if (pool.filter((w) => !used.has(w.name)).length < walkDays.length) used.clear();
+      const jit = (w) => w.score + (used.has(w.name) ? 100 : 0) + (Math.random() - 0.5) * 0.8;
+      const fresh = [...pool].sort((a, b) => jit(a) - jit(b)).slice(0, Math.max(walkDays.length, Math.ceil(pool.length * 0.7)));
+      pool = fresh.sort((a, b) => a.score - b.score);
+    }
     const picked = [];
     if (pool.length) {
       // take an even spread from easy to hard, as many as there are walking days (no repeats while there are enough)
@@ -243,7 +257,7 @@ export function setupStay({ G, along, onOpen, $ }) {
     const moved = new Set();
     for (const d of days) {
       const w = plan[d];
-      if (!bad(d) || restDays.has(d) || !w || w.kind === 'dolina') continue;
+      if (!bad(d) || restDays.has(d) || travel.has(d) || !w || w.kind === 'dolina') continue;
       let e = days.find((k) => fair(k) && !restDays.has(k) && plan[k] && plan[k].kind === 'dolina');
       if (e != null) { [plan[d], plan[e]] = [plan[e], plan[d]]; moved.add(d).add(e); continue; }
       e = [...restDays].find(fair);
@@ -269,7 +283,9 @@ export function setupStay({ G, along, onOpen, $ }) {
       const chip = f ? `<span class="wx${f.bad ? ' bad' : ''}" title="${WMO[f.code] || ''}">${ICON(f.code)} ${Math.round(f.t)}° · ${f.rainP}%${f.bad ? ` · ${f.why}` : ''}</span>` : '';
       return `${chip}<b>${DOW[dt.getDay()]} ${dt.getDate()}.${dt.getMonth() + 1}: ${t}</b>`;
     };
+    if (fits.length) html += '<button id="st-again" class="chip">🔀 Ułóż inaczej</button>';
     html += '<ol class="st-days">' + plan.map((w, d) => {
+      if (travel.has(d)) return `<li>${head(d, d === 0 ? 'przyjazd' : 'wyjazd')}<span>${d === 0 ? 'Dojazd i zakwaterowanie; wieczorem krótki spacer w okolicy noclegu.' : 'Pakowanie i powrót; jeśli czas pozwoli, krótki spacer.'}</span></li>`;
       if (restDays.has(d)) return `<li>${head(d, 'odpoczynek')}<span>${base[3] ? 'Krótki spacer, kolejką na Hrebienok albo Skalnaté pleso, termy (np. AquaCity w Popradzie)' : 'Krótki spacer, Gubałówka kolejką, termy'}. Nogi odpoczną przed dalszymi trasami.</span></li>`;
       if (!w) return `<li>${head(d, 'wolny')}<span>Powtórz ulubioną trasę albo odpocznij.</span></li>`;
       const tags = [w.kind === 'dolina' ? '🌧 dobra na gorszą pogodę' : '', w.chains ? '⛓ łańcuchy' : '', w.alpine ? `⚠ teren T${w.alpine}` : ''].filter(Boolean).join(' · ');
@@ -282,5 +298,7 @@ export function setupStay({ G, along, onOpen, $ }) {
       + 'Przed każdym wyjściem sprawdź prognozę godzinową na trasie i komunikat TOPR / HZS.</p>';
     $('st-plan').innerHTML = html;
     $('st-plan').querySelectorAll('[data-w]').forEach((b) => { b.onclick = () => onOpen(all[+b.dataset.w].stops); });
-  };
+    for (const w of plan) if (w) used.add(w.name);
+    if ($('st-again')) $('st-again').onclick = () => build(true);
+  }
 }
