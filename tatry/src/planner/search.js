@@ -4,6 +4,7 @@
 // the nearest place.
 
 import { NORMS } from './graph.js';
+import { HOTELS } from './hotels.js';
 
 // usual trailheads the trail data has no name for (the huts, peaks, passes, signposts, lakes, waterfalls, viewpoints and springs come from it) (lat, lon)
 const EXTRA = [
@@ -13,7 +14,7 @@ const EXTRA = [
   ['Siwa Polana (Dolina Chochołowska)', 49.2798, 19.8086, 'start'], ['Wierch Poroniec', 49.2709, 20.0956, 'start'],
   ['Dolina Strążyska (wejście)', 49.2780, 19.9420, 'start'], ['Dolina Białego (wejście)', 49.2828, 19.9575, 'start'],
 ];
-const ICON = { hut: '⌂', peak: '▲', pass: '⌒', sign: '⊕', start: '🅿', lake: '💧', fall: '🌊', view: '👁', spring: '🚰' };
+const ICON = { hotel: '🏨', hut: '⌂', peak: '▲', pass: '⌒', sign: '⊕', start: '🅿', lake: '💧', fall: '🌊', view: '👁', spring: '🚰' };
 const fold = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
 
 export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () => {} }) {
@@ -27,7 +28,9 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
     places.push({ n: p.n, k: p.k, e: p.e, lat: p.p[1], lon: p.p[0] });
   }
   for (const [n, lat, lon, k] of EXTRA) places.push({ n, k, lat, lon });
-  for (const p of places) p.f = fold(p.n);
+  for (const [n, lat, lon] of HOTELS) if (!seen.has(n)) places.push({ n, k: 'hotel', lat, lon });
+  // ("hotel patria" finds Patria too)
+  for (const p of places) p.f = fold(p.n) + (p.k === 'hotel' && !/hotel/i.test(p.n) ? ' hotel' : '');
 
   function find(q) {
     const f = fold(q.trim());
@@ -40,7 +43,7 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
       if (p.v < 0) continue;
       // the very name first ("Zawrat", not Zawratowa Turnia), places a trail does not reach last
       const score = (p.f === f ? -1 : p.f.startsWith(f) ? 0 : p.f.split(/[\s,(-]+/).some((w) => w.startsWith(words[0])) ? 1 : 2)
-        + ({ start: -0.4, hut: -0.3, peak: -0.1, lake: 0, fall: -0.2, view: -0.1, spring: 0.1, pass: 0.3, sign: 0.5 }[p.k] || 0)
+        + ({ start: -0.4, hut: -0.3, hotel: -0.2, peak: -0.1, lake: 0, fall: -0.2, view: -0.1, spring: 0.1, pass: 0.3, sign: 0.5 }[p.k] || 0)
         + (p.below ? 1.5 : 0);
       out.push([score, p]);
     }
