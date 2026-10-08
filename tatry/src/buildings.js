@@ -92,11 +92,11 @@ const HUTS = [
   [/Hala Kondratowa/, { wall: 'logs', wallTint: HONEY, base: 0, plinth: 1.2, floors: 1, floorH: 3.0, pitch: 60, gablet: 0.3, roofTint: DARK_ROOF,
     eave: 1.0, chimney: 3, windows: 2.0, dormers: [{ n: 1, w: 7, side: 1 }, { n: 1, w: 5, side: -1 }],
     terrace: { side: 1, d: 4, len: 0.6, tables: 3, rail: true, stone: true } }],
-  // Hotel Patria (1970s): two huge A-frames, their gables to the lake, the steep dark roofs reaching almost to the ground
+  // Hotel Patria (1970s): two dark pyramids, the steep roofs reaching almost to the ground, rows of balconies up their slopes
   [/^(Hotel )?Patria$/, { wall: 'plaster', wallTint: CREAM, plinth: 0.8, floors: 1, floorH: 3.2, pitch: 10, hip: 1, roofTint: DARK_ROOF, eave: 1.2, windows: 2.6,
     wings: [{ x: 0, z: 0, w: 0.3, d: 0.5, floors: 2 },
-      { x: -0.28, z: 0, w: 0.42, d: 1, across: true, pitch: 52, hip: 0, eave: 1.5, dormers: [{ n: 9, w: 3, side: 0, rows: 6, rowH: 3.2, pitch: 30, balcony: true }] },
-      { x: 0.28, z: 0, w: 0.42, d: 1, across: true, pitch: 52, hip: 0, eave: 1.5, dormers: [{ n: 9, w: 3, side: 0, rows: 6, rowH: 3.2, pitch: 30, balcony: true }] }] }],
+      { x: -0.28, z: 0, w: 0.42, d: 1, pitch: 52, hip: 1, eave: 1.5, dormers: [{ n: 10, w: 3, side: 0, rows: 8, rowH: 3.2, pitch: 30, balcony: true }] },
+      { x: 0.28, z: 0, w: 0.42, d: 1, pitch: 52, hip: 1, eave: 1.5, dormers: [{ n: 10, w: 3, side: 0, rows: 8, rowH: 3.2, pitch: 30, balcony: true }] }] }],
   // the summit and middle stations of the Lomnica cable cars and their observatories: grey masonry, flat roofs
   [/Stanica Lomnick|Observat[óo]rium Lomnick|Stanica Skalnat|Observat[óo]rium Skalnat/, { wall: 'stone', plinth: 0.5, floorH: 3, pitch: 4, hip: 1, roofTint: GREY_ROOF, eave: 0.4, chimney: 1, windows: 3,
     terrace: { side: 1, d: 3, len: 0.6, rail: true, stone: true } }],
@@ -468,9 +468,12 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
     const M = main.fr;
     for (const dm of list ? [].concat(list) : []) {
       const sides = dm.side === 0 ? [-1, 1] : [M.fz * (dm.side || 1)];
-      for (const sd of sides) for (let row = 0; row < (dm.rows || 1); row++) for (let n = 0; n < dm.n; n++) {
-        const x = (dm.x || 0) * M.W - M.W / 2 + (n + 0.5) * M.W / dm.n, dw = dm.w || 2.2, dl = Math.max(3.2, dw * 0.7);
-        const rh = dm.rowH || 3, zf = sd * (M.D / 2 - 0.3 - row * rh / main.tan), p = main.L(x, 0, zf - sd * dl / 2);
+      for (const sd of sides) for (let row = 0; row < (dm.rows || 1); row++) {
+        // on a hipped roof the slope narrows as it climbs: fewer dormers in the higher rows
+        const rh = dm.rowH || 3, span = M.W - 2 * (k.hip || 0) * (row * rh / main.tan + 1.5), nr = Math.round(dm.n * span / M.W);
+        for (let n = 0; n < nr; n++) {
+        const x = (dm.x || 0) * M.W - span / 2 + (n + 0.5) * span / nr, dw = dm.w || 2.2, dl = Math.max(3.2, dw * 0.7);
+        const zf = sd * (M.D / 2 - 0.3 - row * rh / main.tan), p = main.L(x, 0, zf - sd * dl / 2);
         if (row * rh / main.tan > M.D / 2 - dl - 1) continue;               // no room left under the ridge
         // the dormer's ridge points out of the roof (its +x towards this side)
         const sub = { ox: p.x, oz: p.z, rot: M.rot - sd * Math.PI / 2, W: dl, D: dw, fz: 1 };
@@ -489,6 +492,7 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
           const b0 = r.L(dl / 2 + 0.55, 0, 0), b1 = r.L(dl / 2 + 1.05, 0, 0);
           mesher.box('planks', b0.x, r.yP - 0.12, b0.z, 1.1, 0.12, dw, sub.rot, TILE.planks);
           mesher.box('planks', b1.x, r.yP, b1.z, 0.06, 1.0, dw, sub.rot, TILE.planks);
+        }
         }
       }
     }
