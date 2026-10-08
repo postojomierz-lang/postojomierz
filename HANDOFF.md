@@ -1,10 +1,10 @@
-# HANDOFF (7.10.2026)
-- Cel: Szlakownik (tatry/) — widok 3D z R2 i planer; jeden adres: https://postojomierz-lang.github.io/postojomierz/rysy/ (otwiera planer).
-- Stan: PR 242–262 scalone, nic w toku. 258 próg brzegowy stawów (Terrain.setShores). 259–261 audyt planera: szczyty bez szlaku w wyszukiwarce („na szczyt nie prowadzi szlak · najbliżej…”), Monkova dolina/Mariánska Cesta usunięte, zamknięcia sezonowe (krawędź `z`, G.setDate, TANAP 1.11–15.06, TPN 1.12–14.05), kara ×1,3 za jezdnie, Świnica/Kozi Wierch do szczytu, czasy Orlej Perci jak TPN. 262 realizm 3D: woda (granat, płycizna z mapy odległości od brzegu, fale gasną), ciepły granit, błękitne niebo (skyBlue), neutralne światło nieba, ciemna kosówka/las, nowe impostory świerków (tools/bake_spruce), trawa.
-- Konwencje: po polsku; odpowiedź kończy `🔵 **Możliwe kolejne kroki:**` z krokami numerowanymi; polecenia w osobnych blokach kodu, bez HTML; po zmianie PR do main i od razu merge; przed /compact lub /clear Claude sam aktualizuje HANDOFF.md.
-- Decyzje: mid/low bez post-processingu; prepare_trails.py bierze wysokości z poprzedniego trails.json (słowacki lidar ZBGIS_EXTRA niedostępny w kontenerze; REHEIGHT=1 wyłącza); Orla Perć współczynnik 2,2 (2,24 → trasa szła doliną).
-- Otwarte: słabe poprzeczne pasy na asfalcie (normalna 4 m nie usunęła w pełni; może cień); brzegi bez pasa głazów/żwiru, jasne stożki piargów; białe płaty przy Wielkim Stawie; impostory z bliska na low płaskie.
-- Zgłoszenia: ostatnie przejrzane nr 80 (python3 tatry/tools/bug_reports.py --since 80).
-- Następny krok: właściciel ocenia grafikę (woda, skała, niebo, świerki) na telefonie i ultra; ~7.10 za zgodą usunąć stary region/ z R2.
-- Testy: python3 -m http.server 8765 w root (run_in_background, timeout 2 h) + Playwright --no-proxy-server; zrzuty: scratchpad/realizm/scripts/shot.mjs <nazwa> low '<trasa>' '[{"n":..,"camS":-1,"up":8,"at":[lat,lon,dh]}]'; planer: scratchpad/trasy/fix.mjs, ui2.mjs.
-- Komendy: cd tatry && npm run build; node tatry/tools/bake_spruce/bake.mjs; python3 tatry/tools/prepare_trails.py
+# HANDOFF (8.10.2026)
+- Cel: Szlakownik (tatry/) — widok 3D z R2 i planer; adres: https://postojomierz-lang.github.io/postojomierz/rysy/ (otwiera planer).
+- Stan: PR 264–270 scalone, nic w toku. 265 brzegi (żwir) + asfalt bez pasów; 266–267 drzewa i trawa poza asfaltem; 268 mgła powietrzna, jasne wapienie, desnow (zdjęcia sat.), kosówka zaokrąglona; 269 kolory stawów (aLake/lakeTint), nawierzchnia szlaku, chmury; 270 Patria (A-framy), Łomnica/Skalnaté, #82 lukarny w powietrzu, #83 „Pokaż trasę” → fitRoute.
+- Konwencje: po polsku (też statusy); odpowiedź kończy `🔵 **Możliwe kolejne kroki:**` z krokami numerowanymi; polecenia w osobnych blokach kodu, bez HTML; po zmianie PR do main i od razu merge; przed /compact lub /clear Claude sam aktualizuje HANDOFF.md.
+- Decyzje: Kasprowy (stacje, obserwatorium) już mają modele w HUTS (buildings.js); lukarny/balkony liczone od głównego skrzydła (main.fr); desnow tylko łata — porządnie wymaga letniej ortofotomapy SK (ZBGIS niedostępny z kontenera).
+- Otwarte: blade płaty na Łomnicy; nie sprawdzono ścieżki na hali, jakości high/ultra, Štrbské/Popradské z bliska.
+- Zgłoszenia: ostatnie przejrzane nr 83 (python3 tatry/tools/bug_reports.py --since 83).
+- Następny krok: właściciel ocenia grafikę na telefonie; za zgodą usunąć stary region/ z R2.
+- Testy: scratchpad/realizm/scripts/q*.sh (same stawiają http.server 8765, uruchamiać w tle); shot.mjs <nazwa> low '<trasa>' '[{"n":..,"camS":metry,"up":..,"at":[lat,lon,dh]}]'.
+- Komendy: cd tatry && npm run build; python3 tatry/tools/bug_reports.py --since 83
