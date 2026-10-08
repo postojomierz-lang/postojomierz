@@ -307,3 +307,50 @@ revoke execute on function public.join_group(text) from public, anon;
 revoke execute on function public.delete_my_account() from public, anon;
 revoke execute on function public.on_user_created() from public, anon, authenticated;
 revoke execute on function public.on_group_created() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------- reported photos
+-- A member can report another member's photo (report_photo, from the 🚩 in the group's member list). The
+-- photo is hidden for everyone (profiles.photo_hidden, which the app respects) once two people have
+-- reported that same photo (photo_reports.photo: its md5), or at once when the owner of a group the person
+-- is in reports it. A new photo is shown again (the old reports no longer count); the person cannot
+-- unhide a reported photo themselves (on_profile_photo).
+alter table public.profiles add column if not exists photo_hidden boolean not null default false;
+create table if not exists public.photo_reports (
+  reporter    uuid not null references auth.users (id) on delete cascade,
+  target      uuid not null references auth.users (id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (reporter, target)
+);
+alter table public.photo_reports add column if not exists photo text not null default '';
+alter table public.photo_reports enable row level security;     -- no policies: only through report_photo
+
+create or replace function public.report_photo(target uuid) returns boolean
+  language plpgsql security definer set search_path = public as $$
+declare hide boolean; h text;
+begin
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  if target = auth.uid() or not public.shares_group(target) then raise exception 'not in your group'; end if;
+  select md5(coalesce(avatar, '')) into h from profiles where id = report_photo.target;
+  insert into photo_reports (reporter, target, photo) values (auth.uid(), target, h)
+    on conflict (reporter, target) do update set photo = excluded.photo, created_at = now();
+  hide := (select count(*) from photo_reports r where r.target = report_photo.target and r.photo = h) >= 2
+    or exists (select 1 from groups g join group_members m on m.group_id = g.id where g.owner = auth.uid() and m.user_id = report_photo.target);
+  if hide then
+    perform set_config('app.moderation', 'on', true);
+    update profiles set photo_hidden = true where id = report_photo.target;
+  end if;
+  return hide;
+end $$;
+
+-- a new photo is shown again; otherwise photo_hidden changes only through report_photo
+create or replace function public.on_profile_photo() returns trigger
+  language plpgsql security definer set search_path = public as $$
+begin
+  if new.avatar is distinct from old.avatar then
+    new.photo_hidden := false;
+  elsif coalesce(current_setting('app.moderation', true), '') <> 'on' then
+    new.photo_hidden := old.photo_hidden;
+  end if;
+  return new;
+end $$;
+create or replace trigger profile_photo before update on public.profiles for each row execute function public.on_profile_photo();
