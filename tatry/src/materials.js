@@ -248,7 +248,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           // (the Slovak photo's snow is cream- or mint-white: a low saturation, not none; vivid green is not touched;
           // in the coarse whole-region photo it is blurred to a mid grey, L ~0.3)
           float mx = max(max(c.r, c.g), c.b), sat0 = (mx - min(min(c.r, c.g), c.b)) / max(mx, 0.02);
-          float k = smoothstep(0.25, 0.4, L) * (1.0 - smoothstep(0.42, 0.55, sat0))
+          float k = smoothstep(0.2, 0.35, L) * (1.0 - smoothstep(0.5, 0.7, sat0))
             * (1.0 - winterK) * (1.0 - snowK)
             * smoothstep(1300.0, 1450.0, vWorld.y) * (1.0 - limeAt(vWorld.xz));   // not gravel roads below, nor pale limestone
           dnDbg = max(dnDbg, k);
