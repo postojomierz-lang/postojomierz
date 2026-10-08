@@ -236,11 +236,11 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           // (the Slovak photo's snow is warm, cream-white: a low saturation, not none; nothing green)
           float mx = max(max(c.r, c.g), c.b), sat0 = (mx - min(min(c.r, c.g), c.b)) / max(mx, 0.02);
           float k = smoothstep(0.34, 0.5, L) * (1.0 - smoothstep(0.38, 0.5, sat0)) * (1.0 - smoothstep(0.0, 0.03, c.g - max(c.r, c.b)))
-            * (1.0 - winterK) * (1.0 - snowK);
+            * (1.0 - winterK) * (1.0 - snowK)
+            * smoothstep(1300.0, 1450.0, vWorld.y) * (1.0 - limeAt(vWorld.xz));   // not gravel roads below, nor pale limestone
           if (k <= 0.0) return c;
           float up = max(smoothstep(1850.0, 2150.0, vWorld.y), smoothstep(0.25, 0.5, sl));
-          vec3 rk = mix(vec3(0.27, 0.265, 0.25), vec3(0.34, 0.34, 0.33), limeAt(vWorld.xz));
-          vec3 tgt = mix(vec3(0.17, 0.2, 0.11), rk, up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
+          vec3 tgt = mix(vec3(0.17, 0.2, 0.11), vec3(0.27, 0.265, 0.25), up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
           return mix(c, tgt, k * 0.85);
         }
         // relief normal from the 4 m height texture: sharper ridges and gullies than the mesh normals
