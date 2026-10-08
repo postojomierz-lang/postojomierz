@@ -234,7 +234,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         vec3 desnow(vec3 c, float sl) {
           float L = dot(c, vec3(0.3, 0.55, 0.15));
           float ch = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
-          float k = smoothstep(0.5, 0.68, L) * (1.0 - smoothstep(0.04, 0.1, ch)) * (1.0 - winterK) * (1.0 - snowK);
+          float k = smoothstep(0.34, 0.5, L) * (1.0 - smoothstep(0.04, 0.1, ch)) * (1.0 - winterK) * (1.0 - snowK);
           if (k <= 0.0) return c;
           float up = max(smoothstep(1850.0, 2150.0, vWorld.y), smoothstep(0.25, 0.5, sl));
           vec3 rk = mix(vec3(0.27, 0.265, 0.25), vec3(0.34, 0.34, 0.33), limeAt(vWorld.xz));
