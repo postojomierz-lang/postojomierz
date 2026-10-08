@@ -236,9 +236,9 @@ function update() {
   updateGo();
 }
 
-SEARCH = setupSearch({ $, data, G, getStops: () => stops, setStops, ll,
-  // the whole route in view (on a phone, above the panel)
-  onPicked: () => { const pts = path ? path.map(ll) : stops.map(ll); if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 }); } });
+// the whole route in view (on a phone, above the panel)
+function fitRoute() { const pts = path ? path.map(ll) : stops.map(ll); if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 }); }
+SEARCH = setupSearch({ $, data, G, getStops: () => stops, setStops, ll, onPicked: fitRoute });
 DRAG = setupRouteDrag({ map, G, ll, getPath: () => path, getStops: () => stops, setStops });
 window.__planner = { map, ll, get path() { return path; }, get stops() { return stops; } };   // tests
 
@@ -325,7 +325,7 @@ async function updateDay() {
     + `<div class="src">Prognoza Open-Meteo dla ${top_n} m n.p.m${w.stale ? `, zapisana ${w.at.toLocaleString('pl-PL')} (brak zasięgu)` : ''}. Sprawdź też komunikat TOPR / HZS.</div>`;
 }
 // 🗓 the stay planner (stay.js): a walk of the plan opens as the route
-setupStay({ G, along: hardAlong, $, onOpen: (s) => { setStops(s); document.querySelector('#tabs [data-tab="route"]').click(); } });
+setupStay({ G, along: hardAlong, $, onOpen: (s) => { setStops(s); document.querySelector('#tabs [data-tab="route"]').click(); fitRoute(); } });
 // 🎒 what to take (packlist.js): ticks are kept on this device, for any route (the same gear)
 const PACK_KEY = 'szlakownik-pack';
 let packTicks = {};
