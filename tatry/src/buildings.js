@@ -92,6 +92,13 @@ const HUTS = [
   [/Hala Kondratowa/, { wall: 'logs', wallTint: HONEY, base: 0, plinth: 1.2, floors: 1, floorH: 3.0, pitch: 60, gablet: 0.3, roofTint: DARK_ROOF,
     eave: 1.0, chimney: 3, windows: 2.0, dormers: [{ n: 1, w: 7, side: 1 }, { n: 1, w: 5, side: -1 }],
     terrace: { side: 1, d: 4, len: 0.6, tables: 3, rail: true, stone: true } }],
+  // Hotel Patria (1970s): two huge A-frames, their gables to the lake, the steep dark roofs reaching almost to the ground
+  [/^(Hotel )?Patria$/, { wall: 'plaster', wallTint: CREAM, plinth: 0.8, floors: 1, floorH: 3.2, pitch: 10, hip: 1, roofTint: DARK_ROOF, eave: 1.2, windows: 2.6,
+    dormers: [{ n: 6, w: 2.4, side: 0 }], wings: [{ x: 0, z: 0, w: 0.3, d: 0.5, floors: 2 }, { x: -0.28, z: 0, w: 0.42, d: 1, across: true, pitch: 52, hip: 0, eave: 1.5 },
+    { x: 0.28, z: 0, w: 0.42, d: 1, across: true, pitch: 52, hip: 0, eave: 1.5 }] }],
+  // the summit and middle stations of the Lomnica cable cars and their observatories: grey masonry, flat roofs
+  [/Stanica Lomnick|Observat[óo]rium Lomnick|Stanica Skalnat|Observat[óo]rium Skalnat/, { wall: 'stone', plinth: 0.5, floorH: 3, pitch: 4, hip: 1, roofTint: GREY_ROOF, eave: 0.4, chimney: 1, windows: 3,
+    terrace: { side: 1, d: 3, len: 0.6, rail: true, stone: true } }],
 ];
 // large or public buildings in the villages and towns: plastered, hipped roofs
 const PUBLIC = /hotel|kostol|kościół|kaplic|kaplnk|klasztor|plebania|škol|szkoł|úrad|urząd|sanat|kúpe|dom seniorov|centrum|ośrodek|zotavov|ústav|múzeum|muzeum|stanica|observat|resort|residence|grand|apartm|penzi|pensjonat|willa|vila|villa|internat|hala /i;
