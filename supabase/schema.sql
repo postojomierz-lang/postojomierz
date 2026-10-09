@@ -355,3 +355,40 @@ begin
   return new;
 end $$;
 create or replace trigger profile_photo before update on public.profiles for each row execute function public.on_profile_photo();
+
+-- what an avatar may be: an emoji, a JPEG photo or the face from the look editor, an SVG of plain shapes only
+-- (no links, embedded images, scripts or text): anything else sent past the app could not be reported
+create or replace function public.avatar_ok(a text) returns boolean
+  language plpgsql immutable set search_path = public as $$
+declare s text;
+begin
+  if a is null then return true; end if;
+  if a !~ '^data:' then return char_length(a) <= 16 and a !~ '[<>]'; end if;
+  if a ~ '^data:image/jpeg;base64,[A-Za-z0-9+/=]+$' then return true; end if;
+  if a !~ '^data:image/svg\+xml;base64,[A-Za-z0-9+/=]+$' then return false; end if;
+  s := convert_from(decode(substr(a, 27), 'base64'), 'UTF8');
+  return s !~* 'href|<!|<\?|\son[a-z]+\s*=|url\(\s*[^#\s]'
+    and not exists (select 1 from regexp_matches(s, '<\s*/?\s*([A-Za-z][A-Za-z0-9:_-]*)', 'g') m
+                    where lower(m[1]) not in ('svg', 'g', 'path', 'circle', 'ellipse', 'rect', 'clippath'));
+exception when others then return false;
+end $$;
+alter table public.profiles drop constraint if exists profiles_avatar_ok;
+alter table public.profiles add constraint profiles_avatar_ok check (public.avatar_ok(avatar));
+
+-- the ranking again, now that photo_hidden exists: an avatar hidden after reports is not shown to strangers either
+create or replace function public.leaderboard(period text default 'all', mode text default 'all')
+  returns table (name text, avatar text, points bigint, species bigint, me boolean)
+  language sql stable security definer set search_path = public as $$
+  select p.name, case when p.photo_hidden then null else p.avatar end, sum(d.points)::bigint, count(*) filter (where d.item_id not like '%:%')::bigint, p.id = auth.uid()
+  from discoveries d join profiles p on p.id = d.user_id
+  where (p.public or p.id = auth.uid())
+    and d.found_on >= case period
+      when 'day' then current_date
+      when 'week' then date_trunc('week', current_date)::date
+      when 'month' then date_trunc('month', current_date)::date
+      when 'year' then date_trunc('year', current_date)::date
+      else '1900-01-01'::date end
+    and (mode = 'all' or (mode = 'gps') = d.gps)
+  group by p.id, p.name, p.avatar, p.photo_hidden
+  order by 3 desc
+  limit 50 $$;
