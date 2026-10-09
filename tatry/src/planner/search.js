@@ -124,7 +124,9 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
     else if (s.length === 1) s.push(v);
     else { const from = +$('q-from').dataset.v; s.push(...(from >= 0 && $('q-from').value ? [from, v] : [v])); }
     setStops(s); onPicked();
-    if (active.id === 'q-from' && !$('q-to').value) $('q-to').focus();
+    list.hidden = true;
+    // on to the target, or done: the field lets go (on a phone the keyboard hid the route and its summary)
+    if (active.id === 'q-from' && !$('q-to').value) $('q-to').focus(); else active.blur();
   }
   for (const id of ['q-from', 'q-to']) {
     const input = $(id);
