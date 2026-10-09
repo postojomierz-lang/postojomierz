@@ -178,6 +178,21 @@ function plasterTexture() {
   return t;
 }
 
+// sheet metal roofing (the grey and green roofs: the Kasprowy station, Murowaniec, Téryho): standing seams
+// running from the eaves to the ridge every 0.6 m (the roof's u, 2.4 m across), a faint sheen between them
+function sheetTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d'), img = g.createImageData(256, 256);
+  for (let i = 0; i < 256 * 256; i++) {
+    const x = i % 256, y = (i / 256) | 0, sx = x % 64;
+    const v = (sx < 3 ? 150 + sx * 25 : sx < 5 ? 245 : 222 + 8 * Math.sin(sx / 64 * Math.PI)) + (Math.random() - 0.5) * 6 + 4 * Math.sin(y * 0.04);
+    img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+  return t;
+}
+
 // a fence texture: pickets with two rails behind (top half), three rails of round poles (bottom half);
 // 2 m of fence across, transparent between the boards
 function fenceTexture() {
@@ -325,9 +340,9 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
     return m;
   };
   const M = {
-    logs: mat(logD, logN, new THREE.Color(2.1, 1.8, 1.5)), planks: mat(plD, plN, new THREE.Color(1.3, 1.2, 1.1)), stone: mat(stD, stN, 0xd0d0d0),
+    logs: mat(logD, logN, new THREE.Color(2.1, 1.8, 1.5)), planks: mat(plD, plN, new THREE.Color(1.3, 1.2, 1.1)), stone: mat(stD, stN, new THREE.Color(0.86, 0.9, 0.97)),   // cool granite: the texture is warm
     plaster: mat(plasterTexture(), null, 0xf2efe8),
-    roof: mat(rfD, rfN, 0x9a8c80, THREE.DoubleSide), window: mat(windowTexture(), null), door: mat(doorTexture(), null),
+    roof: mat(rfD, rfN, 0x8a8580, THREE.DoubleSide), sheet: mat(sheetTexture(), null, 0xb4b8bd), window: mat(windowTexture(), null), door: mat(doorTexture(), null),
     trim: mat(null, null, 0x3b2819),
     fence: mat(fenceTexture(), null, 0xffffff), board: mat(boardTexture(), null), hay: mat(hayTexture(), null),
     bin: mat(null, null, 0x3d5a3a),
@@ -377,17 +392,18 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
     const sinA = Rt / Math.hypot(Rt, hz), TR = TILE.roof;
     const ruv = (u, y) => [u / TR, (y - eY) / sinA / TR];
     mesher.col = k.roofTint;
+    const roofKind = k.roofTint === GREY_ROOF || k.roofTint === GREEN_ROOF ? 'sheet' : 'roof';
     const gb = k.gablet ? Math.min(0.9, k.gablet) : 0;
     if (gb) {
       // hipped from the eaves up, a small vertical gable (gablet) at the top: the Polish "dach polski" look
       const xg = Math.max(0.3, hx - hz * (1 - gb)), yg = eY + Rt * (1 - gb), zg = hz * gb;
       for (const sz of [-1, 1]) {
         const P = [[-hx, eY, sz * hz], [hx, eY, sz * hz], [xg, yg, sz * zg], [xg, R, 0], [-xg, R, 0], [-xg, yg, sz * zg]];
-        mesher.poly('roof', P.map((p) => L(...p)), P.map((p) => ruv(p[0], p[1])), dir(0, 1, sz));
+        mesher.poly(roofKind, P.map((p) => L(...p)), P.map((p) => ruv(p[0], p[1])), dir(0, 1, sz));
       }
       for (const sx of [-1, 1]) {
         const P = [[sx * hx, eY, -hz], [sx * hx, eY, hz], [sx * xg, yg, zg], [sx * xg, yg, -zg]];
-        mesher.poly('roof', P.map((p) => L(...p)), P.map((p) => ruv(p[2], p[1])), dir(sx, 1, 0));
+        mesher.poly(roofKind, P.map((p) => L(...p)), P.map((p) => ruv(p[2], p[1])), dir(sx, 1, 0));
         mesher.col = k.wallTint;
         const G = [[sx * xg, yg, -zg], [sx * xg, yg, zg], [sx * xg, R, 0]];
         mesher.poly(wallKind, G.map((p) => L(...p)), G.map((p) => [p[2] / TILE[wallKind], (p[1] - yg) / TILE[wallKind]]), dir(sx, 0, 0));
@@ -396,11 +412,11 @@ export async function buildBuildings({ scene, meta, terrain, shade, loadTexture,
     } else {
       for (const sz of [-1, 1]) {
         const P = [[-hx, eY, sz * hz], [hx, eY, sz * hz], [hx, yk, sz * zk], [xr, R, 0], [-xr, R, 0], [-hx, yk, sz * zk]];
-        mesher.poly('roof', P.map((p) => L(...p)), P.map((p) => ruv(p[0], p[1])), dir(0, 1, sz));
+        mesher.poly(roofKind, P.map((p) => L(...p)), P.map((p) => ruv(p[0], p[1])), dir(0, 1, sz));
       }
       if (zk > 0.05) for (const sx of [-1, 1]) {
         const P = [[sx * hx, yk, -zk], [sx * hx, yk, zk], [sx * xr, R, 0]];
-        mesher.poly('roof', P.map((p) => L(...p)), P.map((p) => ruv(p[2], p[1])), dir(sx, 1, 0));
+        mesher.poly(roofKind, P.map((p) => L(...p)), P.map((p) => ruv(p[2], p[1])), dir(sx, 1, 0));
       }
     }
     // the roof's height over a point of the block (for chimneys)
