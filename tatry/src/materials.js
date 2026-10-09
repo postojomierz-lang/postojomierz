@@ -3,10 +3,10 @@ import { limeTexture } from './geology.js';
 
 // aerial perspective: the scene's exp² fog (weather: haze, mist, rain) plus a constant thin haze of the air
 // itself, linear in the distance. Exp² alone left ridges 3-10 km away as saturated as the near slopes
-// (0.6 % of fog at 4 km); photos show them already blue-grey (~22 % at 3.5 km, ~50 % at 10 km)
+// (0.6 % of fog at 4 km); photos show them already blue (~27 % at 3.5 km, ~60 % at 10 km)
 THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
   'float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );',
-  `float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth - 7.0e-5 * vFogDepth );`);
+  `float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth - 9.0e-5 * vFogDepth );`);
 
 // Shared lighting uniforms, updated by the time-of-day / weather code.
 export const light = {
@@ -698,7 +698,9 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
 // olive-brown and calm in the forest below ~1400 m (Smreczyński Staw, Štrbské pleso: humic water, sheltered)
 export function lakeTint(name, level) {
   if (/Zielon|Zelen/i.test(name || '')) return [0.012, 0.06, 0.04, 0.8];
-  if (level < 1400) return [0.03, 0.034, 0.02, 0.5];
+  // Skalnaté pleso: shallow, silted, olive-brown under Lomnica; Morskie Oko (1395 m) is a deep cirque lake, navy
+  if (/Skalnat/i.test(name || '')) return [0.035, 0.04, 0.02, 0.6];
+  if (level < 1400 && !/Morskie Oko/i.test(name || '')) return [0.03, 0.034, 0.02, 0.5];
   return [0.008, 0.03, 0.068, 1];
 }
 
