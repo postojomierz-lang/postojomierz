@@ -10,7 +10,7 @@ Environment: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID, R2_BUCKET.
   python3 tatry/tools/upload_r2.py --dry-run    # only say what would be sent
   python3 tatry/tools/upload_r2.py --delete     # also remove objects that no longer exist locally
 """
-import argparse, datetime, hashlib, hmac, os, sys, time, urllib.parse, xml.etree.ElementTree as ET
+import argparse, datetime, gzip, hashlib, hmac, os, sys, time, urllib.parse, xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -25,6 +25,16 @@ TYPES = {'.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png',
 CACHE_DEFAULT = 'public, max-age=86400'
 CACHE_SHORT = {'meta.json': 'public, max-age=300'}
 EMPTY_SHA = hashlib.sha256(b'').hexdigest()
+# JSON goes up gzipped (Content-Encoding: gzip; the browser unpacks it): R2 does not compress, and meta.json, with
+# every stream's line in it, is 17 MB as it is, 5 MB packed (the first thing a phone waits for before the 3D view)
+PACKED = {'.json'}
+
+
+def packed(path):
+    body = path.read_bytes()
+    if path.suffix.lower() in PACKED:
+        return gzip.compress(body, 9, mtime=0), {'Content-Encoding': 'gzip'}   # (mtime 0: the same bytes, the same MD5)
+    return body, {}
 
 
 def set_prefix(p):
@@ -97,11 +107,11 @@ def remote_etags():
 
 
 def put(path, key):
-    body = path.read_bytes()
+    body, extra = packed(path)
     rel = path.relative_to(ROOT).as_posix()
     r = signed('PUT', key, body=body, headers={
         'Content-Type': TYPES.get(path.suffix.lower(), 'application/octet-stream'),
-        'Cache-Control': CACHE_SHORT.get(rel, CACHE_DEFAULT)})
+        'Cache-Control': CACHE_SHORT.get(rel, CACHE_DEFAULT), **extra})
     if r.status_code != 200:
         sys.exit(f'PUT {key}: HTTP {r.status_code} {r.text[:200]}')
     return len(body)
@@ -119,7 +129,7 @@ def main():
 
     local = {PREFIX + p.relative_to(ROOT).as_posix(): p for p in sorted(ROOT.rglob('*')) if p.is_file()}
     remote = remote_etags()
-    todo = [(k, p) for k, p in local.items() if remote.get(k) != hashlib.md5(p.read_bytes()).hexdigest()]
+    todo = [(k, p) for k, p in local.items() if remote.get(k) != hashlib.md5(packed(p)[0]).hexdigest()]
     gone = sorted(set(remote) - set(local))
     size = sum(p.stat().st_size for _, p in todo)
     print(f'lokalnie {len(local)} plików, w buckecie {len(remote)}; do wysłania {len(todo)} ({size / 1e6:.1f} MB), '

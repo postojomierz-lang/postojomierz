@@ -88,10 +88,15 @@ async function bitmap(url) {
   return createImageBitmap(b, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
 }
 
+// the region's index (5 MB packed): asked for while the route is still being worked out, not after it
+let metaP = null;
+export const regionMeta = () => metaP || (metaP = fetch(REGION_BASE + 'meta.json').then((r) => r.json()));
+
 // loads the region data around the route; returns the same pieces main.js reads from the Rysy data
 export async function loadRegionArea(route, { status = () => {}, quality = 'high' } = {}) {
   const R = REGION_BASE;
-  const meta = await (await fetch(R + 'meta.json')).json();
+  status('Pobieranie mapy regionu…');
+  const meta = await regionMeta();
   const B = meta.base.block, step = meta.base.step, BM = B * step;       // samples and metres per block
   const [rx0, rz0] = meta.base.bounds;
   // area: the route's bounding box plus a margin, snapped to whole blocks

@@ -10,7 +10,11 @@ meadows smooth), the elevation and the 10 m land cover map (ESA WorldCover), the
   7 snow      8 bare soil / gravel
 
 Output next to the tiles: c_i_j.png (256 x 256, one byte per metre, the class) and r_i_j.png (the
-ground roughness, 0..255, for the density of the rocks). With DEBUG=1 also a picture per tile for checking.
+ground roughness, 0..255, for the density of the rocks), and k_i_j.png, the one the 3D view loads: both in
+a byte (low 4 bits the class, high 4 the roughness in steps of 7, kept in the scree only, the one place it is
+read; 5.5 kB instead of 42 kB and one request instead of two per tile).
+With DEBUG=1 also a picture per tile for checking.
+PACK=1 only packs k_ from the c_ and r_ already there.
 Run: python3 tools/prepare_classes.py            (the Morskie Oko -> Rysy data, public/data)
      AREA=region python3 tools/prepare_classes.py   (the region, ../../region)
 """
@@ -27,6 +31,7 @@ from scipy.ndimage import gaussian_filter, map_coordinates, uniform_filter, bina
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, '..', '..', 'region') if os.environ.get('AREA') == 'region' else os.path.join(HERE, '..', 'public', 'data')
 DEBUG = os.environ.get('DEBUG') == '1'
+PACK = os.environ.get('PACK') == '1'
 ONLY = os.environ.get('ONLY')          # "i,j;i,j": just these tiles (for checking)
 
 meta = json.load(open(os.path.join(DATA, 'meta.json')))
@@ -120,16 +125,30 @@ def classify(i, j):
     return c, r8, P, dict(slope=slope, rough=rough, exg=exg, tex=tex, lum=lum)
 
 
+def packed(c, r8):
+    q = np.minimum(15, np.round(r8 / 7.0)).astype(np.uint8)    # (the rocks' density saturates at ~105)
+    return c | np.where(c == 3, q << 4, 0).astype(np.uint8)
+
+
 def main():
     tiles = T['list']
     if ONLY:
         want = {tuple(map(int, t.split(','))) for t in ONLY.split(';')}
         tiles = [t for t in tiles if tuple(t) in want]
+    if PACK:
+        for k, (i, j) in enumerate(tiles):
+            p = os.path.join(DATA, 'tiles', f'%s_{i}_{j}.png')
+            c, r8 = np.asarray(Image.open(p % 'c').convert('L')), np.asarray(Image.open(p % 'r').convert('L'))
+            Image.fromarray(packed(c, r8), 'L').save(p % 'k', optimize=True)
+            if k % 1000 == 0:
+                print(k, '/', len(tiles), flush=True)
+        return
     counts = np.zeros(9, np.int64)
     for k, (i, j) in enumerate(tiles):
         c, r8, P, f = classify(i, j)
         Image.fromarray(c, 'L').save(os.path.join(DATA, 'tiles', f'c_{i}_{j}.png'), optimize=True)
         Image.fromarray(r8, 'L').save(os.path.join(DATA, 'tiles', f'r_{i}_{j}.png'), optimize=True)
+        Image.fromarray(packed(c, r8), 'L').save(os.path.join(DATA, 'tiles', f'k_{i}_{j}.png'), optimize=True)
         counts += np.bincount(c.ravel(), minlength=9)
         if DEBUG:
             out = os.environ.get('DEBUG_DIR', '/tmp')
