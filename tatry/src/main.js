@@ -527,7 +527,7 @@ async function main() {
 
   // 1 m patch mesh around the camera (laser-scanned detail), rebuilt as the camera moves;
   // the coarse mesh is pushed down underneath it by its shader
-  const PATCH = tier(420, 420, 420, 560), PSTEP = tier(2.5, 1.6, 1.25, 1);
+  const PATCH = tier(420, 420, 420, 560), PSTEP = tier(2.5, 1.6, 1.25, 1), SEAM = 40;
   let patchMesh = null, patchC = { x: Infinity, z: Infinity };
   function updatePatch(cx, cz) {
     if (Math.hypot(cx - patchC.x, cz - patchC.z) < 90) return;
@@ -535,7 +535,16 @@ async function main() {
     const x0 = Math.max(IB[0], Math.min(IB[2] - PATCH, Math.round(cx / 10) * 10 - PATCH / 2));
     const z0 = Math.max(IB[1], Math.min(IB[3] - PATCH, Math.round(cz / 10) * 10 - PATCH / 2));
     const n = Math.round(PATCH / PSTEP);
-    const g = gridGeometry(x0, z0, x0 + PATCH, z0 + PATCH, n, n, (x, z) => terrain.height(x, z), 25);   // a deep skirt: on a 60-70° wall the 1 m grid and the coarse mesh part by more than 6 m
+    // toward its edge the patch eases into the coarse mesh, and its outer 2 m are the coarse surface itself:
+    // where the two met at different heights, coarse triangles stood up out of the patch (slabs above Bula)
+    const x1 = x0 + PATCH, z1 = z0 + PATCH;
+    const fit = (x, z) => {
+      const h = terrain.height(x, z), d = Math.min(x - x0, x1 - x, z - z0, z1 - z);
+      if (d >= SEAM) return h;
+      const t = Math.max(0, Math.min(1, (d - 2) / (SEAM - 2))), c = meshHeight(innerGeo, x, z);
+      return c + (h - c) * t * t * (3 - 2 * t);
+    };
+    const g = gridGeometry(x0, z0, x1, z1, n, n, fit, 25);   // a deep skirt: on a 60-70° wall the 1 m grid and the coarse mesh part by more than 6 m
     if (patchMesh) {
       // the same grid moved: new heights and normals into the buffers already on the GPU (no new buffers,
       // the shared index stays)
@@ -911,7 +920,7 @@ async function main() {
   // height of the surface actually drawn at (x, z): the 1 m patch near the camera, the 6 m mesh elsewhere
   const drawnHeight = (x, z) => {
     const pr = near.patch.value;
-    if (x > pr.x + 2 && x < pr.z - 2 && z > pr.y + 2 && z < pr.w - 2) return terrain.height(x, z);
+    if (x > pr.x + 2 && x < pr.z - 2 && z > pr.y + 2 && z < pr.w - 2) return meshHeight(patchMesh.geometry, x, z);
     return inner.inside(x, z) ? meshHeight(innerGeo, x, z) : terrain.base(x, z);
   };
   // the spots of the whole trail network (tools/prepare_spots.py: the same ones as for GPS navigation) near
