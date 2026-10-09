@@ -212,32 +212,23 @@ function sunAt(hour) {
 }
 
 // ---------------------------------------------------------------- main
+const IMPOSTORS = ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba', 'rowan'];
 async function main() {
   status('Pobieranie danych terenu…');
+  // what the building of the scene asks for later (~11 MB: the trees' and bushes' pictures, the granite and the dead
+  // wood): its download starts now, alongside the terrain, into the browser's cache (on a phone ~20 s of "Sadzenie
+  // lasu" went on waiting for it after the terrain was in)
+  for (const u of ['models/impostors.json', 'models/granite.glb', 'models/deadwood.glb', 'data/region/hard.json', 'data/region/rest.json',
+    ...IMPOSTORS.flatMap((n) => [`models/${n}_albedo.webp`, `models/${n}_normal.webp`])]) fetch(u).then((r) => r.blob()).catch(() => {});
   let meta, base, outerU, innerBmp, outerBmp, landBmp, route = null, TILES = DATA + 'tiles/';
-  if (STOPS) {
-    // a planned route: the region's data around it
-    status('Wyznaczanie trasy…');
-    regionMeta().catch(() => {});   // (its download alongside; loadRegionArea waits for it, and reports a failure)
-    route = await routePath(STOPS);
-    const area = await loadRegionArea(route, { status, quality: QUALITY });
-    ({ meta, base, innerBmp, landBmp } = area);
-    TILES = area.tilesBase;
-    [outerU, outerBmp] = await Promise.all([bin(REGION_BASE + 'outer.u16'), bitmap(REGION_BASE + 'outer.jpg')]);
-  } else {
-    meta = await (await fetch(DATA + 'meta.json')).json();
-    [base, outerU, innerBmp, outerBmp, landBmp] = await Promise.all([
-      heights(DATA + 'inner4.bin', ...meta.base.n), bin(DATA + 'outer.u16'),
-      bitmap(DATA + 'inner.jpg'), bitmap(DATA + 'outer.jpg'), bitmap(DATA + 'landcover.png')]);
-  }
-  // size of the detailed area relative to the Rysy one: meshes and plant density scale with it
-  const AREA_K = Math.max(1, ((meta.inner.bounds[2] - meta.inner.bounds[0]) * (meta.inner.bounds[3] - meta.inner.bounds[1])) / (5238 * 5086));
-  // 1 m terrain and 0.5 m orthophoto tiles along the trail (GUGiK)
-  const TS = meta.tiles.size, TO = meta.tiles.origin;
+  // 1 m terrain and 0.5 m orthophoto tiles along the trail (GUGiK); on a route they come in alongside the
+  // region's blocks (they waited for them: ~30 s more on a phone)
   const tileGrids = new Map(), tileImgs = new Map(), tileClass = new Map(), tileTrees = new Map();
-  let loaded = 0;
-  await Promise.all(meta.tiles.list.map(async ([i, j]) => {
-    const n = meta.tiles.samples;
+  // one count for both (the region's blocks and the tiles): in per cent of the files
+  let loaded = 0, nTiles = 0, blocks = 0, nBlocks = 0;
+  const tilesShown = () => { const n = nTiles + nBlocks; if (n) status(`Pobieranie terenu… ${Math.floor(100 * (loaded + blocks) / n)}%`); };
+  const loadTiles = (list, tm, TILES) => { nTiles = list.length; return Promise.all(list.map(async ([i, j]) => {
+    const n = tm.samples, TS = tm.size, TO = tm.origin;
     const [t, img, kImg, tBin] = await Promise.all([heights(`${TILES}h_${i}_${j}.bin`, n, n), bitmap(`${TILES}o_${i}_${j}.jpg`),
       bitmap(`${TILES}k_${i}_${j}.png`).catch(() => null),
       fetch(`${TILES}t_${i}_${j}.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null)]);
@@ -256,8 +247,33 @@ async function main() {
     tileImgs.set(i + ',' + j, img);
     if (cls) tileClass.set(i + ',' + j, cls);
     if (tBin) tileTrees.set(i + ',' + j, new Uint16Array(tBin));
-    status(`Pobieranie terenu 1 m… ${++loaded}/${meta.tiles.list.length}`);
-  }));
+    loaded++; tilesShown();
+  })); };
+  let tilesP;
+  if (STOPS) {
+    // a planned route: the region's data around it
+    status('Wyznaczanie trasy…');
+    regionMeta().catch(() => {});   // (its download alongside; loadRegionArea waits for it, and reports a failure)
+    const outerP = Promise.all([bin(REGION_BASE + 'outer.u16'), bitmap(REGION_BASE + 'outer.jpg')]);   // (the panorama, too)
+    outerP.catch(() => {});
+    route = await routePath(STOPS);
+    const area = await loadRegionArea(route, { status, quality: QUALITY, onTiles: (list, tm, base) => { tilesP = loadTiles(list, tm, base); },
+      onBlocks: (d, n) => { blocks = d; nBlocks = n; tilesShown(); } });
+    ({ meta, base, innerBmp, landBmp } = area);
+    TILES = area.tilesBase;
+    [outerU, outerBmp] = await outerP;
+  } else {
+    meta = await (await fetch(DATA + 'meta.json')).json();
+    tilesP = loadTiles(meta.tiles.list, meta.tiles, TILES);
+    [base, outerU, innerBmp, outerBmp, landBmp] = await Promise.all([
+      heights(DATA + 'inner4.bin', ...meta.base.n), bin(DATA + 'outer.u16'),
+      bitmap(DATA + 'inner.jpg'), bitmap(DATA + 'outer.jpg'), bitmap(DATA + 'landcover.png')]);
+  }
+  tilesShown();
+  await tilesP;
+  // size of the detailed area relative to the Rysy one: meshes and plant density scale with it
+  const AREA_K = Math.max(1, ((meta.inner.bounds[2] - meta.inner.bounds[0]) * (meta.inner.bounds[3] - meta.inner.bounds[1])) / (5238 * 5086));
+  const TS = meta.tiles.size, TO = meta.tiles.origin;
   // what the ground is, metre by metre, along the trails (tools/prepare_classes.py): 1 water, 2 rock face,
   // 3 scree, 4 meadow, 5 dwarf pine, 6 forest, 7 snow, 8 gravel; r = ground roughness 0..255 (scree,
   // boulders). null outside the tiles: the old rules (land cover map, photo colour) apply there
@@ -862,7 +878,7 @@ async function main() {
       return u >= 0 && v >= 0 && u < LW && v < LH && land[(v * LW + u) * 4] === 10 && terrain.height(x, z) < 1500;
     } });
   for (const b of blazeSites) if (b.tree) spruce.push(b.x, terrain.height(b.x, b.z), b.z, 2, 17 + hash(b.x, b.z) * 9, 0);
-  const kinds = await loadImpostorKinds('models/', ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba', 'rowan'], shade, {
+  const kinds = await loadImpostorKinds('models/', IMPOSTORS, shade, {
     spruce: { wind: 0.6, brightness: 1.0, upNormal: 0.3, fade: true }, sapling: { wind: 0.9, brightness: 1.15, upNormal: 0.3, fade: true },
     grass: { wind: 2.5, brightness: 1.85, upNormal: 0.85 }, fern: { wind: 1.5, brightness: 1.5, upNormal: 0.5 },
     deadspruce: { wind: 0.3, brightness: 1.2, upNormal: 0.2 }, limba: { wind: 0.5, brightness: 0.85, upNormal: 0.3 }, rowan: { wind: 0.9, brightness: 1.0, upNormal: 0.35 },

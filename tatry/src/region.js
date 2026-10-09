@@ -93,7 +93,7 @@ let metaP = null;
 export const regionMeta = () => metaP || (metaP = fetch(REGION_BASE + 'meta.json').then((r) => r.json()));
 
 // loads the region data around the route; returns the same pieces main.js reads from the Rysy data
-export async function loadRegionArea(route, { status = () => {}, quality = 'high' } = {}) {
+export async function loadRegionArea(route, { status = () => {}, quality = 'high', onTiles = null, onBlocks = null } = {}) {
   const R = REGION_BASE;
   status('Pobieranie mapy regionu…');
   const meta = await regionMeta();
@@ -110,6 +110,17 @@ export async function loadRegionArea(route, { status = () => {}, quality = 'high
   const nbx = bi1 - bi0 + 1, nbz = bj1 - bj0 + 1;
   const W = nbx * B + 1, H = nbz * B + 1;
   const IB = [rx0 + bi0 * BM, rz0 + bj0 * BM, rx0 + (bi1 + 1) * BM, rz0 + (bj1 + 1) * BM];
+  // 1 m tiles close to the route
+  const TS = meta.tiles.size, TO = meta.tiles.origin;
+  const near = (tx, tz) => {
+    const cx = tx + TS / 2, cz = tz + TS / 2;
+    for (let k = 0; k < route.pts.length; k += 5) if (Math.abs(route.pts[k][0] - cx) < 450 && Math.abs(route.pts[k][1] - cz) < 450) return true;
+    return false;
+  };
+  const tiles = meta.tiles.list.filter(([i, j]) => near(TO[0] + i * TS, TO[1] + j * TS));
+  if (onTiles) onTiles(tiles, meta.tiles, R + 'tiles/');   // (the caller fetches them alongside the blocks)
+  const landP = bitmap(R + 'landcover.png');
+  landP.catch(() => {});
   // heights and photo of every block of the area
   const hgt = new Float32Array(W * H), mask = new Uint8Array(W * H);
   const PB = 512, photoScale = (quality === 'low' || quality === 'mid') && nbx * nbz > 16 ? 0.5 : 1;
@@ -128,27 +139,20 @@ export async function loadRegionArea(route, { status = () => {}, quality = 'high
         if (hb.mask) mask.set(hb.mask.subarray(r * (B + 1), (r + 1) * (B + 1)), (r0 + r) * W + c0);
       }
       g.drawImage(img, (bi - bi0) * PB * photoScale, (bj - bj0) * PB * photoScale, PB * photoScale, PB * photoScale);
-      status(`Pobieranie terenu… ${++done}/${jobs.length}`);
+      ++done; if (onBlocks) onBlocks(done, jobs.length); else status(`Pobieranie terenu… ${done}/${jobs.length}`);
     })());
   }
+  if (onBlocks) onBlocks(0, jobs.length);
   await Promise.all(jobs);
   const innerBmp = await createImageBitmap(canvas);
   // land cover of the area, cut out of the region's map
-  const land = await bitmap(R + 'landcover.png');
+  const land = await landP;
   const [ax0, az0, ax1, az1] = meta.inner.bounds;
   const lc = new OffscreenCanvas(Math.round((IB[2] - IB[0]) / 10), Math.round((IB[3] - IB[1]) / 10));
   const lg = lc.getContext('2d'); lg.imageSmoothingEnabled = false;
   const sx = land.width / (ax1 - ax0), sz = land.height / (az1 - az0);
   lg.drawImage(land, (IB[0] - ax0) * sx, (IB[1] - az0) * sz, (IB[2] - IB[0]) * sx, (IB[3] - IB[1]) * sz, 0, 0, lc.width, lc.height);
   const landBmp = await createImageBitmap(lc);
-  // 1 m tiles close to the route
-  const TS = meta.tiles.size, TO = meta.tiles.origin;
-  const near = (tx, tz) => {
-    const cx = tx + TS / 2, cz = tz + TS / 2;
-    for (let k = 0; k < route.pts.length; k += 5) if (Math.abs(route.pts[k][0] - cx) < 450 && Math.abs(route.pts[k][1] - cz) < 450) return true;
-    return false;
-  };
-  const tiles = meta.tiles.list.filter(([i, j]) => near(TO[0] + i * TS, TO[1] + j * TS));
   // vectors inside the area
   const inside = (x, z, m = 0) => x > IB[0] - m && x < IB[2] + m && z > IB[1] - m && z < IB[3] + m;
   const cen = (ring) => [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length];
