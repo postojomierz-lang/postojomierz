@@ -1872,7 +1872,8 @@ async function main() {
       sess.done = true;
       sess.trace.push([Math.round(sess.t * 10) / 10, Math.round(LENGTH)]);
       const rec = addWalk(J, { key: RKEY, title: TITLE, hash: STOPS ? location.hash : '', date: new Date().toISOString().slice(0, 16).replace('T', ' '),
-        dist: Math.round(LENGTH), up: Math.round(sess.up), time: Math.round(sess.t), fair: sess.fair, trace: sess.fair ? sess.trace : null });
+        // the climb of the whole route: counted step by step it stayed 0 when flown or jumped through (podgląd)
+        dist: Math.round(LENGTH), up: Math.round(profile.reduce((a, h, i) => a + (i && h > profile[i - 1] ? h - profile[i - 1] : 0), 0)), time: Math.round(sess.t), fair: sess.fair, trace: sess.fair ? sess.trace : null });
       saveJournal(J);
       toast(sess.fair ? `🏁 Meta! Czas ${fmtClock(sess.t)}${rec ? '<br>Nowy rekord trasy!' : best ? `<br>Rekord: ${fmtClock(best.time)}` : ''}`
         : '🏁 Meta! (przejście z przyspieszeniem lub skokami – bez rekordu)');

@@ -90,9 +90,11 @@ export function walkWeather(fc, t0, t1, startEle) {
   const storm = rows.filter((i) => H.weather_code[i] >= 95).map((i) => new Date(H.time[i]));
   const worst = rows.reduce((a, i) => (H.weather_code[i] > H.weather_code[a] ? i : a), rows[0]);
   const lapse = (fc.ele - startEle) * 0.0065;                 // °C warmer at the start than at the top
+  // the start: the hour the walk begins (the warmest hour of the walk went with the start, even when it was the top)
+  const atStart = rows.reduce((a, i) => (Math.abs(new Date(H.time[i]) - t0) < Math.abs(new Date(H.time[a]) - t0) ? i : a), rows[0]);
   const w = {
     code: H.weather_code[worst], text: WMO[H.weather_code[worst]] || '', icon: ICON(H.weather_code[worst]),
-    tTop: min('temperature_2m'), feelsTop: min('apparent_temperature'), tStart: max('temperature_2m') + lapse,
+    tTop: min('temperature_2m'), feelsTop: min('apparent_temperature'), tStart: H.temperature_2m[atStart] + lapse,
     rainP: max('precipitation_probability'), rain: rows.reduce((s, i) => s + (H.precipitation[i] || 0), 0),
     wind: max('wind_speed_10m'), gust: max('wind_gusts_10m'), freeze: min('freezing_level_height'),
     storm, stale: !!fc.stale, at: new Date(fc.at),

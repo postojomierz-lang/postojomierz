@@ -319,7 +319,7 @@ async function updateDay() {
   winterCard(t0, G.H[top], w.freeze);
   renderPack({ ...pack, w });
   const top_n = Math.round(G.H[top]);
-  $('d-weather').innerHTML = `${w.icon} ${w.text} · na górze (${top_n} m) ${Math.round(w.tTop)}°C, odczuwalnie ${Math.round(w.feelsTop)}°C · na starcie ok. ${Math.round(w.tStart)}°C`
+  $('d-weather').innerHTML = `${w.icon} ${w.text} · na górze (${top_n} m) ${Math.round(w.tTop)}°C, odczuwalnie ${Math.round(w.feelsTop)}°C${G.H[top] - G.H[path[0]] > 100 ? ` · na starcie ok. ${Math.round(w.tStart)}°C` : ''}`
     + `<br>opady ${w.rainP}%${w.rain >= 0.1 ? ` (${w.rain.toFixed(1)} mm)` : ''} · wiatr ${Math.round(w.wind)} km/h, porywy ${Math.round(w.gust)} km/h`
     + (w.warn.length ? `<ul>${w.warn.map((x) => `<li>${x}</li>`).join('')}</ul>` : '')
     + `<div class="src">Prognoza Open-Meteo dla ${top_n} m n.p.m${w.stale ? `, zapisana ${w.at.toLocaleString('pl-PL')} (brak zasięgu)` : ''}. Sprawdź też komunikat TOPR / HZS.</div>`;
