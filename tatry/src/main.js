@@ -1224,7 +1224,11 @@ async function main() {
     const fogDay = new THREE.Color(0.56, 0.67, 0.83).lerp(new THREE.Color(0.86, 0.66, 0.52), low * 0.75);
     const fogGrey = new THREE.Color(0.7, 0.72, 0.74);
     const fc = fogDay.lerp(fogGrey, w.fogMix).multiplyScalar((0.12 + 0.88 * day) * (w.dark || 1));
-    scene.fog.color.copy(fc);
+    // the haze over the far ridges: a deeper blue than the pale sky at the horizon (the air in front of a dark
+    // slope adds blue light, it does not wash it out to white); the sky and the water keep the light colour
+    const fogFar = new THREE.Color(0.2, 0.32, 0.6).lerp(new THREE.Color(0.62, 0.48, 0.4), low * 0.75)
+      .lerp(fogGrey, w.fogMix).multiplyScalar((0.12 + 0.88 * day) * (w.dark || 1));
+    scene.fog.color.copy(fogFar);
     scene.fog.density = w.fog;
     water.uniforms.skyCol.value.copy(fc).multiplyScalar(0.55);
     sky.visible = w.fogMix < 0.8;
