@@ -326,12 +326,13 @@ alter table public.photo_reports enable row level security;     -- no policies: 
 
 create or replace function public.report_photo(target uuid) returns boolean
   language plpgsql security definer set search_path = public as $$
+#variable_conflict use_column
 declare hide boolean; h text;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
-  if target = auth.uid() or not public.shares_group(target) then raise exception 'not in your group'; end if;
+  if report_photo.target = auth.uid() or not public.shares_group(report_photo.target) then raise exception 'not in your group'; end if;
   select md5(coalesce(avatar, '')) into h from profiles where id = report_photo.target;
-  insert into photo_reports (reporter, target, photo) values (auth.uid(), target, h)
+  insert into photo_reports (reporter, target, photo) values (auth.uid(), report_photo.target, h)
     on conflict (reporter, target) do update set photo = excluded.photo, created_at = now();
   hide := (select count(*) from photo_reports r where r.target = report_photo.target and r.photo = h) >= 2
     or exists (select 1 from groups g join group_members m on m.group_id = g.id where g.owner = auth.uid() and m.user_id = report_photo.target);
