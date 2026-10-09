@@ -629,6 +629,15 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         col *= clamp(1.0 + fl * 1.1 * (1.0 - max(asphK, pathK)), 0.45, 1.5);
         // soft shoulder for very light ground (granite scree, limestone): keeps texture instead of white
         { float cl = dot(col, vec3(0.3, 0.55, 0.15)); col *= 1.0 / (1.0 + max(cl - 0.42, 0.0) * 1.6); }
+        // in the valleys (Kuźnice, Palenica): concrete squares, car parks and gravel came out of the photo a cold
+        // pale grey (~160 of 255) that read as patches of snow; no scree or snow lies that low, so warm grey, darker
+        {
+          float valley = 1.0 - smoothstep(1250.0, 1400.0, vWorld.y);
+          float cl = dot(col, vec3(0.3, 0.55, 0.15));
+          float chroma = max(max(col.r, col.g), col.b) - min(min(col.r, col.g), col.b);
+          float pale = valley * smoothstep(0.15, 0.25, cl) * (1.0 - smoothstep(0.14, 0.3, chroma / max(cl, 0.05)));
+          col = mix(col, vec3(cl) * vec3(1.06, 1.0, 0.9) * (0.24 / max(cl, 0.24)), pale);
+        }
         // weather: wet ground is darker; fresh snow settles above the snow line on the gentler slopes
         // up high, whatever path the colour took (photo, far procedural granite, close textures): no cold
         // cyan or mint cast on the stone, which is a warm grey
