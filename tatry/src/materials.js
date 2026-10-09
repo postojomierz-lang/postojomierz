@@ -253,9 +253,17 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // (and the sharpening rings it brighter), too saturated to pass as snow: inside a snowy neighbourhood
         // it goes too, only the dark mugo itself stays
         vec3 desnow(vec3 c, vec3 cb, float sl) {
-          float k = max(snowiness(c), snowiness(cb) * smoothstep(0.07, 0.15, dot(c, vec3(0.3, 0.55, 0.15))))
-            * (1.0 - winterK) * (1.0 - snowK)
-            * smoothstep(1300.0, 1450.0, vWorld.y) * (1.0 - limeAt(vWorld.xz));   // not gravel roads below, nor pale limestone
+          float summer = (1.0 - winterK) * (1.0 - snowK);
+          // the dwarf pine in the Slovak photo is near black (deep shade between the bushes): a floor of mugo green
+          // in its belt, not on the walls
+          float L0 = dot(c, vec3(0.3, 0.55, 0.15));
+          c = mix(c, vec3(0.055, 0.075, 0.03), (1.0 - smoothstep(0.04, 0.10, L0)) * summer * (1.0 - smoothstep(0.4, 0.6, sl))
+            * smoothstep(1400.0, 1500.0, vWorld.y) * (1.0 - smoothstep(1900.0, 2000.0, vWorld.y)));
+          // down to Hrebienok (1280 m): there not on the roads and paths (pale gravel; higher up the photo's
+          // paths are snow too), nor on pale limestone
+          float road = texture2D(trailMap, (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy)).r;
+          float k = max(snowiness(c), snowiness(cb) * smoothstep(0.07, 0.15, L0)) * summer
+            * smoothstep(1100.0, 1250.0, vWorld.y) * (1.0 - smoothstep(0.15, 0.5, road) * (1.0 - smoothstep(1350.0, 1450.0, vWorld.y))) * (1.0 - limeAt(vWorld.xz));
           if (k <= 0.0) return c;
           float up = max(smoothstep(2050.0, 2300.0, vWorld.y), smoothstep(0.35, 0.6, sl));   // meadows to ~2100 m
           vec3 tgt = mix(vec3(0.085, 0.11, 0.05), vec3(0.22, 0.215, 0.2), up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
