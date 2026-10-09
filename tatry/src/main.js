@@ -33,7 +33,7 @@ import { buildReveal } from './nature/reveal.js';
 import { GROUPS, RARITY, BY_ID } from './nature/catalog.js';
 import { makeTrailWindow, buildSteps, sectionAt } from './trailsurface.js';
 import { buildDeadwood } from './deadwood.js';
-import { routeFromHash, routePath, loadRegionArea, REGION_BASE, toLocal, toLonLat, trailGraph, MAX_KM } from './region.js';
+import { routeFromHash, routePath, loadRegionArea, regionMeta, REGION_BASE, toLocal, toLonLat, trailGraph, MAX_KM } from './region.js';
 import { routeInfo } from './routeinfo.js';
 import { loadJournal, saveJournal, routeKey, addWalk, addPeak, ghostAt, fmtClock } from './journal.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -218,6 +218,7 @@ async function main() {
   if (STOPS) {
     // a planned route: the region's data around it
     status('Wyznaczanie trasy…');
+    regionMeta().catch(() => {});   // (its download alongside; loadRegionArea waits for it, and reports a failure)
     route = await routePath(STOPS);
     const area = await loadRegionArea(route, { status, quality: QUALITY });
     ({ meta, base, innerBmp, landBmp } = area);
@@ -237,13 +238,23 @@ async function main() {
   let loaded = 0;
   await Promise.all(meta.tiles.list.map(async ([i, j]) => {
     const n = meta.tiles.samples;
-    const [t, img, cImg, rImg, tBin] = await Promise.all([heights(`${TILES}h_${i}_${j}.bin`, n, n), bitmap(`${TILES}o_${i}_${j}.jpg`),
-      bitmap(`${TILES}c_${i}_${j}.png`).catch(() => null), bitmap(`${TILES}r_${i}_${j}.png`).catch(() => null),
+    const [t, img, kImg, tBin] = await Promise.all([heights(`${TILES}h_${i}_${j}.bin`, n, n), bitmap(`${TILES}o_${i}_${j}.jpg`),
+      bitmap(`${TILES}k_${i}_${j}.png`).catch(() => null),
       fetch(`${TILES}t_${i}_${j}.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null)]);
+    // the class and the roughness packed in one byte (tools/prepare_classes.py); the two old files where it is missing
+    let cls = null;
+    if (kImg) {
+      const k = pixels(kImg), c = new Uint8Array(k.length), r = new Uint8Array(k.length);
+      for (let o = 0; o < k.length; o += 4) { c[o] = k[o] & 15; r[o] = (k[o] >> 4) * 7; }
+      cls = { c, r };
+    } else {
+      const [cImg, rImg] = await Promise.all([bitmap(`${TILES}c_${i}_${j}.png`).catch(() => null), bitmap(`${TILES}r_${i}_${j}.png`).catch(() => null)]);
+      if (cImg && rImg) cls = { c: pixels(cImg), r: pixels(rImg) };
+    }
     const x0 = TO[0] + i * TS, z0 = TO[1] + j * TS;
     tileGrids.set(i + ',' + j, new Grid(t.h, [n, n], [x0, z0, x0 + TS, z0 + TS]));
     tileImgs.set(i + ',' + j, img);
-    if (cImg && rImg) tileClass.set(i + ',' + j, { c: pixels(cImg), r: pixels(rImg) });
+    if (cls) tileClass.set(i + ',' + j, cls);
     if (tBin) tileTrees.set(i + ',' + j, new Uint16Array(tBin));
     status(`Pobieranie terenu 1 m… ${++loaded}/${meta.tiles.list.length}`);
   }));
