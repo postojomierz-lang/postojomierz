@@ -185,7 +185,7 @@ export function patchShading(material, env, { wind = 0, perVertexShadow = true }
 // covered by the 1 m patch mesh; `lowerUnderPatch` hides this mesh where the patch replaces it.
 // desmear: the walls' de-smearing (below; ?odmaz=0 turns it off, to compare)
 // hole: { value: Vector4 } x0, z0, x1, z1 where a finer mesh lies and this one is not drawn
-export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1, textures, near, hole = null, desmear = true }) {
+export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength = 1, textures, near, hole = null, desmear = true, debug = 0, debugId = 0 }) {
   const m = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const u = {
     nearMap: near.map, nearRect: near.rect, clsNear: near.cls, trailNear: near.trail, trailRect: near.trailRect, holeRect: hole || { value: new THREE.Vector4(0, 0, 0, 0) },
@@ -194,6 +194,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
     texMean: { value: textures.mean }, texScale: { value: textures.scale },
     satMap: { value: map }, trailMap: { value: trailMap },
     bounds: { value: new THREE.Vector4(...bounds) }, detail: { value: detail ? 1 : 0 }, desmear: { value: +desmear },
+    dbgMode: { value: debug }, dbgId: { value: debugId },
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, env, u);
@@ -205,6 +206,9 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
       .replace('#include <common>', `#include <common>
         varying vec3 vWorld; varying vec3 vWN; uniform vec4 holeRect;
         uniform sampler2D satMap; uniform sampler2D trailMap; uniform vec4 bounds; uniform float detail; uniform float desmear;
+        // ?debug=teren: which stage of this shader decided a pixel's colour (see debugTerrain in main.js)
+        uniform float dbgMode; uniform float dbgId;
+        float dbgFar = 0.0, dbgCliff = 0.0, dbgSmear = 0.0, dbgSnow = 0.0, dbgGrey = 0.0, dbgRock = 0.0;
         uniform sampler2D shoreMap; uniform vec4 shoreRect;
         uniform sampler2D nearMap; uniform vec4 nearRect; uniform sampler2D clsNear; uniform sampler2D trailNear; uniform vec4 trailRect;
         uniform sampler2DArray texD; uniform sampler2DArray texN; uniform vec3 texMean[6]; uniform float texScale[6];
@@ -264,6 +268,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float road = texture2D(trailMap, (vWorld.xz - bounds.xy) / (bounds.zw - bounds.xy)).r;
           float k = max(snowiness(c), snowiness(cb) * smoothstep(0.07, 0.15, L0)) * summer
             * smoothstep(1100.0, 1250.0, vWorld.y) * (1.0 - smoothstep(0.15, 0.5, road) * (1.0 - smoothstep(1350.0, 1450.0, vWorld.y))) * (1.0 - limeAt(vWorld.xz));
+          dbgSnow = max(dbgSnow, k);
           if (k <= 0.0) return c;
           float up = max(smoothstep(2050.0, 2300.0, vWorld.y), smoothstep(0.35, 0.6, sl));   // meadows to ~2100 m
           vec3 tgt = mix(vec3(0.085, 0.11, 0.05), vec3(0.22, 0.215, 0.2), up) * (0.85 + 0.3 * vnoise(vWorld.xz * 0.05));
@@ -391,6 +396,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
         // (its brightness kept); the fine detail comes from the granite texture, laid on from three sides
         float stretch = 1.0 / max(min(N.y, Nr.y), 0.12);
         float smear = smoothstep(1.3, 2.4, stretch) * min(desmear, 1.0);   // ~40° .. 65°
+        dbgSmear = smear;
         if (smear > 0.0) {
           const vec3 LW = vec3(0.3, 0.55, 0.15);
           vec2 tsz = vec2(textureSize(satMap, 0));
@@ -432,6 +438,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float sl = max(slope, slopeH);
           float steep = smoothstep(0.3, 0.6, sl) * (1.0 - green * 0.6 * (1.0 - smoothstep(0.38, 0.52, sl)));
           col = mix(sat, rock, steep * mid);
+          dbgRock = steep * mid;
 
           // close range: photo textures (Poly Haven), coloured by the satellite image
           float near = 1.0 - smoothstep(180.0, 1100.0, dist);
@@ -511,6 +518,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
               vec3 satLow = desnow(textureLod(satMap, uv, 3.0).rgb, slope) * (1.55 - 0.3 * smoothstep(0.35, 0.75, slope)) + 0.01;
               satLow = mix(satLow, ROCK * dot(satLow, vec3(0.3, 0.55, 0.15)), smear * 0.9);   // its green smears too
               vec3 baseC = mix(col, satLow * (0.8 + 0.4 * nBig), wCliff * 0.85);
+              dbgCliff = wCliff * 0.85 * near;
               // the top-down photo smears green and white streaks down the walls: keep only its
               // brightness there, the colour is Tatra granite (grey, a little warm, lichen spots)
               float wl = dot(baseC, vec3(0.3, 0.55, 0.15));
@@ -613,6 +621,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float lum = dot(satB, vec3(0.3, 0.55, 0.15));
           paint *= mix(1.0, clamp(lum / 0.32, 0.8, 1.0), 0.3);   // a bright photo (old snow) does not lighten it
           float far = smoothstep(500.0, 2500.0, dist);
+          dbgFar = far * 0.92;
           col = mix(col, paint, far * 0.92);
           fl *= 1.0 - far * 0.7;               // the ribs would re-draw the patches at this distance
         }
@@ -630,6 +639,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float cool = clamp((min(col.g, col.b) - col.r) / max(lumC, 0.02) * 4.0, 0.0, 1.0);
           float greyC = 1.0 - smoothstep(0.03, 0.09, chromaC / max(lumC, 0.05) * 0.3);
           col = mix(col, vec3(lumC) * vec3(1.08, 1.0, 0.9), hiC * max(cool * 0.8, greyC * 0.5));
+          dbgGrey = hiC * max(cool * 0.8, greyC * 0.5);
           // scree: the pale cones of broken granite under the walls, lighter than the walls themselves
           col *= 1.0 + 0.35 * hiC * greyC * smoothstep(0.06, 0.18, slope) * (1.0 - smoothstep(0.45, 0.65, slope));   // (the Bula's blocks are pale, ~160 of 255)
         }
@@ -670,6 +680,21 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           col = mix(col, snowC, clamp(wsn, 0.0, 0.96));
         }
         diffuseColor.rgb = col;
+        if (dbgMode > 1.5) {
+          // which mesh: the detailed area (red), the 1 m patch around the camera (green), the panorama (blue)
+          diffuseColor.rgb = mix(vec3(dot(col, vec3(0.3, 0.55, 0.15))) * 1.5, dbgId < 1.5 ? vec3(1.0, 0.15, 0.1) : dbgId < 2.5 ? vec3(0.1, 1.0, 0.2) : vec3(0.15, 0.35, 1.0), 0.55);
+        } else if (dbgMode > 0.5) {
+          // which stage: the colour of the latest stage that weighed in, over the pixel's own brightness in grey
+          vec3 d = vec3(dot(col, vec3(0.3, 0.55, 0.15))) * 1.4;
+          d = mix(d, vec3(0.1, 0.35, 1.0), dbgFar);         // blue: the far panorama painted by height
+          d = mix(d, vec3(1.0, 0.95, 0.95), dbgRock * 0.8); // white: procedural granite on steep ground
+          d = mix(d, vec3(1.0, 0.5, 0.0), dbgCliff);        // orange: a cliff from the ground map
+          d = mix(d, vec3(1.0, 0.0, 0.0), dbgSmear * 0.8);  // red: the wall's de-smearing
+          d = mix(d, vec3(1.0, 0.0, 1.0), dbgSnow * 0.8);   // magenta: the photo's summer snow removed
+          d = mix(d, vec3(0.0, 1.0, 1.0), dbgGrey * 0.8);   // cyan: high stone turned grey
+          d = mix(d, vec3(1.0, 1.0, 0.0), max(asphK, pathK)); // yellow: roads and paths
+          diffuseColor.rgb = d;
+        }
         if (desmear > 1.5) diffuseColor.rgb = mix(col, vec3(1.0, 0.0, 0.0), smear * 0.8);   // ?odmaz=pokaz: where it works
         if (detW <= 0.0) { detN = Nr; detW = 1.0; }
         else { detN = normalize(mix(Nr, detN, detW)); detW = 1.0; }
