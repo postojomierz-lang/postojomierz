@@ -38,12 +38,12 @@ function cleanUrl(keys) {
   history.replaceState(null, '', u.pathname + u.search + u.hash);
 }
 
-// an avatar: an emoji, the face from the look editor (SVG) or a photo (JPEG). Only a well-formed image goes into
+// an avatar: an emoji, the face from the look editor (SVG) or a photo (JPEG; a PNG sent past the app counts too). Only a well-formed image goes into
 // the page; a photo someone reported is hidden on this device (uid: whose it is); noPhoto: the public ranking,
 // where strangers see each other, shows no photos at all, nor anywhere one hidden after reports (photo_hidden)
 const HIDE = 'szlakownik-hidden-photos';
 const hiddenPhotos = () => { try { return new Set(JSON.parse(localStorage.getItem(HIDE) || '[]')); } catch (e) { return new Set(); } };
-export const isPhoto = (a) => /^data:image\/jpeg;base64,/.test(a || '');
+export const isPhoto = (a) => /^data:image\/(jpeg|png);base64,/.test(a || '');
 const goodImg = (a) => /^data:image\/(jpeg|png|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(a || '');
 export function avatarHtml(a, esc, uid = null, noPhoto = false) {
   const show = goodImg(a) && !(isPhoto(a) && (noPhoto || (uid && hiddenPhotos().has(uid))));
