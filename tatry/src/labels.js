@@ -14,7 +14,7 @@ export const placeId = (l) => `${l.kind}:${l.name}`;
 
 // blockers: [{ x, y, z, tx, tz, nx, nz }] signposts (foot of the pole, trail direction and normal); while near, their boards keep the labels off them
 // nature: { spots: [{ id, x, z, y }], found: { id: date } } (the catalogue's spots and what has been discovered)
-const PANELS = ['hud', 'controls', 'bottom', 'minimap', 'fps', 'place', 'label-menu'];
+const PANELS = ['hud', 'controls', 'bottom', 'minimap', 'fps', 'place', 'label-menu', 'toast'];
 // the mountain huts among the buildings OSM names (villas, churches, holiday cottages): seen from afar, like the peaks
 const MAIN_HUT = /^schronisko pttk|murowaniec|kalatówki|^(téryho|zbojnícka|zamkovského|rainerova|bilíkova|skalnatá|žiarska|ťatliakova|krivánska|majláthova|šašinková|gazdíková) chata|^chata (pod|pri) (rysmi|soliskom|zelenom plese)|sliezsky dom$/i;
 
@@ -34,7 +34,7 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
     if (it.species) {
       const g = GROUPS[it.species.group], known = !!found[it.id];
       it.el.classList.toggle('unknown', !known);
-      it.el.firstChild.innerHTML = `<span class="ico">${g.icon}</span><span class="nm">${known ? it.name : '?'}</span>`
+      it.el.firstChild.innerHTML = `<span class="ico">${g.icon}</span><span class="nm">${known ? it.name : 'do odkrycia'}</span>`
         + `<span class="ele">${known ? it.species.latin : g.name.toLowerCase()}</span>`;
       return;
     }
@@ -120,7 +120,7 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
     // the panels and the name of the place: a label under them can be neither read nor clicked
     for (const id of PANELS) {
       const e = document.getElementById(id);
-      if (!e || (id === 'place' && !e.classList.contains('show'))) continue;
+      if (!e || ((id === 'place' || id === 'toast') && !e.classList.contains('show'))) continue;   // a notice ("Odkryto…") too
       const r = e.getBoundingClientRect();
       if (r.width && r.height) placed.push({ x0: r.left, x1: r.right, y0: r.top, y1: r.bottom });
     }
@@ -129,12 +129,13 @@ export function buildLabels({ meta, terrain, camera, container, extra = [], bloc
       if (!it.w) { const r = it.el.firstChild.getBoundingClientRect(); it.w = r.width || 120; it.h = r.height || 28; }
       const pole = 26 + Math.min(40, 400000 / (it.d * it.d + 4000));
       const box = { x0: it.sx - 4, x1: it.sx + it.w + 4, y0: it.sy - pole - it.h - 2, y1: it.sy - pole + 2 };
-      const clash = placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
+      // (one cut off by the edge of the screen counts as a clash too)
+      const clash = box.x1 > W || box.y0 < 0 || placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
       if (clash || placed.length - nBlock >= 26) { if (it.visible) { it.el.classList.remove('on'); it.visible = false; } continue; }
       placed.push(box);
       it.el.style.transform = `translate(${it.sx.toFixed(1)}px, ${(it.sy - pole - it.h).toFixed(1)}px)`;
       it.el.lastChild.style.height = `${pole.toFixed(0)}px`;
-      it.el.style.setProperty('--o', String(Math.max(0.55, 1 - it.d / 20000)));
+      it.el.style.setProperty('--o', String(Math.max(0.8, 1 - it.d / 20000)));   // (at 0.55 far flags hung in the air like ghosts)
       if (!it.visible) { it.el.classList.add('on'); it.visible = true; }
     }
   }
