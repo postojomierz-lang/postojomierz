@@ -19,11 +19,29 @@ export function setupIntro() {
     box.querySelector('.in-dots').innerHTML = SLIDES.map((_, i) => `<i class="${i === k ? 'on' : ''}"></i>`).join('');
     box.querySelector('.in-next').textContent = k === SLIDES.length - 1 ? 'Zaczynamy' : 'Dalej →';
     box.querySelector('.in-skip').style.visibility = k === SLIDES.length - 1 ? 'hidden' : 'visible';
+    box.querySelector('.in-back').style.visibility = k > 0 ? 'visible' : 'hidden';
+  }
+  // the text of every slide measured once: the box keeps the height of the longest, so the buttons stay put
+  function fitHeight() {
+    const b = box.querySelector('.in-body');
+    b.style.minHeight = '';
+    let h = 0;
+    for (const sl of SLIDES) { b.textContent = sl[2]; h = Math.max(h, b.offsetHeight); }
+    if (h) b.style.minHeight = `${h}px`;
   }
   function close() { box.hidden = true; try { localStorage.setItem(KEY, '1'); } catch (e) { /* private mode */ } }
-  function open() { k = 0; render(); box.hidden = false; }
+  function open() { k = 0; box.hidden = false; fitHeight(); render(); }
   box.querySelector('.in-next').onclick = () => { if (k < SLIDES.length - 1) { k++; render(); } else close(); };
   box.querySelector('.in-skip').onclick = close;
+  box.querySelector('.in-back').onclick = () => { if (k > 0) { k--; render(); } };
+  // like any window: Escape or a tap beside it closes it (the arrows page through)
+  box.addEventListener('click', (e) => { if (e.target === box) close(); });
+  addEventListener('keydown', (e) => {
+    if (box.hidden) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowRight') box.querySelector('.in-next').click();
+    else if (e.key === 'ArrowLeft') box.querySelector('.in-back').click();
+  });
   let seen = false;
   try { seen = localStorage.getItem(KEY) === '1'; } catch (e) { /* private mode */ }
   if (!seen && !location.hash.includes('join=')) open();
