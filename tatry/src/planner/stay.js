@@ -66,8 +66,8 @@ const STARTS = [
   [PAL, 'Palenica Białczańska: busy z Zakopanego (dworzec), parking płatny z rezerwacją internetową TPN'],
   [KIRY, 'Kiry: busy z Zakopanego, parking płatny'],
   [SIWA, 'Siwa Polana: busy z Zakopanego, parking płatny'],
-  [STRAZ, 'Strążyska: z centrum Zakopanego pieszo ok. 30 min lub busem'],
-  [[19.9575, 49.2828], 'Dolina Białego: z centrum Zakopanego pieszo ok. 20 min'],
+  [STRAZ, 'Strążyska: wylot doliny w Zakopanem, od centrum miasta pieszo ok. 30 min lub busem'],
+  [[19.9575, 49.2828], 'Dolina Białego: wylot doliny w Zakopanem, od centrum miasta pieszo ok. 20 min'],
   [[20.0956, 49.2709], 'Wierch Poroniec: busy z Zakopanego w stronę Morskiego Oka'],
   [HREB, 'Hrebienok: kolejka ze Starého Smokovca lub pieszo ok. 45 min'],
   [[20.0632, 49.1176], 'Štrbské Pleso: elektriczka TEŽ, autobusy, parking płatny'],
@@ -288,7 +288,10 @@ export function setupStay({ G, along, onOpen, $ }) {
       if (travel.has(d)) return `<li>${head(d, d === 0 ? 'przyjazd' : 'wyjazd')}<span>${d === 0 ? 'Dojazd i zakwaterowanie; wieczorem krótki spacer w okolicy noclegu.' : 'Pakowanie i powrót; jeśli czas pozwoli, krótki spacer.'}</span></li>`;
       if (restDays.has(d)) return `<li>${head(d, 'odpoczynek')}<span>${base[3] ? 'Krótki spacer, kolejką na Hrebienok albo Skalnaté pleso, termy (np. AquaCity w Popradzie)' : 'Krótki spacer, Gubałówka kolejką, termy'}. Nogi odpoczną przed dalszymi trasami.</span></li>`;
       if (!w) return `<li>${head(d, 'wolny')}<span>Powtórz ulubioną trasę albo odpocznij.</span></li>`;
-      const tags = [w.kind === 'dolina' ? '🌧 dobra na gorszą pogodę' : '', w.chains ? '⛓ łańcuchy' : '', w.alpine ? `⚠ teren T${w.alpine}` : ''].filter(Boolean).join(' · ');
+      // a bad day kept a walk (the easiest one went there): say why to take care
+      const f = wx(d), warn = f && f.bad ? (/wiatr/.test(f.why) ? `💨 ${f.why}: w lesie uwaga na łamiące się drzewa, nie wchodź na grań`
+        : f.why === 'burze' ? '⛈ burze: wyjdź wcześnie i zejdź przed południem' : `🌧 ${f.why}: śliskie kamienie, weź kurtkę przeciwdeszczową`) : '';
+      const tags = [warn, w.kind === 'dolina' ? '🌧 dobra na gorszą pogodę' : '', w.chains ? '⛓ łańcuchy' : '', w.alpine ? `⚠ teren T${w.alpine}` : ''].filter(Boolean).join(' · ');
       const there = howTo(w.start), back = w.shape === 'przejście' ? howTo(w.end) : '';
       return `<li>${head(d, w.name)}<span>${(w.dist / 1000).toFixed(1).replace('.', ',')} km, ${w.shape} · ok. ${hm(w.time * lim.pace)} h marszu${Math.abs(lim.pace - 1) > 0.02 ? ' w tempie grupy' : ''} · ↗ ${Math.round(w.up)} m · do ${Math.round(w.top)} m n.p.m.${tags ? ` · ${tags}` : ''}</span>`
         + `<span class="ride">🚌 dojazd ok. ${ride(w)} min${there ? `. ${there}` : ''}${back ? `. Powrót: ${back}` : ''}</span>`

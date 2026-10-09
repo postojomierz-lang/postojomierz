@@ -30,6 +30,7 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
   for (const [n, lat, lon, k] of EXTRA) places.push({ n, k, lat, lon });
   for (const [n, lat, lon] of HOTELS) if (!seen.has(n)) places.push({ n, k: 'hotel', lat, lon });
   // ("hotel patria" finds Patria too)
+  const named = [...data.poi.filter((p) => p.n).map((p) => ({ n: p.n, k: p.k, lat: p.p[1], lon: p.p[0] })), ...places.filter((p) => p.k !== 'hotel' && !data.poi.some((q) => q.n === p.n))];
   for (const p of places) p.f = fold(p.n) + (p.k === 'hotel' && !/hotel/i.test(p.n) ? ' hotel' : '');
 
   function find(q) {
@@ -143,9 +144,20 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
   // the fields follow the route: the name of the place nearest to the first and the last point
   function nameAt(v) {
     const [lat, lon] = ll(v);
-    let best = null, bd = 0.0035 ** 2;
-    for (const p of places) { const d = (p.lat - lat) ** 2 + ((p.lon - lon) * 0.65) ** 2; if (d < bd) { bd = d; best = p; } }
-    return best ? best.n : 'punkt na szlaku';
+    // a hotel only where no hut, summit or other place of the trails is near (by Bilíkova chata a guesthouse
+    // at Hrebienok named both ends of the route)
+    // (every named point counts here, the signposts too: the list above keeps one place per name, so the
+    // Hrebienok signpost gave way to the summit of that name 230 m off)
+    for (const hotels of [false, true]) {
+      let best = null, bd = 0.0035 ** 2;
+      for (const p of hotels ? places : named) {
+        if ((p.k === 'hotel') !== hotels) continue;
+        const d = (p.lat - lat) ** 2 + ((p.lon - lon) * 0.65) ** 2;
+        if (d < bd) { bd = d; best = p; }
+      }
+      if (best) return best.n;
+    }
+    return 'punkt na szlaku';
   }
   function sync() {
     const s = getStops();
