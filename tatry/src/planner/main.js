@@ -152,19 +152,48 @@ for (const ed of data.e) {
 // huts, peaks, passes, lakes, waterfalls, viewpoints and springs, more of them as you zoom in: huts and the
 // high peaks first, all peaks, lakes, waterfalls and viewpoints at 14, passes and springs at 15
 const layersAt = { 12: L.layerGroup(), 14: L.layerGroup(), 15: L.layerGroup() };
+// summits of one name within 300 m are one massif (Rysy 2503, 2499 and 2472 m; Świnica 2302 and 2291 m):
+// one label with every height, the highest first, instead of three Rysy stacked on each other
+const M_LON = 72700, M_LAT = 111200;
+const massif = new Map();
 for (const p of data.poi) {
-  if (p.k === 'sign') continue;
+  if (p.k !== 'peak' || !p.n) continue;
+  const top = data.poi.filter((q) => q.k === 'peak' && q.n === p.n && Math.hypot((q.p[0] - p.p[0]) * M_LON, (q.p[1] - p.p[1]) * M_LAT) < 300)
+    .sort((a, b) => (b.e || 0) - (a.e || 0));
+  massif.set(p, top[0] === p ? top.map((q) => q.e).filter(Boolean) : null);   // null: a lower summit, no label
+}
+const poiMarks = [];
+for (const p of data.poi) {
+  if (p.k === 'sign' || massif.get(p) === null) continue;
   const icon = { hut: '⌂', peak: '▲', lake: '💧', fall: '🌊', view: '👁', spring: '🚰' }[p.k] || '⌒';
-  const label = `${icon} ${p.n}${p.e ? ' ' + p.e + ' m' : ''}`;
+  const eles = massif.get(p) || (p.e ? [p.e] : []);
+  const label = `${icon} ${p.n}${eles.length ? ' ' + eles.join(' · ') + ' m' : ''}`;
   const z = p.k === 'hut' || (p.k === 'peak' && p.e >= 2150) ? 12 : p.k === 'pass' || p.k === 'spring' ? 15 : 14;
-  L.marker([p.p[1], p.p[0]], { interactive: false, icon: L.divIcon({ className: 'poi' + (p.k === 'hut' ? ' hut' : ''), html: label, iconSize: null, iconAnchor: [4, 8] }) })
+  const m = L.marker([p.p[1], p.p[0]], { interactive: false, icon: L.divIcon({ className: 'poi' + (p.k === 'hut' ? ' hut' : ''), html: label, iconSize: null, iconAnchor: [4, 8] }) })
     .addTo(layersAt[z]);
+  // which label wins where they overlap: huts, then the summits by height, then the rest
+  poiMarks.push({ m, z, w: label.length * 6.2 + 6, pri: p.k === 'hut' ? 5000 : p.k === 'peak' ? 2000 + (p.e || 0) : p.k === 'lake' ? 1500 : 1000 });
+}
+poiMarks.sort((a, b) => b.pri - a.pri);
+// labels that would cover each other: the less important one hidden (hundreds of names were stacked into an
+// unreadable heap around Rysy and Morskie Oko)
+function declutter() {
+  const zoom = map.getZoom(), taken = [], pad = 3;
+  for (const t of poiMarks) {
+    const el = t.m.getElement();
+    if (!el || zoom < t.z) continue;
+    const c = map.latLngToContainerPoint(t.m.getLatLng()), b = [c.x - 4, c.y - 8, c.x - 4 + t.w, c.y + 8];
+    const hit = taken.some((o) => b[0] < o[2] + pad && b[2] + pad > o[0] && b[1] < o[3] + pad && b[3] + pad > o[1]);
+    el.style.visibility = hit ? 'hidden' : '';
+    if (!hit) taken.push(b);
+  }
 }
 const togglePois = () => {
   const zoom = map.getZoom();
   for (const [z, l] of Object.entries(layersAt)) { if (zoom >= +z && !map.hasLayer(l)) l.addTo(map); if (zoom < +z && map.hasLayer(l)) l.remove(); }
+  declutter();
 };
-map.on('zoomend', togglePois); togglePois();
+map.on('zoomend', togglePois); map.on('moveend', declutter); togglePois();
 
 // ---------------------------------------------------------------- route state
 let stops = [];              // vertex indices

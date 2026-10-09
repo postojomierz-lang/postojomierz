@@ -140,7 +140,8 @@
   #q-list li:hover, #q-list li.on { background: var(--bg); }
   #q-list li { flex-wrap: wrap; }
   #q-list li .nb { flex-basis: 100%; margin-left: 0; padding-left: 26px; color: #b45309; }
-  #q-list li small { color: var(--muted); margin-left: auto; }
+  #q-list li small { color: var(--muted); margin-left: auto; white-space: nowrap; }
+  #q-list li .n { flex: 1; min-width: 0; }   /* a long name wraps in its own column, not into three lines */
   #q-list li .k { width: 16px; text-align: center; color: var(--muted); }
   #q-list li.none { color: var(--muted); cursor: default; }
   .looklink { width: 100%; text-align: left; margin: 0 0 8px; font-size: 13px; }

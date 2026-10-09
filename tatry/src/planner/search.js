@@ -77,7 +77,7 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
     active = input;
     items = find(input.value);
     sel = -1;
-    list.innerHTML = items.map((p, i) => `<li data-i="${i}"><span class="k">${ICON[p.k] || '·'}</span>${p.n}${p.e ? ` <small>${p.e} m</small>` : ''}${p.below ? `<small class="nb">${belowText(p)}</small>` : ''}</li>`).join('')
+    list.innerHTML = items.map((p, i) => `<li data-i="${i}"><span class="k">${ICON[p.k] || '·'}</span><span class="n">${p.n}</span>${p.e ? ` <small>${p.e} m</small>` : ''}${p.below ? `<small class="nb">${belowText(p)}</small>` : ''}</li>`).join('')
       || (input.value.trim().length >= 2 ? '<li class="none">Nie znam takiego miejsca. Spróbuj inaczej albo kliknij na mapie.</li>' : '');
     list.hidden = !list.innerHTML;
     // under the field
