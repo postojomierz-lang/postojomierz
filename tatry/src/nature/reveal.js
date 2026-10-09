@@ -14,6 +14,8 @@ const CSS = `
 #rv-bars:before{top:0}#rv-bars:after{bottom:0}
 #rv-vig{position:fixed;inset:0;pointer-events:none;z-index:8999;opacity:0;transition:opacity .6s;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 45%,rgba(0,0,0,.55) 100%)}
 #rv-vig.on{opacity:1}
+#rv-skip{position:fixed;right:14px;top:calc(9vh + 10px);z-index:9004;padding:7px 14px;border:1px solid rgba(255,255,255,.5);border-radius:18px;background:rgba(0,0,0,.45);color:#fff;font:600 14px system-ui,sans-serif;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .4s}
+#rv-skip.on{opacity:1;pointer-events:auto}
 #rv-tag{position:fixed;left:50%;top:13vh;transform:translate(-50%,-10px);z-index:9001;color:#fff;font:600 13px system-ui,sans-serif;letter-spacing:.25em;text-transform:uppercase;opacity:0;transition:all .5s;text-shadow:0 1px 6px #000}
 #rv-tag.on{opacity:.9;transform:translate(-50%,0)}
 #rv-card{position:fixed;left:50%;bottom:11vh;z-index:9002;width:min(380px,calc(100% - 24px));transform:translate(-50%,40px) scale(.96);opacity:0;transition:all .45s cubic-bezier(.2,.9,.3,1.2);
@@ -46,6 +48,9 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
   if (!document.getElementById('rv-css')) { const st = document.createElement('style'); st.id = 'rv-css'; st.textContent = CSS; document.head.appendChild(st); }
   const el = (id, html = '') => { const d = document.createElement('div'); d.id = id; d.innerHTML = html; document.body.appendChild(d); return d; };
   const bars = el('rv-bars'), vig = el('rv-vig'), tag = el('rv-tag'), card = el('rv-card');
+  // a plain way out, also of the finds still queued after this one (a tap on the card ends only this one)
+  const skip = document.createElement('button'); skip.id = 'rv-skip'; skip.textContent = 'Pomiń ✕'; document.body.appendChild(skip);
+  skip.addEventListener('click', (e) => { e.stopPropagation(); queue.length = 0; leave(); });
   let photos = null;
   fetch('nature/photos.json').then((r) => r.json()).then((j) => { photos = j; }).catch(() => { photos = {}; });
 
@@ -72,7 +77,7 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
     if (photos && photos[s.id]) new Image().src = `nature/${s.id}.jpg`;   // ready by the time the card shows
     r.t = 0; r.phase = 'in'; r.bonus = []; r.coins = false;
     cur = r;
-    bars.classList.add('on'); vig.classList.add('on'); document.body.classList.add('revealing');
+    bars.classList.add('on'); vig.classList.add('on'); skip.classList.add('on'); document.body.classList.add('revealing');
     tag.textContent = '✦ Odkrycie ✦'; tag.classList.add('on');
   }
   function target(r) {
@@ -142,6 +147,7 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
     if (!cur || cur.phase === 'out') return;
     cur.phase = 'out'; cur.t = 0;
     card.classList.remove('on'); tag.classList.remove('on');
+    if (!queue.length) skip.classList.remove('on');
   }
   card.addEventListener('click', (e) => { e.stopPropagation(); if (!e.target.closest('a')) leave(); });   // the link opens, the card stays
   addEventListener('keydown', (e) => { if (cur && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.stopPropagation(); leave(); } }, true);
@@ -181,6 +187,7 @@ export function buildReveal({ camera, groundAt, findAnimal = () => null, scoreEl
       ts = 1 - 0.88 * k;
       if (r.t >= 1.0) {
         bars.classList.remove('on'); vig.classList.remove('on'); document.body.classList.remove('revealing');
+        if (!queue.length) skip.classList.remove('on');
         cur = null; lastEnd = performance.now(); onEnd(); next();
         return 1;
       }

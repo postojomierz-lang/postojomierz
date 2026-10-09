@@ -369,6 +369,9 @@ function winterCard(t0, topEle, freeze) {
 // another day can open or close trails (seasonal closures): then the route is planned again
 $('d-day').onchange = $('d-time').onchange = () => { if (G.setDate(startDate()) && stops.length >= 2) update(); else updateDay(); };
 
+// Polish plural: 1 szczyt, 2–4 szczyty, 5–21 szczytów, 22–24 szczyty…
+const plural = (n, one, few, many) => (n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many);
+
 // ---------------------------------------------------------------- elevation profile
 const cv = $('profile');
 function drawProfile(hx = -1) {
@@ -380,7 +383,10 @@ function drawProfile(hx = -1) {
   const X = (d) => 34 + (W - 42) * d / D, Y = (e) => H - 16 - (H - 26) * (e - lo) / (hi - lo);
   g.font = '10px system-ui'; g.fillStyle = '#6a7178'; g.strokeStyle = '#e2e0da';
   for (let e = lo; e <= hi; e += (hi - lo > 800 ? 200 : 100)) { g.beginPath(); g.moveTo(34, Y(e)); g.lineTo(W - 8, Y(e)); g.stroke(); g.fillText(e, 2, Y(e) + 3); }
-  for (let km = 0; km <= D / 1000; km += D > 15000 ? 5 : D > 5000 ? 2 : 1) g.fillText(km + ' km', X(km * 1000) - 8, H - 3);
+  for (let km = 0; km <= D / 1000; km += D > 15000 ? 5 : D > 5000 ? 2 : 1) {
+    const t = km + ' km';
+    g.fillText(t, Math.min(X(km * 1000) - 8, W - 2 - g.measureText(t).width), H - 3);   // the last one inside the edge
+  }
   // filled area coloured by the trail sections
   for (const sec of summary.sections) {
     g.beginPath(); g.moveTo(X(P[sec.start][0]), Y(lo));
@@ -531,7 +537,7 @@ function routeTitle() {
 function renderJournal() {
   const t = totals(J);
   $('j-stats').innerHTML = `<div class="stat"><b>${t.walks}</b><span>przejść</span></div><div class="stat"><b>${t.km.toFixed(1)} km</b><span>razem</span></div>`
-    + `<div class="stat"><b>↗ ${Math.round(t.up)} m</b><span>podejść</span></div><div class="stat"><b>${t.peaks}</b><span>szczytów</span></div>`;
+    + `<div class="stat"><b>↗ ${Math.round(t.up)} m</b><span>podejść</span></div><div class="stat"><b>${t.peaks}</b><span>${plural(t.peaks, 'szczyt', 'szczyty', 'szczytów')}</span></div>`;
   const li = (html, onClick) => { const e = document.createElement('li'); e.innerHTML = html; if (onClick) e.onclick = onClick; return e; };
   const favs = $('j-favs'); favs.innerHTML = '';
   if (!J.favs.length) favs.appendChild(li('<span class="empty">Wyznacz trasę i kliknij ☆, żeby ją zapisać.</span>'));
