@@ -631,7 +631,7 @@ export function terrainMaterial({ map, trailMap, bounds, detail, env, aoStrength
           float greyC = 1.0 - smoothstep(0.03, 0.09, chromaC / max(lumC, 0.05) * 0.3);
           col = mix(col, vec3(lumC) * vec3(1.08, 1.0, 0.9), hiC * max(cool * 0.8, greyC * 0.5));
           // scree: the pale cones of broken granite under the walls, lighter than the walls themselves
-          col *= 1.0 + 0.16 * hiC * greyC * smoothstep(0.06, 0.18, slope) * (1.0 - smoothstep(0.3, 0.45, slope));
+          col *= 1.0 + 0.35 * hiC * greyC * smoothstep(0.06, 0.18, slope) * (1.0 - smoothstep(0.45, 0.65, slope));   // (the Bula's blocks are pale, ~160 of 255)
         }
         // mountain lakes: a band of pale granite gravel and stones along the water, a few metres wide
         if (shoreRect.z > shoreRect.x) {
