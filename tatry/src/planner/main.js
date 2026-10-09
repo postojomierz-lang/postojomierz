@@ -236,7 +236,7 @@ function update() {
   drawMarkers();
   routeLayer.clearLayers();
   path = null; summary = null;
-  $('summary').hidden = true;
+  $('summary').hidden = true; $('go-sum').hidden = true;
   if (stops.length >= 2) {
     G.setDate(startDate());
     path = G.routeVia(stops);
@@ -279,6 +279,9 @@ function showSummary() {
   $('s-time').textContent = fmtTime(S.time);
   $('s-up').textContent = '↗ ' + Math.round(S.up) + ' m';
   $('s-down').textContent = '↘ ' + Math.round(S.down) + ' m';
+  // the same in one line by the buttons: on a phone the summary lies below them, under the edge of the panel
+  $('go-sum').textContent = `${(S.dist / 1000).toFixed(1).replace('.', ',')} km · ${fmtTime(S.time)} · ↗ ${Math.round(S.up)} m`;
+  $('go-sum').hidden = false;
   const ul = $('sections'); ul.innerHTML = '';
   // one entry per stretch of the same colour: "from – to" out of the first and last section names
   const merged = [];
