@@ -531,7 +531,7 @@ async function main() {
     const x0 = Math.max(IB[0], Math.min(IB[2] - PATCH, Math.round(cx / 10) * 10 - PATCH / 2));
     const z0 = Math.max(IB[1], Math.min(IB[3] - PATCH, Math.round(cz / 10) * 10 - PATCH / 2));
     const n = Math.round(PATCH / PSTEP);
-    const g = gridGeometry(x0, z0, x0 + PATCH, z0 + PATCH, n, n, (x, z) => terrain.height(x, z), 6);
+    const g = gridGeometry(x0, z0, x0 + PATCH, z0 + PATCH, n, n, (x, z) => terrain.height(x, z), 25);   // a deep skirt: on a 60-70° wall the 1 m grid and the coarse mesh part by more than 6 m
     if (patchMesh) {
       // the same grid moved: new heights and normals into the buffers already on the GPU (no new buffers,
       // the shared index stays)

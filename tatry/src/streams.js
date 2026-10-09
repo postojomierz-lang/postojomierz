@@ -39,7 +39,8 @@ export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, qu
   function ribbon(pts, s) {
     // drawn against the flow in OpenStreetMap now and then: the water level would stay at the bottom end's
     if (terrain.height(pts[0][0], pts[0][1]) < terrain.height(pts[pts.length - 1][0], pts[pts.length - 1][1]) - 3) pts = pts.slice().reverse();
-    const n = pts.length, w0 = s.width;
+    // a seasonal brook (dry most of the summer) is a thin dark thread in its gully, not a white ribbon down the slope
+    const n = pts.length, w0 = s.intermittent ? Math.min(s.width, 0.8) : s.width;
     const tx = new Float32Array(n), tz = new Float32Array(n), level = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
@@ -65,6 +66,7 @@ export function buildStreams({ scene, terrain, meta, lakeMask, shade, skyCol, qu
       const drop = (sm[Math.max(0, i - 2)] - sm[Math.min(n - 1, i + 2)]) / 12;   // gradient over ±6 m
       const df = nearFall(pts[i][0], pts[i][1]);
       let foam = smooth(0.18, 0.7, drop);
+      if (s.intermittent) foam *= 0.25;
       if (df < 35) foam = Math.max(foam, 1 - df / 45);
       const w = w0 * (1 + 0.8 * foam) * (0.85 + 0.3 * Math.sin(dist * 0.13 + w0));
       const [x, z] = pts[i], nx = -tz[i], nz = tx[i];
