@@ -516,8 +516,12 @@ async function main() {
   const step = tier(16, 8, 6, 4.5) * Math.sqrt(AREA_K);
   const inx = Math.round((IB[2] - IB[0]) / step), inz = Math.round((IB[3] - IB[1]) / step);
   const innerGeo = gridGeometry(IB[0], IB[1], IB[2], IB[3], inx, inz, (x, z) => terrain.height(x, z), 40);
-  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, hole: near.patch, desmear: P.get('odmaz') === 'pokaz' ? 2 : P.get('odmaz') !== '0' });
-  const patchMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, desmear: P.get('odmaz') === 'pokaz' ? 2 : P.get('odmaz') !== '0' });
+  // ?debug=teren: the terrain coloured by the stage of its shader that decided each pixel (a legend in the corner);
+  // ?debug=siatki: by the mesh (detailed area, 1 m patch, panorama). For tracking down artefacts
+  const DEBUG_T = { teren: 1, siatki: 2 }[P.get('debug')] || 0;
+  if (DEBUG_T) debugLegend(DEBUG_T);
+  const innerMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, hole: near.patch, desmear: P.get('odmaz') === 'pokaz' ? 2 : P.get('odmaz') !== '0', debug: DEBUG_T, debugId: 1 });
+  const patchMat = terrainMaterial({ map: innerTex, trailMap: trailTex, bounds: IB, detail: true, env: shade, textures, near, desmear: P.get('odmaz') === 'pokaz' ? 2 : P.get('odmaz') !== '0', debug: DEBUG_T, debugId: 2 });
   const innerMesh = new THREE.Mesh(innerGeo, innerMat);
   innerMesh.receiveShadow = true;
 
@@ -588,7 +592,7 @@ async function main() {
   const oDiv = tier(2, 1, 1, 1);
   const outerGeo = gridGeometry(OB[0], OB[1], OB[2], OB[3], Math.round((meta.outer.n[0] - 1) / oDiv), Math.round((meta.outer.n[1] - 1) / oDiv), (x, z) => terrain.base(x, z));
   const outerMesh = new THREE.Mesh(outerGeo, terrainMaterial({ map: outerTex, trailMap: blank, bounds: OB, detail: false, env: shade, aoStrength: 0.6, textures, near: noNear,
-    hole: { value: new THREE.Vector4(IB[0], IB[1], IB[2], IB[3]) }, desmear: P.get('odmaz') === 'pokaz' ? 2 : P.get('odmaz') !== '0' }));   // the detailed area draws itself
+    hole: { value: new THREE.Vector4(IB[0], IB[1], IB[2], IB[3]) }, desmear: P.get('odmaz') === 'pokaz' ? 2 : P.get('odmaz') !== '0', debug: DEBUG_T, debugId: 3 }));   // the detailed area draws itself
   scene.add(outerMesh);
 
   // ---------- lakes
@@ -2390,3 +2394,15 @@ main().catch((e) => {
   a.style.cssText = 'display:block;margin-top:12px;color:#9cf';
   $('loading-text').after(a);
 });
+
+// the legend of ?debug=teren / ?debug=siatki
+function debugLegend(mode) {
+  const rows = mode === 1
+    ? [['#1a59ff', 'panorama malowana wysokością'], ['#fff2f2', 'granit na stromiźnie'], ['#ff8000', 'urwisko z mapy terenu'],
+      ['#ff0000', 'odmazywanie ścian'], ['#ff00ff', 'usunięty śnieg ze zdjęcia'], ['#00ffff', 'szarzenie wysoko'], ['#ffff00', 'drogi i ścieżki'], ['#888', 'samo zdjęcie (jasność)']]
+    : [['#ff261a', 'obszar szczegółowy'], ['#1aff33', 'łata 1 m wokół kamery'], ['#2659ff', 'panorama']];
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99;background:rgba(0,0,0,.7);color:#fff;font:12px sans-serif;padding:6px 8px;border-radius:6px;pointer-events:none';
+  d.innerHTML = rows.map(([c, t]) => `<div><span style="display:inline-block;width:10px;height:10px;background:${c};margin-right:6px"></span>${t}</div>`).join('');
+  document.body.appendChild(d);
+}
