@@ -97,6 +97,7 @@ export async function loadRegionArea(route, { status = () => {}, quality = 'high
   const R = REGION_BASE;
   status('Pobieranie mapy regionu…');
   const meta = await regionMeta();
+  metaP = null;   // (the whole region's index, the streams' 800 000 points in it, tens of MB on a phone: only the area's part stays)
   const B = meta.base.block, step = meta.base.step, BM = B * step;       // samples and metres per block
   const [rx0, rz0] = meta.base.bounds;
   // area: the route's bounding box plus a margin, snapped to whole blocks

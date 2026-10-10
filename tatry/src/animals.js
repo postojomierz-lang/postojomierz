@@ -57,6 +57,9 @@ const FROM_CATALOGUE = {
   zajac: [['hare'], ['hare', 'hare']],
 };
 
+// the models, for main.js to fetch them early (alongside the terrain)
+export const ANIMAL_FILES = () => [...new Set(Object.values(SPECIES).map((s) => s.file))];
+
 export async function buildAnimals({ scene, terrain, groundAt, trail, land, bounds, masks, sound, natureSpots = [], groundClass = null, rut = false, winter = false, hour = () => 12, onEvent = () => {} }) {
   const loader = new GLTFLoader();
   const proto = {};

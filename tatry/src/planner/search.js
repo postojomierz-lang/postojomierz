@@ -142,9 +142,11 @@ export function setupSearch({ $, data, G, getStops, setStops, ll, onPicked = () 
   }
   // the list goes at the touch, and the click that follows it landed on what was under it ("Jak zaplanować
   // trasę?" opened, the buttons moved down): that one click is swallowed
+  // (until the finger is lifted, however long that takes: a slow tap let it through; the next touch elsewhere ends it)
   let swallow = 0;
   document.addEventListener('click', (e) => { if (performance.now() < swallow) { e.preventDefault(); e.stopPropagation(); swallow = 0; } }, true);
-  list.addEventListener('pointerdown', (e) => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); swallow = performance.now() + 600; pick(items[+li.dataset.i]); } });
+  document.addEventListener('pointerdown', (e) => { if (!list.contains(e.target)) swallow = 0; }, true);
+  list.addEventListener('pointerdown', (e) => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); swallow = performance.now() + 3000; pick(items[+li.dataset.i]); } });
   $('q-swap').onclick = () => { const s = getStops(); if (s.length >= 2) setStops(s.slice().reverse()); };
 
   // the fields follow the route: the name of the place nearest to the first and the last point

@@ -13,7 +13,7 @@ import { loadImpostorKinds, vegFar, treeFade } from './impostor.js';
 import { buildGroundCover } from './groundcover.js';
 import { buildStreams } from './streams.js';
 import { Sound } from './sound.js';
-import { buildAnimals } from './animals.js';
+import { buildAnimals, ANIMAL_FILES } from './animals.js';
 import { buildBuildings, buildingFlats } from './buildings.js';
 import { buildChains } from './chains.js';
 import { buildCross } from './cross.js';
@@ -215,11 +215,12 @@ function sunAt(hour) {
 const IMPOSTORS = ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba', 'rowan'];
 async function main() {
   status('Pobieranie danych terenu…');
-  // what the building of the scene asks for later (~11 MB: the trees' and bushes' pictures, the granite and the dead
-  // wood): its download starts now, alongside the terrain, into the browser's cache (on a phone ~20 s of "Sadzenie
+  // what the building of the scene asks for later (~17 MB: the trees' and bushes' pictures, the granite, the dead
+  // wood, the animals): its download starts now, alongside the terrain, into the browser's cache (on a phone ~20 s of "Sadzenie
   // lasu" went on waiting for it after the terrain was in)
   for (const u of ['models/impostors.json', 'models/granite.glb', 'models/deadwood.glb', 'data/region/hard.json', 'data/region/rest.json',
-    ...IMPOSTORS.flatMap((n) => [`models/${n}_albedo.webp`, `models/${n}_normal.webp`])]) fetch(u).then((r) => r.blob()).catch(() => {});
+    ...IMPOSTORS.flatMap((n) => [`models/${n}_albedo.webp`, `models/${n}_normal.webp`]), ...ANIMAL_FILES().map((f) => `models/animals/${f}.glb`)])
+    fetch(u).then((r) => r.blob()).catch(() => {});
   let meta, base, outerU, innerBmp, outerBmp, landBmp, route = null, TILES = DATA + 'tiles/';
   // 1 m terrain and 0.5 m orthophoto tiles along the trail (GUGiK); on a route they come in alongside the
   // region's blocks (they waited for them: ~30 s more on a phone)
@@ -412,6 +413,11 @@ async function main() {
   const LITE = QUALITY === 'low' || QUALITY === 'mid';
   const SHADOW_EVERY = QUALITY === 'low' ? 3 : 2;
   const renderer = new THREE.WebGLRenderer({ antialias: QUALITY !== 'low', logarithmicDepthBuffer: !LITE, powerPreference: 'high-performance' });
+  // leaving for the planner: the GPU memory goes at once. A phone kept the frozen 3D page in the back/forward
+  // cache, and the second "Idź w 3D" built a new scene beside it: the tab crashed ("Aw, Snap!") within 2 s.
+  // Should it come back from that cache all the same, it starts afresh
+  addEventListener('pagehide', () => { renderer.dispose(); renderer.forceContextLoss(); });
+  addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
   // ultra renders above the screen resolution (supersampling) while the frame rate allows (tick)
   const PR_MAX = tier(1, 1.5, 1.75, 2), PR_MIN = tier(0.6, 0.75, 1, 1);
   // phones start at 1× and go up only if the frame rate allows
