@@ -212,6 +212,7 @@ function sunAt(hour) {
 }
 
 // ---------------------------------------------------------------- main
+let startS = '';   // the start's time, once the view is up (by the frame rate)
 const IMPOSTORS = ['spruce', 'sapling', 'grass', 'fern', 'mugo', 'herb', 'deadspruce', 'limba', 'rowan'];
 async function main() {
   status('Pobieranie danych terenu…');
@@ -2006,7 +2007,7 @@ async function main() {
     dyn.t0 = now; dyn.n = 0;
     const perf = $('perf');
     const fpsEl = $('fps');
-    if (fpsEl) fpsEl.textContent = `${Math.round(fps)} kl/s · ${QUALITY} · ${pr.toFixed(2)}×`;
+    if (fpsEl) fpsEl.textContent = `${Math.round(fps)} kl/s · ${QUALITY} · ${pr.toFixed(2)}×${startS}`;
     if (perf) perf.textContent = `Wersja ${__BUILD__} · jakość: ${QUALITY} · rozdzielczość ${pr.toFixed(2)}× · ${Math.round(fps)} kl/s${FPS_CAP ? ` (limit ${FPS_CAP})` : ''}`;
     if ((dyn.calm += el) > dyn.wait) { dyn.cap = PR_MAX; dyn.calm = 0; }
     let np = pr;
@@ -2132,6 +2133,9 @@ async function main() {
   const clock = new THREE.Clock();
   let hudT = 0;
   $('loading').classList.add('done');
+  // how long the start took, measured by the device itself from the click that opened the page (a phone tested
+  // from afar showed its screen 10-20 s late: no stopwatch could time it); shown by the frame rate
+  startS = ` · start ${(performance.now() / 1000).toFixed(1).replace('.', ',')} s`;
 
   // leaving the page (to the planner, another app): free the GPU at once. Phones keep the previous page in
   // memory for the back button, and a second 3D view on top of the first one crawls; coming back to such
